@@ -1,0 +1,14 @@
+# Enforce Unix-style newlines in the repo, but convert to native on checkout
+* text=auto
+
+# Explicitly declare text files you want to always be normalized
+*.c text
+*.h text
+*.cpp text
+*.dart text
+*.yaml text
+*.txt text
+
+# Declare binary files so Git doesn't try to convert them (optional but safe)
+*.png binary
+*.jpg binary

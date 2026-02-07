@@ -1,0 +1,40 @@
+group 'com.phonolite.phonolite_opus'
+version '0.0.1'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.phonolite.phonolite_opus'
+    compileSdkVersion 34
+
+    defaultConfig {
+        minSdkVersion 21
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+        }
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}

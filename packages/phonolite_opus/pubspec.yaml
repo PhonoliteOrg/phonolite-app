@@ -1,0 +1,22 @@
+name: phonolite_opus
+description: Opus decoder FFI bindings for Phonolite.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  ffi: ^2.1.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true

@@ -1,0 +1,3 @@
+[submodule "packages/phonolite_opus/third_party/opus"]
+	path = packages/phonolite_opus/third_party/opus
+	url = https://github.com/xiph/opus
