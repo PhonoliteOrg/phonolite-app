@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../display/now_playing_bar.dart';
+import '../layouts/app_scope.dart';
+import '../layouts/obsidian_scale.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 import '../../entities/app_controller.dart';
@@ -25,9 +27,8 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.onToggleLike,
   });
 
-  static const double _nowPlayingHeight = 135;
   static const double _nowPlayingPadding = 22;
-  static const double _navBarHeight = 80;
+  static const double _navBarHeight = 64;
 
   final List<NavigationDestination> destinations;
   final int selectedIndex;
@@ -47,8 +48,21 @@ class AdaptiveScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 900;
-    final bottomInset = _nowPlayingHeight + _nowPlayingPadding;
+    final scale = ObsidianScale.of(context);
+    double s(double value) => value * scale;
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
+    final isWide = screenWidth >= 900;
+    final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
+    final showMiniBar = playbackState.track != null;
+    final miniBarHeight = showMiniBar
+        ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12)
+        : 0.0;
+    final bottomInset =
+        isWide ? nowPlayingHeight + s(_nowPlayingPadding) : miniBarHeight;
+    final navPad = _navBarHeight + media.padding.bottom;
+
+
     final nowPlaying = NowPlayingBar(
       state: playbackState,
       onPlayPause: onPlayPause,
@@ -68,7 +82,7 @@ class AdaptiveScaffold extends StatelessWidget {
         body: Row(
           children: [
             SizedBox(
-              width: 96,
+              width: s(96),
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.25),
@@ -77,7 +91,7 @@ class AdaptiveScaffold extends StatelessWidget {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: EdgeInsets.symmetric(vertical: s(16)),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
@@ -87,7 +101,7 @@ class AdaptiveScaffold extends StatelessWidget {
                           isActive: i == selectedIndex,
                           onTap: () => onDestinationSelected(i),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: s(12)),
                       ],
                     ],
                   ),
@@ -98,9 +112,12 @@ class AdaptiveScaffold extends StatelessWidget {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: bottomInset),
-                      child: page,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: bottomInset),
+                        child: page,
+                      ),
                     ),
                   ),
                   Positioned(
@@ -121,23 +138,36 @@ class AdaptiveScaffold extends StatelessWidget {
       body: Stack(
         children: [
           Positioned.fill(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: bottomInset + _navBarHeight),
-              child: page,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: bottomInset + navPad),
+                child: page,
+              ),
             ),
           ),
+          if (showMiniBar)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: navPad,
+              child: NowPlayingMiniBar(
+                state: playbackState,
+                onPlayPause: onPlayPause,
+                onExpand: () => showNowPlayingExpandedSheet(context),
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
-            bottom: _navBarHeight,
-            child: nowPlaying,
+            bottom: 0,
+            child: _BottomNavBar(
+              destinations: destinations,
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onDestinationSelected,
+            ),
           ),
         ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        destinations: destinations,
       ),
     );
   }
@@ -148,11 +178,15 @@ class _SidebarTabButton extends StatefulWidget {
     required this.icon,
     required this.isActive,
     required this.onTap,
+    this.size,
+    this.iconSize,
   });
 
   final Widget icon;
   final bool isActive;
   final VoidCallback onTap;
+  final double? size;
+  final double? iconSize;
 
   @override
   State<_SidebarTabButton> createState() => _SidebarTabButtonState();
@@ -163,6 +197,8 @@ class _SidebarTabButtonState extends State<_SidebarTabButton> {
 
   @override
   Widget build(BuildContext context) {
+    final scale = ObsidianScale.of(context);
+    double s(double value) => value * scale;
     final isActive = widget.isActive;
     final fill = isActive
         ? ObsidianPalette.gold.withOpacity(0.1)
@@ -177,6 +213,8 @@ class _SidebarTabButtonState extends State<_SidebarTabButton> {
         : _hovered
             ? Colors.grey.shade300.withOpacity(0.9)
             : ObsidianPalette.textMuted;
+    final boxSize = s(widget.size ?? 52);
+    final iconSize = widget.iconSize == null ? null : s(widget.iconSize!);
     final shadow = [
       BoxShadow(
         color: isActive
@@ -192,7 +230,7 @@ class _SidebarTabButtonState extends State<_SidebarTabButton> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: ClipPath(
-        clipper: const CutTopLeftBottomRightClipper(cut: 10),
+        clipper: CutTopLeftBottomRightClipper(cut: s(10)),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
@@ -205,15 +243,15 @@ class _SidebarTabButtonState extends State<_SidebarTabButton> {
             behavior: HitTestBehavior.opaque,
             onTap: widget.onTap,
             child: SizedBox(
-              width: 52,
-              height: 52,
+              width: boxSize,
+              height: boxSize,
               child: Center(
                 child: TweenAnimationBuilder<Color?>(
                   duration: const Duration(milliseconds: 200),
                   tween: ColorTween(end: iconColor),
                   curve: Curves.easeOut,
                   builder: (context, color, child) => IconTheme(
-                    data: IconThemeData(color: color),
+                    data: IconThemeData(color: color, size: iconSize),
                     child: child!,
                   ),
                   child: widget.icon,
@@ -221,6 +259,55 @@ class _SidebarTabButtonState extends State<_SidebarTabButton> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomNavBar extends StatelessWidget {
+  const _BottomNavBar({
+    required this.destinations,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  static const double _height = 64;
+
+  final List<NavigationDestination> destinations;
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = ObsidianScale.of(context);
+    double s(double value) => value * scale;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      height: _height + bottomPad,
+      padding: EdgeInsets.only(bottom: bottomPad),
+      decoration: BoxDecoration(
+        color: ObsidianPalette.obsidianElevated.withOpacity(0.92),
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.08)),
+        ),
+      ),
+      child: Center(
+        child: Row(
+          children: [
+            for (var i = 0; i < destinations.length; i++)
+              Expanded(
+                child: Center(
+                  child: _SidebarTabButton(
+                    icon: destinations[i].selectedIcon ?? destinations[i].icon,
+                    isActive: i == selectedIndex,
+                    onTap: () => onDestinationSelected(i),
+                    size: 56,
+                    iconSize: 36,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

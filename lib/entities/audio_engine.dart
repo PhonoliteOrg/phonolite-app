@@ -3,6 +3,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
+import 'dart:ui' show IsolateNameServer;
 
 import 'package:ffi/ffi.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,8 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'server_connection.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
+
+const _audioWorkerPortName = 'phonolite_audio_worker';
 
 class StreamSettings {
   const StreamSettings({
@@ -29,10 +32,13 @@ class AudioEngine {
     void Function(Duration position, Duration bufferedAhead, double? bitrateKbps)? onStats,
     void Function(String? sessionId, double? bitrateKbps)? onStreamInfo,
     void Function()? onComplete,
+    void Function()? onStarted,
   })  : _onMessage = onMessage,
         _onStats = onStats,
         _onStreamInfo = onStreamInfo,
-        _onComplete = onComplete {
+        _onComplete = onComplete,
+        _onStarted = onStarted {
+    _shutdownPreviousWorker();
     _spawnWorker();
   }
 
@@ -41,6 +47,7 @@ class AudioEngine {
       _onStats;
   final void Function(String? sessionId, double? bitrateKbps)? _onStreamInfo;
   final void Function()? _onComplete;
+  final void Function()? _onStarted;
   final ReceivePort _receivePort = ReceivePort();
   SendPort? _workerPort;
   final Completer<void> _ready = Completer<void>();
@@ -48,6 +55,14 @@ class AudioEngine {
   bool _active = false;
   bool _paused = false;
   int _outputDeviceId = kDefaultOutputDeviceId;
+
+  static void _shutdownPreviousWorker() {
+    final existing = IsolateNameServer.lookupPortByName(_audioWorkerPortName);
+    if (existing != null) {
+      existing.send({'cmd': 'dispose'});
+      IsolateNameServer.removePortNameMapping(_audioWorkerPortName);
+    }
+  }
 
   Future<void> _spawnWorker() async {
     _isolate = await Isolate.spawn<_AudioWorkerInit>(
@@ -106,6 +121,12 @@ class AudioEngine {
           handler();
         }
         break;
+      case 'started':
+        final handler = _onStarted;
+        if (handler != null) {
+          handler();
+        }
+        break;
       case 'state':
         _active = message['active'] == true;
         _paused = message['paused'] == true;
@@ -156,22 +177,38 @@ class AudioEngine {
   }
 
   Future<List<OutputDevice>> listOutputDevices() async {
-    if (!Platform.isWindows) {
-      return [OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default')];
-    }
     final devices = <OutputDevice>[
       OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default'),
     ];
-    final bindings = _WaveOutBindings();
-    final count = bindings.waveOutGetNumDevs();
-    for (var i = 0; i < count; i++) {
-      final caps = calloc<WAVEOUTCAPSW>();
-      final result = bindings.waveOutGetDevCapsW(i, caps, ffi.sizeOf<WAVEOUTCAPSW>());
-      if (result == MMSYSERR_NOERROR) {
-        final name = _utf16ArrayToString(caps.ref.szPname);
-        devices.add(OutputDevice(id: i, name: name.isEmpty ? 'Device $i' : name));
+    if (Platform.isWindows) {
+      final bindings = _WaveOutBindings();
+      final count = bindings.waveOutGetNumDevs();
+      for (var i = 0; i < count; i++) {
+        final caps = calloc<WAVEOUTCAPSW>();
+        final result = bindings.waveOutGetDevCapsW(i, caps, ffi.sizeOf<WAVEOUTCAPSW>());
+        if (result == MMSYSERR_NOERROR) {
+          final name = _utf16ArrayToString(caps.ref.szPname);
+          devices.add(OutputDevice(id: i, name: name.isEmpty ? 'Device $i' : name));
+        }
+        calloc.free(caps);
       }
-      calloc.free(caps);
+      return devices;
+    }
+    if (Platform.isMacOS) {
+      final bindings = _CoreAudioBindings();
+      final count = bindings.getOutputDeviceCount();
+      for (var i = 0; i < count; i++) {
+        final deviceId = bindings.getOutputDeviceId(i).toUnsigned(32);
+        if (deviceId == 0) {
+          continue;
+        }
+        final name = bindings.getOutputDeviceName(deviceId);
+        devices.add(OutputDevice(
+          id: deviceId,
+          name: name?.isNotEmpty == true ? name! : 'Device $i',
+        ));
+      }
+      return devices;
     }
     return devices;
   }
@@ -232,7 +269,7 @@ class _AudioWorkerEngine {
   final http.Client _client;
   final void Function(Map<String, dynamic> message) _send;
   int _playbackId = 0;
-  _WaveOutPlayer? _player;
+  _NativeAudioPlayer? _player;
   Timer? _statsTimer;
   int _queuedSamples = 0;
   int _playedSamples = 0;
@@ -253,6 +290,7 @@ class _AudioWorkerEngine {
   bool _prebuffering = false;
   bool _flushingPrebuffer = false;
   bool _streamEnded = false;
+  bool _reportedStart = false;
   int _prebufferSamples = 0;
   final List<Int16List> _prebufferChunks = [];
   final List<Int16List> _writeBuffer = [];
@@ -261,7 +299,7 @@ class _AudioWorkerEngine {
   final List<Int16List> _pausedBuffer = [];
   int _pausedBufferSamples = 0;
   int _pausedBufferMaxSamples = 0;
-  static const double _prebufferSeconds = 10.0;
+  static final double _prebufferSeconds = Platform.isIOS ? 6.0 : 10.0;
   static const double _rebufferMinSeconds = 1.0;
   static const double _rebufferTargetSeconds = 8.0;
   static const int _writeChunkMs = 200;
@@ -294,6 +332,7 @@ class _AudioWorkerEngine {
     _prebuffering = false;
     _flushingPrebuffer = false;
     _streamEnded = false;
+    _reportedStart = false;
     _prebufferSamples = 0;
     _prebufferChunks.clear();
     _writeBuffer.clear();
@@ -337,13 +376,14 @@ class _AudioWorkerEngine {
     _autoPausedForBuffer = false;
     _flushingPrebuffer = false;
     _streamEnded = false;
+    _reportedStart = false;
     _playedSamples = 0;
     _bytesReceived = 0;
     _lastBitrateBytes = 0;
     _lastBitrateAt = null;
 
-    if (!Platform.isWindows) {
-      throw Exception('Audio playback is only implemented for Windows right now.');
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isIOS)) {
+      throw Exception('Audio playback is only implemented for Windows and Apple platforms right now.');
     }
 
     final url = _buildRawOpusUrl(baseUrl, trackId, settings);
@@ -428,7 +468,7 @@ class _AudioWorkerEngine {
           preSkipSamples = header.preSkip * header.channels;
           skipSamples = (startOffset.inMilliseconds * header.sampleRate ~/ 1000) *
               header.channels;
-          _player = _WaveOutPlayer(
+          _player = _createPlayer(
             sampleRate: header.sampleRate,
             channels: header.channels,
             deviceId: _outputDeviceId,
@@ -567,6 +607,7 @@ class _AudioWorkerEngine {
             wroteFirstFrame = true;
             _playbackStart ??= DateTime.now();
             _log('Audio playback started.');
+            _reportStarted();
           }
         }
       }
@@ -642,6 +683,14 @@ class _AudioWorkerEngine {
 
   void _log(String message) {
     _send({'type': 'message', 'text': message});
+  }
+
+  void _reportStarted() {
+    if (_reportedStart) {
+      return;
+    }
+    _reportedStart = true;
+    _send({'type': 'started'});
   }
 
   void _startStats() {
@@ -834,6 +883,7 @@ class _AudioWorkerEngine {
       return;
     }
     _playbackStart ??= DateTime.now();
+    _reportStarted();
     final chunks = List<Int16List>.from(_prebufferChunks);
     _prebufferChunks.clear();
     _prebufferSamples = 0;
@@ -849,7 +899,7 @@ class _AudioWorkerEngine {
   }
 
   Future<void> _enqueueSamples(
-    _WaveOutPlayer player,
+    _NativeAudioPlayer player,
     Int16List samples, {
     bool countQueued = true,
   }) async {
@@ -880,7 +930,7 @@ class _AudioWorkerEngine {
     }
   }
 
-  Future<void> _flushPausedBuffer(_WaveOutPlayer player) async {
+  Future<void> _flushPausedBuffer(_NativeAudioPlayer player) async {
     if (_pausedBufferSamples == 0) {
       return;
     }
@@ -905,7 +955,7 @@ class _AudioWorkerEngine {
     await _flushWriteBuffer(player);
   }
 
-  Future<void> _flushWriteBuffer(_WaveOutPlayer player) async {
+  Future<void> _flushWriteBuffer(_NativeAudioPlayer player) async {
     if (_writeBufferSamples == 0) {
       return;
     }
@@ -935,6 +985,11 @@ class _AudioWorkerInit {
 
 void _audioWorkerMain(_AudioWorkerInit init) {
   final receivePort = ReceivePort();
+  IsolateNameServer.removePortNameMapping(_audioWorkerPortName);
+  IsolateNameServer.registerPortWithName(
+    receivePort.sendPort,
+    _audioWorkerPortName,
+  );
   init.sendPort.send(receivePort.sendPort);
   final engine = _AudioWorkerEngine(send: (message) {
     init.sendPort.send(message);
@@ -980,6 +1035,7 @@ void _audioWorkerMain(_AudioWorkerInit init) {
       case 'dispose':
         engine.dispose();
         receivePort.close();
+        Isolate.exit();
         break;
       default:
         break;
@@ -1022,7 +1078,39 @@ class _ByteQueue {
   }
 }
 
-class _WaveOutPlayer {
+abstract class _NativeAudioPlayer {
+  Future<void> write(Int16List samples);
+  void dispose();
+  void setVolume(double value);
+  void pause();
+  void resume();
+  int collectDoneSamples();
+  bool get isIdle;
+}
+
+_NativeAudioPlayer _createPlayer({
+  required int sampleRate,
+  required int channels,
+  required int deviceId,
+}) {
+  if (Platform.isWindows) {
+    return _WaveOutPlayer(
+      sampleRate: sampleRate,
+      channels: channels,
+      deviceId: deviceId,
+    );
+  }
+  if (Platform.isMacOS || Platform.isIOS) {
+    return _CoreAudioPlayer(
+      sampleRate: sampleRate,
+      channels: channels,
+      deviceId: deviceId,
+    );
+  }
+  throw Exception('Audio playback is only implemented for Windows and macOS right now.');
+}
+
+class _WaveOutPlayer implements _NativeAudioPlayer {
   _WaveOutPlayer({
     required int sampleRate,
     required int channels,
@@ -1070,6 +1158,7 @@ class _WaveOutPlayer {
     _handle = handle;
   }
 
+  @override
   Future<void> write(Int16List samples) async {
     final handle = _handle;
     if (handle == null) {
@@ -1125,6 +1214,7 @@ class _WaveOutPlayer {
     }
   }
 
+  @override
   void dispose() {
     final handle = _handle;
     _handle = null;
@@ -1138,6 +1228,7 @@ class _WaveOutPlayer {
     calloc.free(handle);
   }
 
+  @override
   void setVolume(double value) {
     final handle = _handle;
     if (handle == null) {
@@ -1149,6 +1240,7 @@ class _WaveOutPlayer {
     _WaveOutBindings().waveOutSetVolume(handle.value, packed);
   }
 
+  @override
   void pause() {
     final handle = _handle;
     if (handle == null) {
@@ -1157,6 +1249,7 @@ class _WaveOutPlayer {
     _WaveOutBindings().waveOutPause(handle.value);
   }
 
+  @override
   void resume() {
     final handle = _handle;
     if (handle == null) {
@@ -1192,6 +1285,7 @@ class _WaveOutPlayer {
     _inFlight.clear();
   }
 
+  @override
   int collectDoneSamples() {
     final handle = _handle;
     if (handle == null) {
@@ -1203,7 +1297,107 @@ class _WaveOutPlayer {
     return out;
   }
 
+  @override
   bool get isIdle => _inFlight.isEmpty;
+}
+
+class _CoreAudioPlayer implements _NativeAudioPlayer {
+  _CoreAudioPlayer({
+    required int sampleRate,
+    required int channels,
+    required int deviceId,
+  })  : _sampleRate = sampleRate,
+        _channels = channels,
+        _deviceId = deviceId {
+    _open();
+  }
+
+  final int _sampleRate;
+  final int _channels;
+  final int _deviceId;
+  final _CoreAudioBindings _bindings = _CoreAudioBindings();
+  ffi.Pointer<ffi.Void> _handle = ffi.nullptr;
+
+  void _open() {
+    final handle = _bindings.open(_sampleRate, _channels, _deviceId);
+    if (handle == ffi.nullptr) {
+      throw Exception('CoreAudio open failed.');
+    }
+    _handle = handle;
+  }
+
+  @override
+  Future<void> write(Int16List samples) async {
+    final handle = _handle;
+    if (handle == ffi.nullptr || samples.isEmpty) {
+      return;
+    }
+    final dataPtr = calloc<ffi.Int16>(samples.length);
+    try {
+      dataPtr.asTypedList(samples.length).setAll(0, samples);
+      final result = _bindings.write(handle, dataPtr, samples.length);
+      if (result != 0) {
+        throw Exception('CoreAudio write failed: $result');
+      }
+    } finally {
+      calloc.free(dataPtr);
+    }
+  }
+
+  @override
+  void dispose() {
+    final handle = _handle;
+    _handle = ffi.nullptr;
+    if (handle == ffi.nullptr) {
+      return;
+    }
+    _bindings.close(handle);
+  }
+
+  @override
+  void setVolume(double value) {
+    final handle = _handle;
+    if (handle == ffi.nullptr) {
+      return;
+    }
+    _bindings.setVolume(handle, value);
+  }
+
+  @override
+  void pause() {
+    final handle = _handle;
+    if (handle == ffi.nullptr) {
+      return;
+    }
+    _bindings.pause(handle);
+  }
+
+  @override
+  void resume() {
+    final handle = _handle;
+    if (handle == ffi.nullptr) {
+      return;
+    }
+    _bindings.resume(handle);
+  }
+
+  @override
+  int collectDoneSamples() {
+    final handle = _handle;
+    if (handle == ffi.nullptr) {
+      return 0;
+    }
+    return _bindings.collectDoneSamples(handle);
+  }
+
+  @override
+  bool get isIdle {
+    final handle = _handle;
+    if (handle == ffi.nullptr) {
+      return true;
+    }
+    return _bindings.isIdle(handle) != 0;
+  }
 }
 
 const int WAVE_MAPPER = 0xFFFFFFFF;
@@ -1438,4 +1632,161 @@ typedef _WaveOutRestartNative = ffi.Uint32 Function(
 );
 typedef _WaveOutRestartDart = int Function(
   ffi.Pointer<ffi.Void> hwo,
+);
+
+class _CoreAudioBindings {
+  _CoreAudioBindings() {
+    final lib = ffi.DynamicLibrary.process();
+    open = lib
+        .lookup<ffi.NativeFunction<_CoreAudioOpenNative>>('phonolite_audio_open')
+        .asFunction();
+    close = lib
+        .lookup<ffi.NativeFunction<_CoreAudioCloseNative>>('phonolite_audio_close')
+        .asFunction();
+    write = lib
+        .lookup<ffi.NativeFunction<_CoreAudioWriteNative>>('phonolite_audio_write')
+        .asFunction();
+    setVolume = lib
+        .lookup<ffi.NativeFunction<_CoreAudioSetVolumeNative>>(
+            'phonolite_audio_set_volume')
+        .asFunction();
+    pause = lib
+        .lookup<ffi.NativeFunction<_CoreAudioPauseNative>>('phonolite_audio_pause')
+        .asFunction();
+    resume = lib
+        .lookup<ffi.NativeFunction<_CoreAudioResumeNative>>('phonolite_audio_resume')
+        .asFunction();
+    collectDoneSamples = lib
+        .lookup<ffi.NativeFunction<_CoreAudioCollectDoneNative>>(
+            'phonolite_audio_collect_done_samples')
+        .asFunction();
+    isIdle = lib
+        .lookup<ffi.NativeFunction<_CoreAudioIsIdleNative>>('phonolite_audio_is_idle')
+        .asFunction();
+    getOutputDeviceCount = lib
+        .lookup<ffi.NativeFunction<_CoreAudioDeviceCountNative>>(
+            'phonolite_audio_get_output_device_count')
+        .asFunction();
+    getOutputDeviceId = lib
+        .lookup<ffi.NativeFunction<_CoreAudioDeviceIdNative>>(
+            'phonolite_audio_get_output_device_id')
+        .asFunction();
+    _getOutputDeviceName = lib
+        .lookup<ffi.NativeFunction<_CoreAudioDeviceNameNative>>(
+            'phonolite_audio_get_output_device_name')
+        .asFunction();
+  }
+
+  static const int _nameBufferLen = 256;
+  late final _CoreAudioOpenDart open;
+  late final _CoreAudioCloseDart close;
+  late final _CoreAudioWriteDart write;
+  late final _CoreAudioSetVolumeDart setVolume;
+  late final _CoreAudioPauseDart pause;
+  late final _CoreAudioResumeDart resume;
+  late final _CoreAudioCollectDoneDart collectDoneSamples;
+  late final _CoreAudioIsIdleDart isIdle;
+  late final _CoreAudioDeviceCountDart getOutputDeviceCount;
+  late final _CoreAudioDeviceIdDart getOutputDeviceId;
+  late final _CoreAudioDeviceNameDart _getOutputDeviceName;
+
+  String? getOutputDeviceName(int deviceId) {
+    final buffer = calloc<ffi.Char>(_nameBufferLen);
+    try {
+      final result = _getOutputDeviceName(deviceId, buffer, _nameBufferLen);
+      if (result != 0) {
+        return null;
+      }
+      return buffer.cast<Utf8>().toDartString();
+    } finally {
+      calloc.free(buffer);
+    }
+  }
+}
+
+typedef _CoreAudioOpenNative = ffi.Pointer<ffi.Void> Function(
+  ffi.Int32 sampleRate,
+  ffi.Int32 channels,
+  ffi.Int32 deviceId,
+);
+typedef _CoreAudioOpenDart = ffi.Pointer<ffi.Void> Function(
+  int sampleRate,
+  int channels,
+  int deviceId,
+);
+
+typedef _CoreAudioCloseNative = ffi.Void Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+typedef _CoreAudioCloseDart = void Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+
+typedef _CoreAudioWriteNative = ffi.Int32 Function(
+  ffi.Pointer<ffi.Void> handle,
+  ffi.Pointer<ffi.Int16> samples,
+  ffi.Int32 sampleCount,
+);
+typedef _CoreAudioWriteDart = int Function(
+  ffi.Pointer<ffi.Void> handle,
+  ffi.Pointer<ffi.Int16> samples,
+  int sampleCount,
+);
+
+typedef _CoreAudioSetVolumeNative = ffi.Void Function(
+  ffi.Pointer<ffi.Void> handle,
+  ffi.Float volume,
+);
+typedef _CoreAudioSetVolumeDart = void Function(
+  ffi.Pointer<ffi.Void> handle,
+  double volume,
+);
+
+typedef _CoreAudioPauseNative = ffi.Void Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+typedef _CoreAudioPauseDart = void Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+
+typedef _CoreAudioResumeNative = ffi.Void Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+typedef _CoreAudioResumeDart = void Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+
+typedef _CoreAudioCollectDoneNative = ffi.Int64 Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+typedef _CoreAudioCollectDoneDart = int Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+
+typedef _CoreAudioIsIdleNative = ffi.Int32 Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+typedef _CoreAudioIsIdleDart = int Function(
+  ffi.Pointer<ffi.Void> handle,
+);
+
+typedef _CoreAudioDeviceCountNative = ffi.Int32 Function();
+typedef _CoreAudioDeviceCountDart = int Function();
+
+typedef _CoreAudioDeviceIdNative = ffi.Uint32 Function(
+  ffi.Int32 index,
+);
+typedef _CoreAudioDeviceIdDart = int Function(
+  int index,
+);
+
+typedef _CoreAudioDeviceNameNative = ffi.Int32 Function(
+  ffi.Uint32 deviceId,
+  ffi.Pointer<ffi.Char> buffer,
+  ffi.Int32 bufferLen,
+);
+typedef _CoreAudioDeviceNameDart = int Function(
+  int deviceId,
+  ffi.Pointer<ffi.Char> buffer,
+  int bufferLen,
 );

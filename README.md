@@ -48,3 +48,39 @@ Linux:
 flutter run -d linux
 flutter build linux
 ```
+
+## Deploy (TestFlight)
+
+The deploy script requires App Store Connect credentials exported in your shell.
+
+Option A: App Store Connect API key
+```bash
+export APPSTORE_API_KEY_ID="ABC123XYZ"
+export APPSTORE_API_ISSUER_ID="00000000-0000-0000-0000-000000000000"
+```
+
+Option B: Apple ID + app-specific password
+```bash
+export APPLE_ID="you@example.com"
+export APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+```
+
+Then run:
+```bash
+./deploy/upload_testflight.sh
+```
+
+If you use the App Store Connect API key flow, `altool` expects the private key
+file named `AuthKey_<API_KEY_ID>.p8` to live in one of these locations:
+
+- `~/Desktop/phonolite-app/private_keys`
+- `~/private_keys`
+- `~/.private_keys`
+- `~/.appstoreconnect/private_keys` (recommended)
+
+Example setup:
+```bash
+mkdir -p ~/.appstoreconnect/private_keys
+cp /path/to/AuthKey_<API_KEY_ID>.p8 ~/.appstoreconnect/private_keys/
+chmod 600 ~/.appstoreconnect/private_keys/AuthKey_<API_KEY_ID>.p8
+```

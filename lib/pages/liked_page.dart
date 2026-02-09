@@ -80,7 +80,7 @@ class _LikedPageState extends State<LikedPage> {
 
   Widget _buildHeader(BuildContext context, int count) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Icon(Icons.favorite_rounded, size: 42),
         const SizedBox(width: 20),

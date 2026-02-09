@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'entities/app_controller.dart';
 import 'entities/server_connection.dart';
@@ -6,10 +7,12 @@ import 'entities/auth_state.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'widgets/layouts/app_scope.dart';
+import 'widgets/layouts/obsidian_scale.dart';
 import 'widgets/ui/obsidian_background.dart';
 import 'widgets/ui/obsidian_theme.dart';
 
 void main() {
+  GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const PhonoliteApp());
 }
 
@@ -33,6 +36,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
     final connection = ServerConnection(baseUrl: baseUrl);
 
     _controller = AppController(connection: connection);
+    _controller.restoreSession();
   }
 
   @override
@@ -45,23 +49,31 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   Widget build(BuildContext context) {
     return AppScope(
       controller: _controller,
-      child: MaterialApp(
-        title: 'Phonolite',
-        theme: ObsidianTheme.build(),
-        builder: (context, child) => ObsidianBackground(
-          child: child ?? const SizedBox.shrink(),
-        ),
-        home: StreamBuilder<AuthState>(
-          stream: _controller.authStream,
-          initialData: _controller.authState,
-          builder: (context, snapshot) {
-            final state = snapshot.data ?? _controller.authState;
-            if (!state.isAuthorized) {
-              return LoginPage(controller: _controller);
-            }
-            return const HomePage();
-          },
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = ObsidianScale.compute(constraints.maxWidth);
+          return MaterialApp(
+            title: 'Phonolite',
+            theme: ObsidianTheme.build(scale: scale),
+            builder: (context, child) => ObsidianBackground(
+              child: ObsidianScale(
+                scale: scale,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
+            home: StreamBuilder<AuthState>(
+              stream: _controller.authStream,
+              initialData: _controller.authState,
+              builder: (context, snapshot) {
+                final state = snapshot.data ?? _controller.authState;
+                if (!state.isAuthorized) {
+                  return LoginPage(controller: _controller);
+                }
+                return const HomePage();
+              },
+            ),
+          );
+        },
       ),
     );
   }

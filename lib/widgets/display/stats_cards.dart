@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../entities/models.dart';
+import '../layouts/obsidian_scale.dart';
 import '../ui/chamfer_clipper.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/obsidian_widgets.dart';
+
+double _scaled(BuildContext context, double value) =>
+    value * ObsidianScale.of(context);
 
 class StatsCards extends StatelessWidget {
   const StatsCards({
@@ -19,8 +24,9 @@ class StatsCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(s(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -29,11 +35,11 @@ class StatsCards extends StatelessWidget {
             onYearChanged: onYearChanged,
             onMonthChanged: onMonthChanged,
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: s(20)),
           _KpiGrid(stats: stats),
-          const SizedBox(height: 28),
+          SizedBox(height: s(28)),
           _AnalysisSection(stats: stats),
-          const SizedBox(height: 28),
+          SizedBox(height: s(28)),
           _TopTracksSection(tracks: stats.topTracks),
         ],
       ),
@@ -54,36 +60,70 @@ class _StatsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final isCompact = MediaQuery.of(context).size.width < 520;
+    final selectorScale = isCompact ? 1.3 : 1.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'SYSTEM STATISTICS',
-          style: GoogleFonts.rajdhani(
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.6,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 20,
-          runSpacing: 12,
+        const Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _TemporalSelector(
-              label: _monthLabel(stats.month),
-              width: 180,
-              onPrev: () => onMonthChanged(_stepMonth(stats.month, -1)),
-              onNext: () => onMonthChanged(_stepMonth(stats.month, 1)),
-            ),
-            _TemporalSelector(
-              label: stats.year.toString(),
-              width: 140,
-              onPrev: () => onYearChanged(stats.year - 1),
-              onNext: () => onYearChanged(stats.year + 1),
+            Icon(Icons.bar_chart_rounded, size: 42),
+            SizedBox(width: 20),
+            Expanded(
+              child: ObsidianSectionHeader(
+                title: 'Listening Statistics',
+              ),
             ),
           ],
         ),
+        SizedBox(height: s(16)),
+        if (isCompact)
+          Row(
+            children: [
+              Expanded(
+                child: _TemporalSelector(
+                  label: _monthLabel(stats.month),
+                  width: double.infinity,
+                  scale: selectorScale,
+                  onPrev: () => onMonthChanged(_stepMonth(stats.month, -1)),
+                  onNext: () => onMonthChanged(_stepMonth(stats.month, 1)),
+                ),
+              ),
+              SizedBox(width: s(12)),
+              Expanded(
+                child: _TemporalSelector(
+                  label: stats.year.toString(),
+                  width: double.infinity,
+                  scale: selectorScale,
+                  onPrev: () => onYearChanged(stats.year - 1),
+                  onNext: () => onYearChanged(stats.year + 1),
+                ),
+              ),
+            ],
+          )
+        else
+          Wrap(
+            spacing: s(20),
+            runSpacing: s(12),
+            children: [
+              _TemporalSelector(
+                label: _monthLabel(stats.month),
+                width: s(180),
+                scale: selectorScale,
+                onPrev: () => onMonthChanged(_stepMonth(stats.month, -1)),
+                onNext: () => onMonthChanged(_stepMonth(stats.month, 1)),
+              ),
+              _TemporalSelector(
+                label: stats.year.toString(),
+                width: s(140),
+                scale: selectorScale,
+                onPrev: () => onYearChanged(stats.year - 1),
+                onNext: () => onYearChanged(stats.year + 1),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -124,42 +164,58 @@ class _TemporalSelector extends StatelessWidget {
     required this.width,
     required this.onPrev,
     required this.onNext,
+    this.scale = 1.0,
   });
 
   final String label;
   final double width;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value * scale);
+    final iconSize = s(20);
     return ClipPath(
-      clipper: const ChamferClipper(cutSize: 15),
+      clipper: ChamferClipper(cutSize: s(15)),
       child: Container(
         width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: s(10), vertical: s(8)),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.03),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _SelectorIconButton(
               icon: Icons.chevron_left_rounded,
               onTap: onPrev,
+              size: iconSize,
             ),
-            Text(
-              label,
-              style: GoogleFonts.rajdhani(
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-                color: ObsidianPalette.gold,
+            SizedBox(width: s(6)),
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    style: GoogleFonts.rajdhani(
+                      fontSize: s(14),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: s(1.2),
+                      color: ObsidianPalette.gold,
+                    ),
+                  ),
+                ),
               ),
             ),
+            SizedBox(width: s(6)),
             _SelectorIconButton(
               icon: Icons.chevron_right_rounded,
               onTap: onNext,
+              size: iconSize,
             ),
           ],
         ),
@@ -169,16 +225,26 @@ class _TemporalSelector extends StatelessWidget {
 }
 
 class _SelectorIconButton extends StatelessWidget {
-  const _SelectorIconButton({required this.icon, required this.onTap});
+  const _SelectorIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.size,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Icon(icon, color: ObsidianPalette.gold),
+    return SizedBox(
+      width: size,
+      height: size,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Icon(icon, color: ObsidianPalette.gold, size: size),
+      ),
     );
   }
 }
@@ -190,33 +256,79 @@ class _KpiGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final minutesLabel = '${stats.totalMinutes}m';
     final topArtists = stats.topArtists.length;
     final topTracks = stats.topTracks.length;
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-        _KpiCard(label: 'TOTAL PLAYTIME', value: minutesLabel),
-        _KpiCard(label: 'TOP ARTISTS', value: '$topArtists'),
-        _KpiCard(label: 'TOP TRACKS', value: '$topTracks'),
-      ],
+    final cards = [
+      _KpiCard(label: 'TOTAL PLAYTIME', value: minutesLabel),
+      _KpiCard(label: 'TOP ARTISTS', value: '$topArtists'),
+      _KpiCard(label: 'TOP TRACKS', value: '$topTracks'),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 520;
+        if (isCompact) {
+          final gap = s(12);
+          return Row(
+            children: [
+              Expanded(
+                child: _KpiCard(
+                  label: 'TOTAL PLAYTIME',
+                  value: minutesLabel,
+                  compact: true,
+                ),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: _KpiCard(
+                  label: 'TOP ARTISTS',
+                  value: '$topArtists',
+                  compact: true,
+                ),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: _KpiCard(
+                  label: 'TOP TRACKS',
+                  value: '$topTracks',
+                  compact: true,
+                ),
+              ),
+            ],
+          );
+        }
+        return Wrap(
+          spacing: s(16),
+          runSpacing: s(16),
+          children: cards,
+        );
+      },
     );
   }
 }
 
 class _KpiCard extends StatelessWidget {
-  const _KpiCard({required this.label, required this.value});
+  const _KpiCard({
+    required this.label,
+    required this.value,
+    this.compact = false,
+  });
 
   final String label;
   final String value;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final padding = compact ? EdgeInsets.all(s(12)) : EdgeInsets.all(s(18));
+    final labelSize = compact ? s(10) : s(12);
+    final valueSize = compact ? s(32) : s(48);
     return ClipPath(
-      clipper: const ChamferClipper(cutSize: 10),
+      clipper: ChamferClipper(cutSize: s(10)),
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: padding,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -234,25 +346,29 @@ class _KpiCard extends StatelessWidget {
             Text(
               label,
               style: GoogleFonts.rajdhani(
-                fontSize: 12,
+                fontSize: labelSize,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.6,
+                letterSpacing: s(1.4),
                 color: ObsidianPalette.textMuted,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: GoogleFonts.rajdhani(
-                fontSize: 48,
-                fontWeight: FontWeight.w700,
-                color: ObsidianPalette.gold,
-                shadows: [
-                  Shadow(
-                    color: ObsidianPalette.gold.withOpacity(0.6),
-                    blurRadius: 10,
-                  ),
-                ],
+            SizedBox(height: s(8)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: GoogleFonts.rajdhani(
+                  fontSize: valueSize,
+                  fontWeight: FontWeight.w700,
+                  color: ObsidianPalette.gold,
+                  shadows: [
+                    Shadow(
+                      color: ObsidianPalette.gold.withOpacity(0.6),
+                      blurRadius: s(10),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -269,6 +385,7 @@ class _AnalysisSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final isWide = MediaQuery.of(context).size.width >= 900;
     final left = _TopGenresSection(genres: stats.topGenres);
     final right = _TopArtistsSection(artists: stats.topArtists);
@@ -277,7 +394,7 @@ class _AnalysisSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: left),
-          const SizedBox(width: 20),
+          SizedBox(width: s(20)),
           Expanded(child: right),
         ],
       );
@@ -286,7 +403,7 @@ class _AnalysisSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         left,
-        const SizedBox(height: 24),
+        SizedBox(height: s(24)),
         right,
       ],
     );
@@ -337,38 +454,39 @@ class _GenreBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final percentLabel = '${(percent * 100).round()}%';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: EdgeInsets.symmetric(vertical: s(10)),
       child: Row(
         children: [
           SizedBox(
-            width: 100,
+            width: s(100),
             child: Text(
               label.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: ObsidianPalette.textMuted,
-                    letterSpacing: 1.0,
+                    letterSpacing: s(1.0),
                   ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: s(12)),
           Expanded(
             child: Stack(
               children: [
                 Container(
-                  height: 8,
+                  height: s(8),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(s(6)),
                   ),
                 ),
                 FractionallySizedBox(
                   widthFactor: percent,
                   child: Container(
-                    height: 8,
+                    height: s(8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -376,11 +494,11 @@ class _GenreBar extends StatelessWidget {
                           ObsidianPalette.gold.withOpacity(0.4),
                         ],
                       ),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(s(6)),
                       boxShadow: [
                         BoxShadow(
                           color: ObsidianPalette.gold.withOpacity(0.5),
-                          blurRadius: 10,
+                          blurRadius: s(10),
                         ),
                       ],
                     ),
@@ -388,23 +506,24 @@ class _GenreBar extends StatelessWidget {
                 ),
                 Positioned(
                   right: 0,
-                  top: 1,
+                  top: s(1),
                   child: Container(
-                    width: 2,
-                    height: 6,
+                    width: s(2),
+                    height: s(6),
                     color: Colors.white.withOpacity(0.8),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: s(12)),
           Text(
             percentLabel,
             style: GoogleFonts.rajdhani(
+              fontSize: s(12),
               fontWeight: FontWeight.w700,
               color: ObsidianPalette.gold,
-              letterSpacing: 1.1,
+              letterSpacing: s(1.1),
             ),
           ),
         ],
@@ -420,24 +539,32 @@ class _TopArtistsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     return _ModuleShell(
       title: 'TOP ARTISTS',
       icon: Icons.groups_rounded,
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: artists.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 16,
-          childAspectRatio: 0.9,
-        ),
-        itemBuilder: (context, index) {
-          final artist = artists[index];
-          return _ArtistCard(
-            artist: artist,
-            rank: index + 1,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 420;
+          final columns = isCompact ? 2 : 3;
+          final aspect = isCompact ? 1.0 : 0.9;
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: artists.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              crossAxisSpacing: s(12),
+              mainAxisSpacing: s(16),
+              childAspectRatio: aspect,
+            ),
+            itemBuilder: (context, index) {
+              final artist = artists[index];
+              return _ArtistCard(
+                artist: artist,
+                rank: index + 1,
+              );
+            },
           );
         },
       ),
@@ -453,14 +580,15 @@ class _ArtistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final initials = artist.isEmpty ? '?' : artist.characters.first;
     return Column(
       children: [
         Stack(
           children: [
             Container(
-              width: 80,
-              height: 80,
+              width: s(80),
+              height: s(80),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
@@ -477,7 +605,7 @@ class _ArtistCard extends StatelessWidget {
               child: Text(
                 initials.toUpperCase(),
                 style: GoogleFonts.rajdhani(
-                  fontSize: 24,
+                  fontSize: s(24),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -486,13 +614,15 @@ class _ArtistCard extends StatelessWidget {
               left: 0,
               top: 0,
               child: ClipPath(
-                clipper: const ChamferClipper(cutSize: 6),
+                clipper: ChamferClipper(cutSize: s(6)),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      EdgeInsets.symmetric(horizontal: s(8), vertical: s(4)),
                   color: ObsidianPalette.gold.withOpacity(0.2),
                   child: Text(
                     '$rank',
                     style: GoogleFonts.rajdhani(
+                      fontSize: s(12),
                       fontWeight: FontWeight.w700,
                       color: ObsidianPalette.gold,
                     ),
@@ -502,14 +632,14 @@ class _ArtistCard extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: s(10)),
         Text(
           artist,
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                letterSpacing: 0.8,
+                letterSpacing: s(0.8),
               ),
         ),
       ],
@@ -568,6 +698,7 @@ class _TrackRowState extends State<_TrackRow> {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final highlight = _hovered;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -575,24 +706,24 @@ class _TrackRowState extends State<_TrackRow> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        padding: EdgeInsets.symmetric(vertical: s(10), horizontal: s(12)),
         decoration: BoxDecoration(
           color: highlight ? Colors.white.withOpacity(0.05) : Colors.transparent,
           border: Border(
             left: BorderSide(
               color: highlight ? ObsidianPalette.gold : Colors.transparent,
-              width: 2,
+              width: s(2),
             ),
           ),
         ),
         child: Row(
           children: [
             SizedBox(
-              width: 46,
+              width: s(46),
               child: Text(
                 widget.rank.toString().padLeft(2, '0'),
                 style: GoogleFonts.rajdhani(
-                  fontSize: 22,
+                  fontSize: s(22),
                   fontWeight: FontWeight.w700,
                   color: ObsidianPalette.gold,
                 ),
@@ -604,16 +735,17 @@ class _TrackRowState extends State<_TrackRow> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      letterSpacing: 0.6,
+                      letterSpacing: s(0.6),
                     ),
               ),
             ),
             Text(
               '${widget.playCount} PLAYS',
               style: GoogleFonts.rajdhani(
+                fontSize: s(12),
                 fontWeight: FontWeight.w700,
                 color: ObsidianPalette.gold,
-                letterSpacing: 1.2,
+                letterSpacing: s(1.2),
               ),
             ),
           ],
@@ -636,10 +768,11 @@ class _ModuleShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     return ClipPath(
-      clipper: const ChamferClipper(cutSize: 12),
+      clipper: ChamferClipper(cutSize: s(12)),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        padding: EdgeInsets.fromLTRB(s(18), s(16), s(18), s(18)),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.02),
           border: Border.all(color: Colors.white.withOpacity(0.08)),
@@ -649,19 +782,23 @@ class _ModuleShell extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(
-                  title,
-                  style: GoogleFonts.rajdhani(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.6,
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.rajdhani(
+                      fontSize: s(14),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: s(1.6),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(icon, size: 18, color: ObsidianPalette.gold),
+                SizedBox(width: s(8)),
+                Icon(icon, size: s(18), color: ObsidianPalette.gold),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: s(12)),
             child,
           ],
         ),
@@ -671,13 +808,16 @@ class _ModuleShell extends StatelessWidget {
 }
 
 Widget _emptyText(String text) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Text(
-      text,
-      style: GoogleFonts.poppins(
-        color: ObsidianPalette.textMuted,
+  return Builder(builder: (context) {
+    final s = (double value) => _scaled(context, value);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: s(12)),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          color: ObsidianPalette.textMuted,
+        ),
       ),
-    ),
-  );
+    );
+  });
 }

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
 import '../../entities/models.dart';
+import '../layouts/obsidian_scale.dart';
 import '../ui/backdrop_color.dart';
 import 'album_art.dart';
 
@@ -27,6 +28,8 @@ class AlbumHeroState extends State<AlbumHero> {
 
   @override
   Widget build(BuildContext context) {
+    final scale = ObsidianScale.of(context);
+    double s(double value) => value * scale;
     final album = widget.album;
     final yearLabel = album.year == null ? 'YEAR UNKNOWN' : album.year.toString();
     final genresLine =
@@ -63,28 +66,28 @@ class AlbumHeroState extends State<AlbumHero> {
               top: 0,
               bottom: 0,
               child: Container(
-                width: 2,
+                width: s(2),
                 color: accentGold,
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+              padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
-                    width: 170,
+                    width: s(170),
                     child: Align(
                       alignment: Alignment.topCenter,
                       child: AlbumArt(
                         title: album.title,
-                        size: 150,
+                        size: s(150),
                         imageUrl: widget.coverUrl,
                         headers: widget.headers,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 24),
+                  SizedBox(width: s(24)),
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -96,47 +99,47 @@ class AlbumHeroState extends State<AlbumHero> {
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.rajdhani(
                             color: Colors.white,
-                            fontSize: 42,
+                            fontSize: s(42),
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 1.4,
+                            letterSpacing: s(1.4),
                             height: 1.05,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        SizedBox(height: s(6)),
                         Text(
                           album.artist,
                           style: GoogleFonts.poppins(
                             color: Colors.white70,
-                            fontSize: 14,
+                            fontSize: s(14),
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        SizedBox(height: s(6)),
                         Text(
                           yearLabel,
                           style: GoogleFonts.rajdhani(
                             color: Colors.white54,
-                            fontSize: 12,
-                            letterSpacing: 1.4,
+                            fontSize: s(12),
+                            letterSpacing: s(1.4),
                           ),
                         ),
                         if (genresLine != null) ...[
-                          const SizedBox(height: 6),
+                          SizedBox(height: s(6)),
                           Text(
                             genresLine,
                             style: GoogleFonts.rajdhani(
                               color: Colors.white38,
-                              fontSize: 11,
-                              letterSpacing: 1.2,
+                              fontSize: s(11),
+                              letterSpacing: s(1.2),
                             ),
                           ),
                         ],
                         if (summary != null && summary.isNotEmpty) ...[
-                          const SizedBox(height: 10),
+                          SizedBox(height: s(10)),
                           ClipRect(
                             child: ConstrainedBox(
                               constraints: _expanded
                                   ? const BoxConstraints()
-                                  : const BoxConstraints(maxHeight: 60),
+                                  : BoxConstraints(maxHeight: s(60)),
                               child: Text(
                                 summary,
                                 maxLines: _expanded ? null : 3,
@@ -145,7 +148,7 @@ class AlbumHeroState extends State<AlbumHero> {
                                     : TextOverflow.ellipsis,
                                 style: GoogleFonts.poppins(
                                   color: Colors.white70,
-                                  fontSize: 12,
+                                  fontSize: s(12),
                                   height: 1.35,
                                 ),
                               ),
@@ -157,10 +160,8 @@ class AlbumHeroState extends State<AlbumHero> {
                                   setState(() => _expanded = !_expanded),
                               style: TextButton.styleFrom(
                                 foregroundColor: accentGold,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 0,
-                                  vertical: 4,
-                                ),
+                                padding:
+                                    EdgeInsets.symmetric(horizontal: 0, vertical: s(4)),
                               ),
                               child: Text(_expanded ? 'Collapse' : 'Read more'),
                             ),

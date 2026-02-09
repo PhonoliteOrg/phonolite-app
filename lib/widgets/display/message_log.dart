@@ -4,10 +4,20 @@ import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 
 class MessageLog extends StatefulWidget {
-  const MessageLog({super.key, required this.messages, this.onClear});
+  const MessageLog({
+    super.key,
+    required this.messages,
+    this.onClear,
+    this.title = 'Messages',
+    this.subtitle,
+    this.trailing,
+  });
 
   final List<String> messages;
   final VoidCallback? onClear;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
 
   @override
   State<MessageLog> createState() => _MessageLogState();
@@ -24,18 +34,23 @@ class _MessageLogState extends State<MessageLog> {
 
   @override
   Widget build(BuildContext context) {
+    final defaultSubtitle =
+        widget.messages.isEmpty ? 'No events yet' : 'System log';
+    final trailing = widget.trailing ??
+        (widget.onClear == null
+            ? null
+            : TextButton.icon(
+                onPressed: widget.onClear,
+                icon: const Icon(Icons.clear_all_rounded),
+                label: const Text('Clear'),
+              ));
+
     return Column(
       children: [
         ObsidianSectionHeader(
-          title: 'Messages',
-          subtitle: widget.messages.isEmpty ? 'No events yet' : 'System log',
-          trailing: widget.onClear == null
-              ? null
-              : TextButton.icon(
-                  onPressed: widget.onClear,
-                  icon: const Icon(Icons.clear_all_rounded),
-                  label: const Text('Clear'),
-                ),
+          title: widget.title,
+          subtitle: widget.subtitle ?? defaultSubtitle,
+          trailing: trailing,
         ),
         const SizedBox(height: 12),
         Expanded(

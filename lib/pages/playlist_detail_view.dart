@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/track_row_tile.dart';
@@ -42,6 +43,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                       trackIds: const [],
                     ));
         return Scaffold(
+          backgroundColor: bgDark,
           body: CustomScrollView(
             slivers: [
               SliverPadding(
@@ -147,54 +149,68 @@ class _PlaylistBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 600;
+        final nameStyle = GoogleFonts.rajdhani(
+          fontSize: isCompact ? 40 : 60,
+          fontWeight: FontWeight.w700,
+          height: 0.95,
+          letterSpacing: 1.6,
+        );
+        final renameButton = TechButton(
+          label: 'Rename',
+          icon: Icons.edit,
+          onTap: onRename,
+          density: isCompact ? TechButtonDensity.compact : TechButtonDensity.standard,
+        );
+        final deleteButton = TechButton(
+          label: 'Delete',
+          icon: Icons.delete,
+          onTap: onDelete,
+          variant: TechButtonVariant.danger,
+          density: isCompact ? TechButtonDensity.compact : TechButtonDensity.standard,
+        );
+
+        if (isCompact) {
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'DIRECTORY //',
-                style: GoogleFonts.rajdhani(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2.6,
-                  color: ObsidianPalette.gold,
-                ),
+              _PlaylistMarqueeText(
+                text: name.toUpperCase(),
+                style: nameStyle,
               ),
-              const SizedBox(height: 10),
-              Text(
-                name.toUpperCase(),
-                style: GoogleFonts.rajdhani(
-                  fontSize: 60,
-                  fontWeight: FontWeight.w700,
-                  height: 0.95,
-                  letterSpacing: 1.6,
-                ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [renameButton, deleteButton],
               ),
             ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TechButton(
-              label: 'Rename',
-              icon: Icons.edit,
-              onTap: onRename,
+            Expanded(
+              child: Text(
+                name.toUpperCase(),
+                style: nameStyle,
+              ),
             ),
-            const SizedBox(width: 10),
-            TechButton(
-              label: 'Delete',
-              icon: Icons.delete,
-              onTap: onDelete,
-              variant: TechButtonVariant.danger,
+            const SizedBox(width: 16),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                renameButton,
+                const SizedBox(width: 10),
+                deleteButton,
+              ],
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -213,6 +229,148 @@ class _EmptyPlaylistText extends StatelessWidget {
               letterSpacing: 0.6,
             ),
       ),
+    );
+  }
+}
+
+class _PlaylistMarqueeText extends StatefulWidget {
+  const _PlaylistMarqueeText({
+    required this.text,
+    required this.style,
+    this.velocity = 28,
+    this.gap = 32,
+    this.pause = const Duration(milliseconds: 900),
+  });
+
+  final String text;
+  final TextStyle style;
+  final double velocity;
+  final double gap;
+  final Duration pause;
+
+  @override
+  State<_PlaylistMarqueeText> createState() => _PlaylistMarqueeTextState();
+}
+
+class _PlaylistMarqueeTextState extends State<_PlaylistMarqueeText> {
+  final ScrollController _controller = ScrollController();
+  bool _running = false;
+  bool _shouldScroll = false;
+
+  @override
+  void didUpdateWidget(covariant _PlaylistMarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || oldWidget.style != widget.style) {
+      _running = false;
+      if (_controller.hasClients) {
+        _controller.jumpTo(0);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startLoop());
+    }
+  }
+
+  @override
+  void dispose() {
+    _running = false;
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startLoop() async {
+    if (_running || !_shouldScroll) {
+      return;
+    }
+    _running = true;
+    await Future.delayed(const Duration(milliseconds: 200));
+    while (mounted && _running) {
+      if (!_controller.hasClients) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        continue;
+      }
+      final position = _controller.position;
+      final max = position.maxScrollExtent;
+      if (max <= 0) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        continue;
+      }
+      await Future.delayed(widget.pause);
+      if (!_controller.hasClients) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        continue;
+      }
+      final distance = max - _controller.position.pixels;
+      final durationMs = (distance / widget.velocity * 1000).round();
+      await _controller.animateTo(
+        max,
+        duration: Duration(milliseconds: durationMs.clamp(1, 60000)),
+        curve: Curves.linear,
+      );
+      await Future.delayed(widget.pause);
+      if (!_running) {
+        break;
+      }
+      _controller.jumpTo(0);
+    }
+  }
+
+  void _setShouldScroll(bool value) {
+    if (_shouldScroll == value) {
+      return;
+    }
+    _shouldScroll = value;
+    if (!_shouldScroll) {
+      _running = false;
+      if (_controller.hasClients) {
+        _controller.jumpTo(0);
+      }
+    } else {
+      _startLoop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: widget.style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final shouldScroll = painter.width > constraints.maxWidth;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _setShouldScroll(shouldScroll);
+          }
+        });
+
+        if (!shouldScroll) {
+          return Text(
+            widget.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: widget.style,
+          );
+        }
+
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SingleChildScrollView(
+              controller: _controller,
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              child: Row(
+                children: [
+                  Text(widget.text, style: widget.style, maxLines: 1),
+                  SizedBox(width: widget.gap),
+                  Text(widget.text, style: widget.style, maxLines: 1),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

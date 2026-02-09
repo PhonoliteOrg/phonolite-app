@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -5,6 +8,7 @@ import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
 import '../../core/library_helpers.dart';
 import '../layouts/app_scope.dart';
+import '../layouts/obsidian_scale.dart';
 import '../modals/add_to_playlist_modal.dart';
 import '../modals/device_picker_modal.dart';
 import '../ui/blur.dart';
@@ -12,6 +16,314 @@ import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+
+double _scaled(BuildContext context, double value) =>
+    value * ObsidianScale.of(context);
+
+String _streamLabel(StreamMode mode) {
+  switch (mode) {
+    case StreamMode.auto:
+      return 'AUTO';
+    case StreamMode.high:
+      return 'HQ';
+    case StreamMode.medium:
+      return 'MQ';
+    case StreamMode.low:
+      return 'LQ';
+  }
+}
+
+Future<void> _showStreamModal(
+  BuildContext context, {
+  required StreamMode current,
+  required ValueChanged<StreamMode> onSelected,
+}) async {
+  final result = await showDialog<StreamMode>(
+    context: context,
+    builder: (dialogContext) {
+      final items = const [
+        StreamMode.auto,
+        StreamMode.high,
+        StreamMode.medium,
+        StreamMode.low,
+      ];
+      return AlertDialog(
+        title: const Text('Stream Quality'),
+        content: SizedBox(
+          width: _scaled(dialogContext, 320),
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: EdgeInsets.symmetric(vertical: _scaled(dialogContext, 4)),
+            itemCount: items.length,
+            separatorBuilder: (context, index) => Divider(
+              height: _scaled(context, 1),
+              color: ObsidianPalette.textMuted.withOpacity(0.25),
+            ),
+            itemBuilder: (context, index) {
+              final mode = items[index];
+              final isSelected = mode == current;
+              return _HudModalListRow(
+                title: _streamLabel(mode),
+                trailing: isSelected
+                    ? const Icon(Icons.check_rounded,
+                        color: ObsidianPalette.gold)
+                    : const SizedBox.shrink(),
+                enabled: true,
+                isSelected: isSelected,
+                onTap: () => Navigator.of(dialogContext).pop(mode),
+              );
+            },
+          ),
+        ),
+      );
+    },
+  );
+  if (result != null && result != current) {
+    onSelected(result);
+  }
+}
+
+String _formatTime(Duration value) {
+  final totalSeconds = value.inSeconds;
+  final hours = totalSeconds ~/ 3600;
+  final minutes = (totalSeconds % 3600) ~/ 60;
+  final seconds = totalSeconds % 60;
+  final mm = minutes.toString().padLeft(2, '0');
+  final ss = seconds.toString().padLeft(2, '0');
+  if (hours > 0) {
+    final hh = hours.toString();
+    return '$hh:$mm:$ss';
+  }
+  return '$minutes:$ss';
+}
+
+String _shuffleLabel(ShuffleMode mode) {
+  switch (mode) {
+    case ShuffleMode.off:
+      return 'Shuffle: Off';
+    case ShuffleMode.all:
+      return 'Shuffle: All';
+    case ShuffleMode.artist:
+      return 'Shuffle: Artist';
+    case ShuffleMode.album:
+      return 'Shuffle: Album';
+    case ShuffleMode.custom:
+      return 'Shuffle: Custom';
+  }
+}
+
+String? _bitrateLabel(PlaybackState state) {
+  final bitrate = state.bitrateKbps;
+  if (bitrate == null || bitrate.isNaN || bitrate.isInfinite || bitrate <= 0) {
+    return null;
+  }
+  final rounded = bitrate.round();
+  return '${rounded} KBPS';
+}
+
+String? _rttLabel(PlaybackState state) {
+  final rtt = state.streamRttMs;
+  if (rtt == null) {
+    return null;
+  }
+  return '${rtt}ms';
+}
+
+List<Widget> _buildTechTags(PlaybackState state) {
+  final tags = <Widget>[];
+  if (state.shuffleMode != ShuffleMode.off) {
+    tags.add(
+      _TechTag(
+        label:
+            'SHUFF: ${_shuffleLabel(state.shuffleMode).replaceFirst('Shuffle: ', '')}',
+        highlight: true,
+      ),
+    );
+  }
+  if (state.repeatMode == RepeatMode.one) {
+    tags.add(const _TechTag(label: 'LOOP', highlight: true));
+  }
+  final bitrate = _bitrateLabel(state);
+  if (bitrate != null) {
+    tags.add(_TechTag(label: bitrate));
+  }
+  final rtt = _rttLabel(state);
+  if (rtt != null) {
+    tags.add(_TechTag(label: 'RTT $rtt'));
+  }
+  return tags;
+}
+
+Widget _techTagRow(
+  BuildContext context,
+  List<Widget> tags, {
+  bool center = false,
+}) {
+  if (tags.isEmpty) {
+    return const SizedBox.shrink();
+  }
+  final s = (double value) => _scaled(context, value);
+  return SizedBox(
+    height: s(22),
+    child: ClipRect(
+      child: Align(
+        alignment: center ? Alignment.center : Alignment.centerLeft,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < tags.length; i++) ...[
+                if (i > 0) SizedBox(width: s(6)),
+                tags[i],
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _showShuffleModal(
+  BuildContext context, {
+  required ShuffleMode current,
+  required ValueChanged<ShuffleMode> onSelected,
+}) async {
+  final result = await showDialog<ShuffleMode>(
+    context: context,
+    builder: (dialogContext) {
+      final items = const [
+        ShuffleMode.off,
+        ShuffleMode.all,
+        ShuffleMode.artist,
+        ShuffleMode.album,
+        ShuffleMode.custom,
+      ];
+      return AlertDialog(
+        title: const Text('Shuffle Mode'),
+        content: SizedBox(
+          width: _scaled(dialogContext, 320),
+          child: ListView(
+            shrinkWrap: true,
+            children: items
+                .map(
+                  (mode) => ListTile(
+                    title: Text(_shuffleLabel(mode)),
+                    trailing: mode == current
+                        ? const Icon(Icons.check_rounded)
+                        : null,
+                    onTap: () => Navigator.of(dialogContext).pop(mode),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      );
+    },
+  );
+  if (result != null && result != current) {
+    onSelected(result);
+  }
+}
+
+Future<void> _showAddToPlaylistModal(
+  BuildContext context,
+  PlaybackState state,
+) async {
+  final controller = AppScope.of(context);
+  final track = state.track;
+  if (track == null) {
+    return;
+  }
+  if (controller.playlists.isEmpty) {
+    await controller.loadPlaylists();
+  }
+  if (controller.playlists.isEmpty) {
+    return;
+  }
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AddToPlaylistModal(
+      playlists: controller.playlists,
+      trackId: track.id,
+      onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
+    ),
+  );
+}
+
+Future<void> _showDevicePicker(BuildContext context) async {
+  final controller = AppScope.of(context);
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => DevicePickerModal(
+      fetchDevices: (refresh) => controller.listOutputDevices(refresh: refresh),
+      selectedId: controller.outputDeviceId,
+      onSelected: (device) => controller.selectOutputDevice(device),
+    ),
+  );
+}
+
+bool _nowPlayingSheetOpen = false;
+Completer<void>? _nowPlayingSheetCompleter;
+
+Future<void> showNowPlayingExpandedSheet(BuildContext context) async {
+  final controller = AppScope.of(context);
+  if (MediaQuery.of(context).size.width >= 900) {
+    return;
+  }
+  if (controller.playbackState.track == null) {
+    return;
+  }
+  if (_nowPlayingSheetOpen) {
+    return _nowPlayingSheetCompleter?.future ?? Future<void>.value();
+  }
+  final completer = Completer<void>();
+  _nowPlayingSheetCompleter = completer;
+  _nowPlayingSheetOpen = true;
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (sheetContext) {
+        return StreamBuilder<PlaybackState>(
+          stream: controller.playbackStream,
+          initialData: controller.playbackState,
+          builder: (context, snapshot) {
+            final playback = snapshot.data ?? controller.playbackState;
+            return NowPlayingExpandedSheet(
+              state: playback,
+              onPlayPause: () => controller.pause(playback.isPlaying),
+              onNext: controller.nextTrack,
+              onPrev: controller.prevTrack,
+              onSeek: controller.seekTo,
+              onShuffleChanged: controller.updateShuffleMode,
+              onToggleRepeat: controller.toggleRepeatMode,
+              onStreamModeChanged: controller.updateStreamMode,
+              onVolumeChanged: controller.setVolume,
+              onToggleLike: () {
+                final track = playback.track;
+                if (track != null) {
+                  controller.toggleLike(track);
+                }
+              },
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    _nowPlayingSheetOpen = false;
+    if (!completer.isCompleted) {
+      completer.complete();
+    }
+    if (identical(_nowPlayingSheetCompleter, completer)) {
+      _nowPlayingSheetCompleter = null;
+    }
+  }
+}
 
 class NowPlayingBar extends StatelessWidget {
   const NowPlayingBar({
@@ -41,67 +353,25 @@ class NowPlayingBar extends StatelessWidget {
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleLike;
 
-  String _formatTime(Duration value) {
-    final totalSeconds = value.inSeconds;
-    final hours = totalSeconds ~/ 3600;
-    final minutes = (totalSeconds % 3600) ~/ 60;
-    final seconds = totalSeconds % 60;
-    final mm = minutes.toString().padLeft(2, '0');
-    final ss = seconds.toString().padLeft(2, '0');
-    if (hours > 0) {
-      final hh = hours.toString();
-      return '$hh:$mm:$ss';
-    }
-    return '$minutes:$ss';
-  }
+  static const double _wideHeight = 135;
+  static const double _compactHeight = 180;
+  static const double _tightHeight = 200;
+  static const double _compactWidth = 720;
+  static const double _tightWidth = 520;
 
-  String _shuffleLabel(ShuffleMode mode) {
-    switch (mode) {
-      case ShuffleMode.off:
-        return 'Shuffle: Off';
-      case ShuffleMode.all:
-        return 'Shuffle: All';
-      case ShuffleMode.artist:
-        return 'Shuffle: Artist';
-      case ShuffleMode.album:
-        return 'Shuffle: Album';
-      case ShuffleMode.custom:
-        return 'Shuffle: Custom';
+  static double heightForWidth(double width) {
+    if (width < _tightWidth) {
+      return _tightHeight;
     }
-  }
-
-  String _streamLabel(StreamMode mode) {
-    switch (mode) {
-      case StreamMode.auto:
-        return 'AUTO';
-      case StreamMode.high:
-        return 'HQ';
-      case StreamMode.medium:
-        return 'MQ';
-      case StreamMode.low:
-        return 'LQ';
+    if (width < _compactWidth) {
+      return _compactHeight;
     }
-  }
-
-  String? _bitrateLabel(PlaybackState state) {
-    final bitrate = state.bitrateKbps;
-    if (bitrate == null || bitrate.isNaN || bitrate.isInfinite || bitrate <= 0) {
-      return null;
-    }
-    final rounded = bitrate.round();
-    return '${rounded} KBPS';
-  }
-
-  String? _rttLabel(PlaybackState state) {
-    final rtt = state.streamRttMs;
-    if (rtt == null) {
-      return null;
-    }
-    return '${rtt}ms';
+    return _wideHeight;
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final track = state.track;
     final durationSeconds = state.duration.inSeconds.toDouble();
     final maxSeconds = durationSeconds <= 0 ? 1.0 : durationSeconds;
@@ -134,93 +404,286 @@ class NowPlayingBar extends StatelessWidget {
     }
 
     final sliderTheme = SliderTheme.of(context).copyWith(
-      trackHeight: 2,
-      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+      trackHeight: s(2),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(5)),
       overlayShape: SliderComponentShape.noOverlay,
       inactiveTrackColor: Colors.white.withOpacity(0.12),
       activeTrackColor: ObsidianPalette.gold,
       secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
     );
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-      child: ClipPath(
-        clipper: const _HudChamferClipper(cut: 20),
-        child: maybeBlur(
-          sigma: 40,
-          child: Container(
-            height: 135,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            decoration: BoxDecoration(
-              color: ObsidianPalette.obsidianElevated.withOpacity(0.85),
-              border: Border(
-                top: BorderSide(color: Colors.white.withOpacity(0.2)),
-                left: BorderSide(color: Colors.white.withOpacity(0.12)),
-                right: BorderSide(color: Colors.white.withOpacity(0.12)),
-                bottom: BorderSide(color: Colors.white.withOpacity(0.12)),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.65),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 350,
-                        child: _IntelZone(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final isCompact = width < _compactWidth;
+        final barHeight = heightForWidth(width);
+
+        final content = isCompact
+            ? Column(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _IntelZone(
                           track: track,
                           techTags: techTags,
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _CommandZone(
+                        SizedBox(height: s(8)),
+                        _CompactControls(
                           state: state,
                           onPlayPause: onPlayPause,
                           onPrev: onPrev,
                           onNext: onNext,
-                          onStop: onStop,
                           onShuffle: () => _showShuffleModal(
                             context,
                             current: state.shuffleMode,
                             onSelected: onShuffleChanged,
                           ),
                           onRepeat: onToggleRepeat,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 350,
-                        child: _OutputZone(
-                          state: state,
-                          onStreamModeChanged: onStreamModeChanged,
-                          onVolumeChanged: onVolumeChanged,
+                          onAddToPlaylist: () =>
+                              _showAddToPlaylistModal(context, state),
                           onToggleLike: onToggleLike,
-                          onAddToPlaylist: () => _showAddToPlaylistModal(context),
                           onShowDevicePicker: () => _showDevicePicker(context),
+                          onShowStreamMode: () => _showStreamModal(
+                            context,
+                            current: state.streamMode,
+                            onSelected: onStreamModeChanged,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  _CompactFooterRow(
+                    sliderTheme: sliderTheme,
+                    maxSeconds: maxSeconds,
+                    positionSeconds: positionSeconds,
+                    bufferedPositionSeconds: bufferedPositionSeconds,
+                    onSeek: onSeek,
+                    positionLabel: _formatTime(state.position),
+                    durationLabel: _formatTime(state.duration),
+                    enabled: state.track != null,
+                    volume: state.volume,
+                    onVolumeChanged: onVolumeChanged,
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: s(350),
+                          child: _IntelZone(
+                            track: track,
+                            techTags: techTags,
+                          ),
+                        ),
+                        SizedBox(width: s(12)),
+                        Expanded(
+                          child: _CommandZone(
+                            state: state,
+                            onPlayPause: onPlayPause,
+                            onPrev: onPrev,
+                            onNext: onNext,
+                            onStop: onStop,
+                            onShuffle: () => _showShuffleModal(
+                              context,
+                              current: state.shuffleMode,
+                              onSelected: onShuffleChanged,
+                            ),
+                            onRepeat: onToggleRepeat,
+                          ),
+                        ),
+                        SizedBox(width: s(12)),
+                        SizedBox(
+                          width: s(350),
+                          child: _OutputZone(
+                            state: state,
+                            compact: false,
+                            onStreamModeChanged: onStreamModeChanged,
+                            onVolumeChanged: onVolumeChanged,
+                            onToggleLike: onToggleLike,
+                            onAddToPlaylist: () =>
+                                _showAddToPlaylistModal(context, state),
+                            onShowDevicePicker: () => _showDevicePicker(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _ProgressBar(
+                    sliderTheme: sliderTheme,
+                    maxSeconds: maxSeconds,
+                    positionSeconds: positionSeconds,
+                    bufferedPositionSeconds: bufferedPositionSeconds,
+                    onSeek: onSeek,
+                    positionLabel: _formatTime(state.position),
+                    durationLabel: _formatTime(state.duration),
+                    enabled: state.track != null,
+                  ),
+                ],
+              );
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(s(16), s(6), s(16), s(16)),
+          child: ClipPath(
+            clipper: _HudChamferClipper(cut: s(20)),
+            child: maybeBlur(
+              sigma: 40,
+              child: Container(
+                height: barHeight,
+                padding: EdgeInsets.symmetric(horizontal: s(20), vertical: s(6)),
+                decoration: BoxDecoration(
+                  color: ObsidianPalette.obsidianElevated.withOpacity(0.85),
+                  border: Border(
+                    top: BorderSide(color: Colors.white.withOpacity(0.2)),
+                    left: BorderSide(color: Colors.white.withOpacity(0.12)),
+                    right: BorderSide(color: Colors.white.withOpacity(0.12)),
+                    bottom: BorderSide(color: Colors.white.withOpacity(0.12)),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.65),
+                      blurRadius: 28,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
                 ),
-                _ProgressBar(
-                  sliderTheme: sliderTheme,
-                  maxSeconds: maxSeconds,
-                  positionSeconds: positionSeconds,
-                  bufferedPositionSeconds: bufferedPositionSeconds,
-                  onSeek: onSeek,
-                  positionLabel: _formatTime(state.position),
-                  durationLabel: _formatTime(state.duration),
-                  enabled: state.track != null,
+                child: content,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class NowPlayingMiniBar extends StatelessWidget {
+  const NowPlayingMiniBar({
+    super.key,
+    required this.state,
+    required this.onPlayPause,
+    required this.onExpand,
+  });
+
+  final PlaybackState state;
+  final VoidCallback onPlayPause;
+  final VoidCallback onExpand;
+
+  static const double _height = 72;
+
+  static double heightForWidth(double width) => _height;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final track = state.track;
+    if (track == null) {
+      return const SizedBox.shrink();
+    }
+
+    final subtitle = _miniSubtitle(track);
+    final techTags = _buildTechTags(state);
+    final albumId = track.albumId;
+    final imageUrl = albumId == null || albumId.isEmpty
+        ? null
+        : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
+    final headers = authHeaders(AppScope.of(context));
+    final artSize = s(54);
+    final playSize = s(60);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(s(12), 0, s(12), s(12)),
+      child: ClipPath(
+        clipper: _HudChamferClipper(cut: s(18)),
+        child: Material(
+          color: ObsidianPalette.obsidianElevated.withOpacity(0.9),
+          child: InkWell(
+            onTap: onExpand,
+            child: Container(
+              height: _height,
+              padding: EdgeInsets.symmetric(horizontal: s(14)),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: Colors.white.withOpacity(0.15)),
+                  left: BorderSide(color: Colors.white.withOpacity(0.1)),
+                  right: BorderSide(color: Colors.white.withOpacity(0.1)),
+                  bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
                 ),
-              ],
+              ),
+              child: Row(
+                children: [
+                  ClipPath(
+                    clipper: _HudChamferClipper(cut: s(8)),
+                    child: Container(
+                      width: artSize,
+                      height: artSize,
+                      decoration: BoxDecoration(
+                        color: ObsidianPalette.obsidianGlass.withOpacity(0.6),
+                        border: Border.all(color: Colors.white.withOpacity(0.12)),
+                      ),
+                      child: imageUrl == null
+                          ? const SizedBox.shrink()
+                          : Image.network(
+                              imageUrl,
+                              headers: headers,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                            ),
+                    ),
+                  ),
+                  SizedBox(width: s(12)),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _MarqueeText(
+                          text: track.title,
+                          style: GoogleFonts.rajdhani(
+                            fontSize: s(16),
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: s(0.8),
+                          ),
+                          velocity: s(26),
+                          gap: s(20),
+                        ),
+                        if (subtitle.isNotEmpty) ...[
+                          SizedBox(height: s(2)),
+                          _MarqueeText(
+                            text: subtitle,
+                            style: GoogleFonts.poppins(
+                              fontSize: s(12),
+                              color: ObsidianPalette.textMuted,
+                            ),
+                            velocity: s(24),
+                            gap: s(18),
+                          ),
+                        ],
+                        if (techTags.isNotEmpty) ...[
+                          SizedBox(height: s(4)),
+                          _techTagRow(context, techTags),
+                        ],
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: onPlayPause,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: EdgeInsets.all(s(10)),
+                      child: _HudPlayButton(
+                        icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                        onPressed: onPlayPause,
+                        size: playSize,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -228,78 +691,227 @@ class NowPlayingBar extends StatelessWidget {
     );
   }
 
-  Future<void> _showShuffleModal(
-    BuildContext context, {
-    required ShuffleMode current,
-    required ValueChanged<ShuffleMode> onSelected,
-  }) async {
-    final result = await showDialog<ShuffleMode>(
-      context: context,
-      builder: (dialogContext) {
-        final items = const [
-          ShuffleMode.off,
-          ShuffleMode.all,
-          ShuffleMode.artist,
-          ShuffleMode.album,
-          ShuffleMode.custom,
-        ];
-        return AlertDialog(
-          title: const Text('Shuffle Mode'),
-          content: SizedBox(
-            width: 320,
-            child: ListView(
-              shrinkWrap: true,
-              children: items
-                  .map(
-                    (mode) => ListTile(
-                      title: Text(_shuffleLabel(mode)),
-                      trailing: mode == current
-                          ? const Icon(Icons.check_rounded)
-                          : null,
-                      onTap: () => Navigator.of(dialogContext).pop(mode),
+  String _miniSubtitle(Track track) {
+    final artist = track.artist.trim();
+    final album = track.album.trim();
+    if (artist.isEmpty && album.isEmpty) {
+      return '';
+    }
+    if (artist.isEmpty) {
+      return album;
+    }
+    if (album.isEmpty) {
+      return artist;
+    }
+    return '$artist • $album';
+  }
+}
+
+class NowPlayingExpandedSheet extends StatelessWidget {
+  const NowPlayingExpandedSheet({
+    super.key,
+    required this.state,
+    required this.onPlayPause,
+    required this.onNext,
+    required this.onPrev,
+    required this.onSeek,
+    required this.onShuffleChanged,
+    required this.onToggleRepeat,
+    required this.onStreamModeChanged,
+    required this.onVolumeChanged,
+    required this.onToggleLike,
+  });
+
+  final PlaybackState state;
+  final VoidCallback onPlayPause;
+  final VoidCallback onNext;
+  final VoidCallback onPrev;
+  final ValueChanged<Duration> onSeek;
+  final ValueChanged<ShuffleMode> onShuffleChanged;
+  final VoidCallback onToggleRepeat;
+  final ValueChanged<StreamMode> onStreamModeChanged;
+  final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleLike;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final track = state.track;
+    final size = MediaQuery.of(context).size;
+    final padding = MediaQuery.of(context).padding;
+    final height = size.height * 0.92;
+    final maxSeconds = math.max(1, state.duration.inSeconds).toDouble();
+    final positionSeconds =
+        state.position.inSeconds.toDouble().clamp(0, maxSeconds).toDouble();
+    final bufferedPositionSeconds = (state.bufferRatio.clamp(0.0, 1.0) *
+            maxSeconds)
+        .clamp(positionSeconds, maxSeconds)
+        .toDouble();
+    final techTags = _buildTechTags(state);
+
+    final albumId = track?.albumId ?? '';
+    final imageUrl = albumId.isEmpty
+        ? null
+        : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
+    final headers = authHeaders(AppScope.of(context));
+    final artSize = math.min(size.width * 0.78, 320.0);
+
+    final sliderTheme = SliderTheme.of(context).copyWith(
+      trackHeight: s(10),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(12)),
+      overlayShape: SliderComponentShape.noOverlay,
+      inactiveTrackColor: Colors.white.withOpacity(0.12),
+      activeTrackColor: ObsidianPalette.gold,
+      secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
+    );
+
+    return SafeArea(
+      top: true,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: SizedBox(
+          height: height,
+          child: ClipPath(
+            clipper: _HudChamferClipper(cut: s(24)),
+            child: maybeBlur(
+              sigma: 40,
+              child: Container(
+                color: ObsidianPalette.obsidianElevated.withOpacity(0.95),
+                child: Column(
+                  children: [
+                    SizedBox(height: s(12)),
+                    Container(
+                      width: s(64),
+                      height: s(6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(s(6)),
+                      ),
                     ),
-                  )
-                  .toList(),
+                    SizedBox(height: s(12)),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(
+                              s(16),
+                              s(12),
+                              s(16),
+                              s(12),
+                            ),
+                            child: ConstrainedBox(
+                              constraints:
+                                  BoxConstraints(minHeight: constraints.maxHeight),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: artSize,
+                                    height: artSize,
+                                    decoration: BoxDecoration(
+                                      color: ObsidianPalette.obsidianGlass
+                                          .withOpacity(0.6),
+                                      border: Border.all(
+                                          color: Colors.white.withOpacity(0.18)),
+                                    ),
+                                    child: imageUrl == null
+                                        ? const SizedBox.shrink()
+                                        : Image.network(
+                                            imageUrl,
+                                            headers: headers,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const SizedBox.shrink(),
+                                          ),
+                                  ),
+                                  SizedBox(height: s(22)),
+                                  _MarqueeText(
+                                    text: track?.title ?? 'Nothing playing',
+                                    style: GoogleFonts.rajdhani(
+                                      fontSize: s(26),
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: s(1.1),
+                                    ),
+                                    velocity: s(28),
+                                    gap: s(28),
+                                  ),
+                                  if (track != null) ...[
+                                    SizedBox(height: s(10)),
+                                    _MarqueeText(
+                                      text: '${track.artist} • ${track.album}',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: s(15),
+                                        color: ObsidianPalette.textMuted,
+                                      ),
+                                      velocity: s(26),
+                                      gap: s(24),
+                                    ),
+                                  ],
+                                  if (techTags.isNotEmpty) ...[
+                                    SizedBox(height: s(10)),
+                                    _techTagRow(context, techTags, center: true),
+                                  ],
+                                  SizedBox(height: s(20)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        s(20),
+                        s(6),
+                        s(20),
+                        s(20) + padding.bottom,
+                      ),
+                      child: Column(
+                        children: [
+                          _ProgressBar(
+                            sliderTheme: sliderTheme,
+                            maxSeconds: maxSeconds,
+                            positionSeconds: positionSeconds,
+                            bufferedPositionSeconds: bufferedPositionSeconds,
+                            onSeek: onSeek,
+                            positionLabel: _formatTime(state.position),
+                            durationLabel: _formatTime(state.duration),
+                            enabled: track != null,
+                          ),
+                          SizedBox(height: s(22)),
+                          _ExpandedControls(
+                            state: state,
+                            onPlayPause: onPlayPause,
+                            onPrev: onPrev,
+                            onNext: onNext,
+                            onShuffle: () => _showShuffleModal(
+                              context,
+                              current: state.shuffleMode,
+                              onSelected: onShuffleChanged,
+                            ),
+                            onRepeat: onToggleRepeat,
+                          ),
+                          SizedBox(height: s(20)),
+                          _ExpandedExtras(
+                            state: state,
+                            onToggleLike: onToggleLike,
+                            onStreamModeChanged: onStreamModeChanged,
+                            onVolumeChanged: onVolumeChanged,
+                            onAddToPlaylist: () =>
+                                _showAddToPlaylistModal(context, state),
+                            onShowDevicePicker: () => _showDevicePicker(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        );
-      },
-    );
-    if (result != null && result != current) {
-      onSelected(result);
-    }
-  }
-
-  Future<void> _showAddToPlaylistModal(BuildContext context) async {
-    final controller = AppScope.of(context);
-    final track = state.track;
-    if (track == null) {
-      return;
-    }
-    if (controller.playlists.isEmpty) {
-      await controller.loadPlaylists();
-    }
-    if (controller.playlists.isEmpty) {
-      return;
-    }
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AddToPlaylistModal(
-        playlists: controller.playlists,
-        trackId: track.id,
-        onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
-      ),
-    );
-  }
-
-  Future<void> _showDevicePicker(BuildContext context) async {
-    final controller = AppScope.of(context);
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => DevicePickerModal(
-        fetchDevices: (refresh) => controller.listOutputDevices(refresh: refresh),
-        selectedId: controller.outputDeviceId,
-        onSelected: (device) => controller.selectOutputDevice(device),
+        ),
       ),
     );
   }
@@ -313,11 +925,12 @@ class _IntelZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final tags = techTags.isEmpty ? const [_TechTag(label: 'IDLE')] : techTags;
     return Row(
       children: [
         _AlbumArtThumb(track: track),
-        const SizedBox(width: 12),
+        SizedBox(width: s(12)),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,24 +941,27 @@ class _IntelZone extends StatelessWidget {
                 key: ValueKey('title-${track?.id ?? 'idle'}'),
                 text: track?.title ?? 'NO TRACK PLAYING',
                 style: GoogleFonts.rajdhani(
-                  fontSize: 17,
+                  fontSize: s(17),
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 1.0,
+                  letterSpacing: s(1.0),
                 ),
+                velocity: s(32),
+                gap: s(24),
               ),
-              const SizedBox(height: 1),
+              SizedBox(height: s(1)),
               _MarqueeText(
                 key: ValueKey('subtitle-${track?.id ?? 'idle'}'),
                 text: _subtitle(track),
                 style: GoogleFonts.poppins(
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: ObsidianPalette.textMuted,
                 ),
-                velocity: 28,
+                velocity: s(28),
+                gap: s(24),
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: s(4)),
               SizedBox(
-                height: 16,
+                height: s(16),
                 child: ClipRect(
                   child: Align(
                     alignment: Alignment.centerLeft,
@@ -354,7 +970,7 @@ class _IntelZone extends StatelessWidget {
                       child: Row(
                         children: [
                           for (var i = 0; i < tags.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 6),
+                            if (i > 0) SizedBox(width: s(6)),
                             tags[i],
                           ],
                         ],
@@ -396,6 +1012,7 @@ class _AlbumArtThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final albumId = track?.albumId;
     final imageUrl = albumId == null || albumId.isEmpty
         ? null
@@ -408,7 +1025,7 @@ class _AlbumArtThumb extends StatelessWidget {
             ? track!.title.substring(0, 1).toUpperCase()
             : '?',
         style: GoogleFonts.rajdhani(
-          fontSize: 20,
+          fontSize: s(20),
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -424,10 +1041,10 @@ class _AlbumArtThumb extends StatelessWidget {
           );
 
     return ClipPath(
-      clipper: const _HudChamferClipper(cut: 10),
+      clipper: _HudChamferClipper(cut: s(10)),
       child: Container(
-        width: 64,
-        height: 64,
+        width: s(64),
+        height: s(64),
         decoration: BoxDecoration(
           border: Border.all(color: Colors.white.withOpacity(0.12)),
         ),
@@ -458,6 +1075,7 @@ class _CommandZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -470,39 +1088,401 @@ class _CommandZone extends StatelessWidget {
                   : Icons.shuffle_on_rounded,
               isActive: state.shuffleMode != ShuffleMode.off,
               onPressed: onShuffle,
-              size: 24,
+              size: s(24),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: s(6)),
             ObsidianHudIconButton(
               icon: Icons.skip_previous,
               onPressed: onPrev,
-              size: 26,
+              size: s(26),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: s(8)),
             _HudPlayButton(
               icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
               onPressed: onPlayPause,
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: s(8)),
             ObsidianHudIconButton(
               icon: Icons.stop_rounded,
               onPressed: onStop,
-              size: 28,
+              size: s(28),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: s(6)),
             ObsidianHudIconButton(
               icon: Icons.skip_next,
               onPressed: onNext,
-              size: 26,
+              size: s(26),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: s(6)),
             ObsidianHudIconButton(
               icon: Icons.repeat_rounded,
               isActive: state.repeatMode == RepeatMode.one,
               onPressed: onRepeat,
-              size: 24,
+              size: s(24),
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ExpandedControls extends StatelessWidget {
+  const _ExpandedControls({
+    required this.state,
+    required this.onPlayPause,
+    required this.onPrev,
+    required this.onNext,
+    required this.onShuffle,
+    required this.onRepeat,
+  });
+
+  final PlaybackState state;
+  final VoidCallback onPlayPause;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onShuffle;
+  final VoidCallback onRepeat;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final trackAvailable = state.track != null;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ObsidianHudIconButton(
+          icon: state.shuffleMode == ShuffleMode.off
+              ? Icons.shuffle_rounded
+              : Icons.shuffle_on_rounded,
+          isActive: state.shuffleMode != ShuffleMode.off,
+          onPressed: trackAvailable ? onShuffle : null,
+          size: s(32),
+        ),
+        SizedBox(width: s(18)),
+        ObsidianHudIconButton(
+          icon: Icons.skip_previous,
+          onPressed: trackAvailable ? onPrev : null,
+          size: s(38),
+        ),
+        SizedBox(width: s(18)),
+        _HudPlayButton(
+          icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+          onPressed: onPlayPause,
+          size: 90,
+        ),
+        SizedBox(width: s(18)),
+        ObsidianHudIconButton(
+          icon: Icons.skip_next,
+          onPressed: trackAvailable ? onNext : null,
+          size: s(38),
+        ),
+        SizedBox(width: s(18)),
+        ObsidianHudIconButton(
+          icon: Icons.repeat_rounded,
+          isActive: state.repeatMode == RepeatMode.one,
+          onPressed: trackAvailable ? onRepeat : null,
+          size: s(32),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExpandedExtras extends StatelessWidget {
+  const _ExpandedExtras({
+    required this.state,
+    required this.onToggleLike,
+    required this.onAddToPlaylist,
+    required this.onShowDevicePicker,
+    required this.onStreamModeChanged,
+    required this.onVolumeChanged,
+  });
+
+  final PlaybackState state;
+  final VoidCallback onToggleLike;
+  final VoidCallback onAddToPlaylist;
+  final VoidCallback onShowDevicePicker;
+  final ValueChanged<StreamMode> onStreamModeChanged;
+  final ValueChanged<double> onVolumeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final trackAvailable = state.track != null;
+    final volumeTheme = SliderTheme.of(context).copyWith(
+      trackHeight: s(7),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(10)),
+      thumbColor: Colors.white,
+      overlayShape: SliderComponentShape.noOverlay,
+      inactiveTrackColor: Colors.white.withOpacity(0.1),
+      activeTrackColor: Colors.white.withOpacity(0.6),
+    );
+
+    final actions = <Widget>[
+      ObsidianHudIconButton(
+        icon: Icons.playlist_add,
+        onPressed: trackAvailable ? onAddToPlaylist : null,
+        size: s(32),
+      ),
+      LikeIconButton(
+        isLiked: state.track?.liked == true,
+        onPressed: trackAvailable ? onToggleLike : null,
+        size: s(32),
+      ),
+      ObsidianHudIconButton(
+        icon: Icons.speaker_rounded,
+        onPressed: onShowDevicePicker,
+        size: s(32),
+      ),
+      _QualityBadge(
+        label: _streamLabel(state.streamMode),
+        onTap: () => _showStreamModal(
+          context,
+          current: state.streamMode,
+          onSelected: onStreamModeChanged,
+        ),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: s(48),
+          child: Center(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < actions.length; i++) ...[
+                    if (i > 0) SizedBox(width: s(14)),
+                    actions[i],
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: s(14)),
+        Row(
+          children: [
+            Icon(Icons.volume_up, size: s(28), color: ObsidianPalette.textMuted),
+            SizedBox(width: s(8)),
+            Expanded(
+              child: SliderTheme(
+                data: volumeTheme,
+                child: Slider(
+                  value: state.volume,
+                  onChanged: onVolumeChanged,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactControls extends StatelessWidget {
+  const _CompactControls({
+    required this.state,
+    required this.onPlayPause,
+    required this.onPrev,
+    required this.onNext,
+    required this.onShuffle,
+    required this.onRepeat,
+    required this.onAddToPlaylist,
+    required this.onToggleLike,
+    required this.onShowDevicePicker,
+    required this.onShowStreamMode,
+  });
+
+  final PlaybackState state;
+  final VoidCallback onPlayPause;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onShuffle;
+  final VoidCallback onRepeat;
+  final VoidCallback onAddToPlaylist;
+  final VoidCallback onToggleLike;
+  final VoidCallback onShowDevicePicker;
+  final VoidCallback onShowStreamMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final scale = ObsidianScale.of(context);
+    final playSize = 64 / scale;
+    final trackAvailable = state.track != null;
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: s(8),
+      runSpacing: s(8),
+      children: [
+        ObsidianHudIconButton(
+          icon: state.shuffleMode == ShuffleMode.off
+              ? Icons.shuffle_rounded
+              : Icons.shuffle_on_rounded,
+          isActive: state.shuffleMode != ShuffleMode.off,
+          onPressed: onShuffle,
+          size: s(22),
+        ),
+        ObsidianHudIconButton(
+          icon: Icons.skip_previous,
+          onPressed: onPrev,
+          size: s(24),
+        ),
+        _HudPlayButton(
+          icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+          onPressed: onPlayPause,
+          size: playSize,
+        ),
+        ObsidianHudIconButton(
+          icon: Icons.skip_next,
+          onPressed: onNext,
+          size: s(24),
+        ),
+        ObsidianHudIconButton(
+          icon: Icons.repeat_rounded,
+          isActive: state.repeatMode == RepeatMode.one,
+          onPressed: onRepeat,
+          size: s(22),
+        ),
+        ObsidianHudIconButton(
+          icon: Icons.playlist_add,
+          onPressed: trackAvailable ? onAddToPlaylist : null,
+          size: s(22),
+        ),
+        LikeIconButton(
+          isLiked: state.track?.liked == true,
+          onPressed: trackAvailable ? onToggleLike : null,
+          size: s(22),
+        ),
+        ObsidianHudIconButton(
+          icon: Icons.speaker_rounded,
+          onPressed: onShowDevicePicker,
+          size: s(22),
+        ),
+        _QualityBadge(
+          label: _streamLabel(state.streamMode),
+          onTap: onShowStreamMode,
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactFooterRow extends StatelessWidget {
+  const _CompactFooterRow({
+    required this.sliderTheme,
+    required this.maxSeconds,
+    required this.positionSeconds,
+    required this.bufferedPositionSeconds,
+    required this.onSeek,
+    required this.positionLabel,
+    required this.durationLabel,
+    required this.enabled,
+    required this.volume,
+    required this.onVolumeChanged,
+  });
+
+  final SliderThemeData sliderTheme;
+  final double maxSeconds;
+  final double positionSeconds;
+  final double bufferedPositionSeconds;
+  final ValueChanged<Duration> onSeek;
+  final String positionLabel;
+  final String durationLabel;
+  final bool enabled;
+  final double volume;
+  final ValueChanged<double> onVolumeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final progressTheme = sliderTheme.copyWith(
+      trackHeight: s(5),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(6)),
+      overlayShape: SliderComponentShape.noOverlay,
+      inactiveTrackColor: Colors.white.withOpacity(0.1),
+      activeTrackColor: ObsidianPalette.gold,
+      secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
+    );
+    final volumeTheme = sliderTheme.copyWith(
+      trackHeight: s(4),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(5)),
+      overlayShape: SliderComponentShape.noOverlay,
+      inactiveTrackColor: Colors.white.withOpacity(0.1),
+      activeTrackColor: Colors.white.withOpacity(0.6),
+    );
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: s(28),
+                child: SliderTheme(
+                  data: progressTheme,
+                  child: Slider(
+                    value: positionSeconds,
+                    max: maxSeconds,
+                    secondaryTrackValue: bufferedPositionSeconds,
+                    onChanged: enabled
+                        ? (value) => onSeek(Duration(seconds: value.toInt()))
+                        : null,
+                  ),
+                ),
+              ),
+              SizedBox(height: s(2)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    positionLabel,
+                    style: GoogleFonts.rajdhani(
+                      fontSize: s(12),
+                      letterSpacing: s(0.8),
+                      color: ObsidianPalette.textMuted,
+                    ),
+                  ),
+                  Text(
+                    durationLabel,
+                    style: GoogleFonts.rajdhani(
+                      fontSize: s(12),
+                      letterSpacing: s(0.8),
+                      color: ObsidianPalette.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: s(10)),
+        SizedBox(
+          width: s(110),
+          child: Row(
+            children: [
+              Icon(Icons.volume_up, size: s(18), color: ObsidianPalette.textMuted),
+              SizedBox(width: s(6)),
+              Expanded(
+                child: SliderTheme(
+                  data: volumeTheme,
+                  child: Slider(
+                    value: volume,
+                    onChanged: onVolumeChanged,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -512,6 +1492,7 @@ class _CommandZone extends StatelessWidget {
 class _OutputZone extends StatelessWidget {
   const _OutputZone({
     required this.state,
+    required this.compact,
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
     required this.onToggleLike,
@@ -520,6 +1501,7 @@ class _OutputZone extends StatelessWidget {
   });
 
   final PlaybackState state;
+  final bool compact;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleLike;
@@ -528,148 +1510,123 @@ class _OutputZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final volumeTheme = SliderTheme.of(context).copyWith(
-      trackHeight: 6,
-      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+      trackHeight: s(6),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(8)),
       thumbColor: Colors.white,
       overlayShape: SliderComponentShape.noOverlay,
       inactiveTrackColor: Colors.white.withOpacity(0.1),
       activeTrackColor: Colors.white.withOpacity(0.6),
     );
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ObsidianHudIconButton(
-                    icon: Icons.playlist_add,
-                    onPressed: state.track == null ? null : onAddToPlaylist,
-                    size: 26,
-                  ),
-                  const SizedBox(width: 14),
-                  LikeIconButton(
-                    isLiked: state.track?.liked == true,
-                    onPressed: state.track == null ? null : onToggleLike,
-                    size: 26,
-                  ),
-                  const SizedBox(width: 16),
-                  ObsidianHudIconButton(
-                    icon: Icons.speaker_rounded,
-                    onPressed: onShowDevicePicker,
-                    size: 26,
-                  ),
-                  const SizedBox(width: 16),
-                  _QualityBadge(
-                    label: _streamLabel(state.streamMode),
-                    onTap: () => _showStreamModal(
-                      context,
-                      current: state.streamMode,
-                      onSelected: onStreamModeChanged,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: 200,
-                child: Row(
-                  children: [
-                    const Icon(Icons.volume_up, size: 26),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: SliderTheme(
-                        data: volumeTheme,
-                        child: Slider(
-                          value: state.volume,
-                          onChanged: onVolumeChanged,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isTight = compact || constraints.maxWidth < s(320);
+        final controlSpacing = isTight ? s(10) : s(16);
+        final controls = <Widget>[
+          ObsidianHudIconButton(
+            icon: Icons.playlist_add,
+            onPressed: state.track == null ? null : onAddToPlaylist,
+            size: s(26),
           ),
-        ),
-      ],
-    );
-  }
-
-  String _streamLabel(StreamMode mode) {
-    switch (mode) {
-      case StreamMode.auto:
-        return 'AUTO';
-      case StreamMode.high:
-        return 'HQ';
-      case StreamMode.medium:
-        return 'MQ';
-      case StreamMode.low:
-        return 'LQ';
-    }
-  }
-
-  Future<void> _showStreamModal(
-    BuildContext context, {
-    required StreamMode current,
-    required ValueChanged<StreamMode> onSelected,
-  }) async {
-    final result = await showDialog<StreamMode>(
-      context: context,
-      builder: (dialogContext) {
-        final items = const [
-          StreamMode.auto,
-          StreamMode.high,
-          StreamMode.medium,
-          StreamMode.low,
+          LikeIconButton(
+            isLiked: state.track?.liked == true,
+            onPressed: state.track == null ? null : onToggleLike,
+            size: s(26),
+          ),
+          ObsidianHudIconButton(
+            icon: Icons.speaker_rounded,
+            onPressed: onShowDevicePicker,
+            size: s(26),
+          ),
+          _QualityBadge(
+            label: _streamLabel(state.streamMode),
+            onTap: () => _showStreamModal(
+              context,
+              current: state.streamMode,
+              onSelected: onStreamModeChanged,
+            ),
+          ),
         ];
-        return AlertDialog(
-          title: const Text('Stream Quality'),
-          content: SizedBox(
-            width: 320,
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: items.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 1,
-                color: ObsidianPalette.textMuted.withOpacity(0.25),
-              ),
-              itemBuilder: (context, index) {
-                final mode = items[index];
-                final isSelected = mode == current;
-                return _HudModalListRow(
-                  title: _streamLabel(mode),
-                  trailing: isSelected
-                      ? const Icon(Icons.check_rounded,
-                          color: ObsidianPalette.gold)
-                      : const SizedBox.shrink(),
-                  enabled: true,
-                  isSelected: isSelected,
-                  onTap: () => Navigator.of(dialogContext).pop(mode),
-                );
-              },
+        final controlsRow = isTight
+            ? Wrap(
+                alignment: compact ? WrapAlignment.center : WrapAlignment.end,
+                spacing: controlSpacing,
+                runSpacing: s(6),
+                children: controls,
+              )
+            : Row(
+                mainAxisAlignment:
+                    compact ? MainAxisAlignment.center : MainAxisAlignment.end,
+                children: [
+                  controls[0],
+                  SizedBox(width: s(14)),
+                  controls[1],
+                  SizedBox(width: controlSpacing),
+                  controls[2],
+                  SizedBox(width: controlSpacing),
+                  controls[3],
+                ],
+              );
+
+        final sliderWidth = isTight ? constraints.maxWidth : s(200);
+        final sliderRow = Align(
+          alignment:
+              compact ? Alignment.center : Alignment.centerRight,
+          child: SizedBox(
+            width: sliderWidth,
+            child: Row(
+              children: [
+                Icon(Icons.volume_up, size: s(26)),
+                SizedBox(width: s(8)),
+                Expanded(
+                  child: SliderTheme(
+                    data: volumeTheme,
+                    child: Slider(
+                      value: state.volume,
+                      onChanged: onVolumeChanged,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
+
+        return Row(
+          mainAxisAlignment:
+              compact ? MainAxisAlignment.center : MainAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment:
+                    compact ? CrossAxisAlignment.center : CrossAxisAlignment.end,
+                children: [
+                  controlsRow,
+                  SizedBox(height: s(8)),
+                  sliderRow,
+                ],
+              ),
+            ),
+          ],
+        );
       },
     );
-    if (result != null && result != current) {
-      onSelected(result);
-    }
   }
+
 }
 
 class _HudPlayButton extends StatefulWidget {
-  const _HudPlayButton({required this.icon, required this.onPressed});
+  const _HudPlayButton({
+    required this.icon,
+    required this.onPressed,
+    this.size = 54,
+  });
 
   final IconData icon;
   final VoidCallback onPressed;
+  final double size;
 
   @override
   State<_HudPlayButton> createState() => _HudPlayButtonState();
@@ -696,6 +1653,10 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final scaleFactor = widget.size / 54;
+    final baseSize = s(widget.size);
+    final iconSize = baseSize * 0.48;
     final highlight = _hovered || _pressed;
     final glowOpacity = highlight ? 0.7 : 0.35;
 
@@ -716,20 +1677,20 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
             curve: Curves.easeOut,
             builder: (context, animatedGlow, _) {
               return Container(
-                width: 54,
-                height: 54,
+                width: baseSize,
+                height: baseSize,
                 decoration: BoxDecoration(
                   color: ObsidianPalette.gold,
                   boxShadow: [
                     BoxShadow(
                       color:
                           ObsidianPalette.gold.withOpacity(animatedGlow),
-                      blurRadius: 14,
+                      blurRadius: s(14 * scaleFactor),
                     ),
                   ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(1.5),
+                  padding: EdgeInsets.all(s(1.5 * scaleFactor)),
                   child: ClipPath(
                     clipper: const _OctagonClipper(cutFraction: 0.3),
                     child: TweenAnimationBuilder<Color?>(
@@ -756,7 +1717,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                               return Icon(
                                 widget.icon,
                                 color: animatedIconColor,
-                                size: 26,
+                                size: iconSize,
                               );
                             },
                           ),
@@ -797,6 +1758,7 @@ class _QualityBadgeState extends State<_QualityBadge> {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final bgColor = _hovered
         ? ObsidianPalette.gold
         : Colors.white.withOpacity(0.05);
@@ -815,7 +1777,9 @@ class _QualityBadgeState extends State<_QualityBadge> {
         child: AnimatedContainer(
           duration: _transition,
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          alignment: Alignment.center,
+          constraints: BoxConstraints(minHeight: s(36)),
+          padding: EdgeInsets.symmetric(horizontal: s(12), vertical: s(6)),
           decoration: BoxDecoration(
             color: bgColor,
             border: Border.all(color: borderColor),
@@ -823,7 +1787,7 @@ class _QualityBadgeState extends State<_QualityBadge> {
               if (_hovered)
                 BoxShadow(
                   color: ObsidianPalette.gold.withOpacity(0.35),
-                  blurRadius: 10,
+                  blurRadius: s(10),
                 ),
             ],
           ),
@@ -831,9 +1795,9 @@ class _QualityBadgeState extends State<_QualityBadge> {
             duration: _transition,
             curve: Curves.easeOut,
             style: GoogleFonts.rajdhani(
-              fontSize: 11,
+              fontSize: s(13),
               fontWeight: FontWeight.w600,
-              letterSpacing: 1.1,
+              letterSpacing: s(1.2),
               color: textColor,
             ),
             child: Text(widget.label),
@@ -867,35 +1831,36 @@ class _ProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final progressTheme = sliderTheme.copyWith(
-      trackHeight: 6,
-      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+      trackHeight: s(6),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(7)),
       thumbColor: Colors.white,
-      overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+      overlayShape: RoundSliderOverlayShape(overlayRadius: s(18)),
       inactiveTrackColor: Colors.white.withOpacity(0.1),
       activeTrackColor: ObsidianPalette.gold,
       secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
     );
     return Padding(
-      padding: const EdgeInsets.only(top: 2),
+      padding: EdgeInsets.only(top: s(2)),
       child: Row(
         children: [
           SizedBox(
-            width: 42,
+            width: s(42),
             child: Text(
               positionLabel,
               textAlign: TextAlign.center,
               style: GoogleFonts.rajdhani(
-                fontSize: 11,
-                letterSpacing: 1.1,
+                fontSize: s(13),
+                letterSpacing: s(1.1),
                 color: ObsidianPalette.textMuted,
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: s(12)),
           Expanded(
             child: SizedBox(
-              height: 36,
+              height: s(36),
               child: SliderTheme(
                 data: progressTheme,
                 child: Slider(
@@ -909,15 +1874,15 @@ class _ProgressBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: s(12)),
           SizedBox(
-            width: 42,
+            width: s(42),
             child: Text(
               durationLabel,
               textAlign: TextAlign.center,
               style: GoogleFonts.rajdhani(
-                fontSize: 11,
-                letterSpacing: 1.1,
+                fontSize: s(13),
+                letterSpacing: s(1.1),
                 color: ObsidianPalette.textMuted,
               ),
             ),
@@ -936,11 +1901,12 @@ class _TechTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final borderColor = highlight
         ? ObsidianPalette.gold.withOpacity(0.6)
         : Colors.white.withOpacity(0.1);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: EdgeInsets.symmetric(horizontal: s(6), vertical: s(2)),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         border: Border.all(color: borderColor),
@@ -948,9 +1914,9 @@ class _TechTag extends StatelessWidget {
       child: Text(
         label,
         style: GoogleFonts.rajdhani(
-          fontSize: 10,
+          fontSize: s(12),
           fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
+          letterSpacing: s(1.0),
         ),
       ),
     );
@@ -1171,6 +2137,7 @@ class _HudModalListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
     final theme = Theme.of(context);
     return ObsidianHoverRow(
       onTap: onTap,
@@ -1184,11 +2151,11 @@ class _HudModalListRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleMedium?.copyWith(
-                letterSpacing: 0.4,
+                letterSpacing: s(0.4),
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: s(12)),
           trailing,
         ],
       ),

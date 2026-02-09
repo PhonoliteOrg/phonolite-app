@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
 import '../../entities/models.dart';
+import '../layouts/obsidian_scale.dart';
 import '../ui/blur.dart';
 import '../ui/chamfered.dart';
 import 'album_art.dart';
@@ -35,8 +36,13 @@ class AlbumCardState extends State<AlbumCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scale = ObsidianScale.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 640;
+    final boost = isMobile ? 1.2 : 1.0;
+    double s(double value) => value * scale;
+    double t(double value) => value * scale * boost;
     final content = ClipPath(
-      clipper: DiagonalChamferClipper(cut: 20),
+      clipper: DiagonalChamferClipper(cut: s(20)),
       child: maybeBlur(
         sigma: cardBackdropBlurSigma,
         child: AnimatedContainer(
@@ -75,15 +81,18 @@ class AlbumCardState extends State<AlbumCard> {
               ),
               Positioned.fill(
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: EdgeInsets.all(s(14)),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final maxImageSize =
-                          math.min(albumPortraitSize, constraints.maxWidth);
-                      final reservedTextHeight = 74.0;
+                      final minImageSize = s(80.0) * boost;
+                      final maxImageSize = math.min(
+                        albumPortraitSize * scale * boost,
+                        constraints.maxWidth,
+                      );
+                      final reservedTextHeight = t(74.0);
                       final availableForImage =
                           (constraints.maxHeight - reservedTextHeight)
-                              .clamp(80.0, albumPortraitSize);
+                              .clamp(minImageSize, albumPortraitSize * scale * boost);
                       final imageSize = math.min(maxImageSize, availableForImage);
 
                       return Column(
@@ -100,7 +109,7 @@ class AlbumCardState extends State<AlbumCard> {
                               headers: widget.headers,
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          SizedBox(height: s(14)),
                           Text(
                             widget.album.title,
                             maxLines: 1,
@@ -108,11 +117,11 @@ class AlbumCardState extends State<AlbumCard> {
                             textAlign: TextAlign.center,
                             style: GoogleFonts.rajdhani(
                               color: Colors.white,
-                              fontSize: 16,
+                              fontSize: t(16),
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: s(4)),
                           Text(
                             albumYearLabel(widget.album),
                             maxLines: 1,
@@ -120,11 +129,11 @@ class AlbumCardState extends State<AlbumCard> {
                             textAlign: TextAlign.center,
                             style: GoogleFonts.rajdhani(
                               color: Colors.white54,
-                              fontSize: 11,
-                              letterSpacing: 1.1,
+                              fontSize: t(11),
+                              letterSpacing: s(1.1),
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: s(4)),
                           const SizedBox.shrink(),
                         ],
                       );

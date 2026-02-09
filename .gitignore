@@ -32,6 +32,10 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/macos/Runner/libphonolite_opus.a
+/macos/Runner/opus_build/
+/ios/Runner/libphonolite_opus.a
+/ios/Runner/opus_build/
 
 # Symbolication related
 app.*.symbols

@@ -5,8 +5,10 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'auth_state.dart';
+import 'auth_storage.dart';
 import 'models.dart';
 import 'server_connection.dart';
 import 'audio_engine.dart';
@@ -16,6 +18,8 @@ enum ShuffleMode { off, all, artist, album, custom }
 enum RepeatMode { off, one }
 
 enum StreamMode { auto, high, medium, low }
+
+enum LocalNetworkPermissionState { unknown, granted, denied }
 
 class _ShuffleContext {
   const _ShuffleContext({
@@ -120,13 +124,16 @@ class AppController {
             : position > duration
                 ? duration
                 : position;
+        _actualPositionMs = clamped.inMilliseconds;
+        _updateDisplayPosition(_actualPositionMs, bufferedAhead.inMilliseconds);
         final bufferedTotal = clamped + bufferedAhead;
         final bufferRatio = duration == Duration.zero
             ? 0.0
             : (bufferedTotal.inMilliseconds / duration.inMilliseconds)
                 .clamp(0.0, 1.0);
+        _maybeClearSeekHold(clamped, bufferedAhead);
         _updatePlayback(
-          position: clamped,
+          position: Duration(milliseconds: _displayPositionMs),
           bufferRatio: bufferRatio,
           bitrateKbps: bitrateKbps,
         );
@@ -140,11 +147,43 @@ class AppController {
         _openStreamControl(sessionId);
       },
       onComplete: _handleTrackFinished,
+      onStarted: () {
+        if (!_audioOutputStarted) {
+          _audioOutputStarted = true;
+          _pushNowPlayingUpdate(force: true);
+        }
+      },
     );
+    _configureLocalNetworkPermissions();
+    _configureNowPlaying();
   }
 
   final ServerConnection connection;
   late final AudioEngine _audioEngine;
+  final MethodChannel _nowPlayingChannel =
+      const MethodChannel('phonolite/now_playing');
+  final MethodChannel _permissionsChannel =
+      const MethodChannel('phonolite/permissions');
+  final AuthStorage _authStorage = const AuthStorage();
+  AuthCredentials? _savedCredentials;
+  bool _restoringSession = false;
+  LocalNetworkPermissionState _localNetworkPermissionState =
+      LocalNetworkPermissionState.unknown;
+  DateTime? _lastNowPlayingSentAt;
+  String? _lastNowPlayingTrackId;
+  bool? _lastNowPlayingIsPlaying;
+  int _lastNowPlayingPositionMs = -1;
+  int _lastNowPlayingEpochSent = -1;
+  bool _nowPlayingReady = false;
+  DateTime? _lastSeekAt;
+  int? _lastSeekMs;
+  String? _lastSeekTrackId;
+  bool _seeking = false;
+  int _seekTargetMs = 0;
+  bool _audioOutputStarted = false;
+  int _displayPositionMs = 0;
+  int _actualPositionMs = 0;
+  int _nowPlayingEpoch = 0;
 
   final _artistsController = StreamController<List<Artist>>.broadcast();
   final _albumsController = StreamController<List<Album>>.broadcast();
@@ -157,6 +196,8 @@ class AppController {
   final _messageController = StreamController<List<String>>.broadcast();
   final _playbackController = StreamController<PlaybackState>.broadcast();
   final _authController = StreamController<AuthState>.broadcast();
+  final _localNetworkPermissionController =
+      StreamController<LocalNetworkPermissionState>.broadcast();
   final _artistsLoadingController = StreamController<bool>.broadcast();
   final _albumsLoadingController = StreamController<bool>.broadcast();
   final _tracksLoadingController = StreamController<bool>.broadcast();
@@ -185,6 +226,7 @@ class AppController {
   final Random _shuffleRandom = Random();
   bool _autoAdvanceInFlight = false;
   DateTime? _suppressAutoAdvanceUntil;
+  DateTime? _ignoreCompleteUntil;
   ShuffleMode _queueShuffleMode = ShuffleMode.off;
   String? _queueShuffleScope;
   String? _queueShufflePlaylistId;
@@ -211,6 +253,8 @@ class AppController {
   Stream<List<String>> get messageStream => _messageController.stream;
   Stream<PlaybackState> get playbackStream => _playbackController.stream;
   Stream<AuthState> get authStream => _authController.stream;
+  Stream<LocalNetworkPermissionState> get localNetworkPermissionStream =>
+      _localNetworkPermissionController.stream;
   Stream<bool> get artistsLoadingStream => _artistsLoadingController.stream;
   Stream<bool> get albumsLoadingStream => _albumsLoadingController.stream;
   Stream<bool> get tracksLoadingStream => _tracksLoadingController.stream;
@@ -227,6 +271,33 @@ class AppController {
   StatsResponse? get stats => _stats;
   PlaybackState get playbackState => _playbackState;
   AuthState get authState => _authState;
+  LocalNetworkPermissionState get localNetworkPermissionState =>
+      _localNetworkPermissionState;
+  bool get localNetworkPermissionSupported {
+    if (kIsWeb) {
+      return false;
+    }
+    if (Platform.isIOS) {
+      return true;
+    }
+    return defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  Future<void> openAppSettings() async {
+    if (!localNetworkPermissionSupported) {
+      return;
+    }
+    try {
+      await _permissionsChannel.invokeMethod('openAppSettings');
+    } catch (_) {}
+  }
+
+  Future<void> refreshLocalNetworkPermission() async {
+    if (!localNetworkPermissionSupported) {
+      return;
+    }
+    await _refreshLocalNetworkPermission();
+  }
   bool get artistsLoading => _artistsLoading;
   bool get albumsLoading => _albumsLoading;
   bool get tracksLoading => _tracksLoading;
@@ -234,8 +305,12 @@ class AppController {
   List<OutputDevice> get outputDevices => _outputDevices;
   int get outputDeviceId => _outputDeviceId;
   String? get outputDeviceName => _outputDeviceName;
+  bool get hasSavedCredentials => _savedCredentials != null;
+  String? get savedUsername => _savedCredentials?.username;
+  String? get savedBaseUrl => _savedCredentials?.baseUrl;
 
   void dispose() {
+    _clearNowPlaying();
     _artistsController.close();
     _albumsController.close();
     _tracksController.close();
@@ -247,6 +322,7 @@ class AppController {
     _messageController.close();
     _playbackController.close();
     _authController.close();
+    _localNetworkPermissionController.close();
     _artistsLoadingController.close();
     _albumsLoadingController.close();
     _tracksLoadingController.close();
@@ -259,12 +335,25 @@ class AppController {
     required String baseUrl,
     required String username,
     required String password,
+    bool rememberMe = false,
   }) async {
     try {
       connection.setBaseUrl(baseUrl);
-      await connection.login(username: username, password: password);
+      final token = await connection.login(username: username, password: password);
       _setAuthorized(true, error: null);
       await _loadPlaybackSettings();
+      if (rememberMe) {
+        final credentials = AuthCredentials(
+          baseUrl: connection.baseUrl,
+          token: token,
+          username: username,
+        );
+        await _authStorage.write(credentials);
+        _savedCredentials = credentials;
+      } else {
+        await _authStorage.clear();
+        _savedCredentials = null;
+      }
     } on ApiException catch (err) {
       final message = '${_formatApiError(err)} (POST ${connection.baseUrl}/auth/login)';
       _setAuthorized(false, error: message);
@@ -298,13 +387,227 @@ class AppController {
     }
   }
 
-  void logout() {
+  Future<void> logout({bool clearSaved = true}) async {
     connection.setToken(null);
     _setAuthorized(false, error: null);
     _audioEngine.stop();
     _playQueue = <Track>[];
     _playIndex = 0;
     _autoAdvanceInFlight = false;
+    _clearNowPlaying();
+    if (clearSaved) {
+      await _authStorage.clear();
+      _savedCredentials = null;
+    }
+  }
+
+  Future<AuthCredentials?> loadSavedCredentials() async {
+    if (_savedCredentials != null) {
+      return _savedCredentials;
+    }
+    final credentials = await _authStorage.read();
+    _savedCredentials = credentials;
+    return credentials;
+  }
+
+  Future<void> restoreSession() async {
+    if (_restoringSession || _authState.isAuthorized) {
+      return;
+    }
+    _restoringSession = true;
+    try {
+      final credentials = await loadSavedCredentials();
+      if (credentials == null) {
+        return;
+      }
+      connection.setBaseUrl(credentials.baseUrl);
+      if (credentials.token.trim().isEmpty) {
+        await logout(clearSaved: true);
+        return;
+      }
+      connection.setToken(credentials.token);
+      try {
+        final settings = await connection.fetchPlaybackSettings();
+        _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
+        _setAuthorized(true, error: null);
+      } on ApiException catch (err) {
+        _pushMessage('Auto-login failed: ${_formatApiError(err)}');
+        await logout(clearSaved: true);
+      } catch (err) {
+        _pushMessage('Auto-login failed: $err');
+        await logout(clearSaved: true);
+      }
+    } finally {
+      _restoringSession = false;
+    }
+  }
+
+  void _configureLocalNetworkPermissions() {
+    if (!Platform.isIOS) {
+      return;
+    }
+    _permissionsChannel.setMethodCallHandler((call) async {
+      if (call.method != 'localNetworkPermission') {
+        return;
+      }
+      final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+      final status = args['status']?.toString().toLowerCase().trim() ?? '';
+      switch (status) {
+        case 'granted':
+          _setLocalNetworkPermission(LocalNetworkPermissionState.granted);
+          break;
+        case 'denied':
+          _setLocalNetworkPermission(LocalNetworkPermissionState.denied);
+          break;
+        case 'unknown':
+          _setLocalNetworkPermission(LocalNetworkPermissionState.unknown);
+          break;
+        default:
+          break;
+      }
+    });
+    _refreshLocalNetworkPermission();
+  }
+
+  Future<void> _refreshLocalNetworkPermission() async {
+    try {
+      await _permissionsChannel.invokeMethod('refreshLocalNetworkPermission');
+      final result =
+          await _permissionsChannel.invokeMethod('getLocalNetworkPermission');
+      final status = result?.toString().toLowerCase().trim() ?? '';
+      switch (status) {
+        case 'granted':
+          _setLocalNetworkPermission(LocalNetworkPermissionState.granted);
+          break;
+        case 'denied':
+          _setLocalNetworkPermission(LocalNetworkPermissionState.denied);
+          break;
+        case 'unknown':
+          _setLocalNetworkPermission(LocalNetworkPermissionState.unknown);
+          break;
+        default:
+          break;
+      }
+    } catch (_) {}
+  }
+
+  void _setLocalNetworkPermission(LocalNetworkPermissionState value) {
+    if (_localNetworkPermissionState == value) {
+      return;
+    }
+    _localNetworkPermissionState = value;
+    _localNetworkPermissionController.add(value);
+  }
+
+  void _configureNowPlaying() {
+    if (!Platform.isIOS) {
+      return;
+    }
+    _nowPlayingReady = true;
+    _nowPlayingChannel.setMethodCallHandler((call) async {
+      if (call.method != 'remoteCommand') {
+        return;
+      }
+      final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+      final type = args['type']?.toString() ?? '';
+      switch (type) {
+        case 'play':
+          await pause(false);
+          break;
+        case 'pause':
+          await pause(true);
+          break;
+        case 'next':
+          await nextTrack();
+          break;
+        case 'prev':
+          await prevTrack();
+          break;
+        case 'seek':
+          final raw = args['position'];
+          final seconds = raw is num ? raw.toDouble() : double.tryParse('$raw');
+          if (seconds != null) {
+            final ms = (seconds * 1000).round();
+            await seekTo(Duration(milliseconds: ms));
+          }
+          break;
+        default:
+          break;
+      }
+    });
+    _pushNowPlayingUpdate(force: true);
+  }
+
+  Future<void> _clearNowPlaying() async {
+    if (!Platform.isIOS) {
+      return;
+    }
+    try {
+      await _nowPlayingChannel.invokeMethod('clearNowPlaying');
+    } catch (_) {}
+  }
+
+  Future<void> _pushNowPlayingUpdate({bool force = false}) async {
+    if (!Platform.isIOS || !_nowPlayingReady) {
+      return;
+    }
+    final track = _playbackState.track;
+    if (track == null) {
+      await _clearNowPlaying();
+      return;
+    }
+    final now = DateTime.now();
+    var positionMs = _playbackState.position.inMilliseconds;
+    final isPlaying = _playbackState.isPlaying;
+    if (_seeking && _lastSeekTrackId != null && _lastSeekTrackId != track.id) {
+      _seeking = false;
+      _lastSeekAt = null;
+      _lastSeekMs = null;
+      _lastSeekTrackId = null;
+    }
+    final nowPlayingIsPlaying =
+        isPlaying && _audioOutputStarted && !_audioEngine.isPaused;
+    final lastSentAt = _lastNowPlayingSentAt;
+    if (!force &&
+        track.id == _lastNowPlayingTrackId &&
+        nowPlayingIsPlaying == _lastNowPlayingIsPlaying &&
+        _nowPlayingEpoch == _lastNowPlayingEpochSent &&
+        lastSentAt != null &&
+        now.difference(lastSentAt) < const Duration(seconds: 1) &&
+        (positionMs - _lastNowPlayingPositionMs).abs() < 900) {
+      return;
+    }
+
+    final durationMs = _playbackState.duration.inMilliseconds;
+    if (durationMs > 0 && positionMs > durationMs) {
+      positionMs = durationMs;
+    }
+
+    final albumId = track.albumId ?? '';
+    final artworkUrl =
+        albumId.isNotEmpty ? connection.buildAlbumCoverUrl(albumId) : null;
+    final token = connection.token ?? '';
+
+    final payload = <String, dynamic>{
+      'epoch': _nowPlayingEpoch,
+      'trackId': track.id,
+      'title': track.title,
+      'artist': track.artist,
+      'album': track.album,
+      'duration': durationMs / 1000.0,
+      'position': positionMs / 1000.0,
+      'isPlaying': nowPlayingIsPlaying,
+      'artworkUrl': artworkUrl ?? '',
+      'token': token,
+    };
+    try {
+      await _nowPlayingChannel.invokeMethod('setNowPlaying', payload);
+      _lastNowPlayingSentAt = now;
+      _lastNowPlayingTrackId = track.id;
+      _lastNowPlayingIsPlaying = nowPlayingIsPlaying;
+      _lastNowPlayingPositionMs = positionMs;
+      _lastNowPlayingEpochSent = _nowPlayingEpoch;
+    } catch (_) {}
   }
 
   Future<void> loadArtists() async {
@@ -402,23 +705,6 @@ class AppController {
   }
 
   Future<void> playLikedTrack(String trackId) async {
-    Track? full;
-    try {
-      full = await connection.fetchTrackById(trackId);
-    } catch (err) {
-      _pushMessage('Track details lookup failed: $err');
-    }
-    var albumId = full?.albumId;
-    if ((albumId == null || albumId.isEmpty) && full != null) {
-      albumId = await _resolveAlbumIdBySearch(
-        artist: full.artist,
-        album: full.album,
-      );
-    }
-    if (albumId != null && albumId.isNotEmpty) {
-      await queueAlbum(albumId, startTrackId: trackId);
-      return;
-    }
     await queueLiked(startTrackId: trackId);
   }
 
@@ -622,6 +908,7 @@ class AppController {
           )
           .toList();
       _setQueue(normalized, startTrackId: startTrackId);
+      _armAutoAdvanceGuard();
       await _playCurrent();
     } on ApiException catch (err) {
       _handleApiError(err, context: 'queue album');
@@ -653,7 +940,9 @@ class AppController {
         return;
       }
       _pushMessage('Queue playlist: $playlistId${startTrackId == null ? '' : ' (start $startTrackId)'}');
-      final tracks = await connection.fetchPlaylistTracks(playlistId);
+      final tracks = (_currentPlaylistId == playlistId && _playlistTracks.isNotEmpty)
+          ? _playlistTracks
+          : await connection.fetchPlaylistTracks(playlistId);
       if (tracks.isEmpty) {
         _pushMessage('No tracks found for playlist');
         return;
@@ -663,6 +952,7 @@ class AppController {
         normalized = await _hydrateQueueStartTrack(normalized, startTrackId);
       }
       _setQueue(normalized, startTrackId: startTrackId);
+      _armAutoAdvanceGuard();
       await _playCurrent();
     } on ApiException catch (err) {
       _handleApiError(err, context: 'queue playlist');
@@ -690,7 +980,7 @@ class AppController {
         return;
       }
       _pushMessage('Queue liked${startTrackId == null ? '' : ' (start $startTrackId)'}');
-      final tracks = await connection.fetchLikedTracks();
+      final tracks = _liked.isNotEmpty ? _liked : await connection.fetchLikedTracks();
       if (tracks.isEmpty) {
         _pushMessage('No liked tracks found');
         return;
@@ -700,6 +990,7 @@ class AppController {
         normalized = await _hydrateQueueStartTrack(normalized, startTrackId);
       }
       _setQueue(normalized, startTrackId: startTrackId);
+      _armAutoAdvanceGuard();
       await _playCurrent();
     } on ApiException catch (err) {
       _handleApiError(err, context: 'queue liked');
@@ -743,6 +1034,7 @@ class AppController {
           normalized = await _hydrateQueueStartTrack(normalized, startTrackId);
         }
         _setQueue(normalized, startTrackId: startTrackId);
+        _armAutoAdvanceGuard();
         if (play) {
           await _playCurrent();
         }
@@ -766,6 +1058,7 @@ class AppController {
           normalized = await _hydrateQueueStartTrack(normalized, startTrackId);
         }
         _setQueue(normalized, startTrackId: startTrackId);
+        _armAutoAdvanceGuard();
         if (play) {
           await _playCurrent();
         }
@@ -798,6 +1091,7 @@ class AppController {
         albumId: albumId,
       );
       _setQueue(_shuffleTracks(tracks), startTrackId: startTrackId);
+      _armAutoAdvanceGuard();
       if (play) {
         await _playCurrent();
       }
@@ -808,8 +1102,11 @@ class AppController {
     }
   }
 
-  Future<void> nextTrack() async {
+  Future<void> nextTrack({bool fromAutoAdvance = false}) async {
     try {
+      if (!fromAutoAdvance) {
+        _armAutoAdvanceGuard();
+      }
       if (_playbackState.shuffleMode != ShuffleMode.off) {
         final ensured = await _ensureShuffleQueue(play: false);
         if (!ensured && _playQueue.isEmpty) {
@@ -829,6 +1126,7 @@ class AppController {
         _pushMessage('No queue to advance');
         return;
       }
+      _syncPlayIndexWithCurrent();
       _playIndex = (_playIndex + 1) % _playQueue.length;
       await _playCurrent();
     } on ApiException catch (err) {
@@ -838,8 +1136,11 @@ class AppController {
     }
   }
 
-  Future<void> prevTrack() async {
+  Future<void> prevTrack({bool fromAutoAdvance = false}) async {
     try {
+      if (!fromAutoAdvance) {
+        _armAutoAdvanceGuard();
+      }
       if (_playbackState.shuffleMode != ShuffleMode.off) {
         final ensured = await _ensureShuffleQueue(play: false);
         if (!ensured && _playQueue.isEmpty) {
@@ -859,6 +1160,7 @@ class AppController {
         _pushMessage('No queue to rewind');
         return;
       }
+      _syncPlayIndexWithCurrent();
       _playIndex = (_playIndex - 1) < 0 ? _playQueue.length - 1 : _playIndex - 1;
       await _playCurrent();
     } on ApiException catch (err) {
@@ -870,8 +1172,10 @@ class AppController {
 
   Future<void> stop() async {
     try {
+      _displayPositionMs = 0;
       _updatePlayback(isPlaying: false, position: Duration.zero, bufferRatio: 0.0);
       _audioEngine.stop();
+      _audioOutputStarted = false;
       _autoAdvanceInFlight = false;
       _closeStreamControl();
     } on ApiException catch (err) {
@@ -905,6 +1209,7 @@ class AppController {
           _startPlayback(_playbackState.track!, startOffset: _playbackState.position);
         }
       }
+      await _pushNowPlayingUpdate(force: true);
     } on ApiException catch (err) {
       _handleApiError(err, context: 'pause');
     } catch (err) {
@@ -993,6 +1298,8 @@ class AppController {
     if (track == null) {
       return;
     }
+    final wasPlaying = _playbackState.isPlaying;
+    _armAutoAdvanceGuard();
     _suppressAutoAdvanceUntil = DateTime.now().add(const Duration(seconds: 2));
     final duration = _playbackState.duration;
     final clamped = duration == Duration.zero
@@ -1002,8 +1309,69 @@ class AppController {
             : position < Duration.zero
                 ? Duration.zero
                 : position;
-    _updatePlayback(position: clamped, isPlaying: true, bufferRatio: 0.0);
+    final now = DateTime.now();
+    _lastSeekAt = now;
+    _lastSeekMs = clamped.inMilliseconds;
+    _lastSeekTrackId = track.id;
+    _seeking = true;
+    _seekTargetMs = clamped.inMilliseconds;
+    _audioOutputStarted = false;
+    _bumpNowPlayingEpoch();
+    _displayPositionMs = clamped.inMilliseconds;
+    _updatePlayback(position: clamped, isPlaying: wasPlaying, bufferRatio: 0.0);
     _startPlayback(track, startOffset: clamped);
+    if (!wasPlaying) {
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        _audioEngine.pause();
+        _updatePlayback(isPlaying: false);
+      });
+    }
+    await _pushNowPlayingUpdate(force: true);
+  }
+
+  void _maybeClearSeekHold(Duration position, Duration bufferedAhead) {
+    if (!_seeking) {
+      return;
+    }
+    final positionMs = position.inMilliseconds;
+    final targetMs = _seekTargetMs;
+    final reached = positionMs >= targetMs - 400;
+    if (reached) {
+      _seeking = false;
+      _lastSeekAt = null;
+      _lastSeekMs = null;
+      _lastSeekTrackId = null;
+      _pushNowPlayingUpdate(force: true);
+    }
+  }
+
+  void _updateDisplayPosition(int actualMs, int bufferedMs) {
+    final durationMs = _playbackState.duration.inMilliseconds;
+    if (_seeking &&
+        (!_audioOutputStarted ||
+            _audioEngine.isPaused ||
+            !_playbackState.isPlaying)) {
+      _displayPositionMs = _seekTargetMs;
+    } else if (!_playbackState.isPlaying ||
+        _audioEngine.isPaused ||
+        !_audioOutputStarted) {
+      // Hold the displayed position while paused/buffering.
+    } else {
+      _displayPositionMs = actualMs;
+    }
+    if (durationMs > 0 && _displayPositionMs > durationMs) {
+      _displayPositionMs = durationMs;
+    }
+    if (_displayPositionMs < 0) {
+      _displayPositionMs = 0;
+    }
+  }
+
+  void _bumpNowPlayingEpoch() {
+    _nowPlayingEpoch = (_nowPlayingEpoch + 1) % 1000000;
+    if (_nowPlayingEpoch < 0) {
+      _nowPlayingEpoch = 0;
+    }
   }
 
   void _updateLike(String trackId, bool liked) {
@@ -1060,6 +1428,24 @@ class AppController {
       _playIndex = 0;
     }
     _autoAdvanceInFlight = false;
+  }
+
+  void _armAutoAdvanceGuard([Duration duration = const Duration(milliseconds: 1200)]) {
+    _ignoreCompleteUntil = DateTime.now().add(duration);
+  }
+
+  void _syncPlayIndexWithCurrent() {
+    if (_playQueue.isEmpty) {
+      return;
+    }
+    final currentId = _playbackState.track?.id;
+    if (currentId == null || currentId.isEmpty) {
+      return;
+    }
+    final idx = _playQueue.indexWhere((track) => track.id == currentId);
+    if (idx >= 0 && idx != _playIndex) {
+      _playIndex = idx;
+    }
   }
 
   void _rememberShuffleContext({
@@ -1222,6 +1608,8 @@ class AppController {
     _pushMessage(
       'Now playing: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"',
     );
+    _bumpNowPlayingEpoch();
+    _displayPositionMs = 0;
     _updatePlayback(
       track: track,
       isPlaying: true,
@@ -1559,6 +1947,7 @@ class AppController {
       streamRttMs: streamRttMs,
     );
     _playbackController.add(_playbackState);
+    _pushNowPlayingUpdate();
   }
 
   void _pushMessage(String message) {
@@ -1631,6 +2020,7 @@ class AppController {
       try {
         _closeStreamControl();
         _updatePlayback(bitrateKbps: null);
+        _audioOutputStarted = false;
         await _fetchStreamInfo(track, settings);
         _pushMessage('Playback track: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"');
         debugPrint(
@@ -1825,6 +2215,11 @@ class AppController {
     if (_autoAdvanceInFlight) {
       return;
     }
+    if (_ignoreCompleteUntil != null &&
+        DateTime.now().isBefore(_ignoreCompleteUntil!)) {
+      _autoAdvanceInFlight = false;
+      return;
+    }
     _autoAdvanceInFlight = true;
     if (_playbackState.repeatMode == RepeatMode.one) {
       final track = _playbackState.track;
@@ -1865,7 +2260,7 @@ class AppController {
       _autoAdvanceInFlight = false;
       return;
     }
-    nextTrack();
+    nextTrack(fromAutoAdvance: true);
   }
 
   void _maybeAutoAdvance(Duration position, Duration bufferedAhead) {

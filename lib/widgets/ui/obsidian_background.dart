@@ -26,37 +26,7 @@ class ObsidianBackground extends StatelessWidget {
           ),
         ),
         Positioned.fill(child: child),
-        const Positioned.fill(child: _Scanlines()),
       ],
     );
   }
-}
-
-class _Scanlines extends StatelessWidget {
-  const _Scanlines();
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: CustomPaint(
-        painter: _ScanlinePainter(),
-      ),
-    );
-  }
-}
-
-class _ScanlinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black.withOpacity(0.08)
-      ..strokeWidth = 1;
-    const spacing = 6.0;
-    for (var y = 0.0; y <= size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

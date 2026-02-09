@@ -223,6 +223,17 @@ int _readU32(Uint8List data, int offset) {
 
 ffi.DynamicLibrary _loadLibrary() {
   if (Platform.isIOS || Platform.isMacOS) {
+    final exec = File(Platform.resolvedExecutable);
+    final frameworkPath = Platform.isMacOS
+        ? '${exec.parent.parent.path}/Frameworks/phonolite_opus.framework/phonolite_opus'
+        : '${exec.parent.path}/Frameworks/phonolite_opus.framework/phonolite_opus';
+    try {
+      if (File(frameworkPath).existsSync()) {
+        return ffi.DynamicLibrary.open(frameworkPath);
+      }
+    } catch (_) {
+      // Fall back to process lookup below.
+    }
     return ffi.DynamicLibrary.process();
   }
   if (Platform.isAndroid) {

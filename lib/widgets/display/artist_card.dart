@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
 import '../../entities/models.dart';
+import '../layouts/obsidian_scale.dart';
 import '../ui/blur.dart';
 import '../ui/chamfered.dart';
 import 'artist_avatar.dart';
@@ -32,8 +33,13 @@ class ArtistCardState extends State<ArtistCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scale = ObsidianScale.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 640;
+    final boost = isMobile ? 1.2 : 1.0;
+    double s(double value) => value * scale;
+    double t(double value) => value * scale * boost;
     final content = ClipPath(
-      clipper: DiagonalChamferClipper(cut: 20),
+      clipper: DiagonalChamferClipper(cut: s(20)),
       child: maybeBlur(
         sigma: cardBackdropBlurSigma,
         child: AnimatedContainer(
@@ -72,7 +78,7 @@ class ArtistCardState extends State<ArtistCard> {
               ),
               Positioned.fill(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(s(16)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -81,14 +87,14 @@ class ArtistCardState extends State<ArtistCard> {
                         hovered: _hovered,
                         child: ArtistAvatar(
                           name: widget.artist.name,
-                          size: 120,
+                          size: t(120),
                           imageUrl: widget.coverUrl,
                           headers: widget.headers,
                           fit: BoxFit.contain,
                           paddingFraction: 0,
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: s(16)),
                       Text(
                         widget.artist.name,
                         maxLines: 1,
@@ -96,19 +102,19 @@ class ArtistCardState extends State<ArtistCard> {
                         textAlign: TextAlign.center,
                         style: GoogleFonts.rajdhani(
                           color: Colors.white,
-                          fontSize: 18,
+                          fontSize: t(18),
                           fontWeight: FontWeight.w700,
-                          letterSpacing: 1.1,
+                          letterSpacing: s(1.1),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: s(12)),
                       Text(
                         '${widget.artist.albumCount} ALBUMS',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.rajdhani(
                           color: Colors.white54,
-                          fontSize: 12,
-                          letterSpacing: 1.4,
+                          fontSize: t(12),
+                          letterSpacing: s(1.4),
                         ),
                       ),
                     ],

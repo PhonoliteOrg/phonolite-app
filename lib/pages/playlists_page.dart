@@ -109,7 +109,7 @@ class _HeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Icon(Icons.queue_music, size: 42),
         const SizedBox(width: 20),
@@ -138,6 +138,7 @@ class _HeaderRow extends StatelessWidget {
           label: 'Create New',
           icon: Icons.add,
           onTap: onCreate,
+          density: TechButtonDensity.compact,
         ),
       ],
     );

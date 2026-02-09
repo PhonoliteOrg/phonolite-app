@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
 import '../../entities/models.dart';
+import '../layouts/obsidian_scale.dart';
 import 'artist_avatar.dart';
 
 class ArtistHero extends StatefulWidget {
@@ -29,9 +30,12 @@ class ArtistHeroState extends State<ArtistHero>
 
   @override
   Widget build(BuildContext context) {
+    final scale = ObsidianScale.of(context);
+    double s(double value) => value * scale;
     final artist = widget.artist;
     final bannerUrl = widget.bannerUrl;
     final headers = widget.headers;
+    final bannerHeight = s(240);
     final summary = artist.summary?.trim().isNotEmpty == true
         ? artist.summary!
         : 'Bio unavailable. Curate this artist profile with metadata or notes.';
@@ -40,16 +44,35 @@ class ArtistHeroState extends State<ArtistHero>
     final showToggle = summary.length > 140;
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 220),
+      constraints: BoxConstraints(minHeight: s(220)),
       child: Stack(
         children: [
-          Positioned.fill(
-            child: Image.network(
-              bannerUrl,
-              headers: headers,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: bannerHeight,
+            child: ShaderMask(
+              shaderCallback: (rect) {
+                return const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white,
+                    Colors.white,
+                    Colors.transparent,
+                  ],
+                  stops: [0.0, 0.7, 1.0],
+                ).createShader(rect);
+              },
+              blendMode: BlendMode.dstIn,
+              child: Image.network(
+                bannerUrl,
+                headers: headers,
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
             ),
           ),
           Positioned.fill(
@@ -71,22 +94,22 @@ class ArtistHeroState extends State<ArtistHero>
             top: 0,
             bottom: 0,
             child: Container(
-              width: 2,
+              width: s(2),
               color: accentGold,
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+            padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 170,
+                  width: s(170),
                   child: Align(
                     alignment: Alignment.topCenter,
                     child: ArtistAvatar(
                       name: artist.name,
-                      size: 150,
+                      size: s(150),
                       imageUrl: widget.coverUrl,
                       headers: widget.headers,
                       fit: BoxFit.contain,
@@ -94,7 +117,7 @@ class ArtistHeroState extends State<ArtistHero>
                     ),
                   ),
                 ),
-                const SizedBox(width: 24),
+                SizedBox(width: s(24)),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,29 +128,29 @@ class ArtistHeroState extends State<ArtistHero>
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.rajdhani(
                           color: Colors.white,
-                          fontSize: 48,
+                          fontSize: s(48),
                           fontWeight: FontWeight.w700,
-                          letterSpacing: 1.6,
+                          letterSpacing: s(1.6),
                           height: 1.05,
                         ),
                       ),
                       if (genresLine != null) ...[
-                        const SizedBox(height: 6),
+                        SizedBox(height: s(6)),
                         Text(
                           genresLine,
                           style: GoogleFonts.rajdhani(
                             color: Colors.white54,
-                            fontSize: 12,
-                            letterSpacing: 1.4,
+                            fontSize: s(12),
+                            letterSpacing: s(1.4),
                           ),
                         ),
                       ],
-                      const SizedBox(height: 12),
+                      SizedBox(height: s(12)),
                       ClipRect(
                         child: ConstrainedBox(
                           constraints: _expanded
                               ? const BoxConstraints()
-                              : const BoxConstraints(maxHeight: 72),
+                              : BoxConstraints(maxHeight: s(72)),
                           child: Text(
                             summary,
                             overflow: _expanded
@@ -137,7 +160,7 @@ class ArtistHeroState extends State<ArtistHero>
                             softWrap: true,
                             style: GoogleFonts.poppins(
                               color: Colors.white70,
-                              fontSize: 13,
+                              fontSize: s(13),
                               height: 1.4,
                             ),
                           ),
@@ -148,10 +171,8 @@ class ArtistHeroState extends State<ArtistHero>
                           onPressed: () => setState(() => _expanded = !_expanded),
                           style: TextButton.styleFrom(
                             foregroundColor: accentGold,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 0,
-                              vertical: 4,
-                            ),
+                            padding:
+                                EdgeInsets.symmetric(horizontal: 0, vertical: s(4)),
                           ),
                           child: Text(_expanded ? 'Collapse' : 'Read more'),
                         ),

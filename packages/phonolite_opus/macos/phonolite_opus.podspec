@@ -9,38 +9,38 @@ Pod::Spec.new do |s|
   s.source = { :path => '.' }
   s.platform = :osx, '10.13'
 
-  opus_root = File.expand_path('../third_party/opus', __dir__)
+  opus_root = 'third_party/opus'
 
   s.source_files = [
-    File.join(__dir__, '..', 'src', '*.{c,h}'),
-    File.join(opus_root, 'celt', '**', '*.{c,h}'),
-    File.join(opus_root, 'silk', '**', '*.{c,h}'),
-    File.join(opus_root, 'src', '**', '*.{c,h}'),
-    File.join(opus_root, 'include', '**', '*.h')
+    'src/*.{c,h}',
+    "#{opus_root}/celt/**/*.{c,h}",
+    "#{opus_root}/silk/**/*.{c,h}",
+    "#{opus_root}/src/**/*.{c,h}",
+    "#{opus_root}/include/**/*.h"
   ]
 
   s.exclude_files = [
-    File.join(opus_root, 'celt', 'arm', '**', '*'),
-    File.join(opus_root, 'dnn', '**', '*'),
-    File.join(opus_root, 'doc', '**', '*'),
-    File.join(opus_root, 'docs', '**', '*'),
-    File.join(opus_root, 'test', '**', '*'),
-    File.join(opus_root, 'tests', '**', '*'),
-    File.join(opus_root, 'examples', '**', '*'),
-    File.join(opus_root, 'apps', '**', '*'),
-    File.join(opus_root, 'tools', '**', '*'),
-    File.join(opus_root, 'dump_modes', '**', '*'),
-    File.join(opus_root, 'cmake', '**', '*'),
-    File.join(opus_root, 'training', '**', '*'),
-    File.join(opus_root, 'x86', '**', '*')
+    "#{opus_root}/celt/arm/**/*",
+    "#{opus_root}/dnn/**/*",
+    "#{opus_root}/doc/**/*",
+    "#{opus_root}/docs/**/*",
+    "#{opus_root}/test/**/*",
+    "#{opus_root}/tests/**/*",
+    "#{opus_root}/examples/**/*",
+    "#{opus_root}/apps/**/*",
+    "#{opus_root}/tools/**/*",
+    "#{opus_root}/dump_modes/**/*",
+    "#{opus_root}/cmake/**/*",
+    "#{opus_root}/training/**/*",
+    "#{opus_root}/x86/**/*"
   ]
 
   header_paths = [
-    File.join(opus_root, 'include'),
-    File.join(opus_root, 'celt'),
-    File.join(opus_root, 'silk'),
-    File.join(opus_root, 'silk', 'float'),
-    File.join(__dir__, '..', 'src')
+    '$(PODS_TARGET_SRCROOT)/third_party/opus/include',
+    '$(PODS_TARGET_SRCROOT)/third_party/opus/celt',
+    '$(PODS_TARGET_SRCROOT)/third_party/opus/silk',
+    '$(PODS_TARGET_SRCROOT)/third_party/opus/silk/float',
+    '$(PODS_TARGET_SRCROOT)/src'
   ]
 
   s.pod_target_xcconfig = {
