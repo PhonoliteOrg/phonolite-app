@@ -7,6 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   phonolite_opus
+  phonolite_quic
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

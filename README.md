@@ -17,6 +17,12 @@ cd phonolite_app
 flutter pub get
 ```
 
+## Native FFI Libraries
+1. `phonolite_quic` builds from Rust during platform builds.
+2. Android builds require `cargo-ndk` and the Android NDK installed.
+3. iOS/macOS builds require Xcode command line tools.
+4. Windows/Linux builds require the Rust toolchain in `PATH`.
+
 ## Build / Run
 
 Android (macOS/Windows/Linux):

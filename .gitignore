@@ -36,6 +36,12 @@ migrate_working_dir/
 /macos/Runner/opus_build/
 /ios/Runner/libphonolite_opus.a
 /ios/Runner/opus_build/
+/packages/phonolite_quic/ios/libphonolite_quic.a
+/packages/phonolite_quic/ios/target/
+/packages/phonolite_quic/macos/libphonolite_quic.a
+/packages/phonolite_quic/macos/target/
+/packages/phonolite_quic/android/build/
+/packages/phonolite_quic/android/src/main/jniLibs/
 
 # Symbolication related
 app.*.symbols

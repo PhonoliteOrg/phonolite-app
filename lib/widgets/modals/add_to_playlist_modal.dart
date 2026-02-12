@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../entities/models.dart';
 import '../inputs/obsidian_text_field.dart';
+import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 
 class AddToPlaylistModal extends StatefulWidget {
@@ -105,7 +106,7 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
   }
 }
 
-class _ModalListRow extends StatefulWidget {
+class _ModalListRow extends StatelessWidget {
   const _ModalListRow({
     required this.title,
     required this.subtitle,
@@ -123,29 +124,10 @@ class _ModalListRow extends StatefulWidget {
   final bool isSelected;
 
   @override
-  State<_ModalListRow> createState() => _ModalListRowState();
-}
-
-class _ModalListRowState extends State<_ModalListRow> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final highlight = widget.isSelected || _hovered;
-    final borderColor = highlight ? ObsidianPalette.gold : Colors.transparent;
-    final background = _hovered
-        ? LinearGradient(
-            colors: [
-              Colors.white.withOpacity(0.06),
-              Colors.transparent,
-            ],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          )
-        : null;
     final titleStyle = theme.textTheme.titleMedium?.copyWith(
-      color: widget.enabled
+      color: enabled
           ? ObsidianPalette.textPrimary
           : ObsidianPalette.textMuted,
       letterSpacing: 0.4,
@@ -154,47 +136,36 @@ class _ModalListRowState extends State<_ModalListRow> {
       color: ObsidianPalette.textMuted,
     );
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.enabled ? widget.onTap : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: borderColor, width: 2)),
-              gradient: background,
-            ),
-            child: Row(
+    return ObsidianHoverRow(
+      onTap: enabled ? onTap : null,
+      enabled: enabled,
+      isActive: isSelected,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: titleStyle,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: subtitleStyle,
-                      ),
-                    ],
-                  ),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle,
                 ),
-                const SizedBox(width: 12),
-                widget.trailing,
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: subtitleStyle,
+                ),
               ],
             ),
           ),
-        ),
+          const SizedBox(width: 12),
+          trailing,
+        ],
       ),
     );
   }

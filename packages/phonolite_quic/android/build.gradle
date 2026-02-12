@@ -1,0 +1,55 @@
+group 'com.phonolite.phonolite_quic'
+version '0.1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.phonolite.phonolite_quic'
+    compileSdkVersion 34
+
+    defaultConfig {
+        minSdkVersion 21
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+        }
+    }
+}
+
+def pluginRoot = project.projectDir.parentFile
+def rustRoot = new File(pluginRoot, 'native/quic_client')
+def cargoTargetDir = new File(pluginRoot, 'android/build/cargo')
+def jniLibsDir = new File(pluginRoot, 'android/src/main/jniLibs')
+
+tasks.register('cargoBuild', Exec) {
+    workingDir rustRoot
+    environment 'CARGO_TARGET_DIR', cargoTargetDir
+    doFirst {
+        jniLibsDir.mkdirs()
+    }
+    commandLine 'cargo', 'ndk',
+            '-t', 'armeabi-v7a',
+            '-t', 'arm64-v8a',
+            '-t', 'x86_64',
+            '-o', jniLibsDir,
+            'build', '--release'
+}
+
+preBuild.dependsOn tasks.named('cargoBuild')
+
+repositories {
+    google()
+    mavenCentral()
+}

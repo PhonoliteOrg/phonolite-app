@@ -96,9 +96,9 @@ class AdaptiveScaffold extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       for (var i = 0; i < destinations.length; i++) ...[
-                        _SidebarTabButton(
+                        ObsidianNavIcon(
                           icon: destinations[i].selectedIcon ?? destinations[i].icon,
-                          isActive: i == selectedIndex,
+                          isSelected: i == selectedIndex,
                           onTap: () => onDestinationSelected(i),
                         ),
                         SizedBox(height: s(12)),
@@ -173,98 +173,6 @@ class AdaptiveScaffold extends StatelessWidget {
   }
 }
 
-class _SidebarTabButton extends StatefulWidget {
-  const _SidebarTabButton({
-    required this.icon,
-    required this.isActive,
-    required this.onTap,
-    this.size,
-    this.iconSize,
-  });
-
-  final Widget icon;
-  final bool isActive;
-  final VoidCallback onTap;
-  final double? size;
-  final double? iconSize;
-
-  @override
-  State<_SidebarTabButton> createState() => _SidebarTabButtonState();
-}
-
-class _SidebarTabButtonState extends State<_SidebarTabButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = ObsidianScale.of(context);
-    double s(double value) => value * scale;
-    final isActive = widget.isActive;
-    final fill = isActive
-        ? ObsidianPalette.gold.withOpacity(0.1)
-        : Colors.white.withOpacity(0.03);
-    final border = isActive
-        ? ObsidianPalette.gold
-        : _hovered
-            ? Colors.grey.shade300.withOpacity(0.8)
-            : Colors.white.withOpacity(0.05);
-    final iconColor = isActive
-        ? ObsidianPalette.gold
-        : _hovered
-            ? Colors.grey.shade300.withOpacity(0.9)
-            : ObsidianPalette.textMuted;
-    final boxSize = s(widget.size ?? 52);
-    final iconSize = widget.iconSize == null ? null : s(widget.iconSize!);
-    final shadow = [
-      BoxShadow(
-        color: isActive
-            ? ObsidianPalette.goldSoft
-            : _hovered
-                ? Colors.grey.shade300.withOpacity(0.25)
-                : Colors.transparent,
-        blurRadius: isActive || _hovered ? 12 : 0,
-      ),
-    ];
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: ClipPath(
-        clipper: CutTopLeftBottomRightClipper(cut: s(10)),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: fill,
-            border: Border.all(color: border),
-            boxShadow: shadow,
-          ),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: SizedBox(
-              width: boxSize,
-              height: boxSize,
-              child: Center(
-                child: TweenAnimationBuilder<Color?>(
-                  duration: const Duration(milliseconds: 200),
-                  tween: ColorTween(end: iconColor),
-                  curve: Curves.easeOut,
-                  builder: (context, color, child) => IconTheme(
-                    data: IconThemeData(color: color, size: iconSize),
-                    child: child!,
-                  ),
-                  child: widget.icon,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BottomNavBar extends StatelessWidget {
   const _BottomNavBar({
     required this.destinations,
@@ -280,8 +188,6 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scale = ObsidianScale.of(context);
-    double s(double value) => value * scale;
     final bottomPad = MediaQuery.of(context).padding.bottom;
     return Container(
       height: _height + bottomPad,
@@ -298,9 +204,9 @@ class _BottomNavBar extends StatelessWidget {
             for (var i = 0; i < destinations.length; i++)
               Expanded(
                 child: Center(
-                  child: _SidebarTabButton(
+                  child: ObsidianNavIcon(
                     icon: destinations[i].selectedIcon ?? destinations[i].icon,
-                    isActive: i == selectedIndex,
+                    isSelected: i == selectedIndex,
                     onTap: () => onDestinationSelected(i),
                     size: 56,
                     iconSize: 36,

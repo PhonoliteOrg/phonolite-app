@@ -39,3 +39,47 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+
+class EmptyStateText extends StatelessWidget {
+  const EmptyStateText({
+    super.key,
+    required this.title,
+    required this.message,
+    this.padding = const EdgeInsets.symmetric(vertical: 24),
+  });
+
+  final String title;
+  final String message;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: padding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: ObsidianPalette.textMuted,
+                letterSpacing: 0.6,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: ObsidianPalette.textMuted,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

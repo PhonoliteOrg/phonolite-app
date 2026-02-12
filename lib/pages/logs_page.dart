@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
+import '../entities/app_log.dart';
 import '../widgets/display/message_log.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/navigation/command_link_button.dart';
@@ -11,7 +12,7 @@ class LogsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    return StreamBuilder<List<String>>(
+    return StreamBuilder<List<LogEntry>>(
       stream: controller.messageStream,
       initialData: controller.messages,
       builder: (context, snapshot) {

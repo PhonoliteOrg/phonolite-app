@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'hoverable.dart';
 import 'obsidian_theme.dart';
 
-class ObsidianHoverRow extends StatefulWidget {
+class ObsidianHoverRow extends StatelessWidget {
   const ObsidianHoverRow({
     super.key,
     required this.child,
@@ -12,6 +13,11 @@ class ObsidianHoverRow extends StatefulWidget {
     this.borderColor = ObsidianPalette.gold,
     this.isActive = false,
     this.enabled = true,
+    this.borderWidth = 2,
+    this.duration = const Duration(milliseconds: 180),
+    this.curve = Curves.easeOut,
+    this.hoverGradient,
+    this.hoverColor,
   });
 
   final Widget child;
@@ -21,58 +27,57 @@ class ObsidianHoverRow extends StatefulWidget {
   final Color borderColor;
   final bool isActive;
   final bool enabled;
-
-  @override
-  State<ObsidianHoverRow> createState() => _ObsidianHoverRowState();
-}
-
-class _ObsidianHoverRowState extends State<ObsidianHoverRow> {
-  bool _hovered = false;
-
-  void _setHovered(bool value) {
-    if (_hovered == value) {
-      return;
-    }
-    setState(() => _hovered = value);
-  }
+  final double borderWidth;
+  final Duration duration;
+  final Curve curve;
+  final Gradient? hoverGradient;
+  final Color? hoverColor;
 
   @override
   Widget build(BuildContext context) {
-    final highlight = widget.isActive || _hovered;
-    final borderColor = highlight ? widget.borderColor : Colors.transparent;
-    final background = _hovered
-        ? LinearGradient(
-            colors: [
-              Colors.white.withOpacity(0.06),
-              Colors.transparent,
-            ],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          )
-        : null;
-    final enabled = widget.enabled && widget.onTap != null;
+    final actionable = enabled && onTap != null;
     final cursor =
-        enabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
-
-    return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
+        actionable ? SystemMouseCursors.click : SystemMouseCursors.basic;
+    return ObsidianHoverBuilder(
       cursor: cursor,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.enabled ? widget.onTap : null,
-          onLongPress: widget.enabled ? widget.onLongPress : null,
-          child: Container(
-            padding: widget.padding,
-            decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: borderColor, width: 2)),
-              gradient: background,
+      builder: (context, hovered) {
+        final highlight = isActive || hovered;
+        final activeBorder = highlight ? borderColor : Colors.transparent;
+        final resolvedGradient = hovered
+            ? hoverGradient ??
+                LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.06),
+                    Colors.transparent,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+            : null;
+        final resolvedColor =
+            hovered && hoverGradient == null ? hoverColor : null;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            onLongPress: enabled ? onLongPress : null,
+            child: AnimatedContainer(
+              duration: duration,
+              curve: curve,
+              padding: padding,
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: activeBorder, width: borderWidth),
+                ),
+                gradient: resolvedGradient,
+                color: resolvedColor,
+              ),
+              child: child,
             ),
-            child: widget.child,
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
