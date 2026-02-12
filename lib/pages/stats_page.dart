@@ -31,7 +31,7 @@ class _StatsPageState extends State<StatsPage> {
       builder: (context, snapshot) {
         final stats = snapshot.data;
         if (stats == null) {
-          return const EmptyState(
+          return const EmptyStateText(
             title: 'No stats',
             message: 'Listening stats will appear once enabled on the server.',
           );

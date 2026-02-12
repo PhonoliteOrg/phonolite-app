@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app_log.dart';
+
 @immutable
 class AuthCredentials {
   const AuthCredentials({
@@ -60,7 +62,7 @@ class AuthStorage {
         Map<String, dynamic>.from(decoded as Map),
       );
     } catch (err) {
-      debugPrint('Failed to read stored auth: $err');
+      AppLogger.warning('Failed to read stored auth: $err');
       return null;
     }
   }
@@ -73,7 +75,7 @@ class AuthStorage {
       final file = await _resolveFile(createDir: true);
       await file.writeAsString(jsonEncode(credentials.toJson()));
     } catch (err) {
-      debugPrint('Failed to persist auth: $err');
+      AppLogger.warning('Failed to persist auth: $err');
     }
   }
 
@@ -87,7 +89,7 @@ class AuthStorage {
         await file.delete();
       }
     } catch (err) {
-      debugPrint('Failed to clear auth: $err');
+      AppLogger.warning('Failed to clear auth: $err');
     }
   }
 

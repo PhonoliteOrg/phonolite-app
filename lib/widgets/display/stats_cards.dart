@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
 import '../ui/chamfer_clipper.dart';
+import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 
@@ -678,7 +679,7 @@ class _TopTracksSection extends StatelessWidget {
   }
 }
 
-class _TrackRow extends StatefulWidget {
+class _TrackRow extends StatelessWidget {
   const _TrackRow({
     required this.rank,
     required this.title,
@@ -690,66 +691,45 @@ class _TrackRow extends StatefulWidget {
   final int playCount;
 
   @override
-  State<_TrackRow> createState() => _TrackRowState();
-}
-
-class _TrackRowState extends State<_TrackRow> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final highlight = _hovered;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        padding: EdgeInsets.symmetric(vertical: s(10), horizontal: s(12)),
-        decoration: BoxDecoration(
-          color: highlight ? Colors.white.withOpacity(0.05) : Colors.transparent,
-          border: Border(
-            left: BorderSide(
-              color: highlight ? ObsidianPalette.gold : Colors.transparent,
-              width: s(2),
-            ),
-          ),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: s(46),
-              child: Text(
-                widget.rank.toString().padLeft(2, '0'),
-                style: GoogleFonts.rajdhani(
-                  fontSize: s(22),
-                  fontWeight: FontWeight.w700,
-                  color: ObsidianPalette.gold,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                widget.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      letterSpacing: s(0.6),
-                    ),
-              ),
-            ),
-            Text(
-              '${widget.playCount} PLAYS',
+    return ObsidianHoverRow(
+      borderWidth: s(2),
+      padding: EdgeInsets.symmetric(vertical: s(10), horizontal: s(12)),
+      hoverColor: Colors.white.withOpacity(0.05),
+      child: Row(
+        children: [
+          SizedBox(
+            width: s(46),
+            child: Text(
+              rank.toString().padLeft(2, '0'),
               style: GoogleFonts.rajdhani(
-                fontSize: s(12),
+                fontSize: s(22),
                 fontWeight: FontWeight.w700,
                 color: ObsidianPalette.gold,
-                letterSpacing: s(1.2),
               ),
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    letterSpacing: s(0.6),
+                  ),
+            ),
+          ),
+          Text(
+            '${playCount} PLAYS',
+            style: GoogleFonts.rajdhani(
+              fontSize: s(12),
+              fontWeight: FontWeight.w700,
+              color: ObsidianPalette.gold,
+              letterSpacing: s(1.2),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -769,39 +749,37 @@ class _ModuleShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    return ClipPath(
-      clipper: ChamferClipper(cutSize: s(12)),
-      child: Container(
-        padding: EdgeInsets.fromLTRB(s(18), s(16), s(18), s(18)),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.02),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.rajdhani(
-                      fontSize: s(14),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: s(1.6),
-                    ),
+    return ObsidianChamferPanel(
+      cut: s(12),
+      padding: EdgeInsets.fromLTRB(s(18), s(16), s(18), s(18)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.02),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.rajdhani(
+                    fontSize: s(14),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: s(1.6),
                   ),
                 ),
-                SizedBox(width: s(8)),
-                Icon(icon, size: s(18), color: ObsidianPalette.gold),
-              ],
-            ),
-            SizedBox(height: s(12)),
-            child,
-          ],
-        ),
+              ),
+              SizedBox(width: s(8)),
+              Icon(icon, size: s(18), color: ObsidianPalette.gold),
+            ],
+          ),
+          SizedBox(height: s(12)),
+          child,
+        ],
       ),
     );
   }

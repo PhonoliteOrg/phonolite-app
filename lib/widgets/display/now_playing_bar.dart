@@ -149,7 +149,7 @@ List<Widget> _buildTechTags(PlaybackState state) {
   }
   final rtt = _rttLabel(state);
   if (rtt != null) {
-    tags.add(_TechTag(label: 'RTT $rtt'));
+    tags.add(_TechTag(label: 'PING $rtt'));
   }
   return tags;
 }
@@ -163,8 +163,8 @@ Widget _techTagRow(
     return const SizedBox.shrink();
   }
   final s = (double value) => _scaled(context, value);
-  return SizedBox(
-    height: s(22),
+  return ConstrainedBox(
+    constraints: BoxConstraints(minHeight: s(22)),
     child: ClipRect(
       child: Align(
         alignment: center ? Alignment.center : Alignment.centerLeft,
@@ -400,7 +400,7 @@ class NowPlayingBar extends StatelessWidget {
     }
     final rtt = _rttLabel(state);
     if (rtt != null) {
-      techTags.add(_TechTag(label: 'RTT $rtt'));
+      techTags.add(_TechTag(label: 'PING $rtt'));
     }
 
     final sliderTheme = SliderTheme.of(context).copyWith(
@@ -960,25 +960,7 @@ class _IntelZone extends StatelessWidget {
                 gap: s(24),
               ),
               SizedBox(height: s(4)),
-              SizedBox(
-                height: s(16),
-                child: ClipRect(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (var i = 0; i < tags.length; i++) ...[
-                            if (i > 0) SizedBox(width: s(6)),
-                            tags[i],
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              _techTagRow(context, tags),
             ],
           ),
         ),

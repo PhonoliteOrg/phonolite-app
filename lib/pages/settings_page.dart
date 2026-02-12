@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../entities/app_log.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/obsidian_widgets.dart';
@@ -11,7 +12,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    return StreamBuilder<List<String>>(
+    return StreamBuilder<List<LogEntry>>(
       stream: controller.messageStream,
       initialData: controller.messages,
       builder: (context, snapshot) {

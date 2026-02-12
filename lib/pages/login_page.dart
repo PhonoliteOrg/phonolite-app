@@ -15,7 +15,8 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
-  late final TextEditingController _serverAddressController;
+  late final TextEditingController _serverHostController;
+  late final TextEditingController _serverPortController;
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
   bool _isSubmitting = false;
@@ -36,8 +37,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _serverAddressController = TextEditingController();
-    _serverAddressController.addListener(_handleServerAddressChanged);
+    _serverHostController = TextEditingController();
+    _serverHostController.addListener(_handleServerHostChanged);
+    _serverPortController = TextEditingController();
     _usernameController = TextEditingController();
     _passwordController = TextEditingController();
     _loadSavedCredentials();
@@ -46,8 +48,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _serverAddressController.removeListener(_handleServerAddressChanged);
-    _serverAddressController.dispose();
+    _serverHostController.removeListener(_handleServerHostChanged);
+    _serverHostController.dispose();
+    _serverPortController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -137,6 +140,11 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   }
 
   Future<void> _submit() async {
+    final portValue = _parsePortInput();
+    if (_serverPortController.text.trim().isNotEmpty && portValue == null) {
+      _setStateIfMounted(() => _error = 'Port must be a number between 1 and 65535');
+      return;
+    }
     final baseUrl = _resolveBaseUrl();
     if (baseUrl.isEmpty) {
       _setStateIfMounted(() => _error = 'Server address is required');
@@ -200,19 +208,27 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
               enabled: !_connected,
               onChanged: (value) => setState(() => _useHttps = value),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ObsidianTextField(
-                controller: _serverAddressController,
-                label: null,
-                hintText: 'server.example.com:3000',
-                keyboardType: TextInputType.url,
-                textInputAction: _connected ? TextInputAction.next : TextInputAction.done,
-                enabled: !_connected,
-                onSubmitted: null,
-              ),
-            ),
           ],
+        ),
+        const SizedBox(height: 12),
+        ObsidianTextField(
+          controller: _serverHostController,
+          label: null,
+          hintText: 'server.example.com',
+          keyboardType: TextInputType.url,
+          textInputAction: _connected ? TextInputAction.next : TextInputAction.next,
+          enabled: !_connected,
+          onSubmitted: null,
+        ),
+        const SizedBox(height: 12),
+        ObsidianTextField(
+          controller: _serverPortController,
+          label: null,
+          hintText: '3000',
+          keyboardType: TextInputType.number,
+          textInputAction: _connected ? TextInputAction.next : TextInputAction.done,
+          enabled: !_connected,
+          onSubmitted: _connected ? null : (_) => _submit(),
         ),
       ],
     );
@@ -333,10 +349,13 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     if (!mounted || saved == null) {
       return;
     }
-    final hasServer = _serverAddressController.text.trim().isNotEmpty;
+    final hasServer = _serverHostController.text.trim().isNotEmpty;
     final hasUsername = _usernameController.text.trim().isNotEmpty;
     if (!hasServer && saved.baseUrl.trim().isNotEmpty) {
-      _initializeServerAddress(saved.baseUrl);
+      final parsed = Uri.tryParse(saved.baseUrl);
+      if (parsed != null && parsed.scheme.isNotEmpty) {
+        _useHttps = parsed.scheme == 'https';
+      }
     }
     if (!hasUsername && saved.username.trim().isNotEmpty) {
       _usernameController.text = saved.username;
@@ -350,24 +369,28 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     final parsed = Uri.tryParse(baseUrl);
     if (parsed != null && parsed.host.isNotEmpty) {
       _useHttps = parsed.scheme == 'https';
-      final port = parsed.hasPort ? ':${parsed.port}' : '';
+      final port = parsed.hasPort ? parsed.port.toString() : '';
       final path = _stripApiSuffix(parsed.path);
       final query = parsed.hasQuery ? '?${parsed.query}' : '';
       final pathValue = (path.isEmpty || path == '/') ? '' : path;
-      _serverAddressController.text = '${parsed.host}$port$pathValue$query';
-    } else {
-      _useHttps = baseUrl.trimLeft().startsWith('https://');
-      _serverAddressController.text = _stripApiSuffix(
-        baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
-      );
+      _serverHostController.text = '${parsed.host}$pathValue$query';
+      _serverPortController.text = port;
+      return;
     }
+
+    _useHttps = baseUrl.trimLeft().startsWith('https://');
+    final withoutScheme = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+    final cleaned = _stripApiSuffix(withoutScheme);
+    final parts = _splitHostAndPort(cleaned);
+    _serverHostController.text = parts.host;
+    _serverPortController.text = parts.port ?? '';
   }
 
-  void _handleServerAddressChanged() {
+  void _handleServerHostChanged() {
     if (_normalizingAddress) {
       return;
     }
-    final raw = _serverAddressController.text;
+    final raw = _serverHostController.text;
     var value = raw.trim();
     if (value.isEmpty) {
       return;
@@ -386,16 +409,22 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     }
     value = value.replaceFirst(RegExp(r'^/+'), '');
     value = _stripApiSuffix(value);
-    if (value != raw) {
+    final parts = _splitHostAndPort(value);
+    if (parts.port != null && parts.port != _serverPortController.text) {
+      _serverPortController.text = parts.port!;
+    }
+    final normalized = parts.host;
+    if (normalized != raw) {
       _normalizingAddress = true;
-      _serverAddressController.text = value;
-      _serverAddressController.selection = TextSelection.collapsed(offset: value.length);
+      _serverHostController.text = normalized;
+      _serverHostController.selection =
+          TextSelection.collapsed(offset: normalized.length);
       _normalizingAddress = false;
     }
   }
 
   String _resolveBaseUrl() {
-    final raw = _serverAddressController.text.trim();
+    final raw = _serverHostController.text.trim();
     if (raw.isEmpty) {
       return '';
     }
@@ -406,7 +435,20 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
       return '';
     }
     final scheme = _useHttps ? 'https' : 'http';
-    return '$scheme://$cleaned';
+    final parsed = Uri.tryParse('$scheme://$cleaned');
+    if (parsed == null || parsed.host.isEmpty) {
+      return '';
+    }
+    final port = _parsePortInput() ?? (parsed.hasPort ? parsed.port : null);
+    final uri = Uri(
+      scheme: scheme,
+      userInfo: parsed.userInfo,
+      host: parsed.host,
+      port: port,
+      path: parsed.path,
+      query: parsed.query.isEmpty ? null : parsed.query,
+    );
+    return uri.toString();
   }
 
   String _stripApiSuffix(String input) {
@@ -420,6 +462,42 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     return value;
   }
 
+  int? _parsePortInput() {
+    final raw = _serverPortController.text.trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    final value = int.tryParse(raw);
+    if (value == null || value < 1 || value > 65535) {
+      return null;
+    }
+    return value;
+  }
+
+  _HostPortParts _splitHostAndPort(String input) {
+    final sanitized = input.trim().replaceAll(RegExp(r'\s+'), '');
+    if (sanitized.isEmpty) {
+      return const _HostPortParts('', null);
+    }
+    final parsed = Uri.tryParse('http://$sanitized');
+    if (parsed == null || parsed.host.isEmpty) {
+      return _HostPortParts(sanitized, null);
+    }
+    final path = _stripApiSuffix(parsed.path);
+    final query = parsed.hasQuery ? '?${parsed.query}' : '';
+    final pathValue = (path.isEmpty || path == '/') ? '' : path;
+    final hostValue = '${parsed.host}$pathValue$query';
+    final portValue = parsed.hasPort ? parsed.port.toString() : null;
+    return _HostPortParts(hostValue, portValue);
+  }
+
+}
+
+class _HostPortParts {
+  const _HostPortParts(this.host, this.port);
+
+  final String host;
+  final String? port;
 }
 
 class _SchemeToggle extends StatelessWidget {

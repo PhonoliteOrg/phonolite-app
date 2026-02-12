@@ -41,7 +41,7 @@ class _LikedPageState extends State<LikedPage> {
               const SizedBox(height: 16),
               Expanded(
                 child: tracks.isEmpty
-                    ? const EmptyState(
+                    ? const EmptyStateText(
                         title: 'No liked tracks',
                         message: 'Tap the heart icon on any track to like it.',
                       )

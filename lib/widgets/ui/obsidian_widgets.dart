@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../layouts/obsidian_scale.dart';
 import 'blur.dart';
+import 'chamfer_clipper.dart';
+import 'hoverable.dart';
 import 'obsidian_shapes.dart';
 import 'obsidian_theme.dart';
 
@@ -447,52 +450,120 @@ class ObsidianNavIcon extends StatelessWidget {
     super.key,
     required this.icon,
     required this.isSelected,
+    this.onTap,
+    this.size = 52,
+    this.iconSize,
+    this.enableHover,
   });
 
   final Widget icon;
   final bool isSelected;
+  final VoidCallback? onTap;
+  final double size;
+  final double? iconSize;
+  final bool? enableHover;
 
   @override
   Widget build(BuildContext context) {
-    final fill = isSelected
-        ? ObsidianPalette.gold.withOpacity(0.1)
-        : Colors.white.withOpacity(0.03);
-    final border =
-        isSelected ? ObsidianPalette.gold : Colors.white.withOpacity(0.05);
-    final iconColor =
-        isSelected ? ObsidianPalette.gold : ObsidianPalette.textMuted;
-    final shadow = isSelected
-        ? [
-            BoxShadow(
-              color: ObsidianPalette.goldSoft,
-              blurRadius: 15,
-            ),
-          ]
-        : const <BoxShadow>[];
+    final scale = ObsidianScale.of(context);
+    double s(double value) => value * scale;
+    final boxSize = s(size);
+    final resolvedIconSize = iconSize == null ? null : s(iconSize!);
+    final cursor = onTap == null
+        ? SystemMouseCursors.basic
+        : SystemMouseCursors.click;
 
-    return ClipPath(
-      clipper: const CutTopLeftBottomRightClipper(cut: 10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: fill,
-          border: Border.all(color: border),
-          boxShadow: shadow,
-        ),
-        child: ClipPath(
-          clipper: const CutTopLeftBottomRightClipper(cut: 10),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: null,
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: IconTheme(
-                  data: IconThemeData(color: iconColor),
-                  child: icon,
+    return ObsidianHoverBuilder(
+      cursor: cursor,
+      enableHover: enableHover,
+      builder: (context, hovered) {
+        final fill = isSelected
+            ? ObsidianPalette.gold.withOpacity(0.1)
+            : Colors.white.withOpacity(0.03);
+        final border = isSelected
+            ? ObsidianPalette.gold
+            : hovered
+                ? Colors.grey.shade300.withOpacity(0.8)
+                : Colors.white.withOpacity(0.05);
+        final iconColor = isSelected
+            ? ObsidianPalette.gold
+            : hovered
+                ? Colors.grey.shade300.withOpacity(0.9)
+                : ObsidianPalette.textMuted;
+        final shadow = [
+          BoxShadow(
+            color: isSelected
+                ? ObsidianPalette.goldSoft
+                : hovered
+                    ? Colors.grey.shade300.withOpacity(0.25)
+                    : Colors.transparent,
+            blurRadius: isSelected || hovered ? 12 : 0,
+          ),
+        ];
+
+        return ClipPath(
+          clipper: CutTopLeftBottomRightClipper(cut: s(10)),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              color: fill,
+              border: Border.all(color: border),
+              boxShadow: shadow,
+            ),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: SizedBox(
+                width: boxSize,
+                height: boxSize,
+                child: Center(
+                  child: TweenAnimationBuilder<Color?>(
+                    duration: const Duration(milliseconds: 200),
+                    tween: ColorTween(end: iconColor),
+                    curve: Curves.easeOut,
+                    builder: (context, color, child) => IconTheme(
+                      data: IconThemeData(
+                        color: color,
+                        size: resolvedIconSize,
+                      ),
+                      child: child!,
+                    ),
+                    child: icon,
+                  ),
                 ),
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class ObsidianChamferPanel extends StatelessWidget {
+  const ObsidianChamferPanel({
+    super.key,
+    required this.child,
+    required this.decoration,
+    this.padding = EdgeInsets.zero,
+    this.cut = 12,
+  });
+
+  final Widget child;
+  final BoxDecoration decoration;
+  final EdgeInsets padding;
+  final double cut;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipPath(
+      clipper: ChamferClipper(cutSize: cut),
+      child: DecoratedBox(
+        decoration: decoration,
+        child: Padding(
+          padding: padding,
+          child: child,
         ),
       ),
     );

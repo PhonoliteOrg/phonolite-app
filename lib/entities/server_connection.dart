@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -272,34 +273,9 @@ class ServerConnection {
     await _postVoid('/player/settings', {'repeat_mode': repeatMode});
   }
 
-  Future<StreamInfoResponse> fetchStreamInfo({
-    required String trackId,
-    required String mode,
-    required String quality,
-    required int frameMs,
-  }) async {
-    final path =
-        '/stream/$trackId/info?format=raw&mode=$mode&quality=$quality&frame_ms=$frameMs';
-    final response = await _get(path);
-    return StreamInfoResponse.fromJson(response);
-  }
-
-  String buildStreamUrl({
-    required String streamPath,
-    required String mode,
-    required String quality,
-    required int frameMs,
-  }) {
-    return '$_baseUrl/stream/$streamPath/opus/raw?mode=$mode&quality=$quality&frame_ms=$frameMs';
-  }
-
-  String buildStreamControlUrl(String sessionId) {
-    final uri = Uri.parse(_baseUrl);
-    final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
-    final path = uri.path.endsWith('/api/v1')
-        ? '${uri.path}/stream/control/$sessionId'
-        : '${uri.path}/api/v1/stream/control/$sessionId';
-    return uri.replace(scheme: scheme, path: path, query: '').toString();
+  Future<ServerPortsResponse> fetchServerPorts() async {
+    final response = await _get('/server/ports');
+    return ServerPortsResponse.fromJson(response);
   }
 
   String buildAlbumCoverUrl(String albumId) {
@@ -363,6 +339,19 @@ class ServerConnection {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<int?> pingHealthMs({Duration timeout = const Duration(seconds: 3)}) async {
+    final rootUrl = _ensureRoot(_baseUrl);
+    final healthUrl = Uri.parse('$rootUrl/health');
+    final start = DateTime.now();
+    try {
+      final response = await _client.get(healthUrl).timeout(timeout);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return DateTime.now().difference(start).inMilliseconds;
+      }
+    } catch (_) {}
+    return null;
   }
 
 
@@ -448,38 +437,6 @@ class ServerConnection {
   }
 }
 
-class StreamInfoResponse {
-  StreamInfoResponse({
-    required this.codec,
-    required this.container,
-    this.mode,
-    this.quality,
-    this.bitrateKbps,
-    this.frameMs,
-    required this.durationMs,
-  });
-
-  final String codec;
-  final String container;
-  final String? mode;
-  final String? quality;
-  final int? bitrateKbps;
-  final int? frameMs;
-  final int durationMs;
-
-  factory StreamInfoResponse.fromJson(Map<String, dynamic> json) {
-    return StreamInfoResponse(
-      codec: json['codec'] as String? ?? '',
-      container: json['container'] as String? ?? '',
-      mode: json['mode'] as String?,
-      quality: json['quality'] as String?,
-      bitrateKbps: (json['bitrate_kbps'] as num?)?.toInt(),
-      frameMs: (json['frame_ms'] as num?)?.toInt(),
-      durationMs: (json['duration_ms'] as num?)?.toInt() ?? 0,
-    );
-  }
-}
-
 class PlaybackSettingsResponse {
   PlaybackSettingsResponse({required this.repeatMode});
 
@@ -488,6 +445,26 @@ class PlaybackSettingsResponse {
   factory PlaybackSettingsResponse.fromJson(Map<String, dynamic> json) {
     return PlaybackSettingsResponse(
       repeatMode: json['repeat_mode'] as String? ?? 'off',
+    );
+  }
+}
+
+class ServerPortsResponse {
+  ServerPortsResponse({
+    required this.httpPort,
+    required this.quicPort,
+    required this.quicEnabled,
+  });
+
+  final int? httpPort;
+  final int? quicPort;
+  final bool quicEnabled;
+
+  factory ServerPortsResponse.fromJson(Map<String, dynamic> json) {
+    return ServerPortsResponse(
+      httpPort: (json['http_port'] as num?)?.toInt(),
+      quicPort: (json['quic_port'] as num?)?.toInt(),
+      quicEnabled: json['quic_enabled'] == true,
     );
   }
 }

@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'app_log.dart';
 import 'auth_state.dart';
 import 'auth_storage.dart';
 import 'models.dart';
@@ -97,6 +98,8 @@ class PlaybackState {
 
 class AppController {
   AppController({required this.connection}) {
+    _logListener = _addLogEntry;
+    AppLogger.instance.attach(_logListener, includeHistory: true);
     _playbackState = PlaybackState(
       track: null,
       isPlaying: false,
@@ -117,7 +120,7 @@ class AppController {
     );
     _audioEngine = AudioEngine(
       onMessage: _pushMessage,
-      onStats: (position, bufferedAhead, bitrateKbps) {
+      onStats: (position, bufferedAhead, bitrateKbps, rttMs) {
         final duration = _playbackState.duration;
         final clamped = duration == Duration.zero
             ? position
@@ -132,20 +135,17 @@ class AppController {
             : (bufferedTotal.inMilliseconds / duration.inMilliseconds)
                 .clamp(0.0, 1.0);
         _maybeClearSeekHold(clamped, bufferedAhead);
+        final nextRtt = rttMs ?? _playbackState.streamRttMs;
         _updatePlayback(
           position: Duration(milliseconds: _displayPositionMs),
           bufferRatio: bufferRatio,
           bitrateKbps: bitrateKbps,
+          streamConnected: true,
+          streamRttMs: nextRtt,
         );
-        _sendStreamControlUpdate(clamped, bufferedAhead);
         _maybeAutoAdvance(clamped, bufferedAhead);
       },
-      onStreamInfo: (sessionId, bitrateKbps) {
-        if (bitrateKbps != null) {
-          _updatePlayback(bitrateKbps: bitrateKbps);
-        }
-        _openStreamControl(sessionId);
-      },
+      onStreamInfo: null,
       onComplete: _handleTrackFinished,
       onStarted: () {
         if (!_audioOutputStarted) {
@@ -156,6 +156,7 @@ class AppController {
     );
     _configureLocalNetworkPermissions();
     _configureNowPlaying();
+    _startHealthMonitor();
   }
 
   final ServerConnection connection;
@@ -165,6 +166,7 @@ class AppController {
   final MethodChannel _permissionsChannel =
       const MethodChannel('phonolite/permissions');
   final AuthStorage _authStorage = const AuthStorage();
+  late final LogListener _logListener;
   AuthCredentials? _savedCredentials;
   bool _restoringSession = false;
   LocalNetworkPermissionState _localNetworkPermissionState =
@@ -184,6 +186,12 @@ class AppController {
   int _displayPositionMs = 0;
   int _actualPositionMs = 0;
   int _nowPlayingEpoch = 0;
+  DateTime? _lastStartPlaybackAt;
+  String? _lastStartPlaybackTrackId;
+  int? _lastStartPlaybackOffsetMs;
+  Timer? _healthTimer;
+  bool _healthPingInFlight = false;
+  int? _quicPort;
 
   final _artistsController = StreamController<List<Artist>>.broadcast();
   final _albumsController = StreamController<List<Album>>.broadcast();
@@ -193,7 +201,7 @@ class AppController {
   final _likedController = StreamController<List<Track>>.broadcast();
   final _statsController = StreamController<StatsResponse?>.broadcast();
   final _searchController = StreamController<List<SearchResult>>.broadcast();
-  final _messageController = StreamController<List<String>>.broadcast();
+  final _messageController = StreamController<List<LogEntry>>.broadcast();
   final _playbackController = StreamController<PlaybackState>.broadcast();
   final _authController = StreamController<AuthState>.broadcast();
   final _localNetworkPermissionController =
@@ -210,7 +218,7 @@ class AppController {
   List<Track> _playlistTracks = <Track>[];
   List<Track> _liked = <Track>[];
   List<SearchResult> _search = <SearchResult>[];
-  List<String> _messages = <String>[];
+  List<LogEntry> _messages = <LogEntry>[];
   StatsResponse? _stats;
   late PlaybackState _playbackState;
   late AuthState _authState;
@@ -236,11 +244,6 @@ class AppController {
   String? _lastAlbumId;
   String? _currentPlaylistId;
   final Map<String, String> _albumIdByKey = <String, String>{};
-  WebSocket? _streamControlSocket;
-  String? _streamControlSessionId;
-  DateTime? _lastPingAt;
-  int? _lastPingSentMs;
-  int? _lastRttMs;
 
   Stream<List<Artist>> get artistsStream => _artistsController.stream;
   Stream<List<Album>> get albumsStream => _albumsController.stream;
@@ -250,7 +253,7 @@ class AppController {
   Stream<List<Track>> get likedStream => _likedController.stream;
   Stream<StatsResponse?> get statsStream => _statsController.stream;
   Stream<List<SearchResult>> get searchStream => _searchController.stream;
-  Stream<List<String>> get messageStream => _messageController.stream;
+  Stream<List<LogEntry>> get messageStream => _messageController.stream;
   Stream<PlaybackState> get playbackStream => _playbackController.stream;
   Stream<AuthState> get authStream => _authController.stream;
   Stream<LocalNetworkPermissionState> get localNetworkPermissionStream =>
@@ -267,7 +270,7 @@ class AppController {
   List<Track> get playlistTracks => _playlistTracks;
   List<Track> get liked => _liked;
   List<SearchResult> get searchResults => _search;
-  List<String> get messages => _messages;
+  List<LogEntry> get messages => _messages;
   StatsResponse? get stats => _stats;
   PlaybackState get playbackState => _playbackState;
   AuthState get authState => _authState;
@@ -311,6 +314,9 @@ class AppController {
 
   void dispose() {
     _clearNowPlaying();
+    _healthTimer?.cancel();
+    _healthTimer = null;
+    AppLogger.instance.detach(_logListener);
     _artistsController.close();
     _albumsController.close();
     _tracksController.close();
@@ -339,6 +345,7 @@ class AppController {
   }) async {
     try {
       connection.setBaseUrl(baseUrl);
+      await _refreshServerPorts();
       final token = await connection.login(username: username, password: password);
       _setAuthorized(true, error: null);
       await _loadPlaybackSettings();
@@ -357,10 +364,10 @@ class AppController {
     } on ApiException catch (err) {
       final message = '${_formatApiError(err)} (POST ${connection.baseUrl}/auth/login)';
       _setAuthorized(false, error: message);
-      _pushMessage('Login failed: $message');
+      _pushMessage('Login failed: $message', level: LogLevel.error);
     } catch (err) {
       _setAuthorized(false, error: err.toString());
-      _pushMessage('Login failed: $err');
+      _pushMessage('Login failed: $err', level: LogLevel.error);
     }
   }
 
@@ -369,6 +376,7 @@ class AppController {
     connection.setToken(token);
     _setAuthorized(true, error: null);
     () async {
+      await _refreshServerPorts();
       await _loadPlaybackSettings();
     }();
   }
@@ -377,12 +385,13 @@ class AppController {
     try {
       final resolved = await connection.resolveBaseUrl(input);
       connection.setBaseUrl(resolved);
+      await _refreshServerPorts();
       _setAuthorized(false, error: null);
       return true;
     } catch (err) {
       final message = err.toString();
       _setAuthorized(false, error: message);
-      _pushMessage('Server connection failed: $message');
+      _pushMessage('Server connection failed: $message', level: LogLevel.warning);
       return false;
     }
   }
@@ -394,6 +403,7 @@ class AppController {
     _playQueue = <Track>[];
     _playIndex = 0;
     _autoAdvanceInFlight = false;
+    _quicPort = null;
     _clearNowPlaying();
     if (clearSaved) {
       await _authStorage.clear();
@@ -426,6 +436,7 @@ class AppController {
         return;
       }
       connection.setToken(credentials.token);
+      await _refreshServerPorts();
       try {
         final settings = await connection.fetchPlaybackSettings();
         _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
@@ -618,7 +629,7 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'artists');
     } catch (err) {
-      _pushMessage('Failed to load artists: $err');
+      _pushMessage('Failed to load artists: $err', level: LogLevel.warning);
     } finally {
       _setArtistsLoading(false);
     }
@@ -638,7 +649,7 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'albums');
     } catch (err) {
-      _pushMessage('Failed to load albums: $err');
+      _pushMessage('Failed to load albums: $err', level: LogLevel.warning);
     } finally {
       _setAlbumsLoading(false);
     }
@@ -658,7 +669,7 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'tracks');
     } catch (err) {
-      _pushMessage('Failed to load tracks: $err');
+      _pushMessage('Failed to load tracks: $err', level: LogLevel.warning);
     } finally {
       _setTracksLoading(false);
     }
@@ -671,7 +682,7 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'playlists');
     } catch (err) {
-      _pushMessage('Failed to load playlists: $err');
+      _pushMessage('Failed to load playlists: $err', level: LogLevel.warning);
     }
   }
 
@@ -686,7 +697,7 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'playlist tracks');
     } catch (err) {
-      _pushMessage('Failed to load playlist tracks: $err');
+      _pushMessage('Failed to load playlist tracks: $err', level: LogLevel.warning);
     }
   }
 
@@ -700,7 +711,7 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'liked tracks');
     } catch (err) {
-      _pushMessage('Failed to load liked tracks: $err');
+      _pushMessage('Failed to load liked tracks: $err', level: LogLevel.warning);
     }
   }
 
@@ -716,7 +727,7 @@ class AppController {
       _handleApiError(err, context: 'stats');
       _statsController.add(null);
     } catch (err) {
-      _pushMessage('Failed to load stats: $err');
+      _pushMessage('Failed to load stats: $err', level: LogLevel.warning);
       _statsController.add(null);
     }
   }
@@ -1133,6 +1144,10 @@ class AppController {
       _handleApiError(err, context: 'next track');
     } catch (err) {
       _pushMessage('Failed to move to next track: $err');
+    } finally {
+      if (fromAutoAdvance) {
+        _autoAdvanceInFlight = false;
+      }
     }
   }
 
@@ -1319,12 +1334,18 @@ class AppController {
     _bumpNowPlayingEpoch();
     _displayPositionMs = clamped.inMilliseconds;
     _updatePlayback(position: clamped, isPlaying: wasPlaying, bufferRatio: 0.0);
-    _startPlayback(track, startOffset: clamped);
-    if (!wasPlaying) {
-      Future<void>.delayed(const Duration(milliseconds: 120), () {
-        _audioEngine.pause();
-        _updatePlayback(isPlaying: false);
-      });
+    final inlineSeek = await _audioEngine.seekTo(clamped);
+    if (!inlineSeek) {
+      _startPlayback(track, startOffset: clamped);
+      if (!wasPlaying) {
+        Future<void>.delayed(const Duration(milliseconds: 120), () {
+          _audioEngine.pause();
+          _updatePlayback(isPlaying: false);
+        });
+      }
+    } else if (!wasPlaying) {
+      _audioEngine.pause();
+      _updatePlayback(isPlaying: false);
     }
     await _pushNowPlayingUpdate(force: true);
   }
@@ -1950,16 +1971,21 @@ class AppController {
     _pushNowPlayingUpdate();
   }
 
-  void _pushMessage(String message) {
-    _messages = [..._messages, message];
-    if (_messages.length > 2000) {
-      _messages = _messages.sublist(_messages.length - 2000);
+  void _pushMessage(String message, {LogLevel level = LogLevel.info}) {
+    AppLogger.instance.log(LogEntry(message: message, level: level));
+  }
+
+  void _addLogEntry(LogEntry entry) {
+    _messages = [..._messages, entry];
+    if (_messages.length > 3000) {
+      final trim = _messages.length >= 500 ? 500 : _messages.length;
+      _messages = _messages.sublist(trim);
     }
     _messageController.add(_messages);
   }
 
   void clearMessages() {
-    _messages = <String>[];
+    _messages = <LogEntry>[];
     _messageController.add(_messages);
   }
 
@@ -2011,20 +2037,33 @@ class AppController {
       return;
     }
     final message = _formatApiError(err);
-    _pushMessage('Failed to load $context: $message');
+    _pushMessage('Failed to load $context: $message', level: LogLevel.warning);
   }
 
   void _startPlayback(Track track, {Duration startOffset = Duration.zero}) {
     final settings = _streamSettings(_playbackState.streamMode);
+    final queueIds = _buildQueueIds(track.id, 3);
+    final now = DateTime.now();
+    final offsetMs = startOffset.inMilliseconds;
+    if (_audioEngine.hasActivePlayer &&
+        _lastStartPlaybackTrackId == track.id &&
+        _lastStartPlaybackOffsetMs == offsetMs &&
+        _lastStartPlaybackAt != null &&
+        now.difference(_lastStartPlaybackAt!) <
+            const Duration(milliseconds: 800)) {
+      _pushMessage('Playback already active; skipping duplicate start for ${track.title}.');
+      return;
+    }
+    _lastStartPlaybackAt = now;
+    _lastStartPlaybackTrackId = track.id;
+    _lastStartPlaybackOffsetMs = offsetMs;
     () async {
       try {
-        _closeStreamControl();
         _updatePlayback(bitrateKbps: null);
         _audioOutputStarted = false;
-        await _fetchStreamInfo(track, settings);
-        _pushMessage('Playback track: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"');
-        debugPrint(
+        _pushMessage(
           'Playback track: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"',
+          level: LogLevel.status,
         );
         _pushMessage('Starting playback for ${track.title}');
         _pushMessage('Stream settings: mode=${settings.mode} quality=${settings.quality} frame_ms=${settings.frameMs}');
@@ -2034,127 +2073,79 @@ class AppController {
           connection: connection,
           settings: settings,
           startOffset: startOffset,
+          queueTrackIds: queueIds,
+          quicPort: _quicPort,
         );
       } catch (err) {
-        _pushMessage('Playback failed: $err');
+        _pushMessage('Playback failed: $err', level: LogLevel.error);
         _updatePlayback(isPlaying: false);
       }
     }();
   }
 
   void _closeStreamControl() {
-    _streamControlSocket?.close();
-    _streamControlSocket = null;
-    _streamControlSessionId = null;
-    _lastPingAt = null;
-    _lastPingSentMs = null;
-    _updatePlayback(streamConnected: false, streamRttMs: _lastRttMs);
+    _updatePlayback(streamConnected: false, streamRttMs: null);
   }
 
-  Future<void> _openStreamControl(String? sessionId) async {
-    if (sessionId == null || sessionId.isEmpty) {
-      _closeStreamControl();
-      return;
-    }
-    if (_streamControlSessionId == sessionId) {
-      return;
-    }
-    _closeStreamControl();
-    final url = connection.buildStreamControlUrl(sessionId);
+  Future<void> _refreshServerPorts() async {
     try {
-      _pushMessage('Connecting stream control: $url');
-      final socket = await WebSocket.connect(
-        url,
-        headers: _streamControlHeaders(),
-      );
-      _streamControlSocket = socket;
-      _streamControlSessionId = sessionId;
-      _updatePlayback(streamConnected: true);
-      _pushMessage('Stream control connected');
-      socket.listen(
-        (message) {
-          if (message is String) {
-            _handleStreamControlMessage(message);
-          }
-        },
-        onDone: _closeStreamControl,
-        onError: (_) => _closeStreamControl(),
-      );
-    } catch (err) {
-      _pushMessage('Stream control connection failed: $err');
-      _closeStreamControl();
-    }
-  }
-
-  Map<String, String> _streamControlHeaders() {
-    final token = connection.token;
-    if (token == null || token.isEmpty) {
-      return const {};
-    }
-    return {'Authorization': 'Bearer $token'};
-  }
-
-  void _sendStreamControlUpdate(Duration position, Duration bufferedAhead) {
-    final socket = _streamControlSocket;
-    if (socket == null) {
-      return;
-    }
-    _maybeSendPing();
-    final payload = <String, dynamic>{
-      'position_ms': position.inMilliseconds,
-      'buffer_ms': bufferedAhead.inMilliseconds,
-      'paused': !_playbackState.isPlaying,
-    };
-    socket.add(jsonEncode(payload));
-  }
-
-  void _maybeSendPing() {
-    final now = DateTime.now();
-    final last = _lastPingAt;
-    if (last != null && now.difference(last) < const Duration(seconds: 5)) {
-      return;
-    }
-    _lastPingAt = now;
-    _lastPingSentMs = now.millisecondsSinceEpoch;
-    final payload = <String, dynamic>{
-      'type': 'ping',
-      'ts': _lastPingSentMs,
-    };
-    _pushMessage('Stream control ping: ${_lastPingSentMs}');
-    _streamControlSocket?.add(jsonEncode(payload));
-  }
-
-  void _handleStreamControlMessage(String message) {
-    _pushMessage('Stream control message: $message');
-    try {
-      final decoded = jsonDecode(message);
-      if (decoded is Map && decoded['type'] == 'pong') {
-        final ts = decoded['ts'];
-        if (ts is int) {
-          final now = DateTime.now().millisecondsSinceEpoch;
-          final rtt = now - ts;
-          _lastRttMs = rtt;
-          _updatePlayback(streamRttMs: rtt);
-          _pushMessage('Stream RTT: ${rtt}ms');
-        }
+      final ports = await connection.fetchServerPorts();
+      if (ports.quicEnabled && (ports.quicPort ?? 0) > 0) {
+        _quicPort = ports.quicPort;
+      } else {
+        _quicPort = null;
       }
-    } catch (_) {
-      // Ignore malformed messages.
+    } catch (err) {
+      _quicPort = null;
+      _pushMessage('Failed to load server ports: $err', level: LogLevel.warning);
     }
   }
 
-  Future<void> _fetchStreamInfo(Track track, StreamSettings settings) async {
-    try {
-      final response = await connection.fetchStreamInfo(
-        trackId: track.id,
-        mode: settings.mode,
-        quality: settings.quality,
-        frameMs: settings.frameMs,
-      );
-      _updatePlayback(bitrateKbps: response.bitrateKbps?.toDouble());
-    } catch (err) {
-      _pushMessage('Stream info lookup failed: $err');
+  void _startHealthMonitor() {
+    _healthTimer?.cancel();
+    _healthTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _pollHealth(),
+    );
+    _pollHealth();
+  }
+
+  Future<void> _pollHealth() async {
+    if (_healthPingInFlight) {
+      return;
     }
+    if (_audioEngine.hasActivePlayer) {
+      return;
+    }
+    _healthPingInFlight = true;
+    final rttMs = await connection.pingHealthMs(
+      timeout: const Duration(seconds: 4),
+    );
+    _healthPingInFlight = false;
+    if (_audioEngine.hasActivePlayer) {
+      return;
+    }
+    if (rttMs != null) {
+      _updatePlayback(streamConnected: true, streamRttMs: rttMs);
+    } else {
+      _updatePlayback(streamConnected: false, streamRttMs: null);
+    }
+  }
+
+  List<String> _buildQueueIds(String currentId, int count) {
+    if (_playQueue.isEmpty) {
+      return <String>[currentId];
+    }
+    final startIndex = _playQueue.indexWhere((track) => track.id == currentId);
+    final index = startIndex >= 0 ? startIndex : _playIndex;
+    final total = _playQueue.length;
+    final limit = count.clamp(1, total);
+    final ids = <String>[];
+    for (var i = 0; i < limit; i++) {
+      final idx = (index + i) % total;
+      ids.add(_playQueue[idx].id);
+    }
+    return ids;
   }
 
   StreamSettings _streamSettings(StreamMode mode) {
@@ -2282,7 +2273,7 @@ class AppController {
       final settings = await connection.fetchPlaybackSettings();
       _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
     } catch (err) {
-      _pushMessage('Failed to load playback settings: $err');
+      _pushMessage('Failed to load playback settings: $err', level: LogLevel.warning);
     }
   }
 

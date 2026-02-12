@@ -38,6 +38,8 @@ dependencies:
   ffi: ^2.1.0
   phonolite_opus:
     path: packages/phonolite_opus
+  phonolite_quic:
+    path: packages/phonolite_quic
   http: ^1.2.1
   palette_generator: ^0.3.3
   path_provider: ^2.1.5

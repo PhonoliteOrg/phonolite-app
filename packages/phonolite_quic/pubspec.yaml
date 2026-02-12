@@ -1,0 +1,24 @@
+name: phonolite_quic
+description: "FFI bindings for Phonolite QUIC streaming"
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  ffi: ^2.1.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants.dart';
 import '../ui/chamfered.dart';
+import '../ui/hoverable.dart';
 import 'obsidian_text_field.dart';
 
 class SearchHud extends StatelessWidget {
@@ -56,44 +57,37 @@ class SearchHud extends StatelessWidget {
   }
 }
 
-class _SearchExecuteButton extends StatefulWidget {
+class _SearchExecuteButton extends StatelessWidget {
   const _SearchExecuteButton({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
-  State<_SearchExecuteButton> createState() => _SearchExecuteButtonState();
-}
-
-class _SearchExecuteButtonState extends State<_SearchExecuteButton> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    final background = _hovered ? accentGold : accentGold.withOpacity(0.1);
-    final iconColor = _hovered ? Colors.black : accentGold;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
+    return ObsidianHoverBuilder(
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: const BoxDecoration(),
-          child: ClipPath(
-            clipper: CutBottomRightClipper(cut: 15),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: searchHudHeight,
-              height: searchHudHeight,
-              color: background,
-              child: Icon(Icons.search_rounded, color: iconColor),
+      builder: (context, hovered) {
+        final background = hovered ? accentGold : accentGold.withOpacity(0.1);
+        final iconColor = hovered ? Colors.black : accentGold;
+
+        return GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: const BoxDecoration(),
+            child: ClipPath(
+              clipper: CutBottomRightClipper(cut: 15),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: searchHudHeight,
+                height: searchHudHeight,
+                color: background,
+                child: Icon(Icons.search_rounded, color: iconColor),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

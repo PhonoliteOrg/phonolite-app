@@ -143,14 +143,12 @@ class _LibraryPageState extends State<LibraryPage> {
                               else if (artists.isEmpty && showLoading)
                                 loadingSliver()
                               else if (artists.isEmpty)
-                                const SliverPadding(
-                                  padding: EdgeInsets.fromLTRB(20, 40, 20, 0),
-                                  sliver: SliverToBoxAdapter(
-                                    child: EmptyState(
-                                      title: 'No artists',
-                                      message:
-                                          'Add music to your library to get started.',
-                                    ),
+                                const SliverFillRemaining(
+                                  hasScrollBody: false,
+                                  child: EmptyStateText(
+                                    title: 'No artists',
+                                    message:
+                                        'Add music to your library to get started.',
                                   ),
                                 )
                               else if (showLoading)
