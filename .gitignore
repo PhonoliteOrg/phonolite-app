@@ -42,6 +42,7 @@ migrate_working_dir/
 /packages/phonolite_quic/macos/target/
 /packages/phonolite_quic/android/build/
 /packages/phonolite_quic/android/src/main/jniLibs/
+**/target/
 
 # Symbolication related
 app.*.symbols
