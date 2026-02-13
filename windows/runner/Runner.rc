@@ -52,7 +52,7 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
+IDI_APP_ICON            ICON                    "resources\\phonolite-logo-windows.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "phonolite_app" "\0"
+            VALUE "FileDescription", "Phonolite" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "phonolite_app" "\0"
+            VALUE "InternalName", "Phonolite" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "phonolite_app.exe" "\0"
-            VALUE "ProductName", "phonolite_app" "\0"
+            VALUE "OriginalFilename", "Phonolite.exe" "\0"
+            VALUE "ProductName", "Phonolite" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

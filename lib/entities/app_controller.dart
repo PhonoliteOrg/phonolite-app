@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'app_log.dart';
 import 'auth_state.dart';
 import 'auth_storage.dart';
+import 'custom_shuffle_settings.dart';
 import 'models.dart';
 import 'server_connection.dart';
 import 'audio_engine.dart';
@@ -169,6 +170,7 @@ class AppController {
     _configureLocalNetworkPermissions();
     _configureNowPlaying();
     _startHealthMonitor();
+    _loadCustomShuffleSettings();
   }
 
   final ServerConnection connection;
@@ -178,8 +180,12 @@ class AppController {
   final MethodChannel _permissionsChannel =
       const MethodChannel('phonolite/permissions');
   final AuthStorage _authStorage = const AuthStorage();
+  final CustomShuffleSettingsStorage _customShuffleStorage =
+      const CustomShuffleSettingsStorage();
   late final LogListener _logListener;
   AuthCredentials? _savedCredentials;
+  CustomShuffleSettings _customShuffleSettings =
+      const CustomShuffleSettings();
   bool _restoringSession = false;
   LocalNetworkPermissionState _localNetworkPermissionState =
       LocalNetworkPermissionState.unknown;
@@ -233,6 +239,8 @@ class AppController {
   final _authController = StreamController<AuthState>.broadcast();
   final _localNetworkPermissionController =
       StreamController<LocalNetworkPermissionState>.broadcast();
+  final _customShuffleSettingsController =
+      StreamController<CustomShuffleSettings>.broadcast();
   final _artistsLoadingController = StreamController<bool>.broadcast();
   final _albumsLoadingController = StreamController<bool>.broadcast();
   final _tracksLoadingController = StreamController<bool>.broadcast();
@@ -285,6 +293,8 @@ class AppController {
   Stream<AuthState> get authStream => _authController.stream;
   Stream<LocalNetworkPermissionState> get localNetworkPermissionStream =>
       _localNetworkPermissionController.stream;
+  Stream<CustomShuffleSettings> get customShuffleSettingsStream =>
+      _customShuffleSettingsController.stream;
   Stream<bool> get artistsLoadingStream => _artistsLoadingController.stream;
   Stream<bool> get albumsLoadingStream => _albumsLoadingController.stream;
   Stream<bool> get tracksLoadingStream => _tracksLoadingController.stream;
@@ -303,6 +313,9 @@ class AppController {
   AuthState get authState => _authState;
   LocalNetworkPermissionState get localNetworkPermissionState =>
       _localNetworkPermissionState;
+  CustomShuffleSettings get customShuffleSettings => _customShuffleSettings;
+  List<String> get customShuffleArtistIds => _customShuffleSettings.artistIds;
+  List<String> get customShuffleGenres => _customShuffleSettings.genres;
   bool get localNetworkPermissionSupported {
     if (kIsWeb) {
       return false;
@@ -366,6 +379,7 @@ class AppController {
     _playbackController.close();
     _authController.close();
     _localNetworkPermissionController.close();
+    _customShuffleSettingsController.close();
     _artistsLoadingController.close();
     _albumsLoadingController.close();
     _tracksLoadingController.close();
@@ -1206,10 +1220,21 @@ class AppController {
       }
 
       final mode = _shuffleQueryMode(_playbackState.shuffleMode);
+      final isCustom = _playbackState.shuffleMode == ShuffleMode.custom;
+      final customArtistIds =
+          isCustom ? _customShuffleSettings.artistIds : null;
+      final customGenres = isCustom ? _customShuffleSettings.genres : null;
+      if (isCustom &&
+          (customArtistIds == null || customArtistIds.isEmpty) &&
+          (customGenres == null || customGenres.isEmpty)) {
+        _pushMessage('Custom shuffle has no filters; using full library.');
+      }
       final tracks = await connection.fetchShuffleTracks(
         mode: mode,
         artistId: artistId,
         albumId: albumId,
+        artistIds: customArtistIds,
+        genres: customGenres,
       );
       if (tracks.isEmpty) {
         _pushMessage('No tracks found for shuffle');
@@ -2294,6 +2319,55 @@ class AppController {
       error: error,
     );
     _authController.add(_authState);
+  }
+
+  Future<void> loadCustomShuffleSettings() async {
+    await _loadCustomShuffleSettings();
+  }
+
+  Future<void> updateCustomShuffleSettings({
+    List<String>? artistIds,
+    List<String>? genres,
+  }) async {
+    final next = CustomShuffleSettings(
+      artistIds: _normalizeCustomList(
+        artistIds ?? _customShuffleSettings.artistIds,
+      ),
+      genres: _normalizeCustomList(
+        genres ?? _customShuffleSettings.genres,
+        lowerCase: true,
+      ),
+    );
+    _customShuffleSettings = next;
+    _customShuffleSettingsController.add(next);
+    await _customShuffleStorage.write(next);
+  }
+
+  Future<void> _loadCustomShuffleSettings() async {
+    final settings = await _customShuffleStorage.read();
+    _customShuffleSettings = settings;
+    _customShuffleSettingsController.add(settings);
+  }
+
+  List<String> _normalizeCustomList(
+    List<String> values, {
+    bool lowerCase = false,
+  }) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final raw in values) {
+      var value = raw.trim();
+      if (value.isEmpty) {
+        continue;
+      }
+      if (lowerCase) {
+        value = value.toLowerCase();
+      }
+      if (seen.add(value)) {
+        result.add(value);
+      }
+    }
+    return result;
   }
 
   void _handleApiError(ApiException err, {required String context}) {
