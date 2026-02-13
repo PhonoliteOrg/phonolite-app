@@ -299,6 +299,7 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context) async {
               onNext: controller.nextTrack,
               onPrev: controller.prevTrack,
               onSeek: controller.seekTo,
+              onSeekPreview: controller.previewSeek,
               onShuffleChanged: controller.updateShuffleMode,
               onToggleRepeat: controller.toggleRepeatMode,
               onStreamModeChanged: controller.updateStreamMode,
@@ -334,6 +335,7 @@ class NowPlayingBar extends StatelessWidget {
     required this.onPrev,
     required this.onStop,
     required this.onSeek,
+    required this.onSeekPreview,
     required this.onShuffleChanged,
     required this.onToggleRepeat,
     required this.onStreamModeChanged,
@@ -347,6 +349,7 @@ class NowPlayingBar extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onStop;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekPreview;
   final ValueChanged<ShuffleMode> onShuffleChanged;
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
@@ -460,6 +463,7 @@ class NowPlayingBar extends StatelessWidget {
                     positionSeconds: positionSeconds,
                     bufferedPositionSeconds: bufferedPositionSeconds,
                     onSeek: onSeek,
+                    onSeekPreview: onSeekPreview,
                     positionLabel: _formatTime(state.position),
                     durationLabel: _formatTime(state.duration),
                     enabled: state.track != null,
@@ -519,6 +523,7 @@ class NowPlayingBar extends StatelessWidget {
                     positionSeconds: positionSeconds,
                     bufferedPositionSeconds: bufferedPositionSeconds,
                     onSeek: onSeek,
+                    onSeekPreview: onSeekPreview,
                     positionLabel: _formatTime(state.position),
                     durationLabel: _formatTime(state.duration),
                     enabled: state.track != null,
@@ -715,6 +720,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     required this.onNext,
     required this.onPrev,
     required this.onSeek,
+    required this.onSeekPreview,
     required this.onShuffleChanged,
     required this.onToggleRepeat,
     required this.onStreamModeChanged,
@@ -727,6 +733,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onPrev;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekPreview;
   final ValueChanged<ShuffleMode> onShuffleChanged;
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
@@ -876,6 +883,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                             positionSeconds: positionSeconds,
                             bufferedPositionSeconds: bufferedPositionSeconds,
                             onSeek: onSeek,
+                            onSeekPreview: onSeekPreview,
                             positionLabel: _formatTime(state.position),
                             durationLabel: _formatTime(state.duration),
                             enabled: track != null,
@@ -1365,6 +1373,7 @@ class _CompactFooterRow extends StatelessWidget {
     required this.positionSeconds,
     required this.bufferedPositionSeconds,
     required this.onSeek,
+    required this.onSeekPreview,
     required this.positionLabel,
     required this.durationLabel,
     required this.enabled,
@@ -1377,6 +1386,7 @@ class _CompactFooterRow extends StatelessWidget {
   final double positionSeconds;
   final double bufferedPositionSeconds;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekPreview;
   final String positionLabel;
   final String durationLabel;
   final bool enabled;
@@ -1417,6 +1427,9 @@ class _CompactFooterRow extends StatelessWidget {
                     max: maxSeconds,
                     secondaryTrackValue: bufferedPositionSeconds,
                     onChanged: enabled
+                        ? (value) => onSeekPreview(Duration(seconds: value.toInt()))
+                        : null,
+                    onChangeEnd: enabled
                         ? (value) => onSeek(Duration(seconds: value.toInt()))
                         : null,
                   ),
@@ -1797,6 +1810,7 @@ class _ProgressBar extends StatelessWidget {
     required this.positionSeconds,
     required this.bufferedPositionSeconds,
     required this.onSeek,
+    required this.onSeekPreview,
     required this.positionLabel,
     required this.durationLabel,
     required this.enabled,
@@ -1807,6 +1821,7 @@ class _ProgressBar extends StatelessWidget {
   final double positionSeconds;
   final double bufferedPositionSeconds;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekPreview;
   final String positionLabel;
   final String durationLabel;
   final bool enabled;
@@ -1850,6 +1865,9 @@ class _ProgressBar extends StatelessWidget {
                   max: maxSeconds,
                   secondaryTrackValue: bufferedPositionSeconds,
                   onChanged: enabled
+                      ? (value) => onSeekPreview(Duration(seconds: value.toInt()))
+                      : null,
+                  onChangeEnd: enabled
                       ? (value) => onSeek(Duration(seconds: value.toInt()))
                       : null,
                 ),

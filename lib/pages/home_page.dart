@@ -37,31 +37,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) {
+      return;
+    }
+    final controller = AppScope.of(context);
+    controller.handleAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) {
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final controller = AppScope.of(context);
-      final isMobile = MediaQuery.of(context).size.width < 900;
-      if (!isMobile) {
-        return;
-      }
-      if (controller.playbackState.track == null) {
-        return;
-      }
-      if (_nowPlayingSheetOpen) {
-        return;
-      }
-      _nowPlayingSheetOpen = true;
-      showNowPlayingExpandedSheet(context).whenComplete(() {
-        if (mounted) {
-          _nowPlayingSheetOpen = false;
-        }
-      });
-    });
   }
 
   @override
@@ -112,6 +95,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             onPrev: controller.prevTrack,
             onStop: controller.stop,
             onSeek: controller.seekTo,
+            onSeekPreview: controller.previewSeek,
             onShuffleChanged: controller.updateShuffleMode,
             onToggleRepeat: controller.toggleRepeatMode,
             onStreamModeChanged: controller.updateStreamMode,

@@ -16,6 +16,9 @@ struct PhonoliteAudioPlayer {
   int32_t channels;
 };
 
+static const int kPhonoliteMaxInFlight = 24;
+static const int kPhonoliteQueueFull = -3;
+
 static void phonolite_audio_output_callback(void *inUserData,
                                             AudioQueueRef inAQ,
                                             AudioQueueBufferRef inBuffer) {
@@ -35,7 +38,12 @@ static void phonolite_audio_output_callback(void *inUserData,
 static void phonolite_audio_prepare_session(double sampleRate) {
   AVAudioSession *session = [AVAudioSession sharedInstance];
   NSError *error = nil;
-  [session setCategory:AVAudioSessionCategoryPlayback error:&error];
+  AVAudioSessionCategoryOptions options =
+      AVAudioSessionCategoryOptionAllowAirPlay | AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+  [session setCategory:AVAudioSessionCategoryPlayback
+                  mode:AVAudioSessionModeDefault
+               options:options
+                 error:&error];
   if (error != nil) {
     return;
   }
@@ -117,6 +125,9 @@ PHONOLITE_EXPORT int32_t phonolite_audio_write(PhonoliteAudioPlayer *player,
   }
   if (player->queue == NULL) {
     return -2;
+  }
+  if (atomic_load(&player->in_flight) >= kPhonoliteMaxInFlight) {
+    return kPhonoliteQueueFull;
   }
   UInt32 byteSize = (UInt32)(sampleCount * (int32_t)sizeof(int16_t));
   AudioQueueBufferRef buffer = NULL;

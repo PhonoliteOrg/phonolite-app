@@ -1,4 +1,5 @@
 import AVFoundation
+import CarPlay
 import Flutter
 import MediaPlayer
 import Network
@@ -7,119 +8,160 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var nowPlayingChannel: FlutterMethodChannel?
-  private var nowPlayingInfo: [String: Any] = [:]
   private var currentArtworkUrl: String?
   private var currentArtworkToken: String?
   private var currentDuration: Double?
   private var currentIsPlaying: Bool = false
-  private var lastSeekPosition: Double?
-  private var lastSeekAt: Date?
+  private var currentTitle: String?
+  private var currentArtist: String?
+  private var currentAlbum: String?
+  private var currentArtwork: UIImage?
   private var currentTrackId: String?
   private var currentEpoch: Int = 0
   private var lastReportedPosition: Double = -1
   private let seekBackwardTolerance: Double = 0.75
-  private let seekForwardTolerance: Double = 1.5
-  private var localNetworkBrowser: NWBrowser?
-  private var localNetworkListener: NWListener?
-  private let localNetworkQueue = DispatchQueue(label: "phonolite.localnetwork")
-  private var permissionsChannel: FlutterMethodChannel?
-  private var localNetworkStatus: String?
-  private let localNetworkStatusKey = "localNetworkStatus"
-  
+  private var remoteCommandsConfigured = false
+  weak var carPlaySceneDelegate: CarPlaySceneDelegate?
+  private let localNetworkPermissions = LocalNetworkPermissionManager()
+
+  private func buildNowPlayingInfo() -> [String: Any] {
+    var info: [String: Any] = [:]
+    let title = (currentTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let artist = (currentArtist ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let album = (currentAlbum ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let hasMetadata =
+      !title.isEmpty ||
+      !artist.isEmpty ||
+      !album.isEmpty ||
+      currentDuration != nil ||
+      lastReportedPosition >= 0
+    if hasMetadata {
+      info[MPMediaItemPropertyTitle] = title.isEmpty ? "Now Playing" : title
+    }
+    if !artist.isEmpty {
+      info[MPMediaItemPropertyArtist] = artist
+    }
+    if !album.isEmpty {
+      info[MPMediaItemPropertyAlbumTitle] = album
+    }
+    info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+    info[MPNowPlayingInfoPropertyIsLiveStream] = false
+    let duration = currentDuration ?? 0.0
+    info[MPMediaItemPropertyPlaybackDuration] = duration
+    let position = lastReportedPosition >= 0 ? lastReportedPosition : 0.0
+    info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
+    info[MPNowPlayingInfoPropertyPlaybackRate] = currentIsPlaying ? 1.0 : 0.0
+    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+    if let artworkImage = currentArtwork {
+      let artwork = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in artworkImage }
+      info[MPMediaItemPropertyArtwork] = artwork
+    }
+    return info
+  }
+
+  private func applyNowPlayingInfo(forceRefresh: Bool = false) {
+    let info = buildNowPlayingInfo()
+    if forceRefresh && info.isEmpty {
+      return
+    }
+    let playbackState: MPNowPlayingPlaybackState = currentIsPlaying ? .playing : .paused
+    let apply = {
+      if forceRefresh {
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
+      }
+      MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+      MPNowPlayingInfoCenter.default().playbackState = playbackState
+    }
+    if Thread.isMainThread {
+      apply()
+    } else {
+      DispatchQueue.main.async {
+        apply()
+      }
+    }
+  }
+
+  private func parseBool(_ value: Any?) -> Bool? {
+    if let boolValue = value as? Bool {
+      return boolValue
+    }
+    if let number = value as? NSNumber {
+      return number.boolValue
+    }
+    return nil
+  }
+
+  private func parseDouble(_ value: Any?) -> Double? {
+    if let doubleValue = value as? Double {
+      return doubleValue
+    }
+    if let number = value as? NSNumber {
+      return number.doubleValue
+    }
+    return nil
+  }
+
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-    localNetworkStatus = UserDefaults.standard.string(forKey: localNetworkStatusKey)
+    do {
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetoothA2DP])
+      try session.setActive(true)
+    } catch {
+      NSLog("Failed to activate audio session: %@", "\(error)")
+    }
+
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     configureNowPlayingChannel()
     configurePermissionsChannel()
-    requestLocalNetworkPermission()
+    localNetworkPermissions.requestPermission()
     return result
   }
 
-  private func requestLocalNetworkPermission() {
-    if #available(iOS 14.0, *) {
-      let parameters = NWParameters.tcp
-      parameters.includePeerToPeer = true
-      do {
-        let listener = try NWListener(using: parameters, on: 0)
-        listener.service = NWListener.Service(name: "Phonolite", type: "_phonolite._tcp")
-        listener.newConnectionHandler = { connection in
-          connection.cancel()
-        }
-        listener.stateUpdateHandler = { [weak self] state in
-          switch state {
-          case .ready:
-            self?.notifyLocalNetworkPermission(status: "granted")
-            self?.stopLocalNetworkBrowser()
-          case .failed(let error):
-            if self?.isLocalNetworkDenied(error) == true {
-              self?.notifyLocalNetworkPermission(status: "denied")
-            }
-            self?.stopLocalNetworkBrowser()
-          default:
-            break
-          }
-        }
-        localNetworkListener = listener
-        listener.start(queue: localNetworkQueue)
-        localNetworkQueue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-          self?.stopLocalNetworkBrowser()
-        }
-      } catch let error as NWError {
-        if isLocalNetworkDenied(error) {
-          notifyLocalNetworkPermission(status: "denied")
-        }
-      } catch {
-        // Leave as unknown on unexpected errors.
+  override func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    if #available(iOS 13.0, *) {
+      if connectingSceneSession.role == UISceneSession.Role.carTemplateApplication {
+        let config = UISceneConfiguration(
+          name: "CarPlay Configuration",
+          sessionRole: connectingSceneSession.role
+        )
+        config.sceneClass = CPTemplateApplicationScene.self
+        config.delegateClass = CarPlaySceneDelegate.self
+        return config
       }
-    }
-  }
-
-  private func stopLocalNetworkBrowser() {
-    localNetworkBrowser?.cancel()
-    localNetworkBrowser = nil
-    localNetworkListener?.cancel()
-    localNetworkListener = nil
-  }
-
-  private func notifyLocalNetworkPermission(status: String) {
-    if localNetworkStatus == status {
-      return
-    }
-    localNetworkStatus = status
-    if status != "unknown" {
-      UserDefaults.standard.set(status, forKey: localNetworkStatusKey)
-    }
-    DispatchQueue.main.async { [weak self] in
-      self?.permissionsChannel?.invokeMethod(
-        "localNetworkPermission",
-        arguments: ["status": status]
+      let config = UISceneConfiguration(
+        name: "Default Configuration",
+        sessionRole: connectingSceneSession.role
       )
+      config.delegateClass = SceneDelegate.self
+      config.storyboard = UIStoryboard(name: "Main", bundle: nil)
+      return config
     }
-  }
-
-  private func isLocalNetworkDenied(_ error: NWError) -> Bool {
-    switch error {
-    case .posix(let code):
-      return code == .EACCES || code == .EPERM
-    case .dns(let code):
-      return code == -65570
-    default:
-      return false
-    }
+    return super.application(
+      application,
+      configurationForConnecting: connectingSceneSession,
+      options: options
+    )
   }
 
   func configureNowPlayingChannel() {
-    guard let controller = window?.rootViewController as? FlutterViewController else {
+    if nowPlayingChannel != nil {
+      return
+    }
+    guard let messenger = resolveMessenger(plugin: "phonolite_now_playing") else {
       return
     }
     let channel = FlutterMethodChannel(
       name: "phonolite/now_playing",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: messenger
     )
     channel.setMethodCallHandler { [weak self] call, result in
       guard let self else {
@@ -142,51 +184,23 @@ import UIKit
       }
     }
     nowPlayingChannel = channel
-    configureRemoteCommands(channel: channel)
+    if !remoteCommandsConfigured {
+      configureRemoteCommands(channel: channel)
+      remoteCommandsConfigured = true
+    }
   }
 
   func configurePermissionsChannel() {
-    guard let controller = window?.rootViewController as? FlutterViewController else {
+    guard let messenger = resolveMessenger(plugin: "phonolite_permissions") else {
       return
     }
-    permissionsChannel = FlutterMethodChannel(
-      name: "phonolite/permissions",
-      binaryMessenger: controller.binaryMessenger
-    )
-    permissionsChannel?.setMethodCallHandler { [weak self] call, result in
-      guard let self else {
-        result(FlutterError(code: "no_self", message: "AppDelegate released", details: nil))
-        return
-      }
-      switch call.method {
-      case "getLocalNetworkPermission":
-        result(self.localNetworkStatus ?? "unknown")
-      case "refreshLocalNetworkPermission":
-        self.requestLocalNetworkPermission()
-        result(true)
-      case "openAppSettings":
-        DispatchQueue.main.async {
-          if let url = URL(string: UIApplication.openSettingsURLString),
-             UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
-            result(true)
-          } else {
-            result(false)
-          }
-        }
-      default:
-        result(FlutterMethodNotImplemented)
-      }
-    }
+    localNetworkPermissions.configureChannel(messenger: messenger)
   }
 
   private func updateNowPlayingInfo(args: [String: Any]) {
-    var info = nowPlayingInfo
     if let trackId = args["trackId"] as? String {
       if currentTrackId != trackId {
         currentTrackId = trackId
-        lastSeekAt = nil
-        lastSeekPosition = nil
         lastReportedPosition = -1
       }
     }
@@ -197,35 +211,45 @@ import UIKit
       }
     }
     if let title = args["title"] as? String {
-      info[MPMediaItemPropertyTitle] = title
+      currentTitle = title
     }
     if let artist = args["artist"] as? String {
-      info[MPMediaItemPropertyArtist] = artist
+      currentArtist = artist
     }
     if let album = args["album"] as? String {
-      info[MPMediaItemPropertyAlbumTitle] = album
-    }
-    if let isPlaying = args["isPlaying"] as? Bool {
-      currentIsPlaying = isPlaying
-      info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-      info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-      MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
-    }
-    if let duration = args["duration"] as? Double {
-      info[MPMediaItemPropertyPlaybackDuration] = duration
-      currentDuration = duration
-    } else if let durationNum = args["duration"] as? NSNumber {
-      info[MPMediaItemPropertyPlaybackDuration] = durationNum.doubleValue
-      currentDuration = durationNum.doubleValue
-    }
-    if let position = args["position"] as? Double {
-      info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = applyPosition(position)
-    } else if let positionNum = args["position"] as? NSNumber {
-      info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = applyPosition(positionNum.doubleValue)
+      currentAlbum = album
     }
 
-    nowPlayingInfo = info
-    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    if let isPlaying = parseBool(args["isPlaying"]) {
+      currentIsPlaying = isPlaying
+    }
+
+    if let duration = parseDouble(args["duration"]) {
+      currentDuration = duration
+    }
+
+    if let position = parseDouble(args["position"]) {
+      _ = applyPosition(position)
+    }
+    var artworkImage: UIImage?
+    if let artworkTypedData = args["artworkBytes"] as? FlutterStandardTypedData {
+      let data = artworkTypedData.data
+      if !data.isEmpty, let image = UIImage(data: data) {
+        currentArtworkUrl = nil
+        currentArtworkToken = nil
+        currentArtwork = image
+        artworkImage = image
+      }
+    }
+
+    applyNowPlayingInfo()
+    let listArtwork = artworkImage ?? currentArtwork
+    carPlaySceneDelegate?.updateNowPlayingListItem(
+      title: currentTitle,
+      artist: currentArtist,
+      album: currentAlbum,
+      artwork: listArtwork
+    )
 
     let artworkUrl = args["artworkUrl"] as? String
     let token = args["token"] as? String
@@ -250,25 +274,32 @@ import UIKit
       guard let self, let data, let image = UIImage(data: data) else {
         return
       }
-      let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-      self.nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
-      DispatchQueue.main.async {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = self.nowPlayingInfo
-      }
+      self.currentArtwork = image
+      self.applyNowPlayingInfo()
+      self.carPlaySceneDelegate?.updateNowPlayingListItem(
+        title: self.currentTitle,
+        artist: self.currentArtist,
+        album: self.currentAlbum,
+        artwork: image
+      )
     }.resume()
   }
 
   private func clearNowPlaying() {
-    nowPlayingInfo = [:]
     currentArtworkUrl = nil
     currentArtworkToken = nil
     currentTrackId = nil
-    lastSeekAt = nil
-    lastSeekPosition = nil
+    currentTitle = nil
+    currentArtist = nil
+    currentAlbum = nil
+    currentArtwork = nil
+    currentDuration = nil
+    currentIsPlaying = false
     currentEpoch = 0
     lastReportedPosition = -1
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     MPNowPlayingInfoCenter.default().playbackState = .stopped
+    carPlaySceneDelegate?.clearNowPlayingListItem()
   }
 
   private func configureRemoteCommands(channel: FlutterMethodChannel) {
@@ -276,6 +307,7 @@ import UIKit
     let commandCenter = MPRemoteCommandCenter.shared()
     commandCenter.playCommand.isEnabled = true
     commandCenter.pauseCommand.isEnabled = true
+    commandCenter.togglePlayPauseCommand.isEnabled = true
     commandCenter.nextTrackCommand.isEnabled = true
     commandCenter.previousTrackCommand.isEnabled = true
     commandCenter.changePlaybackPositionCommand.isEnabled = false
@@ -289,6 +321,11 @@ import UIKit
       channel.invokeMethod("remoteCommand", arguments: ["type": "pause"])
       return .success
     }
+    commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+      let isPlaying = self?.currentIsPlaying ?? false
+      channel.invokeMethod("remoteCommand", arguments: ["type": isPlaying ? "pause" : "play"])
+      return .success
+    }
     commandCenter.nextTrackCommand.addTarget { _ in
       channel.invokeMethod("remoteCommand", arguments: ["type": "next"])
       return .success
@@ -296,6 +333,9 @@ import UIKit
     commandCenter.previousTrackCommand.addTarget { _ in
       channel.invokeMethod("remoteCommand", arguments: ["type": "prev"])
       return .success
+    }
+    commandCenter.changePlaybackPositionCommand.addTarget { _ in
+      return .commandFailed
     }
   }
 
@@ -310,5 +350,351 @@ import UIKit
     }
     lastReportedPosition = clamped
     return clamped
+  }
+
+  private func rootFlutterViewController() -> FlutterViewController? {
+    if let controller = window?.rootViewController as? FlutterViewController {
+      return controller
+    }
+    if #available(iOS 13.0, *) {
+      for scene in UIApplication.shared.connectedScenes {
+        guard let windowScene = scene as? UIWindowScene else {
+          continue
+        }
+        for candidate in windowScene.windows {
+          if let controller = candidate.rootViewController as? FlutterViewController {
+            return controller
+          }
+        }
+      }
+    }
+    return nil
+  }
+
+  private func resolveMessenger(plugin: String) -> FlutterBinaryMessenger? {
+    if let controller = rootFlutterViewController() {
+      return controller.binaryMessenger
+    }
+    if let registrar = registrar(forPlugin: plugin) {
+      return registrar.messenger()
+    }
+    return nil
+  }
+
+  func refreshNowPlayingForCarPlay(force: Bool) {
+    applyNowPlayingInfo(forceRefresh: force)
+    carPlaySceneDelegate?.updateNowPlayingListItem(
+      title: currentTitle,
+      artist: currentArtist,
+      album: currentAlbum,
+      artwork: currentArtwork
+    )
+  }
+}
+
+final class LocalNetworkPermissionManager {
+  private var listener: NWListener?
+  private let queue = DispatchQueue(label: "phonolite.localnetwork")
+  private var channel: FlutterMethodChannel?
+  private var status: String?
+  private let statusKey = "localNetworkStatus"
+
+  init() {
+    status = UserDefaults.standard.string(forKey: statusKey)
+  }
+
+  func configureChannel(messenger: FlutterBinaryMessenger) {
+    if channel != nil {
+      return
+    }
+    let channel = FlutterMethodChannel(
+      name: "phonolite/permissions",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(FlutterError(code: "no_self", message: "Permission manager released", details: nil))
+        return
+      }
+      switch call.method {
+      case "getLocalNetworkPermission":
+        result(self.status ?? "unknown")
+      case "refreshLocalNetworkPermission":
+        self.requestPermission()
+        result(true)
+      case "openAppSettings":
+        self.openAppSettings(result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    self.channel = channel
+  }
+
+  func requestPermission() {
+    if #available(iOS 14.0, *) {
+      let parameters = NWParameters.tcp
+      parameters.includePeerToPeer = true
+      do {
+        let listener = try NWListener(using: parameters, on: 0)
+        listener.service = NWListener.Service(name: "Phonolite", type: "_phonolite._tcp")
+        listener.newConnectionHandler = { connection in
+          connection.cancel()
+        }
+        listener.stateUpdateHandler = { [weak self] state in
+          switch state {
+          case .ready:
+            self?.notify(status: "granted")
+            self?.stopListener()
+          case .failed(let error):
+            if self?.isDenied(error) == true {
+              self?.notify(status: "denied")
+            }
+            self?.stopListener()
+          default:
+            break
+          }
+        }
+        self.listener = listener
+        listener.start(queue: queue)
+        queue.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+          self?.stopListener()
+        }
+      } catch let error as NWError {
+        if isDenied(error) {
+          notify(status: "denied")
+        }
+      } catch {
+        // Leave as unknown on unexpected errors.
+      }
+    }
+  }
+
+  private func openAppSettings(result: FlutterResult) {
+    let open = {
+      if let url = URL(string: UIApplication.openSettingsURLString),
+         UIApplication.shared.canOpenURL(url) {
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        return true
+      }
+      return false
+    }
+    if Thread.isMainThread {
+      result(open())
+      return
+    }
+    var success = false
+    DispatchQueue.main.sync {
+      success = open()
+    }
+    result(success)
+  }
+
+  private func stopListener() {
+    listener?.cancel()
+    listener = nil
+  }
+
+  private func notify(status: String) {
+    if self.status == status {
+      return
+    }
+    self.status = status
+    if status != "unknown" {
+      UserDefaults.standard.set(status, forKey: statusKey)
+    }
+    DispatchQueue.main.async { [weak self] in
+      self?.channel?.invokeMethod(
+        "localNetworkPermission",
+        arguments: ["status": status]
+      )
+    }
+  }
+
+  private func isDenied(_ error: NWError) -> Bool {
+    switch error {
+    case .posix(let code):
+      return code == .EACCES || code == .EPERM
+    case .dns(let code):
+      return code == -65570
+    default:
+      return false
+    }
+  }
+}
+
+@available(iOS 13.0, *)
+class SceneDelegate: FlutterSceneDelegate {
+  override func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    super.scene(scene, willConnectTo: session, options: connectionOptions)
+    if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+      appDelegate.configureNowPlayingChannel()
+      appDelegate.configurePermissionsChannel()
+    }
+  }
+
+  override func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+    // Disable scene restoration to avoid NSUserActivity with an empty activityType.
+    return nil
+  }
+}
+
+@available(iOS 13.0, *)
+class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+  private weak var interfaceController: CPInterfaceController?
+  private var rootTemplate: CPListTemplate?
+  private var nowPlayingItem: CPListItem?
+  private let nowPlayingTemplate = CPNowPlayingTemplate.shared
+
+  private func refreshNowPlayingUI(force: Bool) {
+    if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+      appDelegate.refreshNowPlayingForCarPlay(force: force)
+    }
+  }
+
+  private func configureRootTemplate(using interfaceController: CPInterfaceController) {
+    self.interfaceController = interfaceController
+    DispatchQueue.main.async {
+      if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+        appDelegate.carPlaySceneDelegate = self
+        appDelegate.refreshNowPlayingForCarPlay(force: true)
+      }
+
+      let nowPlayingItem = CPListItem(text: "Now Playing", detailText: "Tap to open")
+      nowPlayingItem.handler = { [weak self] _, completion in
+        self?.showNowPlaying(animated: true)
+        completion()
+      }
+      let section = CPListSection(items: [nowPlayingItem])
+      let listTemplate = CPListTemplate(title: "Phonolite", sections: [section])
+      self.rootTemplate = listTemplate
+      self.nowPlayingItem = nowPlayingItem
+
+      if #available(iOS 14.0, *) {
+        interfaceController.setRootTemplate(listTemplate, animated: false, completion: nil)
+      } else {
+        interfaceController.setRootTemplate(listTemplate, animated: false)
+      }
+    }
+  }
+
+  private func showNowPlaying(animated: Bool) {
+    guard let interfaceController else {
+      return
+    }
+    if interfaceController.topTemplate === nowPlayingTemplate {
+      return
+    }
+    if #available(iOS 14.0, *) {
+      interfaceController.pushTemplate(nowPlayingTemplate, animated: animated, completion: { _, _ in })
+    } else {
+      interfaceController.pushTemplate(nowPlayingTemplate, animated: animated)
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.refreshNowPlayingUI(force: true)
+    }
+  }
+
+  func updateNowPlayingListItem(
+    title: String?,
+    artist: String?,
+    album: String?,
+    artwork: UIImage?
+  ) {
+    guard #available(iOS 14.0, *) else {
+      return
+    }
+    guard let item = nowPlayingItem else {
+      return
+    }
+    let cleanTitle = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanArtist = (artist ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanAlbum = (album ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let displayTitle = cleanTitle.isEmpty ? "Now Playing" : cleanTitle
+    var detail = ""
+    if !cleanArtist.isEmpty && !cleanAlbum.isEmpty {
+      detail = "\(cleanArtist) • \(cleanAlbum)"
+    } else if !cleanArtist.isEmpty {
+      detail = cleanArtist
+    } else if !cleanAlbum.isEmpty {
+      detail = cleanAlbum
+    } else {
+      detail = "Tap to open"
+    }
+    DispatchQueue.main.async {
+      item.setText(displayTitle)
+      item.setDetailText(detail)
+      if let artwork {
+        item.setImage(artwork)
+      } else {
+        item.setImage(nil)
+      }
+    }
+  }
+
+  func clearNowPlayingListItem() {
+    guard #available(iOS 14.0, *) else {
+      return
+    }
+    guard let item = nowPlayingItem else {
+      return
+    }
+    DispatchQueue.main.async {
+      item.setText("Now Playing")
+      item.setDetailText("Tap to open")
+      item.setImage(nil)
+    }
+  }
+
+  func templateApplicationScene(
+    _ templateApplicationScene: CPTemplateApplicationScene,
+    didConnect interfaceController: CPInterfaceController,
+    to window: CPWindow
+  ) {
+    configureRootTemplate(using: interfaceController)
+  }
+
+  @available(iOS 14.0, *)
+  func templateApplicationScene(
+    _ templateApplicationScene: CPTemplateApplicationScene,
+    didConnect interfaceController: CPInterfaceController
+  ) {
+    configureRootTemplate(using: interfaceController)
+  }
+
+  func templateApplicationScene(
+    _ templateApplicationScene: CPTemplateApplicationScene,
+    didDisconnect interfaceController: CPInterfaceController,
+    from window: CPWindow
+  ) {
+    if self.interfaceController === interfaceController {
+      self.interfaceController = nil
+    }
+    rootTemplate = nil
+    nowPlayingItem = nil
+    if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+       appDelegate.carPlaySceneDelegate === self {
+      appDelegate.carPlaySceneDelegate = nil
+    }
+  }
+
+  @available(iOS 14.0, *)
+  func templateApplicationScene(
+    _ templateApplicationScene: CPTemplateApplicationScene,
+    didDisconnect interfaceController: CPInterfaceController
+  ) {
+    if self.interfaceController === interfaceController {
+      self.interfaceController = nil
+    }
+    rootTemplate = nil
+    nowPlayingItem = nil
+    if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+       appDelegate.carPlaySceneDelegate === self {
+      appDelegate.carPlaySceneDelegate = nil
+    }
   }
 }

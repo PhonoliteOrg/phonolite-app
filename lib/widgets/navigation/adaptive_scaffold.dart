@@ -20,6 +20,7 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.onPrev,
     required this.onStop,
     required this.onSeek,
+    required this.onSeekPreview,
     required this.onShuffleChanged,
     required this.onToggleRepeat,
     required this.onStreamModeChanged,
@@ -40,6 +41,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onStop;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekPreview;
   final ValueChanged<ShuffleMode> onShuffleChanged;
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
@@ -70,6 +72,7 @@ class AdaptiveScaffold extends StatelessWidget {
       onPrev: onPrev,
       onStop: onStop,
       onSeek: onSeek,
+      onSeekPreview: onSeekPreview,
       onShuffleChanged: onShuffleChanged,
       onToggleRepeat: onToggleRepeat,
       onStreamModeChanged: onStreamModeChanged,
