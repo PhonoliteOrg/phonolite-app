@@ -3,9 +3,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:http/http.dart' as http;
 
 import 'app_log.dart';
 import 'auth_state.dart';
@@ -148,6 +152,14 @@ class AppController {
       onStreamInfo: null,
       onComplete: _handleTrackFinished,
       onStarted: () {
+        if (_resumeAfterSeek) {
+          _resumeAfterSeek = false;
+          _pushMessage('Seek: stream ready; resuming playback.');
+          if (_playbackState.isPlaying) {
+            _audioEngine.resume();
+          }
+        }
+        _clearInlineSeekWatchdog();
         if (!_audioOutputStarted) {
           _audioOutputStarted = true;
           _pushNowPlayingUpdate(force: true);
@@ -182,10 +194,25 @@ class AppController {
   String? _lastSeekTrackId;
   bool _seeking = false;
   int _seekTargetMs = 0;
+  bool _isScrubbing = false;
+  bool _scrubWasPlaying = false;
+  bool _scrubPaused = false;
+  bool _resumeAfterSeek = false;
+  int _seekEpoch = 0;
+  int? _inlineSeekEpoch;
+  Timer? _inlineSeekWatchdog;
+  Timer? _seekDebounceTimer;
+  int? _pendingSeekCommitMs;
+  String? _pendingSeekCommitTrackId;
+  static const Duration _seekDebounceDelay = Duration(milliseconds: 180);
   bool _audioOutputStarted = false;
   int _displayPositionMs = 0;
   int _actualPositionMs = 0;
   int _nowPlayingEpoch = 0;
+  Uint8List? _nowPlayingArtworkBytes;
+  String? _nowPlayingArtworkUrl;
+  String? _nowPlayingArtworkToken;
+  bool _nowPlayingArtworkFetchInFlight = false;
   DateTime? _lastStartPlaybackAt;
   String? _lastStartPlaybackTrackId;
   int? _lastStartPlaybackOffsetMs;
@@ -301,6 +328,7 @@ class AppController {
     }
     await _refreshLocalNetworkPermission();
   }
+
   bool get artistsLoading => _artistsLoading;
   bool get albumsLoading => _albumsLoading;
   bool get tracksLoading => _tracksLoading;
@@ -316,6 +344,15 @@ class AppController {
     _clearNowPlaying();
     _healthTimer?.cancel();
     _healthTimer = null;
+    _isScrubbing = false;
+    _scrubWasPlaying = false;
+    _scrubPaused = false;
+    _resumeAfterSeek = false;
+    _clearInlineSeekWatchdog();
+    _seekDebounceTimer?.cancel();
+    _seekDebounceTimer = null;
+    _pendingSeekCommitMs = null;
+    _pendingSeekCommitTrackId = null;
     AppLogger.instance.detach(_logListener);
     _artistsController.close();
     _albumsController.close();
@@ -335,6 +372,13 @@ class AppController {
     _searchLoadingController.close();
     _audioEngine.dispose();
     _closeStreamControl();
+  }
+
+  void handleAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      _audioEngine.stop();
+      _closeStreamControl();
+    }
   }
 
   Future<void> loginWithPassword({
@@ -576,8 +620,7 @@ class AppController {
       _lastSeekMs = null;
       _lastSeekTrackId = null;
     }
-    final nowPlayingIsPlaying =
-        isPlaying && _audioOutputStarted && !_audioEngine.isPaused;
+    final nowPlayingIsPlaying = isPlaying;
     final lastSentAt = _lastNowPlayingSentAt;
     if (!force &&
         track.id == _lastNowPlayingTrackId &&
@@ -598,6 +641,7 @@ class AppController {
     final artworkUrl =
         albumId.isNotEmpty ? connection.buildAlbumCoverUrl(albumId) : null;
     final token = connection.token ?? '';
+    _maybeFetchNowPlayingArtwork(artworkUrl, token);
 
     final payload = <String, dynamic>{
       'epoch': _nowPlayingEpoch,
@@ -611,6 +655,9 @@ class AppController {
       'artworkUrl': artworkUrl ?? '',
       'token': token,
     };
+    if (_nowPlayingArtworkBytes != null) {
+      payload['artworkBytes'] = _nowPlayingArtworkBytes;
+    }
     try {
       await _nowPlayingChannel.invokeMethod('setNowPlaying', payload);
       _lastNowPlayingSentAt = now;
@@ -619,6 +666,79 @@ class AppController {
       _lastNowPlayingPositionMs = positionMs;
       _lastNowPlayingEpochSent = _nowPlayingEpoch;
     } catch (_) {}
+  }
+
+  void _maybeFetchNowPlayingArtwork(String? artworkUrl, String token) {
+    if (!Platform.isIOS) {
+      return;
+    }
+    if (artworkUrl == null || artworkUrl.isEmpty) {
+      _nowPlayingArtworkBytes = null;
+      _nowPlayingArtworkUrl = null;
+      _nowPlayingArtworkToken = null;
+      return;
+    }
+    final sameSource =
+        artworkUrl == _nowPlayingArtworkUrl && token == _nowPlayingArtworkToken;
+    if (sameSource && _nowPlayingArtworkBytes != null) {
+      return;
+    }
+    if (_nowPlayingArtworkFetchInFlight && sameSource) {
+      return;
+    }
+    _nowPlayingArtworkBytes = null;
+    _nowPlayingArtworkUrl = artworkUrl;
+    _nowPlayingArtworkToken = token;
+    _nowPlayingArtworkFetchInFlight = true;
+    _fetchNowPlayingArtwork(artworkUrl, token);
+  }
+
+  Future<void> _fetchNowPlayingArtwork(String artworkUrl, String token) async {
+    try {
+      final uri = Uri.parse(artworkUrl);
+      final headers = <String, String>{};
+      if (token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+      final response = await http.get(uri, headers: headers);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return;
+      }
+      final decoded = await _decodeArtworkToPng(response.bodyBytes);
+      if (decoded == null) {
+        return;
+      }
+      if (artworkUrl != _nowPlayingArtworkUrl ||
+          token != _nowPlayingArtworkToken) {
+        return;
+      }
+      _nowPlayingArtworkBytes = decoded;
+      await _pushNowPlayingUpdate(force: true);
+    } catch (_) {
+      // Ignore artwork failures to avoid disrupting playback.
+    } finally {
+      _nowPlayingArtworkFetchInFlight = false;
+    }
+  }
+
+  Future<Uint8List?> _decodeArtworkToPng(Uint8List bytes) async {
+    if (bytes.isEmpty) {
+      return null;
+    }
+    try {
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 1024,
+        targetHeight: 1024,
+      );
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      return data?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> loadArtists() async {
@@ -1308,6 +1428,31 @@ class AppController {
     }
   }
 
+  void previewSeek(Duration position) {
+    final track = _playbackState.track;
+    if (track == null) {
+      return;
+    }
+    final duration = _playbackState.duration;
+    final clamped = duration == Duration.zero
+        ? position
+        : position > duration
+            ? duration
+            : position < Duration.zero
+                ? Duration.zero
+                : position;
+    _beginScrub();
+    _seeking = true;
+    _seekTargetMs = clamped.inMilliseconds;
+    _displayPositionMs = clamped.inMilliseconds;
+    _updatePlayback(
+      position: clamped,
+      isPlaying: _playbackState.isPlaying,
+      bufferRatio: 0.0,
+      nowPlaying: false,
+    );
+  }
+
   Future<void> seekTo(Duration position) async {
     final track = _playbackState.track;
     if (track == null) {
@@ -1334,20 +1479,136 @@ class AppController {
     _bumpNowPlayingEpoch();
     _displayPositionMs = clamped.inMilliseconds;
     _updatePlayback(position: clamped, isPlaying: wasPlaying, bufferRatio: 0.0);
-    final inlineSeek = await _audioEngine.seekTo(clamped);
-    if (!inlineSeek) {
-      _startPlayback(track, startOffset: clamped);
-      if (!wasPlaying) {
-        Future<void>.delayed(const Duration(milliseconds: 120), () {
-          _audioEngine.pause();
-          _updatePlayback(isPlaying: false);
-        });
-      }
-    } else if (!wasPlaying) {
-      _audioEngine.pause();
-      _updatePlayback(isPlaying: false);
-    }
+    _scheduleSeekCommit(clamped);
     await _pushNowPlayingUpdate(force: true);
+  }
+
+  void _scheduleSeekCommit(Duration target) {
+    _pendingSeekCommitMs = target.inMilliseconds;
+    _pendingSeekCommitTrackId = _playbackState.track?.id;
+    _seekDebounceTimer?.cancel();
+    _seekDebounceTimer = Timer(_seekDebounceDelay, () async {
+      final track = _playbackState.track;
+      final pendingTrackId = _pendingSeekCommitTrackId;
+      final pendingMs = _pendingSeekCommitMs;
+      if (track == null || pendingTrackId == null || pendingMs == null) {
+        _finishScrub();
+        return;
+      }
+      if (track.id != pendingTrackId) {
+        _finishScrub();
+        return;
+      }
+      _pendingSeekCommitMs = null;
+      _pendingSeekCommitTrackId = null;
+      await _commitSeek(Duration(milliseconds: pendingMs));
+    });
+  }
+
+  Future<void> _commitSeek(Duration target) async {
+    final track = _playbackState.track;
+    if (track == null) {
+      return;
+    }
+    final wasPlaying = _playbackState.isPlaying;
+    _resumeAfterSeek = _scrubPaused && _scrubWasPlaying && wasPlaying;
+    _seekEpoch = (_seekEpoch + 1) % 1000000;
+    final epoch = _seekEpoch;
+    bool inlineSeek = false;
+    try {
+      inlineSeek = await _audioEngine.seekTo(target);
+    } catch (_) {
+      inlineSeek = false;
+    }
+    if (inlineSeek) {
+      _pushMessage(
+        'Seek commit: inline seek to ${target.inMilliseconds}ms '
+        '(resume=${_resumeAfterSeek ? 'yes' : 'no'})',
+      );
+      _armInlineSeekWatchdog(
+        track: track,
+        target: target,
+        wasPlaying: wasPlaying,
+        epoch: epoch,
+      );
+    } else {
+      _restartPlaybackForSeek(
+        track: track,
+        target: target,
+        wasPlaying: wasPlaying,
+        reason: 'inline unavailable',
+      );
+    }
+    _finishScrub();
+  }
+
+  void _beginScrub() {
+    if (_isScrubbing) {
+      return;
+    }
+    _isScrubbing = true;
+    _resumeAfterSeek = false;
+    _scrubWasPlaying = _playbackState.isPlaying && !_audioEngine.isPaused;
+    _scrubPaused = false;
+    if (_scrubWasPlaying) {
+      _scrubPaused = true;
+      _audioEngine.pause();
+    }
+  }
+
+  void _finishScrub() {
+    _isScrubbing = false;
+    _scrubPaused = false;
+    _scrubWasPlaying = false;
+  }
+
+  void _armInlineSeekWatchdog({
+    required Track track,
+    required Duration target,
+    required bool wasPlaying,
+    required int epoch,
+  }) {
+    _inlineSeekWatchdog?.cancel();
+    _inlineSeekEpoch = epoch;
+    _inlineSeekWatchdog = Timer(const Duration(milliseconds: 1800), () {
+      if (_inlineSeekEpoch != epoch) {
+        return;
+      }
+      _inlineSeekEpoch = null;
+      _inlineSeekWatchdog = null;
+      _restartPlaybackForSeek(
+        track: track,
+        target: target,
+        wasPlaying: wasPlaying,
+        reason: 'inline stalled',
+      );
+    });
+  }
+
+  void _clearInlineSeekWatchdog() {
+    _inlineSeekWatchdog?.cancel();
+    _inlineSeekWatchdog = null;
+    _inlineSeekEpoch = null;
+  }
+
+  void _restartPlaybackForSeek({
+    required Track track,
+    required Duration target,
+    required bool wasPlaying,
+    required String reason,
+  }) {
+    _clearInlineSeekWatchdog();
+    _pushMessage(
+      'Seek commit: restarting stream at ${target.inMilliseconds}ms '
+      '(reason=$reason, resume=${_resumeAfterSeek ? 'yes' : 'no'})',
+    );
+    _startPlayback(track, startOffset: target);
+    if (!wasPlaying) {
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        _audioEngine.pause();
+        _updatePlayback(isPlaying: false);
+      });
+    }
   }
 
   void _maybeClearSeekHold(Duration position, Duration bufferedAhead) {
@@ -1368,7 +1629,9 @@ class AppController {
 
   void _updateDisplayPosition(int actualMs, int bufferedMs) {
     final durationMs = _playbackState.duration.inMilliseconds;
-    if (_seeking &&
+    if (_isScrubbing) {
+      _displayPositionMs = _seekTargetMs;
+    } else if (_seeking &&
         (!_audioOutputStarted ||
             _audioEngine.isPaused ||
             !_playbackState.isPlaying)) {
@@ -1952,6 +2215,7 @@ class AppController {
     double? bitrateKbps,
     bool? streamConnected,
     int? streamRttMs,
+    bool nowPlaying = true,
   }) {
     _playbackState = _playbackState.copyWith(
       track: track,
@@ -1968,7 +2232,9 @@ class AppController {
       streamRttMs: streamRttMs,
     );
     _playbackController.add(_playbackState);
-    _pushNowPlayingUpdate();
+    if (nowPlaying) {
+      _pushNowPlayingUpdate();
+    }
   }
 
   void _pushMessage(String message, {LogLevel level = LogLevel.info}) {
@@ -2059,6 +2325,7 @@ class AppController {
     _lastStartPlaybackOffsetMs = offsetMs;
     () async {
       try {
+        _logPlaybackContext();
         _updatePlayback(bitrateKbps: null);
         _audioOutputStarted = false;
         _pushMessage(
@@ -2081,6 +2348,25 @@ class AppController {
         _updatePlayback(isPlaying: false);
       }
     }();
+  }
+
+  void _logPlaybackContext() {
+    _pushMessage('Server base URL: ${connection.baseUrl}');
+    if (Platform.isIOS) {
+      _pushMessage('Local network permission: ${_localNetworkPermissionState.name}');
+      try {
+        final uri = Uri.parse(connection.baseUrl);
+        final host = uri.host;
+        final isLoopback =
+            host == 'localhost' || host == '127.0.0.1' || host == '::1';
+        if (host.isNotEmpty && isLoopback) {
+          _pushMessage(
+            'Warning: base URL resolves to loopback on iOS. Use your LAN IP/hostname.',
+            level: LogLevel.warning,
+          );
+        }
+      } catch (_) {}
+    }
   }
 
   void _closeStreamControl() {

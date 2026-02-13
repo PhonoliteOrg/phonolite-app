@@ -103,6 +103,7 @@ struct ClientState {
     prefetch_bytes: HashMap<String, usize>,
     pending_streams: HashMap<u64, VecDeque<Bytes>>,
     pending_stream_bytes: HashMap<u64, usize>,
+    dropping_active: bool,
 }
 
 impl ClientState {
@@ -119,6 +120,7 @@ impl ClientState {
             prefetch_bytes: HashMap::new(),
             pending_streams: HashMap::new(),
             pending_stream_bytes: HashMap::new(),
+            dropping_active: false,
         }
     }
 }
@@ -477,6 +479,7 @@ fn run_client(
                 }
                 ControlCommand::Seek { track_id, position_ms } => {
                     state.active_track = Some(track_id.clone());
+                    state.dropping_active = true;
                     enqueue_control(
                         &mut state,
                         ClientMessage::Seek {
@@ -618,9 +621,12 @@ fn flush_conn(
     loop {
         match conn.send(out) {
             Ok((len, send_info)) => {
-                if let Err(err) = socket.send_to(&out[..len], send_info.to) {
-                    set_last_error_if_empty(last_error, format!("udp send error: {}", err));
-                    break;
+                // Socket is connected; use send() to avoid EISCONN on some platforms.
+                if let Err(err) = socket.send(&out[..len]) {
+                  // Keep the original destination in the log for troubleshooting.
+                  let detail = format!("udp send error: {} (to {})", err, send_info.to);
+                  set_last_error_if_empty(last_error, detail);
+                  break;
                 }
             }
             Err(quiche::Error::Done) => break,
@@ -703,6 +709,7 @@ fn handle_control_bytes(
                     let is_active = state.active_track.as_deref() == Some(track_id.as_str());
                     if is_active {
                         state.active_stream = Some(stream_id);
+                        state.dropping_active = false;
                     }
                     flush_pending_stream(state, stream_id, &track_id, tx, is_active);
                     if !is_active {
@@ -741,6 +748,9 @@ fn handle_stream_bytes(
     tx: &mpsc::Sender<Vec<u8>>,
 ) {
     if Some(stream_id) == state.active_stream {
+        if state.dropping_active {
+            return;
+        }
         let _ = tx.send(data.to_vec());
         return;
     }

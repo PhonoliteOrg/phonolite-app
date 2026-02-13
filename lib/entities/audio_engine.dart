@@ -396,6 +396,9 @@ class _PlaybackSession {
   int? _pendingSeekMs;
   bool _discardUntilSeekMarker = false;
   bool _pumpRunning = false;
+  bool _pumpSuspended = false;
+  bool _pumpWriting = false;
+  bool _quickStart = false;
 
   bool _stopRequested = false;
   bool _paused = false;
@@ -417,6 +420,8 @@ class _PlaybackSession {
   static const double _prebufferSecondsLocal = 2.0;
   static const double _rebufferMinSecondsLocal = 0.4;
   static const double _rebufferTargetSecondsLocal = 2.0;
+  static const double _seekPrebufferSeconds = 0.3;
+  static const double _seekPrebufferSecondsIos = 0.4;
   static const int _pumpChunkMs = 200;
   static const bool _serverBackpressureEnabled = false;
 
@@ -487,6 +492,7 @@ class _PlaybackSession {
       _log('Seek ignored: QUIC client not ready.');
       return;
     }
+    _quickStart = true;
     final ms = position.inMilliseconds;
     _pendingSeekMs = ms;
     _streamEnded = false;
@@ -575,6 +581,7 @@ class _PlaybackSession {
     _streamEnded = false;
     _baseOffsetMs = startOffset.inMilliseconds;
     _pendingClientSkipMs = startOffset.inMilliseconds;
+    _quickStart = startOffset.inMilliseconds > 0;
     _pendingSeekMs = null;
     _pumpRunning = false;
 
@@ -589,6 +596,16 @@ class _PlaybackSession {
         uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80);
     final resolvedQuicPort =
         (quicPort != null && quicPort! > 0) ? quicPort! : httpPort + 1;
+    _log(
+      'QUIC config: base_url=$baseUrl host=$host http_port=$httpPort '
+      'quic_port=$resolvedQuicPort token_len=${token.length} platform=${Platform.operatingSystem}',
+    );
+    if (Platform.isIOS &&
+        (host == '127.0.0.1' || host == 'localhost' || host == '::1')) {
+      _log(
+        'Warning: QUIC host is loopback on iOS. Use a LAN IP/hostname to reach the server.',
+      );
+    }
     _log('Opening QUIC stream: $host:$resolvedQuicPort');
     var quic =
         QuicClient.connect(host: host, port: resolvedQuicPort, token: token);
@@ -629,9 +646,13 @@ class _PlaybackSession {
     var lastFrameLen = 0;
     var decodeErrors = 0;
     var debugFramesLogged = 0;
+    final playbackStartedAt = DateTime.now();
+    var noBytesWarned = false;
     Future<void>? pumpTask;
 
-    void resetForSeek() {
+    Future<void> resetForSeek() async {
+      _pumpSuspended = true;
+      await _waitForPumpIdle();
       _streamEnded = false;
       _startedPlayback = false;
       _reportedStart = false;
@@ -666,6 +687,7 @@ class _PlaybackSession {
         _baseOffsetMs = _pendingSeekMs!;
       }
       _pendingSeekMs = null;
+      _pumpSuspended = false;
     }
 
     final readBuffer = Uint8List(64 * 1024);
@@ -698,6 +720,15 @@ class _PlaybackSession {
       }
 
       while (_isActive) {
+        if (_discardUntilSeekMarker) {
+          _resyncRawHeader(reader);
+          final prefix = reader.peek(12);
+          if (prefix != null && _hasRawHeaderMagic(prefix)) {
+            _log('Seek marker missing; resyncing on raw header.');
+            await resetForSeek();
+            continue;
+          }
+        }
         if (header == null) {
           if (headerLen == null) {
             final prefix = reader.peek(12);
@@ -790,8 +821,11 @@ class _PlaybackSession {
           if (_pumpChunkSamples <= 0) {
             _pumpChunkSamples = _frameSamples * _channels;
           }
+          final effectivePrebufferSeconds = _quickStart
+              ? (Platform.isIOS ? _seekPrebufferSecondsIos : _seekPrebufferSeconds)
+              : _prebufferSeconds;
           _prebufferTargetSamples =
-              (_sampleRate * _channels * _prebufferSeconds).round();
+              (_sampleRate * _channels * effectivePrebufferSeconds).round();
           _rebufferMinSamples =
               (_sampleRate * _channels * _rebufferMinSeconds).round();
           _rebufferTargetSamples =
@@ -830,7 +864,6 @@ class _PlaybackSession {
           }
           continue;
         }
-
         if (pendingFrameLen == null) {
           final lenBytes = reader.read(2);
           if (lenBytes == null) {
@@ -840,7 +873,7 @@ class _PlaybackSession {
           if (pendingFrameLen == _rawSeekMarker) {
             _log('Seek marker received; resetting decoder.');
             pendingFrameLen = null;
-            resetForSeek();
+            await resetForSeek();
             continue;
           }
           if (pendingFrameLen == 0) {
@@ -956,6 +989,18 @@ class _PlaybackSession {
         await _writeToBuffer(samples);
       }
 
+      if (!noBytesWarned &&
+          bytesReceived == 0 &&
+          DateTime.now().difference(playbackStartedAt) >
+              const Duration(seconds: 3)) {
+        final detail = quic.lastError();
+        _log(
+          'QUIC waiting for data (0 bytes received). '
+          'last_error=${detail ?? 'none'}',
+        );
+        noBytesWarned = true;
+      }
+
       if (_streamEnded) {
         break;
       }
@@ -997,6 +1042,10 @@ class _PlaybackSession {
           await Future<void>.delayed(const Duration(milliseconds: 10));
           continue;
         }
+        if (_pumpSuspended) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          continue;
+        }
 
         if (!_startedPlayback) {
           if (buffer.length == 0 && _streamEnded) {
@@ -1025,10 +1074,34 @@ class _PlaybackSession {
           continue;
         }
 
-        await _writeSamples(player, chunk);
+        _pumpWriting = true;
+        try {
+          await _writeSamples(player, chunk);
+        } catch (err) {
+          _pumpWriting = false;
+          _log('Audio write error: $err');
+          if (_pumpSuspended || !_isActive) {
+            return;
+          }
+          rethrow;
+        } finally {
+          _pumpWriting = false;
+        }
       }
     } finally {
       _pumpRunning = false;
+    }
+  }
+
+  Future<void> _waitForPumpIdle() async {
+    if (!_pumpRunning) {
+      return;
+    }
+    for (var i = 0; i < 80; i++) {
+      if (!_pumpWriting) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
     }
   }
 
@@ -1065,6 +1138,7 @@ class _PlaybackSession {
       return;
     }
     _reportedStart = true;
+    _quickStart = false;
     _log('Audio playback started.');
     _send({'type': 'started'});
   }
@@ -1768,8 +1842,15 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
     final dataPtr = calloc<ffi.Int16>(samples.length);
     try {
       dataPtr.asTypedList(samples.length).setAll(0, samples);
-      final result = _bindings.write(handle, dataPtr, samples.length);
-      if (result != 0) {
+      while (true) {
+        final result = _bindings.write(handle, dataPtr, samples.length);
+        if (result == 0) {
+          break;
+        }
+        if (result == _coreAudioQueueFull) {
+          await Future<void>.delayed(const Duration(milliseconds: 2));
+          continue;
+        }
         throw Exception('CoreAudio write failed: $result');
       }
     } finally {
@@ -1832,6 +1913,8 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
     return _bindings.isIdle(handle) != 0;
   }
 }
+
+const int _coreAudioQueueFull = -3;
 
 const int WAVE_MAPPER = 0xFFFFFFFF;
 const int kDefaultOutputDeviceId = -1;
@@ -2223,4 +2306,3 @@ typedef _CoreAudioDeviceNameDart = int Function(
   ffi.Pointer<ffi.Char> buffer,
   int bufferLen,
 );
-
