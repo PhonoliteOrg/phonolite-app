@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../entities/app_log.dart';
+import '../entities/custom_shuffle_settings.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/obsidian_widgets.dart';
+import 'custom_shuffle_settings_page.dart';
 import 'logs_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -47,6 +49,40 @@ class SettingsPage extends StatelessWidget {
                 title: const Text('Server'),
                 subtitle: Text(serverLabel),
               ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Playback',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: ObsidianPalette.textMuted,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<CustomShuffleSettings>(
+              stream: controller.customShuffleSettingsStream,
+              initialData: controller.customShuffleSettings,
+              builder: (context, snapshot) {
+                final settings = snapshot.data ?? controller.customShuffleSettings;
+                final artistCount = settings.artistIds.length;
+                final genreCount = settings.genres.length;
+                final summary = 'Artists: $artistCount, Genres: $genreCount';
+                return GlassPanel(
+                  cut: 18,
+                  padding: EdgeInsets.zero,
+                  child: ListTile(
+                    leading: const Icon(Icons.shuffle_rounded),
+                    title: const Text('Custom Shuffle'),
+                    subtitle: Text(summary),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CustomShuffleSettingsPage(),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 20),
             Text(
