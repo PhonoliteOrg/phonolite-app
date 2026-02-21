@@ -36,6 +36,11 @@ enum ControlCommand {
         frame_ms: u32,
         queue: Vec<String>,
     },
+    Playback {
+        track_id: String,
+        position_ms: u32,
+        playing: bool,
+    },
     Seek {
         track_id: String,
         position_ms: u32,
@@ -63,6 +68,12 @@ enum ClientMessage<'a> {
     },
     #[serde(rename = "buffer")]
     Buffer { buffer_ms: u32, target_ms: Option<u32> },
+    #[serde(rename = "playback")]
+    Playback {
+        track_id: &'a str,
+        position_ms: u32,
+        playing: bool,
+    },
     #[serde(rename = "seek")]
     Seek { track_id: &'a str, position_ms: u32 },
     #[serde(rename = "advance")]
@@ -228,6 +239,36 @@ pub extern "C" fn phonolite_quic_send_buffer(
         .is_err()
     {
         return -2;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_send_playback(
+    handle: *mut QuicHandle,
+    track_id: *const c_char,
+    position_ms: u32,
+    playing: c_int,
+) -> c_int {
+    let Some(handle) = (unsafe { handle.as_ref() }) else {
+        return -1;
+    };
+    let track_id = unsafe { cstr_to_string(track_id) };
+    if track_id.is_empty() {
+        return -2;
+    }
+    let playing = playing != 0;
+    if handle
+        .inner
+        .tx
+        .send(ControlCommand::Playback {
+            track_id,
+            position_ms,
+            playing,
+        })
+        .is_err()
+    {
+        return -3;
     }
     0
 }
@@ -476,6 +517,20 @@ fn run_client(
                     if let Some(stream_id) = state.track_streams.get(&track_id).cloned() {
                         state.active_stream = Some(stream_id);
                     }
+                }
+                ControlCommand::Playback {
+                    track_id,
+                    position_ms,
+                    playing,
+                } => {
+                    enqueue_control(
+                        &mut state,
+                        ClientMessage::Playback {
+                            track_id: &track_id,
+                            position_ms,
+                            playing,
+                        },
+                    );
                 }
                 ControlCommand::Seek { track_id, position_ms } => {
                     state.active_track = Some(track_id.clone());

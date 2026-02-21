@@ -34,45 +34,59 @@ class ArtistCard extends StatelessWidget {
       padding: EdgeInsets.all(s(16)),
       onTap: onTap,
       splashColor: accentGold.withOpacity(0.2),
-      childBuilder: (context, hovered) => Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CardImageFrame(
-            hovered: hovered,
-            child: ArtistAvatar(
-              name: artist.name,
-              size: t(120),
-              imageUrl: coverUrl,
-              headers: headers,
-              fit: BoxFit.contain,
-              paddingFraction: 0,
+      childBuilder: (context, hovered) => LayoutBuilder(
+        builder: (context, constraints) {
+          final content = Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CardImageFrame(
+                hovered: hovered,
+                child: ArtistAvatar(
+                  name: artist.name,
+                  size: t(120),
+                  imageUrl: coverUrl,
+                  headers: headers,
+                  fit: BoxFit.contain,
+                  paddingFraction: 0,
+                ),
+              ),
+              SizedBox(height: s(16)),
+              Text(
+                artist.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.rajdhani(
+                  color: Colors.white,
+                  fontSize: t(18),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: s(1.1),
+                ),
+              ),
+              SizedBox(height: s(12)),
+              Text(
+                '${artist.albumCount} ALBUMS',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.rajdhani(
+                  color: Colors.white54,
+                  fontSize: t(12),
+                  letterSpacing: s(1.4),
+                ),
+              ),
+            ],
+          );
+
+          return FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: SizedBox(
+              width: constraints.maxWidth,
+              child: content,
             ),
-          ),
-          SizedBox(height: s(16)),
-          Text(
-            artist.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.rajdhani(
-              color: Colors.white,
-              fontSize: t(18),
-              fontWeight: FontWeight.w700,
-              letterSpacing: s(1.1),
-            ),
-          ),
-          SizedBox(height: s(12)),
-          Text(
-            '${artist.albumCount} ALBUMS',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.rajdhani(
-              color: Colors.white54,
-              fontSize: t(12),
-              letterSpacing: s(1.4),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

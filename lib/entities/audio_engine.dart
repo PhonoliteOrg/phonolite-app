@@ -435,6 +435,8 @@ class _PlaybackSession {
   _NativeAudioPlayer? _player;
   _PcmRingBuffer? _buffer;
   Timer? _statsTimer;
+  static const int _playbackReportIntervalMs = 1000;
+  int _lastPlaybackReportAt = 0;
 
   int _queuedToPlayerSamples = 0;
   int _playedSamples = 0;
@@ -1202,6 +1204,7 @@ class _PlaybackSession {
           : (_playedSamples * 1000 ~/ samplesPerSecond);
       final position = Duration(milliseconds: _baseOffsetMs + playedMs);
       _maybeRebuffer(bufferedSamples);
+      _maybeReportPlayback(quic, position);
       _send({
         'type': 'stats',
         'position_ms': position.inMilliseconds,
@@ -1215,6 +1218,27 @@ class _PlaybackSession {
   void _stopStats() {
     _statsTimer?.cancel();
     _statsTimer = null;
+  }
+
+  void _maybeReportPlayback(QuicClient? quic, Duration position) {
+    if (quic == null || !_reportedStart) {
+      return;
+    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _lastPlaybackReportAt < _playbackReportIntervalMs) {
+      return;
+    }
+    _lastPlaybackReportAt = nowMs;
+    final playing = !_paused && !_autoPaused && !_streamEnded;
+    try {
+      quic.sendPlayback(
+        trackId: trackId,
+        positionMs: position.inMilliseconds,
+        playing: playing,
+      );
+    } catch (_) {
+      // Ignore playback stat errors from closed/failed QUIC sessions.
+    }
   }
 
   double? _currentBitrateKbps() {

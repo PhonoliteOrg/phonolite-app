@@ -102,6 +102,10 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                                   startTrackId: track.id,
                                 ),
                                 onLike: () => controller.toggleLike(track),
+                                onDelete: () => controller.removeTrackFromPlaylist(
+                                  playlist,
+                                  track,
+                                ),
                               );
                             },
                             childCount: tracks.length * 2 - 1,

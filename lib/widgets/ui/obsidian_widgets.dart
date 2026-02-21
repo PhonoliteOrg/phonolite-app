@@ -201,6 +201,19 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
   bool _pressed = false;
   static const _transition = Duration(milliseconds: 200);
 
+  @override
+  void didUpdateWidget(covariant _HoverHudIconButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onPressed != null && widget.onPressed == null) {
+      if (_hovered || _pressed) {
+        setState(() {
+          _hovered = false;
+          _pressed = false;
+        });
+      }
+    }
+  }
+
   void _setHovered(bool value) {
     if (_hovered == value) {
       return;
@@ -217,20 +230,25 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
 
   @override
   Widget build(BuildContext context) {
-    final highlight = widget.isActive || _hovered || _pressed;
-    final glowOpacity = _hovered ? 0.7 : (widget.isActive ? 0.35 : 0.0);
+    final enabled = widget.onPressed != null;
+    final highlight = enabled && (widget.isActive || _hovered || _pressed);
+    final glowOpacity =
+        !enabled ? 0.0 : (_hovered ? 0.7 : (widget.isActive ? 0.35 : 0.0));
+    final idleColor = enabled
+        ? ObsidianPalette.textMuted
+        : ObsidianPalette.textMuted.withOpacity(0.6);
 
     return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
+      onEnter: enabled ? (_) => _setHovered(true) : null,
+      onExit: enabled ? (_) => _setHovered(false) : null,
       cursor: widget.onPressed == null
           ? SystemMouseCursors.basic
           : SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onPressed,
-        onTapDown: (_) => _setPressed(true),
-        onTapUp: (_) => _setPressed(false),
-        onTapCancel: () => _setPressed(false),
+        onTapDown: enabled ? (_) => _setPressed(true) : null,
+        onTapUp: enabled ? (_) => _setPressed(false) : null,
+        onTapCancel: enabled ? () => _setPressed(false) : null,
         behavior: HitTestBehavior.opaque,
         child: Padding(
           padding: const EdgeInsets.all(8),
@@ -241,7 +259,7 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
             builder: (context, animatedGlow, child) {
               return TweenAnimationBuilder<Color?>(
                 tween: ColorTween(
-                  end: highlight ? ObsidianPalette.gold : ObsidianPalette.textMuted,
+                  end: highlight ? ObsidianPalette.gold : idleColor,
                 ),
                 duration: _transition,
                 curve: Curves.easeOut,

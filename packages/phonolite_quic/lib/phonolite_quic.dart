@@ -86,6 +86,21 @@ class QuicClient {
     _bindings.sendBuffer(_handle, bufferMs, target);
   }
 
+  void sendPlayback({
+    required String trackId,
+    required int positionMs,
+    required bool playing,
+  }) {
+    _ensureActive();
+    final trackPtr = trackId.toNativeUtf8();
+    final result =
+        _bindings.sendPlayback(_handle, trackPtr, positionMs, playing ? 1 : 0);
+    calloc.free(trackPtr);
+    if (result != 0) {
+      throw QuicException('failed to send playback stats (code $result)');
+    }
+  }
+
   void seek({required String trackId, required int positionMs}) {
     _ensureActive();
     final trackPtr = trackId.toNativeUtf8();
@@ -242,6 +257,19 @@ typedef _SendBufferDart = int Function(
   int,
 );
 
+typedef _SendPlaybackNative = ffi.Int32 Function(
+  ffi.Pointer<_QuicHandle>,
+  ffi.Pointer<Utf8>,
+  ffi.Uint32,
+  ffi.Int32,
+);
+typedef _SendPlaybackDart = int Function(
+  ffi.Pointer<_QuicHandle>,
+  ffi.Pointer<Utf8>,
+  int,
+  int,
+);
+
 typedef _SeekNative = ffi.Int32 Function(
   ffi.Pointer<_QuicHandle>,
   ffi.Pointer<Utf8>,
@@ -293,6 +321,11 @@ class _Bindings {
               'phonolite_quic_send_buffer',
             )
             .asFunction(),
+        sendPlayback = library
+            .lookup<ffi.NativeFunction<_SendPlaybackNative>>(
+              'phonolite_quic_send_playback',
+            )
+            .asFunction(),
         seek = library
             .lookup<ffi.NativeFunction<_SeekNative>>(
               'phonolite_quic_seek',
@@ -333,6 +366,7 @@ class _Bindings {
   final _OpenTrackDart openTrack;
   final _ReadDart read;
   final _SendBufferDart sendBuffer;
+  final _SendPlaybackDart sendPlayback;
   final _SeekDart seek;
   final _AdvanceDart advance;
   final _LastErrorDart lastError;

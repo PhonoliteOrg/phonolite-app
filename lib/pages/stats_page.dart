@@ -40,6 +40,7 @@ class _StatsPageState extends State<StatsPage> {
           stats: stats,
           onYearChanged: (year) => controller.loadStats(year: year, month: stats.month),
           onMonthChanged: (month) => controller.loadStats(year: stats.year, month: month),
+          onRefresh: () => controller.loadStats(year: stats.year, month: stats.month),
         );
       },
     );

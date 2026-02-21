@@ -6,6 +6,7 @@ import 'entities/server_connection.dart';
 import 'entities/auth_state.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
+import 'pages/splash_page.dart';
 import 'widgets/layouts/app_scope.dart';
 import 'widgets/layouts/obsidian_scale.dart';
 import 'widgets/ui/obsidian_background.dart';
@@ -25,6 +26,7 @@ class PhonoliteApp extends StatefulWidget {
 
 class _PhonoliteAppState extends State<PhonoliteApp> {
   late final AppController _controller;
+  late final Future<void> _restoreFuture;
 
   @override
   void initState() {
@@ -36,7 +38,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
     final connection = ServerConnection(baseUrl: baseUrl);
 
     _controller = AppController(connection: connection);
-    _controller.restoreSession();
+    _restoreFuture = _controller.restoreSession();
   }
 
   @override
@@ -65,11 +67,20 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
               stream: _controller.authStream,
               initialData: _controller.authState,
               builder: (context, snapshot) {
-                final state = snapshot.data ?? _controller.authState;
-                if (!state.isAuthorized) {
-                  return LoginPage(controller: _controller);
-                }
-                return const HomePage();
+                return FutureBuilder<void>(
+                  future: _restoreFuture,
+                  builder: (context, restoreSnapshot) {
+                    if (restoreSnapshot.connectionState !=
+                        ConnectionState.done) {
+                      return const SplashPage();
+                    }
+                    final state = snapshot.data ?? _controller.authState;
+                    if (!state.isAuthorized) {
+                      return LoginPage(controller: _controller);
+                    }
+                    return const HomePage();
+                  },
+                );
               },
             ),
           );

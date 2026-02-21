@@ -6,6 +6,7 @@ import '../../entities/models.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/obsidian_widgets.dart';
 
 class TrackRowTile extends StatefulWidget {
   const TrackRowTile({
@@ -16,6 +17,7 @@ class TrackRowTile extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onLike,
+    this.onDelete,
   });
 
   final Track track;
@@ -24,6 +26,7 @@ class TrackRowTile extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onLike;
+  final VoidCallback? onDelete;
 
   @override
   State<TrackRowTile> createState() => _TrackRowTileState();
@@ -125,6 +128,14 @@ class _TrackRowTileState extends State<TrackRowTile>
             onPressed: widget.onLike,
             size: 22,
           ),
+          if (widget.onDelete != null) ...[
+            const SizedBox(width: 6),
+            ObsidianHudIconButton(
+              icon: Icons.delete_outline_rounded,
+              onPressed: widget.onDelete,
+              size: 22,
+            ),
+          ],
         ],
       ),
     );
