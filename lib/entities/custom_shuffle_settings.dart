@@ -113,10 +113,16 @@ class CustomShuffleSettingsStorage {
   }
 
   Future<Directory> _resolveDirectory() async {
+    try {
+      final cacheDir = await getApplicationCacheDirectory();
+      return Directory(_join(cacheDir.path, 'Phonolite'));
+    } catch (_) {
+      // Fall back to support directory when cache isn't available.
+    }
     if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      if (appData != null && appData.trim().isNotEmpty) {
-        return Directory(_join(appData, 'Phonolite'));
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null && localAppData.trim().isNotEmpty) {
+        return Directory(_join(localAppData, 'Phonolite'));
       }
     }
     final supportDir = await getApplicationSupportDirectory();

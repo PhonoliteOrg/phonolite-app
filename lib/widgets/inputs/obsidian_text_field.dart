@@ -22,6 +22,8 @@ class ObsidianTextField extends StatelessWidget {
     this.enabled = true,
     this.textInputAction,
     this.keyboardType,
+    this.maxLines = 1,
+    this.minLines,
   });
 
   final TextEditingController controller;
@@ -37,6 +39,8 @@ class ObsidianTextField extends StatelessWidget {
   final bool enabled;
   final TextInputAction? textInputAction;
   final TextInputType? keyboardType;
+  final int? maxLines;
+  final int? minLines;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +87,8 @@ class ObsidianTextField extends StatelessWidget {
                 enabled: enabled,
                 keyboardType: keyboardType,
                 textInputAction: textInputAction,
+                maxLines: maxLines,
+                minLines: minLines,
                 style: GoogleFonts.rajdhani(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,

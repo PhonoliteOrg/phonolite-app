@@ -160,9 +160,9 @@ class StatsResponse {
   final int year;
   final int? month;
   final int totalMinutes;
-  final List<String> topArtists;
-  final List<String> topTracks;
-  final List<String> topGenres;
+  final List<StatsItem> topArtists;
+  final List<StatsTrack> topTracks;
+  final List<StatsItem> topGenres;
 
   factory StatsResponse.fromJson(Map<String, dynamic> json) {
     return StatsResponse(
@@ -170,17 +170,85 @@ class StatsResponse {
       month: (json['month'] as num?)?.toInt(),
       totalMinutes: (json['total_minutes'] as num?)?.toInt() ?? 0,
       topArtists: (json['top_artists'] as List?)
-              ?.map((item) => item['name']?.toString() ?? item.toString())
+              ?.map(StatsItem.parse)
               .toList() ??
-          <String>[],
+          <StatsItem>[],
       topTracks: (json['top_tracks'] as List?)
-              ?.map((item) => item['title']?.toString() ?? item.toString())
+              ?.map(StatsTrack.parse)
               .toList() ??
-          <String>[],
+          <StatsTrack>[],
       topGenres: (json['top_genres'] as List?)
-              ?.map((item) => item['name']?.toString() ?? item.toString())
+              ?.map(StatsItem.parse)
               .toList() ??
-          <String>[],
+          <StatsItem>[],
+    );
+  }
+}
+
+class StatsItem {
+  StatsItem({
+    required this.id,
+    required this.name,
+    required this.minutes,
+  });
+
+  final String id;
+  final String name;
+  final int minutes;
+
+  factory StatsItem.fromJson(Map<String, dynamic> json) {
+    return StatsItem(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      minutes: (json['minutes'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static StatsItem parse(dynamic item) {
+    if (item is Map) {
+      return StatsItem.fromJson(Map<String, dynamic>.from(item));
+    }
+    final text = item?.toString() ?? '';
+    return StatsItem(id: text, name: text, minutes: 0);
+  }
+}
+
+class StatsTrack {
+  StatsTrack({
+    required this.id,
+    required this.title,
+    required this.artist,
+    required this.minutes,
+    required this.plays,
+  });
+
+  final String id;
+  final String title;
+  final String artist;
+  final int minutes;
+  final int plays;
+
+  factory StatsTrack.fromJson(Map<String, dynamic> json) {
+    return StatsTrack(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      artist: json['artist']?.toString() ?? '',
+      minutes: (json['minutes'] as num?)?.toInt() ?? 0,
+      plays: (json['plays'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static StatsTrack parse(dynamic item) {
+    if (item is Map) {
+      return StatsTrack.fromJson(Map<String, dynamic>.from(item));
+    }
+    final text = item?.toString() ?? '';
+    return StatsTrack(
+      id: '',
+      title: text,
+      artist: '',
+      minutes: 0,
+      plays: 0,
     );
   }
 }

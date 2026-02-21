@@ -17,11 +17,13 @@ class StatsCards extends StatelessWidget {
     required this.stats,
     required this.onYearChanged,
     required this.onMonthChanged,
+    this.onRefresh,
   });
 
   final StatsResponse stats;
   final ValueChanged<int> onYearChanged;
   final ValueChanged<int?> onMonthChanged;
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -35,11 +37,12 @@ class StatsCards extends StatelessWidget {
             stats: stats,
             onYearChanged: onYearChanged,
             onMonthChanged: onMonthChanged,
+            onRefresh: onRefresh,
           ),
           SizedBox(height: s(20)),
           _KpiGrid(stats: stats),
           SizedBox(height: s(28)),
-          _AnalysisSection(stats: stats),
+          _AnalysisSection(stats: stats, totalMinutes: stats.totalMinutes),
           SizedBox(height: s(28)),
           _TopTracksSection(tracks: stats.topTracks),
         ],
@@ -53,11 +56,13 @@ class _StatsHeader extends StatelessWidget {
     required this.stats,
     required this.onYearChanged,
     required this.onMonthChanged,
+    this.onRefresh,
   });
 
   final StatsResponse stats;
   final ValueChanged<int> onYearChanged;
   final ValueChanged<int?> onMonthChanged;
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -67,16 +72,26 @@ class _StatsHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.bar_chart_rounded, size: 42),
-            SizedBox(width: 20),
-            Expanded(
+            const Icon(Icons.bar_chart_rounded, size: 42),
+            const SizedBox(width: 20),
+            const Expanded(
               child: ObsidianSectionHeader(
                 title: 'Listening Statistics',
               ),
             ),
+            if (onRefresh != null) ...[
+              SizedBox(width: s(12)),
+              ObsidianIconButton(
+                icon: Icons.refresh_rounded,
+                onPressed: onRefresh,
+                size: s(40),
+                cut: s(10),
+                style: ObsidianButtonStyle.subtle,
+              ),
+            ],
           ],
         ),
         SizedBox(height: s(16)),
@@ -380,15 +395,19 @@ class _KpiCard extends StatelessWidget {
 }
 
 class _AnalysisSection extends StatelessWidget {
-  const _AnalysisSection({required this.stats});
+  const _AnalysisSection({required this.stats, required this.totalMinutes});
 
   final StatsResponse stats;
+  final int totalMinutes;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final isWide = MediaQuery.of(context).size.width >= 900;
-    final left = _TopGenresSection(genres: stats.topGenres);
+    final left = _TopGenresSection(
+      genres: stats.topGenres,
+      totalMinutes: totalMinutes,
+    );
     final right = _TopArtistsSection(artists: stats.topArtists);
     if (isWide) {
       return Row(
@@ -412,9 +431,13 @@ class _AnalysisSection extends StatelessWidget {
 }
 
 class _TopGenresSection extends StatelessWidget {
-  const _TopGenresSection({required this.genres});
+  const _TopGenresSection({
+    required this.genres,
+    required this.totalMinutes,
+  });
 
-  final List<String> genres;
+  final List<StatsItem> genres;
+  final int totalMinutes;
 
   @override
   Widget build(BuildContext context) {
@@ -426,37 +449,35 @@ class _TopGenresSection extends StatelessWidget {
           if (genres.isEmpty)
             _emptyText('No genres yet.')
           else
-            for (var i = 0; i < genres.length; i++)
+            for (final genre in genres)
               _GenreBar(
-                label: genres[i],
-                percent: _rankPercent(i, genres.length),
+                label: genre.name,
+                minutes: genre.minutes,
+                totalMinutes: totalMinutes,
               ),
         ],
       ),
     );
   }
-
-  double _rankPercent(int index, int total) {
-    if (total <= 1) {
-      return 0.9;
-    }
-    final max = 0.9;
-    final min = 0.35;
-    final t = index / (total - 1);
-    return max - (max - min) * t;
-  }
 }
 
 class _GenreBar extends StatelessWidget {
-  const _GenreBar({required this.label, required this.percent});
+  const _GenreBar({
+    required this.label,
+    required this.minutes,
+    required this.totalMinutes,
+  });
 
   final String label;
-  final double percent;
+  final int minutes;
+  final int totalMinutes;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final percentLabel = '${(percent * 100).round()}%';
+    final percent = totalMinutes <= 0 ? 0.0 : minutes / totalMinutes;
+    final barPercent = percent.clamp(0.0, 1.0);
+    final minutesLabel = '${minutes}m';
     return Padding(
       padding: EdgeInsets.symmetric(vertical: s(10)),
       child: Row(
@@ -485,7 +506,7 @@ class _GenreBar extends StatelessWidget {
                   ),
                 ),
                 FractionallySizedBox(
-                  widthFactor: percent,
+                  widthFactor: barPercent,
                   child: Container(
                     height: s(8),
                     decoration: BoxDecoration(
@@ -519,7 +540,7 @@ class _GenreBar extends StatelessWidget {
           ),
           SizedBox(width: s(12)),
           Text(
-            percentLabel,
+            minutesLabel,
             style: GoogleFonts.rajdhani(
               fontSize: s(12),
               fontWeight: FontWeight.w700,
@@ -536,7 +557,7 @@ class _GenreBar extends StatelessWidget {
 class _TopArtistsSection extends StatelessWidget {
   const _TopArtistsSection({required this.artists});
 
-  final List<String> artists;
+  final List<StatsItem> artists;
 
   @override
   Widget build(BuildContext context) {
@@ -560,7 +581,7 @@ class _TopArtistsSection extends StatelessWidget {
               childAspectRatio: aspect,
             ),
             itemBuilder: (context, index) {
-              final artist = artists[index];
+              final artist = artists[index].name;
               return _ArtistCard(
                 artist: artist,
                 rank: index + 1,
@@ -651,7 +672,7 @@ class _ArtistCard extends StatelessWidget {
 class _TopTracksSection extends StatelessWidget {
   const _TopTracksSection({required this.tracks});
 
-  final List<String> tracks;
+  final List<StatsTrack> tracks;
 
   @override
   Widget build(BuildContext context) {
@@ -666,16 +687,12 @@ class _TopTracksSection extends StatelessWidget {
             for (var i = 0; i < tracks.length; i++)
               _TrackRow(
                 rank: i + 1,
-                title: tracks[i],
-                playCount: _playCountForRank(i),
+                title: tracks[i].title,
+                playCount: tracks[i].plays,
               ),
         ],
       ),
     );
-  }
-
-  int _playCountForRank(int index) {
-    return 140 - index * 9;
   }
 }
 

@@ -20,6 +20,8 @@ import '../ui/obsidian_widgets.dart';
 double _scaled(BuildContext context, double value) =>
     value * ObsidianScale.of(context);
 
+const Color _queueSourceGreen = Color(0xFF2ED573);
+
 String _streamLabel(StreamMode mode) {
   switch (mode) {
     case StreamMode.auto:
@@ -104,12 +106,33 @@ String _shuffleLabel(ShuffleMode mode) {
     case ShuffleMode.all:
       return 'Shuffle: All';
     case ShuffleMode.artist:
-      return 'Shuffle: Artist';
+      return 'Shuffle: Current Artist';
     case ShuffleMode.album:
-      return 'Shuffle: Album';
+      return 'Shuffle: Current Album';
+    case ShuffleMode.currentPlaylist:
+      return 'Shuffle: Current Playlist';
     case ShuffleMode.custom:
       return 'Shuffle: Custom';
+    case ShuffleMode.liked:
+      return 'Shuffle: Liked';
   }
+}
+
+bool _shuffleCanStartWithoutTrack(ShuffleMode mode) {
+  return mode == ShuffleMode.all ||
+      mode == ShuffleMode.custom ||
+      mode == ShuffleMode.liked;
+}
+
+bool _transportControlsEnabled(PlaybackState state) {
+  if (state.track != null) {
+    return true;
+  }
+  if (state.shuffleMode == ShuffleMode.currentPlaylist) {
+    return state.queueSource == PlaybackQueueSource.playlist &&
+        (state.queueSourcePlaylistId?.isNotEmpty ?? false);
+  }
+  return _shuffleCanStartWithoutTrack(state.shuffleMode);
 }
 
 String? _bitrateLabel(PlaybackState state) {
@@ -154,6 +177,45 @@ List<Widget> _buildTechTags(PlaybackState state) {
   return tags;
 }
 
+String? _queueSourceLabel(PlaybackState state) {
+  switch (state.queueSource) {
+    case PlaybackQueueSource.none:
+      return null;
+    case PlaybackQueueSource.liked:
+      return 'SOURCE: LIKED';
+    case PlaybackQueueSource.playlist:
+      return 'SOURCE: PLAYLIST';
+  }
+}
+
+List<Widget> _buildQueueSourceTags(PlaybackState state) {
+  if (state.track == null) {
+    return const [];
+  }
+  final label = _queueSourceLabel(state);
+  if (label == null) {
+    return const [];
+  }
+  return [
+    _TechTag(
+      label: label,
+      outlineColor: _queueSourceGreen.withOpacity(0.7),
+    ),
+  ];
+}
+
+List<Widget> _buildInlineTags(PlaybackState state) {
+  final sourceTags = _buildQueueSourceTags(state);
+  final techTags = _buildTechTags(state);
+  if (sourceTags.isEmpty) {
+    return techTags;
+  }
+  if (techTags.isEmpty) {
+    return sourceTags;
+  }
+  return [...sourceTags, ...techTags];
+}
+
 Widget _techTagRow(
   BuildContext context,
   List<Widget> tags, {
@@ -164,7 +226,7 @@ Widget _techTagRow(
   }
   final s = (double value) => _scaled(context, value);
   return ConstrainedBox(
-    constraints: BoxConstraints(minHeight: s(22)),
+    constraints: BoxConstraints(minHeight: s(16)),
     child: ClipRect(
       child: Align(
         alignment: center ? Alignment.center : Alignment.centerLeft,
@@ -190,6 +252,17 @@ Future<void> _showShuffleModal(
   required ShuffleMode current,
   required ValueChanged<ShuffleMode> onSelected,
 }) async {
+  final controller = AppScope.of(context);
+  if (controller.authState.isAuthorized && controller.liked.isEmpty) {
+    await controller.loadLikedTracks();
+  }
+  final customSettings = controller.customShuffleSettings;
+  final customEnabled =
+      customSettings.artistIds.isNotEmpty || customSettings.genres.isNotEmpty;
+  final likedEnabled = controller.liked.isNotEmpty;
+  final currentPlaylistEnabled =
+      controller.playbackState.queueSource == PlaybackQueueSource.playlist &&
+      (controller.playbackState.queueSourcePlaylistId?.isNotEmpty ?? false);
   final result = await showDialog<ShuffleMode>(
     context: context,
     builder: (dialogContext) {
@@ -198,7 +271,9 @@ Future<void> _showShuffleModal(
         ShuffleMode.all,
         ShuffleMode.artist,
         ShuffleMode.album,
+        ShuffleMode.currentPlaylist,
         ShuffleMode.custom,
+        ShuffleMode.liked,
       ];
       return AlertDialog(
         title: const Text('Shuffle Mode'),
@@ -208,13 +283,24 @@ Future<void> _showShuffleModal(
             shrinkWrap: true,
             children: items
                 .map(
-                  (mode) => ListTile(
-                    title: Text(_shuffleLabel(mode)),
-                    trailing: mode == current
-                        ? const Icon(Icons.check_rounded)
-                        : null,
-                    onTap: () => Navigator.of(dialogContext).pop(mode),
-                  ),
+                  (mode) {
+                    final enabled = switch (mode) {
+                      ShuffleMode.custom => customEnabled,
+                      ShuffleMode.liked => likedEnabled,
+                      ShuffleMode.currentPlaylist => currentPlaylistEnabled,
+                      _ => true,
+                    };
+                    return ListTile(
+                      enabled: enabled,
+                      title: Text(_shuffleLabel(mode)),
+                      trailing: mode == current
+                          ? const Icon(Icons.check_rounded)
+                          : null,
+                      onTap: enabled
+                          ? () => Navigator.of(dialogContext).pop(mode)
+                          : null,
+                    );
+                  },
                 )
                 .toList(),
           ),
@@ -239,15 +325,13 @@ Future<void> _showAddToPlaylistModal(
   if (controller.playlists.isEmpty) {
     await controller.loadPlaylists();
   }
-  if (controller.playlists.isEmpty) {
-    return;
-  }
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => AddToPlaylistModal(
       playlists: controller.playlists,
       trackId: track.id,
       onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
+      onRemoved: (playlist) => controller.removeTrackFromPlaylist(playlist, track),
     ),
   );
 }
@@ -361,6 +445,9 @@ class NowPlayingBar extends StatelessWidget {
   static const double _tightHeight = 200;
   static const double _compactWidth = 720;
   static const double _tightWidth = 520;
+  static const double _wideSideWidth = 350;
+  static const double _wideRowGap = 12;
+  static const double _wideCommandMin = 230;
 
   static double heightForWidth(double width) {
     if (width < _tightWidth) {
@@ -420,6 +507,14 @@ class NowPlayingBar extends StatelessWidget {
         final width = constraints.maxWidth;
         final isCompact = width < _compactWidth;
         final barHeight = heightForWidth(width);
+        final innerWidth = (width - s(72)).clamp(0.0, double.infinity);
+        final baseRowWidth = s(_wideSideWidth) * 2 +
+            s(_wideRowGap) * 2 +
+            s(_wideCommandMin);
+        final denseScale =
+            (innerWidth / baseRowWidth).clamp(0.7, 1.0);
+        final sideWidth = s(_wideSideWidth) * denseScale;
+        final rowGap = s(_wideRowGap) * denseScale;
 
         final content = isCompact
             ? Column(
@@ -428,10 +523,11 @@ class NowPlayingBar extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _IntelZone(
-                          track: track,
-                          techTags: techTags,
-                        ),
+        _IntelZone(
+          track: track,
+          techTags: techTags,
+          sourceTags: _buildQueueSourceTags(state),
+        ),
                         SizedBox(height: s(8)),
                         _CompactControls(
                           state: state,
@@ -478,13 +574,14 @@ class NowPlayingBar extends StatelessWidget {
                     child: Row(
                       children: [
                         SizedBox(
-                          width: s(350),
+                          width: sideWidth,
                           child: _IntelZone(
                             track: track,
                             techTags: techTags,
+                            sourceTags: _buildQueueSourceTags(state),
                           ),
                         ),
-                        SizedBox(width: s(12)),
+                        SizedBox(width: rowGap),
                         Expanded(
                           child: _CommandZone(
                             state: state,
@@ -492,6 +589,7 @@ class NowPlayingBar extends StatelessWidget {
                             onPrev: onPrev,
                             onNext: onNext,
                             onStop: onStop,
+                            density: denseScale,
                             onShuffle: () => _showShuffleModal(
                               context,
                               current: state.shuffleMode,
@@ -500,12 +598,13 @@ class NowPlayingBar extends StatelessWidget {
                             onRepeat: onToggleRepeat,
                           ),
                         ),
-                        SizedBox(width: s(12)),
+                        SizedBox(width: rowGap),
                         SizedBox(
-                          width: s(350),
+                          width: sideWidth,
                           child: _OutputZone(
                             state: state,
                             compact: false,
+                            density: denseScale,
                             onStreamModeChanged: onStreamModeChanged,
                             onVolumeChanged: onVolumeChanged,
                             onToggleLike: onToggleLike,
@@ -591,7 +690,7 @@ class NowPlayingMiniBar extends StatelessWidget {
     }
 
     final subtitle = _miniSubtitle(track);
-    final techTags = _buildTechTags(state);
+    final inlineTags = _buildInlineTags(state);
     final albumId = track.albumId;
     final imageUrl = albumId == null || albumId.isEmpty
         ? null
@@ -668,9 +767,9 @@ class NowPlayingMiniBar extends StatelessWidget {
                             gap: s(18),
                           ),
                         ],
-                        if (techTags.isNotEmpty) ...[
+                        if (inlineTags.isNotEmpty) ...[
                           SizedBox(height: s(4)),
-                          _techTagRow(context, techTags),
+                          _techTagRow(context, inlineTags),
                         ],
                       ],
                     ),
@@ -754,7 +853,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
             maxSeconds)
         .clamp(positionSeconds, maxSeconds)
         .toDouble();
-    final techTags = _buildTechTags(state);
+    final inlineTags = _buildInlineTags(state);
 
     final albumId = track?.albumId ?? '';
     final imageUrl = albumId.isEmpty
@@ -856,9 +955,9 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                       gap: s(24),
                                     ),
                                   ],
-                                  if (techTags.isNotEmpty) ...[
+                                  if (inlineTags.isNotEmpty) ...[
                                     SizedBox(height: s(10)),
-                                    _techTagRow(context, techTags, center: true),
+                                    _techTagRow(context, inlineTags, center: true),
                                   ],
                                   SizedBox(height: s(20)),
                                 ],
@@ -926,10 +1025,15 @@ class NowPlayingExpandedSheet extends StatelessWidget {
 }
 
 class _IntelZone extends StatelessWidget {
-  const _IntelZone({required this.track, required this.techTags});
+  const _IntelZone({
+    required this.track,
+    required this.techTags,
+    required this.sourceTags,
+  });
 
   final Track? track;
   final List<Widget> techTags;
+  final List<Widget> sourceTags;
 
   @override
   Widget build(BuildContext context) {
@@ -969,6 +1073,10 @@ class _IntelZone extends StatelessWidget {
               ),
               SizedBox(height: s(4)),
               _techTagRow(context, tags),
+              if (sourceTags.isNotEmpty) ...[
+                SizedBox(height: s(4)),
+                _techTagRow(context, sourceTags),
+              ],
             ],
           ),
         ),
@@ -1053,6 +1161,7 @@ class _CommandZone extends StatelessWidget {
     required this.onStop,
     required this.onShuffle,
     required this.onRepeat,
+    this.density = 1.0,
   });
 
   final PlaybackState state;
@@ -1062,55 +1171,66 @@ class _CommandZone extends StatelessWidget {
   final VoidCallback onStop;
   final VoidCallback onShuffle;
   final VoidCallback onRepeat;
+  final double density;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final d = density;
+    final transportEnabled = _transportControlsEnabled(state);
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ObsidianHudIconButton(
-              icon: state.shuffleMode == ShuffleMode.off
-                  ? Icons.shuffle_rounded
-                  : Icons.shuffle_on_rounded,
-              isActive: state.shuffleMode != ShuffleMode.off,
-              onPressed: onShuffle,
-              size: s(24),
-            ),
-            SizedBox(width: s(6)),
-            ObsidianHudIconButton(
-              icon: Icons.skip_previous,
-              onPressed: onPrev,
-              size: s(26),
-            ),
-            SizedBox(width: s(8)),
-            _HudPlayButton(
-              icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-              onPressed: onPlayPause,
-            ),
-            SizedBox(width: s(8)),
-            ObsidianHudIconButton(
-              icon: Icons.stop_rounded,
-              onPressed: onStop,
-              size: s(28),
-            ),
-            SizedBox(width: s(6)),
-            ObsidianHudIconButton(
-              icon: Icons.skip_next,
-              onPressed: onNext,
-              size: s(26),
-            ),
-            SizedBox(width: s(6)),
-            ObsidianHudIconButton(
-              icon: Icons.repeat_rounded,
-              isActive: state.repeatMode == RepeatMode.one,
-              onPressed: onRepeat,
-              size: s(24),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ObsidianHudIconButton(
+                    icon: state.shuffleMode == ShuffleMode.off
+                        ? Icons.shuffle_rounded
+                        : Icons.shuffle_on_rounded,
+                    isActive: state.shuffleMode != ShuffleMode.off,
+                    onPressed: onShuffle,
+                    size: s(24 * d),
+                  ),
+                  SizedBox(width: s(6 * d)),
+                  ObsidianHudIconButton(
+                    icon: Icons.skip_previous,
+                    onPressed: transportEnabled ? onPrev : null,
+                    size: s(26 * d),
+                  ),
+                  SizedBox(width: s(8 * d)),
+                  _HudPlayButton(
+                    icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                    onPressed: transportEnabled ? onPlayPause : null,
+                    size: 54 * d,
+                  ),
+                  SizedBox(width: s(8 * d)),
+                  ObsidianHudIconButton(
+                    icon: Icons.stop_rounded,
+                    onPressed: transportEnabled ? onStop : null,
+                    size: s(28 * d),
+                  ),
+                  SizedBox(width: s(6 * d)),
+                  ObsidianHudIconButton(
+                    icon: Icons.skip_next,
+                    onPressed: transportEnabled ? onNext : null,
+                    size: s(26 * d),
+                  ),
+                  SizedBox(width: s(6 * d)),
+                  ObsidianHudIconButton(
+                    icon: Icons.repeat_rounded,
+                    isActive: state.repeatMode == RepeatMode.one,
+                    onPressed: onRepeat,
+                    size: s(24 * d),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );
@@ -1137,6 +1257,7 @@ class _ExpandedControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final transportEnabled = _transportControlsEnabled(state);
     final trackAvailable = state.track != null;
 
     return Row(
@@ -1153,19 +1274,19 @@ class _ExpandedControls extends StatelessWidget {
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
           icon: Icons.skip_previous,
-          onPressed: trackAvailable ? onPrev : null,
+          onPressed: transportEnabled ? onPrev : null,
           size: s(38),
         ),
         SizedBox(width: s(18)),
         _HudPlayButton(
           icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-          onPressed: onPlayPause,
+          onPressed: transportEnabled ? onPlayPause : null,
           size: 90,
         ),
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
           icon: Icons.skip_next,
-          onPressed: trackAvailable ? onNext : null,
+          onPressed: transportEnabled ? onNext : null,
           size: s(38),
         ),
         SizedBox(width: s(18)),
@@ -1307,6 +1428,7 @@ class _CompactControls extends StatelessWidget {
     final s = (double value) => _scaled(context, value);
     final scale = ObsidianScale.of(context);
     final playSize = 64 / scale;
+    final transportEnabled = _transportControlsEnabled(state);
     final trackAvailable = state.track != null;
     return Wrap(
       alignment: WrapAlignment.center,
@@ -1323,17 +1445,17 @@ class _CompactControls extends StatelessWidget {
         ),
         ObsidianHudIconButton(
           icon: Icons.skip_previous,
-          onPressed: onPrev,
+          onPressed: transportEnabled ? onPrev : null,
           size: s(24),
         ),
         _HudPlayButton(
           icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-          onPressed: onPlayPause,
+          onPressed: transportEnabled ? onPlayPause : null,
           size: playSize,
         ),
         ObsidianHudIconButton(
           icon: Icons.skip_next,
-          onPressed: onNext,
+          onPressed: transportEnabled ? onNext : null,
           size: s(24),
         ),
         ObsidianHudIconButton(
@@ -1493,6 +1615,7 @@ class _OutputZone extends StatelessWidget {
     required this.onToggleLike,
     required this.onAddToPlaylist,
     required this.onShowDevicePicker,
+    this.density = 1.0,
   });
 
   final PlaybackState state;
@@ -1502,13 +1625,15 @@ class _OutputZone extends StatelessWidget {
   final VoidCallback onToggleLike;
   final VoidCallback onAddToPlaylist;
   final VoidCallback onShowDevicePicker;
+  final double density;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final d = density;
     final volumeTheme = SliderTheme.of(context).copyWith(
-      trackHeight: s(6),
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(8)),
+      trackHeight: s(6 * d),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(8 * d)),
       thumbColor: Colors.white,
       overlayShape: SliderComponentShape.noOverlay,
       inactiveTrackColor: Colors.white.withOpacity(0.1),
@@ -1516,23 +1641,23 @@ class _OutputZone extends StatelessWidget {
     );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTight = compact || constraints.maxWidth < s(320);
-        final controlSpacing = isTight ? s(10) : s(16);
+        final isTight = compact || constraints.maxWidth < s(320 * d);
+        final controlSpacing = isTight ? s(10 * d) : s(16 * d);
         final controls = <Widget>[
           ObsidianHudIconButton(
             icon: Icons.playlist_add,
             onPressed: state.track == null ? null : onAddToPlaylist,
-            size: s(26),
+            size: s(26 * d),
           ),
           LikeIconButton(
             isLiked: state.track?.liked == true,
             onPressed: state.track == null ? null : onToggleLike,
-            size: s(26),
+            size: s(26 * d),
           ),
           ObsidianHudIconButton(
             icon: Icons.speaker_rounded,
             onPressed: onShowDevicePicker,
-            size: s(26),
+            size: s(26 * d),
           ),
           _QualityBadge(
             label: _streamLabel(state.streamMode),
@@ -1555,7 +1680,7 @@ class _OutputZone extends StatelessWidget {
                     compact ? MainAxisAlignment.center : MainAxisAlignment.end,
                 children: [
                   controls[0],
-                  SizedBox(width: s(14)),
+                  SizedBox(width: s(14 * d)),
                   controls[1],
                   SizedBox(width: controlSpacing),
                   controls[2],
@@ -1564,7 +1689,7 @@ class _OutputZone extends StatelessWidget {
                 ],
               );
 
-        final sliderWidth = isTight ? constraints.maxWidth : s(200);
+        final sliderWidth = isTight ? constraints.maxWidth : s(200 * d);
         final sliderRow = Align(
           alignment:
               compact ? Alignment.center : Alignment.centerRight,
@@ -1572,8 +1697,8 @@ class _OutputZone extends StatelessWidget {
             width: sliderWidth,
             child: Row(
               children: [
-                Icon(Icons.volume_up, size: s(26)),
-                SizedBox(width: s(8)),
+                Icon(Icons.volume_up, size: s(26 * d)),
+                SizedBox(width: s(8 * d)),
                 Expanded(
                   child: SliderTheme(
                     data: volumeTheme,
@@ -1620,7 +1745,7 @@ class _HudPlayButton extends StatefulWidget {
   });
 
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final double size;
 
   @override
@@ -1631,6 +1756,19 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
   bool _pressed = false;
   bool _hovered = false;
   static const _transition = Duration(milliseconds: 200);
+
+  @override
+  void didUpdateWidget(covariant _HudPlayButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onPressed != null && widget.onPressed == null) {
+      if (_pressed || _hovered) {
+        setState(() {
+          _pressed = false;
+          _hovered = false;
+        });
+      }
+    }
+  }
 
   void _setPressed(bool value) {
     if (_pressed == value) {
@@ -1652,18 +1790,30 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
     final scaleFactor = widget.size / 54;
     final baseSize = s(widget.size);
     final iconSize = baseSize * 0.48;
-    final highlight = _hovered || _pressed;
-    final glowOpacity = highlight ? 0.7 : 0.35;
+    final enabled = widget.onPressed != null;
+    final highlight = enabled && (_hovered || _pressed);
+    final glowOpacity = enabled ? (highlight ? 0.7 : 0.35) : 0.0;
+    final cursor =
+        enabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
+    final baseColor = enabled
+        ? ObsidianPalette.gold
+        : ObsidianPalette.textMuted.withOpacity(0.28);
+    final idleFill = enabled
+        ? ObsidianPalette.obsidianElevated
+        : ObsidianPalette.obsidianElevated.withOpacity(0.6);
+    final idleIcon = enabled
+        ? ObsidianPalette.gold
+        : ObsidianPalette.textMuted.withOpacity(0.75);
 
     return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
-      cursor: SystemMouseCursors.click,
+      onEnter: enabled ? (_) => _setHovered(true) : null,
+      onExit: enabled ? (_) => _setHovered(false) : null,
+      cursor: cursor,
       child: GestureDetector(
         onTap: widget.onPressed,
-        onTapDown: (_) => _setPressed(true),
-        onTapUp: (_) => _setPressed(false),
-        onTapCancel: () => _setPressed(false),
+        onTapDown: enabled ? (_) => _setPressed(true) : null,
+        onTapUp: enabled ? (_) => _setPressed(false) : null,
+        onTapCancel: enabled ? () => _setPressed(false) : null,
         child: ClipPath(
           clipper: const _OctagonClipper(cutFraction: 0.3),
           child: TweenAnimationBuilder<double>(
@@ -1675,13 +1825,14 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                 width: baseSize,
                 height: baseSize,
                 decoration: BoxDecoration(
-                  color: ObsidianPalette.gold,
+                  color: baseColor,
                   boxShadow: [
-                    BoxShadow(
-                      color:
-                          ObsidianPalette.gold.withOpacity(animatedGlow),
-                      blurRadius: s(14 * scaleFactor),
-                    ),
+                    if (animatedGlow > 0)
+                      BoxShadow(
+                        color:
+                            ObsidianPalette.gold.withOpacity(animatedGlow),
+                        blurRadius: s(14 * scaleFactor),
+                      ),
                   ],
                 ),
                 child: Padding(
@@ -1692,7 +1843,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                       tween: ColorTween(
                         end: highlight
                             ? ObsidianPalette.gold
-                            : ObsidianPalette.obsidianElevated,
+                            : idleFill,
                       ),
                       duration: _transition,
                       curve: Curves.easeOut,
@@ -1704,7 +1855,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                             tween: ColorTween(
                               end: highlight
                                   ? Colors.black
-                                  : ObsidianPalette.gold,
+                                  : idleIcon,
                             ),
                             duration: _transition,
                             curve: Curves.easeOut,
@@ -1894,19 +2045,25 @@ class _ProgressBar extends StatelessWidget {
 }
 
 class _TechTag extends StatelessWidget {
-  const _TechTag({required this.label, this.highlight = false});
+  const _TechTag({
+    required this.label,
+    this.highlight = false,
+    this.outlineColor,
+  });
 
   final String label;
   final bool highlight;
+  final Color? outlineColor;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final borderColor = highlight
-        ? ObsidianPalette.gold.withOpacity(0.6)
-        : Colors.white.withOpacity(0.1);
+    final borderColor = outlineColor ??
+        (highlight
+            ? ObsidianPalette.gold.withOpacity(0.6)
+            : Colors.white.withOpacity(0.1));
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: s(6), vertical: s(2)),
+      padding: EdgeInsets.symmetric(horizontal: s(4), vertical: s(0.5)),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         border: Border.all(color: borderColor),
@@ -1914,9 +2071,9 @@ class _TechTag extends StatelessWidget {
       child: Text(
         label,
         style: GoogleFonts.rajdhani(
-          fontSize: s(12),
+          fontSize: s(9.5),
           fontWeight: FontWeight.w600,
-          letterSpacing: s(1.0),
+          letterSpacing: s(0.6),
         ),
       ),
     );

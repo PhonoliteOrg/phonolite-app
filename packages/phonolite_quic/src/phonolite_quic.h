@@ -18,6 +18,11 @@ int32_t phonolite_quic_open_track(
     uint32_t frame_ms,
     const char* queue_json);
 int32_t phonolite_quic_send_buffer(QuicHandle* handle, uint32_t buffer_ms, uint32_t target_ms);
+int32_t phonolite_quic_send_playback(
+    QuicHandle* handle,
+    const char* track_id,
+    uint32_t position_ms,
+    int32_t playing);
 int32_t phonolite_quic_advance(QuicHandle* handle);
 int32_t phonolite_quic_read(QuicHandle* handle, uint8_t* buffer, uint64_t buffer_len);
 char* phonolite_quic_last_error(QuicHandle* handle);
