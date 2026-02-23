@@ -56,10 +56,9 @@ class AdaptiveScaffold extends StatelessWidget {
     final screenWidth = media.size.width;
     final isWide = screenWidth >= 900;
     final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
-    final showMiniBar = playbackState.track != null;
-    final miniBarHeight = showMiniBar
-        ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12)
-        : 0.0;
+    final showMiniBar = !isWide;
+    final miniBarHeight =
+        showMiniBar ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12) : 0.0;
     final bottomInset =
         isWide ? nowPlayingHeight + s(_nowPlayingPadding) : miniBarHeight;
     final navPad = _navBarHeight + media.padding.bottom;

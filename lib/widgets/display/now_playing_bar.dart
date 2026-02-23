@@ -356,9 +356,6 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context) async {
   if (MediaQuery.of(context).size.width >= 900) {
     return;
   }
-  if (controller.playbackState.track == null) {
-    return;
-  }
   if (_nowPlayingSheetOpen) {
     return _nowPlayingSheetCompleter?.future ?? Future<void>.value();
   }
@@ -382,6 +379,7 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context) async {
               onPlayPause: () => controller.pause(playback.isPlaying),
               onNext: controller.nextTrack,
               onPrev: controller.prevTrack,
+              onStop: controller.stop,
               onSeek: controller.seekTo,
               onSeekPreview: controller.previewSeek,
               onShuffleChanged: controller.updateShuffleMode,
@@ -685,13 +683,11 @@ class NowPlayingMiniBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final track = state.track;
-    if (track == null) {
-      return const SizedBox.shrink();
-    }
-
-    final subtitle = _miniSubtitle(track);
+    final transportEnabled = _transportControlsEnabled(state);
+    final subtitle = track == null ? 'IDLE' : _miniSubtitle(track);
     final inlineTags = _buildInlineTags(state);
-    final albumId = track.albumId;
+    final tags = inlineTags.isEmpty ? const [_TechTag(label: 'IDLE')] : inlineTags;
+    final albumId = track?.albumId;
     final imageUrl = albumId == null || albumId.isEmpty
         ? null
         : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
@@ -730,7 +726,13 @@ class NowPlayingMiniBar extends StatelessWidget {
                         border: Border.all(color: Colors.white.withOpacity(0.12)),
                       ),
                       child: imageUrl == null
-                          ? const SizedBox.shrink()
+                          ? (track == null
+                              ? Icon(
+                                  Icons.music_note_rounded,
+                                  color: ObsidianPalette.textMuted,
+                                  size: artSize * 0.5,
+                                )
+                              : const SizedBox.shrink())
                           : Image.network(
                               imageUrl,
                               headers: headers,
@@ -746,7 +748,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _MarqueeText(
-                          text: track.title,
+                          text: track?.title ?? 'NO TRACK PLAYING',
                           style: GoogleFonts.rajdhani(
                             fontSize: s(16),
                             fontWeight: FontWeight.w700,
@@ -767,21 +769,21 @@ class NowPlayingMiniBar extends StatelessWidget {
                             gap: s(18),
                           ),
                         ],
-                        if (inlineTags.isNotEmpty) ...[
+                        if (tags.isNotEmpty) ...[
                           SizedBox(height: s(4)),
-                          _techTagRow(context, inlineTags),
+                          _techTagRow(context, tags),
                         ],
                       ],
                     ),
                   ),
                   GestureDetector(
-                    onTap: onPlayPause,
+                    onTap: transportEnabled ? onPlayPause : null,
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
                       padding: EdgeInsets.all(s(10)),
                       child: _HudPlayButton(
                         icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                        onPressed: onPlayPause,
+                        onPressed: transportEnabled ? onPlayPause : null,
                         size: playSize,
                       ),
                     ),
@@ -818,6 +820,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     required this.onPlayPause,
     required this.onNext,
     required this.onPrev,
+    required this.onStop,
     required this.onSeek,
     required this.onSeekPreview,
     required this.onShuffleChanged,
@@ -831,6 +834,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   final VoidCallback onPlayPause;
   final VoidCallback onNext;
   final VoidCallback onPrev;
+  final VoidCallback onStop;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekPreview;
   final ValueChanged<ShuffleMode> onShuffleChanged;
@@ -993,6 +997,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                             onPlayPause: onPlayPause,
                             onPrev: onPrev,
                             onNext: onNext,
+                            onStop: onStop,
                             onShuffle: () => _showShuffleModal(
                               context,
                               current: state.shuffleMode,
@@ -1243,6 +1248,7 @@ class _ExpandedControls extends StatelessWidget {
     required this.onPlayPause,
     required this.onPrev,
     required this.onNext,
+    required this.onStop,
     required this.onShuffle,
     required this.onRepeat,
   });
@@ -1251,6 +1257,7 @@ class _ExpandedControls extends StatelessWidget {
   final VoidCallback onPlayPause;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onStop;
   final VoidCallback onShuffle;
   final VoidCallback onRepeat;
 
@@ -1258,17 +1265,16 @@ class _ExpandedControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final transportEnabled = _transportControlsEnabled(state);
-    final trackAvailable = state.track != null;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    final leftRow = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         ObsidianHudIconButton(
           icon: state.shuffleMode == ShuffleMode.off
               ? Icons.shuffle_rounded
               : Icons.shuffle_on_rounded,
           isActive: state.shuffleMode != ShuffleMode.off,
-          onPressed: trackAvailable ? onShuffle : null,
+          onPressed: onShuffle,
           size: s(32),
         ),
         SizedBox(width: s(18)),
@@ -1277,13 +1283,11 @@ class _ExpandedControls extends StatelessWidget {
           onPressed: transportEnabled ? onPrev : null,
           size: s(38),
         ),
-        SizedBox(width: s(18)),
-        _HudPlayButton(
-          icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-          onPressed: transportEnabled ? onPlayPause : null,
-          size: 90,
-        ),
-        SizedBox(width: s(18)),
+      ],
+    );
+    final rightRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
         ObsidianHudIconButton(
           icon: Icons.skip_next,
           onPressed: transportEnabled ? onNext : null,
@@ -1291,12 +1295,68 @@ class _ExpandedControls extends StatelessWidget {
         ),
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
+          icon: Icons.stop_rounded,
+          onPressed: transportEnabled ? onStop : null,
+          size: s(38),
+        ),
+        SizedBox(width: s(18)),
+        ObsidianHudIconButton(
           icon: Icons.repeat_rounded,
           isActive: state.repeatMode == RepeatMode.one,
-          onPressed: trackAvailable ? onRepeat : null,
+          onPressed: onRepeat,
           size: s(32),
         ),
       ],
+    );
+
+    return SizedBox(
+      height: s(96),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          final rawPlaySize = s(98);
+          final playSize = math.min(rawPlaySize, maxWidth);
+          final maxGap = ((maxWidth - playSize) / 2).clamp(0.0, double.infinity);
+          final gap = math.min(s(12), maxGap);
+          final sideWidth = ((maxWidth - playSize - gap * 2) / 2)
+              .clamp(0.0, double.infinity);
+
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: sideWidth,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: leftRow,
+                  ),
+                ),
+              ),
+              SizedBox(width: gap),
+              _HudPlayButton(
+                icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                onPressed: transportEnabled ? onPlayPause : null,
+                size: playSize,
+              ),
+              SizedBox(width: gap),
+              SizedBox(
+                width: sideWidth,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: rightRow,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

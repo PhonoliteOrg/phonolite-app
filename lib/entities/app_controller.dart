@@ -186,6 +186,7 @@ class AppController {
     );
     _configureLocalNetworkPermissions();
     _configureNowPlaying();
+    _configureCarPlay();
     _startHealthMonitor();
     _customShuffleLoadFuture = _loadCustomShuffleSettings();
     _playbackPreferencesLoadFuture = _loadPlaybackPreferences();
@@ -195,6 +196,8 @@ class AppController {
   late final AudioEngine _audioEngine;
   final MethodChannel _nowPlayingChannel =
       const MethodChannel('phonolite/now_playing');
+  final MethodChannel _carPlayChannel =
+      const MethodChannel('phonolite/carplay');
   final MethodChannel _permissionsChannel =
       const MethodChannel('phonolite/permissions');
   final AuthStorage _authStorage = const AuthStorage();
@@ -624,6 +627,16 @@ class AppController {
         case 'prev':
           await prevTrack();
           break;
+        case 'toggleLike':
+          final track = _playbackState.track;
+          if (track != null) {
+            await toggleLike(track);
+          }
+          break;
+        case 'startLibraryShuffle':
+          updateShuffleMode(ShuffleMode.all);
+          await pause(false);
+          break;
         case 'seek':
           final raw = args['position'];
           final seconds = raw is num ? raw.toDouble() : double.tryParse('$raw');
@@ -637,6 +650,228 @@ class AppController {
       }
     });
     _pushNowPlayingUpdate(force: true);
+  }
+
+  void _configureCarPlay() {
+    if (!Platform.isIOS) {
+      return;
+    }
+    _carPlayChannel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'getHomeActions':
+          return _carPlayGetHomeActions();
+        case 'getAuthState':
+          return {'authorized': _authState.isAuthorized};
+        case 'getArtists':
+          return _carPlayGetArtists();
+        case 'getAlbums':
+          final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+          final artistId = args['artistId']?.toString() ?? '';
+          return _carPlayGetAlbums(artistId);
+        case 'getPlaylists':
+          return _carPlayGetPlaylists();
+        case 'getLibraryStatus':
+          return _carPlayGetLibraryStatus();
+        case 'playAlbum':
+          final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+          final albumId = args['albumId']?.toString() ?? '';
+          if (albumId.isEmpty) {
+            return _carPlayError('missing_album');
+          }
+          updateShuffleMode(ShuffleMode.off);
+          await queueAlbum(albumId);
+          return _carPlayOk();
+        case 'playPlaylist':
+          final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+          final playlistId = args['playlistId']?.toString() ?? '';
+          if (playlistId.isEmpty) {
+            return _carPlayError('missing_playlist');
+          }
+          updateShuffleMode(ShuffleMode.off);
+          await queuePlaylist(playlistId);
+          return _carPlayOk();
+        case 'playLiked':
+          updateShuffleMode(ShuffleMode.off);
+          await queueLiked();
+          return _carPlayOk();
+        case 'startLibraryShuffle':
+          updateShuffleMode(ShuffleMode.all);
+          await pause(false);
+          return _carPlayOk();
+        case 'startLikedShuffle':
+          updateShuffleMode(ShuffleMode.liked);
+          await queueShuffle(scope: 'liked', play: true);
+          return _carPlayOk();
+        case 'startCustomShuffle':
+          await _ensureCustomShuffleSettingsLoaded();
+          if (_customShuffleSettings.artistIds.isEmpty &&
+              _customShuffleSettings.genres.isEmpty) {
+            return _carPlayError('custom_empty');
+          }
+          updateShuffleMode(ShuffleMode.custom);
+          await queueShuffle(scope: 'library', play: true);
+          return _carPlayOk();
+        default:
+          return null;
+      }
+    });
+  }
+
+  void _notifyCarPlayAuthState(bool authorized) {
+    if (!Platform.isIOS) {
+      return;
+    }
+    _carPlayChannel
+        .invokeMethod('authState', {'authorized': authorized})
+        .catchError((_) {});
+  }
+
+  Map<String, dynamic> _carPlayOk() => const {'ok': true};
+
+  Map<String, dynamic> _carPlayError(String code) =>
+      {'error': code, 'items': const []};
+
+  Map<String, dynamic> _carPlayList(List<Map<String, dynamic>> items) =>
+      {'items': items};
+
+  Future<Map<String, dynamic>> _carPlayGetArtists() async {
+    if (!_authState.isAuthorized) {
+      return _carPlayError('unauthorized');
+    }
+    if (_artists.isEmpty && !_artistsLoading) {
+      await loadArtists();
+    }
+    final items = _artists
+        .map(
+          (artist) => {
+            'id': artist.id,
+            'title': artist.name,
+            'subtitle':
+                artist.albumCount > 0 ? '${artist.albumCount} albums' : null,
+          },
+        )
+        .toList();
+    return _carPlayList(items);
+  }
+
+  Future<Map<String, dynamic>> _carPlayGetHomeActions() async {
+    if (!_authState.isAuthorized) {
+      return _carPlayList([
+        {
+          'id': 'startLibraryShuffle',
+          'title': 'Start Library Shuffle',
+          'subtitle': 'Connect to a server',
+          'enabled': false,
+        },
+        {
+          'id': 'startLikedShuffle',
+          'title': 'Start Liked Shuffle',
+          'subtitle': 'Connect to a server',
+          'enabled': false,
+        },
+        {
+          'id': 'startCustomShuffle',
+          'title': 'Start Custom Shuffle',
+          'subtitle': 'Connect to a server',
+          'enabled': false,
+        },
+      ]);
+    }
+
+    final actions = <Map<String, dynamic>>[
+      {
+        'id': 'startLibraryShuffle',
+        'title': 'Start Library Shuffle',
+        'subtitle': 'Shuffle all tracks',
+        'enabled': true,
+      },
+    ];
+
+    var liked = _liked;
+    if (liked.isEmpty) {
+      try {
+        liked = await connection.fetchLikedTracks();
+      } catch (_) {
+        liked = const <Track>[];
+      }
+    }
+    actions.add({
+      'id': 'startLikedShuffle',
+      'title': 'Start Liked Shuffle',
+      'subtitle': liked.isNotEmpty ? 'Shuffle liked songs' : 'No liked songs yet',
+      'enabled': liked.isNotEmpty,
+    });
+
+    await _ensureCustomShuffleSettingsLoaded();
+    final customReady = _customShuffleSettings.artistIds.isNotEmpty ||
+        _customShuffleSettings.genres.isNotEmpty;
+    actions.add({
+      'id': 'startCustomShuffle',
+      'title': 'Start Custom Shuffle',
+      'subtitle': customReady ? 'Shuffle with your rules' : 'Set up custom shuffle',
+      'enabled': customReady,
+    });
+
+    return _carPlayList(actions);
+  }
+
+  Future<Map<String, dynamic>> _carPlayGetAlbums(String artistId) async {
+    if (!_authState.isAuthorized) {
+      return _carPlayError('unauthorized');
+    }
+    if (artistId.isEmpty) {
+      return _carPlayError('missing_artist');
+    }
+    await loadAlbums(artistId);
+    final token = connection.token ?? '';
+    final items = _albums
+        .map(
+          (album) => {
+            'id': album.id,
+            'title': album.title,
+            'subtitle': album.year != null
+                ? album.year.toString()
+                : '${album.trackCount} tracks',
+            'artworkUrl': connection.buildAlbumCoverUrl(album.id),
+            'token': token,
+          },
+        )
+        .toList();
+    return _carPlayList(items);
+  }
+
+  Future<Map<String, dynamic>> _carPlayGetPlaylists() async {
+    if (!_authState.isAuthorized) {
+      return _carPlayError('unauthorized');
+    }
+    if (_playlists.isEmpty) {
+      await loadPlaylists();
+    }
+    final items = _playlists
+        .map(
+          (playlist) => {
+            'id': playlist.id,
+            'title': playlist.name,
+            'subtitle': '${playlist.trackIds.length} tracks',
+          },
+        )
+        .toList();
+    return _carPlayList(items);
+  }
+
+  Future<Map<String, dynamic>> _carPlayGetLibraryStatus() async {
+    if (!_authState.isAuthorized) {
+      return {'likedAvailable': false, 'error': 'unauthorized'};
+    }
+    var liked = _liked;
+    if (liked.isEmpty) {
+      try {
+        liked = await connection.fetchLikedTracks();
+      } catch (_) {
+        liked = const <Track>[];
+      }
+    }
+    return {'likedAvailable': liked.isNotEmpty};
   }
 
   Future<void> _clearNowPlaying() async {
@@ -698,6 +933,7 @@ class AppController {
       'duration': durationMs / 1000.0,
       'position': positionMs / 1000.0,
       'isPlaying': nowPlayingIsPlaying,
+      'liked': track.liked,
       'artworkUrl': artworkUrl ?? '',
       'token': token,
     };
@@ -947,6 +1183,7 @@ class AppController {
         await connection.likeTrack(track.id);
         _updateLike(track.id, true);
       }
+      await _pushNowPlayingUpdate(force: true);
     } on ApiException catch (err) {
       _handleApiError(err, context: 'like');
     } catch (err) {
@@ -1078,6 +1315,10 @@ class AppController {
     try {
       if (startTrackId != null) {
         await _maybeDisableShuffleForTrackSelection(startTrackId);
+        if (_playbackState.shuffleMode != ShuffleMode.off &&
+            _playbackState.shuffleMode != ShuffleMode.liked) {
+          updateShuffleMode(ShuffleMode.off);
+        }
       }
       if (_playbackState.shuffleMode != ShuffleMode.off) {
         String? artistId;
@@ -1140,6 +1381,14 @@ class AppController {
         await _maybeDisableShuffleForTrackSelection(startTrackId);
       }
       if (_playbackState.shuffleMode != ShuffleMode.off) {
+        if (_playbackState.shuffleMode == ShuffleMode.all) {
+          await queueShuffle(
+            scope: 'library',
+            startTrackId: startTrackId,
+            queueSourceOverride: PlaybackQueueSource.liked,
+          );
+          return;
+        }
         if ((_playbackState.shuffleMode == ShuffleMode.album ||
                 _playbackState.shuffleMode == ShuffleMode.artist) &&
             startTrackId != null) {
@@ -1206,6 +1455,17 @@ class AppController {
 
   Future<void> queueLiked({String? startTrackId}) async {
     try {
+      if (_playbackState.shuffleMode != ShuffleMode.off &&
+          _playbackState.shuffleMode != ShuffleMode.liked) {
+        updateShuffleMode(ShuffleMode.off);
+      }
+      if (_playbackState.shuffleMode != ShuffleMode.liked) {
+        _queueShuffleMode = ShuffleMode.off;
+        _queueShuffleScope = null;
+        _queueShuffleArtistId = null;
+        _queueShuffleAlbumId = null;
+        _queueShufflePlaylistId = null;
+      }
       if (startTrackId != null) {
         await _maybeDisableShuffleForTrackSelection(startTrackId);
       }
@@ -1879,6 +2139,9 @@ class AppController {
         .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
         .toList();
     _playlistTracks = _playlistTracks
+        .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
+        .toList();
+    _playQueue = _playQueue
         .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
         .toList();
     final current = _playbackState.track;
@@ -2633,6 +2896,7 @@ class AppController {
       error: error,
     );
     _authController.add(_authState);
+    _notifyCarPlayAuthState(authorized);
   }
 
   Future<void> loadCustomShuffleSettings() async {

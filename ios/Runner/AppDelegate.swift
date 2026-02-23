@@ -8,10 +8,12 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var nowPlayingChannel: FlutterMethodChannel?
+  private var carPlayChannel: FlutterMethodChannel?
   private var currentArtworkUrl: String?
   private var currentArtworkToken: String?
   private var currentDuration: Double?
   private var currentIsPlaying: Bool = false
+  private var currentLiked: Bool = false
   private var currentTitle: String?
   private var currentArtist: String?
   private var currentAlbum: String?
@@ -117,6 +119,7 @@ import UIKit
 
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     configureNowPlayingChannel()
+    configureCarPlayChannel()
     configurePermissionsChannel()
     localNetworkPermissions.requestPermission()
     return result
@@ -190,6 +193,60 @@ import UIKit
     }
   }
 
+  func sendRemoteCommandToFlutter(_ type: String, arguments: [String: Any] = [:]) {
+    configureNowPlayingChannel()
+    guard let channel = nowPlayingChannel else {
+      return
+    }
+    var payload = arguments
+    payload["type"] = type
+    channel.invokeMethod("remoteCommand", arguments: payload)
+  }
+
+  func configureCarPlayChannel() {
+    if carPlayChannel != nil {
+      return
+    }
+    guard let messenger = resolveMessenger(plugin: "phonolite_carplay") else {
+      return
+    }
+    let channel = FlutterMethodChannel(
+      name: "phonolite/carplay",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(FlutterError(code: "no_self", message: "AppDelegate released", details: nil))
+        return
+      }
+      switch call.method {
+      case "authState":
+        let args = call.arguments as? [String: Any]
+        let authorized = args?["authorized"] as? Bool ?? false
+        self.carPlaySceneDelegate?.updateAuthState(authorized: authorized)
+        result(true)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    carPlayChannel = channel
+  }
+
+  func invokeCarPlayMethod(
+    _ method: String,
+    arguments: Any? = nil,
+    completion: ((Any?) -> Void)? = nil
+  ) {
+    configureCarPlayChannel()
+    guard let channel = carPlayChannel else {
+      completion?(nil)
+      return
+    }
+    channel.invokeMethod(method, arguments: arguments) { result in
+      completion?(result)
+    }
+  }
+
   func configurePermissionsChannel() {
     guard let messenger = resolveMessenger(plugin: "phonolite_permissions") else {
       return
@@ -223,6 +280,9 @@ import UIKit
     if let isPlaying = parseBool(args["isPlaying"]) {
       currentIsPlaying = isPlaying
     }
+    if let liked = parseBool(args["liked"]) {
+      currentLiked = liked
+    }
 
     if let duration = parseDouble(args["duration"]) {
       currentDuration = duration
@@ -250,6 +310,11 @@ import UIKit
       album: currentAlbum,
       artwork: listArtwork
     )
+    carPlaySceneDelegate?.updateNowPlayingButtons(
+      liked: currentLiked,
+      available: currentTrackId != nil
+    )
+    carPlaySceneDelegate?.updateNowPlayingVisibility(hasTrack: currentTrackId != nil)
 
     let artworkUrl = args["artworkUrl"] as? String
     let token = args["token"] as? String
@@ -295,11 +360,14 @@ import UIKit
     currentArtwork = nil
     currentDuration = nil
     currentIsPlaying = false
+    currentLiked = false
     currentEpoch = 0
     lastReportedPosition = -1
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     MPNowPlayingInfoCenter.default().playbackState = .stopped
     carPlaySceneDelegate?.clearNowPlayingListItem()
+    carPlaySceneDelegate?.updateNowPlayingButtons(liked: false, available: false)
+    carPlaySceneDelegate?.updateNowPlayingVisibility(hasTrack: false)
   }
 
   private func configureRemoteCommands(channel: FlutterMethodChannel) {
@@ -389,6 +457,11 @@ import UIKit
       album: currentAlbum,
       artwork: currentArtwork
     )
+    carPlaySceneDelegate?.updateNowPlayingButtons(
+      liked: currentLiked,
+      available: currentTrackId != nil
+    )
+    carPlaySceneDelegate?.updateNowPlayingVisibility(hasTrack: currentTrackId != nil)
   }
 }
 
@@ -546,9 +619,14 @@ class SceneDelegate: FlutterSceneDelegate {
 @available(iOS 13.0, *)
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   private weak var interfaceController: CPInterfaceController?
-  private var rootTemplate: CPListTemplate?
+  private var rootTemplate: CPTemplate?
+  private var homeTemplate: CPListTemplate?
+  private var libraryTemplate: CPListTemplate?
+  private var loggedOutTemplate: CPListTemplate?
   private var nowPlayingItem: CPListItem?
   private let nowPlayingTemplate = CPNowPlayingTemplate.shared
+  private var nowPlayingButtonVisible = false
+  private var isAuthorized = false
 
   private func refreshNowPlayingUI(force: Bool) {
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
@@ -562,23 +640,399 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
         appDelegate.carPlaySceneDelegate = self
         appDelegate.refreshNowPlayingForCarPlay(force: true)
+        appDelegate.configureCarPlayChannel()
       }
 
-      let nowPlayingItem = CPListItem(text: "Now Playing", detailText: "Tap to open")
-      nowPlayingItem.handler = { [weak self] _, completion in
+      self.nowPlayingItem = nil
+      self.updateAuthState(authorized: false, force: true)
+      self.requestAuthState()
+    }
+  }
+
+  private func buildHomeTemplate() -> CPListTemplate {
+    let template = CPListTemplate(
+      title: "Home",
+      sections: [CPListSection(items: [disabledItem(text: "Loading…")])]
+    )
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    if #available(iOS 14.0, *) {
+      template.tabTitle = "Home"
+      template.tabImage = UIImage(systemName: "house")
+    }
+    requestCarPlayList(method: "getHomeActions") { [weak self] entries, error in
+      guard let self else {
+        return
+      }
+      let items = self.buildListItems(
+        entries: entries,
+        emptyText: "No actions available",
+        errorText: "Connect to a server",
+        error: error
+      ) { entry in
+        self.handleHomeAction(entry.id)
+      }
+      items.forEach { item in
+        switch item.text {
+        case "Start Library Shuffle":
+          item.setImage(UIImage(systemName: "shuffle"))
+        case "Start Liked Shuffle":
+          item.setImage(UIImage(systemName: "heart.fill"))
+        case "Start Custom Shuffle":
+          item.setImage(UIImage(systemName: "line.3.horizontal.decrease.circle"))
+        default:
+          break
+        }
+      }
+      self.updateListTemplate(template, items: items)
+    }
+    return template
+  }
+
+  private func buildLibraryTemplate() -> CPListTemplate {
+    let template = CPListTemplate(
+      title: "Library",
+      sections: [CPListSection(items: buildLibraryItems(likedEnabled: false, likedSubtitle: "Loading…"))]
+    )
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    if #available(iOS 14.0, *) {
+      template.tabTitle = "Library"
+      template.tabImage = UIImage(systemName: "music.note.list")
+    }
+    requestCarPlayStatus { [weak self] status in
+      guard let self else {
+        return
+      }
+      let enabled = status.likedAvailable
+      let subtitle: String
+      if let error = status.error, !error.isEmpty {
+        subtitle = "Connect to a server"
+      } else if enabled {
+        subtitle = "Play from the top"
+      } else {
+        subtitle = "No liked songs yet"
+      }
+      let items = self.buildLibraryItems(likedEnabled: enabled, likedSubtitle: subtitle)
+      self.updateListTemplate(template, items: items)
+    }
+    return template
+  }
+
+  private func buildLoggedOutTemplate() -> CPListTemplate {
+    let item = disabledItem(
+      text: "Not logged into server",
+      detail: "Open Phonolite to log in"
+    )
+    let template = CPListTemplate(
+      title: "Phonolite",
+      sections: [CPListSection(items: [item])]
+    )
+    setNowPlayingButtonVisible(template, visible: false)
+    return template
+  }
+
+  private func buildLibraryItems(
+    likedEnabled: Bool,
+    likedSubtitle: String
+  ) -> [CPListItem] {
+    let artistsItem = CPListItem(text: "Artists", detailText: "Browse artists")
+    artistsItem.setImage(UIImage(systemName: "music.mic"))
+    artistsItem.handler = { [weak self] _, completion in
+      self?.showArtistsList()
+      completion()
+    }
+
+    let playlistsItem = CPListItem(text: "Playlists", detailText: "Pick a playlist")
+    playlistsItem.setImage(UIImage(systemName: "music.note.list"))
+    playlistsItem.handler = { [weak self] _, completion in
+      self?.showPlaylistsList()
+      completion()
+    }
+
+    let likedItem = CPListItem(text: "Liked Songs", detailText: likedSubtitle)
+    likedItem.setImage(UIImage(systemName: "heart.fill"))
+    likedItem.isEnabled = likedEnabled
+    if likedEnabled {
+      likedItem.handler = { [weak self] _, completion in
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+          appDelegate.invokeCarPlayMethod("playLiked")
+        }
         self?.showNowPlaying(animated: true)
         completion()
       }
-      let section = CPListSection(items: [nowPlayingItem])
-      let listTemplate = CPListTemplate(title: "Phonolite", sections: [section])
-      self.rootTemplate = listTemplate
-      self.nowPlayingItem = nowPlayingItem
+    }
+    return [artistsItem, playlistsItem, likedItem]
+  }
 
-      if #available(iOS 14.0, *) {
-        interfaceController.setRootTemplate(listTemplate, animated: false, completion: nil)
-      } else {
-        interfaceController.setRootTemplate(listTemplate, animated: false)
+  private func handleHomeAction(_ actionId: String) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      return
+    }
+    switch actionId {
+    case "startLibraryShuffle":
+      appDelegate.invokeCarPlayMethod("startLibraryShuffle")
+    case "startLikedShuffle":
+      appDelegate.invokeCarPlayMethod("startLikedShuffle")
+    case "startCustomShuffle":
+      appDelegate.invokeCarPlayMethod("startCustomShuffle")
+    default:
+      return
+    }
+    showNowPlaying(animated: true)
+  }
+
+  private func showArtistsList() {
+    guard interfaceController != nil else {
+      return
+    }
+    let template = CPListTemplate(
+      title: "Artists",
+      sections: [CPListSection(items: [disabledItem(text: "Loading artists…")])]
+    )
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    pushTemplate(template, animated: true)
+
+    requestCarPlayList(method: "getArtists") { [weak self] entries, error in
+      guard let self else {
+        return
       }
+      let items = self.buildListItems(
+        entries: entries,
+        emptyText: "No artists found",
+        errorText: "Connect to a server",
+        error: error
+      ) { entry in
+        self.showAlbumsList(artistId: entry.id, title: entry.title)
+      }
+      self.updateListTemplate(template, items: items)
+    }
+  }
+
+  private func showAlbumsList(artistId: String, title: String) {
+    guard interfaceController != nil else {
+      return
+    }
+    let template = CPListTemplate(
+      title: title,
+      sections: [CPListSection(items: [disabledItem(text: "Loading albums…")])]
+    )
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    pushTemplate(template, animated: true)
+
+    requestCarPlayList(method: "getAlbums", arguments: ["artistId": artistId]) { [weak self] entries, error in
+      guard let self else {
+        return
+      }
+      let items = self.buildListItems(
+        entries: entries,
+        emptyText: "No albums found",
+        errorText: "Connect to a server",
+        error: error
+      ) { entry in
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+          appDelegate.invokeCarPlayMethod("playAlbum", arguments: ["albumId": entry.id])
+        }
+        self.showNowPlaying(animated: true)
+      }
+      self.updateListTemplate(template, items: items)
+    }
+  }
+
+  private func showPlaylistsList() {
+    guard interfaceController != nil else {
+      return
+    }
+    let template = CPListTemplate(
+      title: "Playlists",
+      sections: [CPListSection(items: [disabledItem(text: "Loading playlists…")])]
+    )
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    pushTemplate(template, animated: true)
+
+    requestCarPlayList(method: "getPlaylists") { [weak self] entries, error in
+      guard let self else {
+        return
+      }
+      let items = self.buildListItems(
+        entries: entries,
+        emptyText: "No playlists found",
+        errorText: "Connect to a server",
+        error: error
+      ) { entry in
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+          appDelegate.invokeCarPlayMethod("playPlaylist", arguments: ["playlistId": entry.id])
+        }
+        self.showNowPlaying(animated: true)
+      }
+      self.updateListTemplate(template, items: items)
+    }
+  }
+
+  private func requestCarPlayList(
+    method: String,
+    arguments: [String: Any]? = nil,
+    completion: @escaping (
+      [(id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)],
+      String?
+    ) -> Void
+  ) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      completion([], "unavailable")
+      return
+    }
+    appDelegate.invokeCarPlayMethod(method, arguments: arguments) { result in
+      let parsed = self.parseCarPlayList(result)
+      DispatchQueue.main.async {
+        completion(parsed.items, parsed.error)
+      }
+    }
+  }
+
+  private func requestCarPlayStatus(
+    completion: @escaping ((likedAvailable: Bool, error: String?)) -> Void
+  ) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      completion((likedAvailable: false, error: "unavailable"))
+      return
+    }
+    appDelegate.invokeCarPlayMethod("getLibraryStatus") { result in
+      var likedAvailable = false
+      var error: String?
+      if let payload = result as? [String: Any] {
+        likedAvailable = payload["likedAvailable"] as? Bool ?? false
+        error = payload["error"] as? String
+      } else if let flutterError = result as? FlutterError {
+        error = flutterError.message
+      }
+      DispatchQueue.main.async {
+        completion((likedAvailable: likedAvailable, error: error))
+      }
+    }
+  }
+
+  private func parseCarPlayList(
+    _ result: Any?
+  ) -> (
+    items: [
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+    ],
+    error: String?
+  ) {
+    if let error = result as? FlutterError {
+      return ([], error.message ?? "error")
+    }
+    guard let payload = result as? [String: Any] else {
+      return ([], "bad_response")
+    }
+    let error = payload["error"] as? String
+    let rawItems = payload["items"] as? [[String: Any]] ?? []
+    let items: [
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+    ] = rawItems.compactMap { item in
+      let id = item["id"] as? String ?? ""
+      let title = item["title"] as? String ?? ""
+      let subtitle = item["subtitle"] as? String
+      let enabled = item["enabled"] as? Bool ?? true
+      let artworkUrl = item["artworkUrl"] as? String
+      let token = item["token"] as? String
+      if id.isEmpty || title.isEmpty {
+        return nil
+      }
+      return (
+        id: id,
+        title: title,
+        subtitle: subtitle,
+        enabled: enabled,
+        artworkUrl: artworkUrl,
+        token: token
+      )
+    }
+    return (items, error)
+  }
+
+  private func buildListItems(
+    entries: [
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+    ],
+    emptyText: String,
+    errorText: String,
+    error: String?,
+    onSelect: @escaping (
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+    ) -> Void
+  ) -> [CPListItem] {
+    if let error, !error.isEmpty {
+      return [disabledItem(text: errorText)]
+    }
+    if entries.isEmpty {
+      return [disabledItem(text: emptyText)]
+    }
+    return entries.map { entry in
+      let item = CPListItem(text: entry.title, detailText: entry.subtitle)
+      if let artworkUrl = entry.artworkUrl, !artworkUrl.isEmpty {
+        fetchCarPlayImage(urlString: artworkUrl, token: entry.token) { image in
+          if let image {
+            item.setImage(image)
+          }
+        }
+      }
+      item.isEnabled = entry.enabled
+      if entry.enabled {
+        item.handler = { _, completion in
+          onSelect(entry)
+          completion()
+        }
+      }
+      return item
+    }
+  }
+
+  private func disabledItem(text: String, detail: String? = nil) -> CPListItem {
+    let item = CPListItem(text: text, detailText: detail)
+    item.isEnabled = false
+    return item
+  }
+
+  private func updateListTemplate(_ template: CPListTemplate, items: [CPListItem]) {
+    let section = CPListSection(items: items)
+    if #available(iOS 14.0, *) {
+      template.updateSections([section])
+    }
+  }
+
+  private func fetchCarPlayImage(
+    urlString: String,
+    token: String?,
+    completion: @escaping (UIImage?) -> Void
+  ) {
+    guard let url = URL(string: urlString) else {
+      completion(nil)
+      return
+    }
+    var request = URLRequest(url: url)
+    if let token, !token.isEmpty {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    URLSession.shared.dataTask(with: request) { data, _, _ in
+      if let data, let image = UIImage(data: data) {
+        DispatchQueue.main.async {
+          completion(image)
+        }
+      } else {
+        DispatchQueue.main.async {
+          completion(nil)
+        }
+      }
+    }.resume()
+  }
+
+  private func pushTemplate(_ template: CPTemplate, animated: Bool) {
+    guard let interfaceController else {
+      return
+    }
+    if #available(iOS 14.0, *) {
+      interfaceController.pushTemplate(template, animated: animated, completion: { _, _ in })
+    } else {
+      interfaceController.pushTemplate(template, animated: animated)
     }
   }
 
@@ -650,6 +1104,132 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
   }
 
+  func updateNowPlayingButtons(liked: Bool, available: Bool) {
+    guard #available(iOS 14.0, *) else {
+      return
+    }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        return
+      }
+      if !available {
+        self.nowPlayingTemplate.updateNowPlayingButtons([])
+        return
+      }
+      let imageName = liked ? "heart.fill" : "heart"
+      guard let image = UIImage(systemName: imageName) else {
+        self.nowPlayingTemplate.updateNowPlayingButtons([])
+        return
+      }
+      let button = CPNowPlayingImageButton(image: image) { _ in
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+          appDelegate.sendRemoteCommandToFlutter("toggleLike")
+        }
+      }
+      self.nowPlayingTemplate.updateNowPlayingButtons([button])
+    }
+  }
+
+  func updateAuthState(authorized: Bool, force: Bool = false) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        return
+      }
+      if !force && self.isAuthorized == authorized {
+        return
+      }
+      self.isAuthorized = authorized
+      if authorized {
+        self.showAuthorizedRoot()
+      } else {
+        self.showLoggedOutRoot()
+      }
+    }
+  }
+
+  private func requestAuthState() {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      return
+    }
+    appDelegate.invokeCarPlayMethod("getAuthState") { [weak self] result in
+      guard let self else {
+        return
+      }
+      var authorized = false
+      if let payload = result as? [String: Any] {
+        authorized = payload["authorized"] as? Bool ?? false
+      }
+      self.updateAuthState(authorized: authorized)
+    }
+  }
+
+  private func showAuthorizedRoot() {
+    guard let interfaceController else {
+      return
+    }
+    let homeTemplate = buildHomeTemplate()
+    let libraryTemplate = buildLibraryTemplate()
+    self.homeTemplate = homeTemplate
+    self.libraryTemplate = libraryTemplate
+    self.loggedOutTemplate = nil
+    applyNowPlayingButtonVisibility()
+    if #available(iOS 14.0, *) {
+      let tabBar = CPTabBarTemplate(templates: [homeTemplate, libraryTemplate])
+      rootTemplate = tabBar
+      interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
+    } else {
+      rootTemplate = homeTemplate
+      interfaceController.setRootTemplate(homeTemplate, animated: false)
+    }
+  }
+
+  private func showLoggedOutRoot() {
+    guard let interfaceController else {
+      return
+    }
+    nowPlayingButtonVisible = false
+    applyNowPlayingButtonVisibility()
+    let template = loggedOutTemplate ?? buildLoggedOutTemplate()
+    loggedOutTemplate = template
+    homeTemplate = nil
+    libraryTemplate = nil
+    rootTemplate = template
+    if #available(iOS 14.0, *) {
+      interfaceController.setRootTemplate(template, animated: false, completion: nil)
+    } else {
+      interfaceController.setRootTemplate(template, animated: false)
+    }
+  }
+
+  func updateNowPlayingVisibility(hasTrack: Bool) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        return
+      }
+      self.nowPlayingButtonVisible = self.isAuthorized && hasTrack
+      self.applyNowPlayingButtonVisibility()
+    }
+  }
+
+  private func applyNowPlayingButtonVisibility() {
+    setNowPlayingButtonVisible(homeTemplate, visible: nowPlayingButtonVisible)
+    setNowPlayingButtonVisible(libraryTemplate, visible: nowPlayingButtonVisible)
+    setNowPlayingButtonVisible(loggedOutTemplate, visible: nowPlayingButtonVisible)
+    if let topTemplate = interfaceController?.topTemplate {
+      setNowPlayingButtonVisible(topTemplate, visible: nowPlayingButtonVisible)
+    }
+  }
+
+  private func setNowPlayingButtonVisible(_ template: CPTemplate?, visible: Bool) {
+    guard let template else {
+      return
+    }
+    let selector = Selector(("setShowsNowPlayingButton:"))
+    if template.responds(to: selector) {
+      template.setValue(visible, forKey: "showsNowPlayingButton")
+    }
+  }
+
   func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController,
@@ -675,6 +1255,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       self.interfaceController = nil
     }
     rootTemplate = nil
+    homeTemplate = nil
+    libraryTemplate = nil
+    loggedOutTemplate = nil
     nowPlayingItem = nil
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
        appDelegate.carPlaySceneDelegate === self {
@@ -691,6 +1274,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       self.interfaceController = nil
     }
     rootTemplate = nil
+    homeTemplate = nil
+    libraryTemplate = nil
+    loggedOutTemplate = nil
     nowPlayingItem = nil
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
        appDelegate.carPlaySceneDelegate === self {
