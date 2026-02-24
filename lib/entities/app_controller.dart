@@ -129,7 +129,7 @@ class AppController {
       volume: 1.0,
       shuffleMode: ShuffleMode.off,
       repeatMode: RepeatMode.off,
-      streamMode: StreamMode.auto,
+      streamMode: StreamMode.high,
       bitrateKbps: null,
       streamConnected: false,
       streamRttMs: null,
@@ -3152,13 +3152,13 @@ class AppController {
   StreamSettings _streamSettings(StreamMode mode) {
     switch (mode) {
       case StreamMode.auto:
-        return const StreamSettings(mode: 'auto', quality: 'high', frameMs: 60);
+        return const StreamSettings(mode: 'auto', quality: 'high', frameMs: 20);
       case StreamMode.high:
-        return const StreamSettings(mode: 'fixed', quality: 'high', frameMs: 60);
+        return const StreamSettings(mode: 'fixed', quality: 'high', frameMs: 20);
       case StreamMode.medium:
-        return const StreamSettings(mode: 'fixed', quality: 'medium', frameMs: 60);
+        return const StreamSettings(mode: 'fixed', quality: 'medium', frameMs: 20);
       case StreamMode.low:
-        return const StreamSettings(mode: 'fixed', quality: 'low', frameMs: 60);
+        return const StreamSettings(mode: 'fixed', quality: 'low', frameMs: 20);
     }
   }
 

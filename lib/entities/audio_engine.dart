@@ -315,8 +315,12 @@ class _AudioWorkerEngine {
     _session?.setOutputDevice(deviceId);
   }
 
-  void seekTo(Duration position) {
-    _session?.seekTo(position);
+  Future<void> seekTo(Duration position) async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    await session.seekTo(position);
   }
 
   Future<void> playTrack({
@@ -420,10 +424,11 @@ class _PlaybackSession {
   static const double _prebufferSecondsLocal = 2.0;
   static const double _rebufferMinSecondsLocal = 0.4;
   static const double _rebufferTargetSecondsLocal = 2.0;
-  static const double _seekPrebufferSeconds = 0.3;
-  static const double _seekPrebufferSecondsIos = 0.4;
+  static const double _seekStartSeconds = 0.05;
+  static const double _seekCatchupMinSeconds = 0.2;
+  static const double _seekCatchupTargetSeconds = 0.4;
   static const int _pumpChunkMs = 200;
-  static const bool _serverBackpressureEnabled = false;
+  static const bool _serverBackpressureEnabled = true;
 
   int _prebufferTargetSamples = 0;
   int _rebufferMinSamples = 0;
@@ -488,7 +493,7 @@ class _PlaybackSession {
     _outputDeviceId = deviceId;
   }
 
-  void seekTo(Duration position) {
+  Future<void> seekTo(Duration position) async {
     final quic = _quic;
     if (quic == null) {
       _log('Seek ignored: QUIC client not ready.');
@@ -496,17 +501,22 @@ class _PlaybackSession {
     }
     _quickStart = true;
     final ms = position.inMilliseconds;
+    final previousBaseOffset = _baseOffsetMs;
     _pendingSeekMs = ms;
     _streamEnded = false;
     _discardUntilSeekMarker = true;
+    _baseOffsetMs = ms;
     _log('Sending QUIC seek to ${ms}ms');
     try {
       quic.seek(trackId: trackId, positionMs: ms);
     } catch (err) {
       _pendingSeekMs = null;
       _discardUntilSeekMarker = false;
+      _baseOffsetMs = previousBaseOffset;
       _log('QUIC seek failed: $err');
+      return;
     }
+    await _flushForSeek();
   }
 
   void _configureBufferProfile(String host) {
@@ -823,19 +833,34 @@ class _PlaybackSession {
           if (_pumpChunkSamples <= 0) {
             _pumpChunkSamples = _frameSamples * _channels;
           }
-          final effectivePrebufferSeconds = _quickStart
-              ? (Platform.isIOS ? _seekPrebufferSecondsIos : _seekPrebufferSeconds)
-              : _prebufferSeconds;
-          _prebufferTargetSamples =
-              (_sampleRate * _channels * effectivePrebufferSeconds).round();
-          _rebufferMinSamples =
-              (_sampleRate * _channels * _rebufferMinSeconds).round();
-          _rebufferTargetSamples =
-              (_sampleRate * _channels * _rebufferTargetSeconds).round();
+          if (_quickStart) {
+            var startSamples = _frameSamples * _channels;
+            if (startSamples <= 0) {
+              startSamples =
+                  (_sampleRate * _channels * _seekStartSeconds).round();
+            }
+            if (startSamples <= 0) {
+              startSamples = 1;
+            }
+            _prebufferTargetSamples = startSamples;
+            _rebufferMinSamples =
+                (_sampleRate * _channels * _seekCatchupMinSeconds).round();
+            _rebufferTargetSamples =
+                (_sampleRate * _channels * _seekCatchupTargetSeconds).round();
+          } else {
+            _prebufferTargetSamples =
+                (_sampleRate * _channels * _prebufferSeconds).round();
+            _rebufferMinSamples =
+                (_sampleRate * _channels * _rebufferMinSeconds).round();
+            _rebufferTargetSamples =
+                (_sampleRate * _channels * _rebufferTargetSeconds).round();
+          }
 
-          final targetSeconds = _prebufferSeconds > _rebufferTargetSeconds
-              ? _prebufferSeconds
-              : _rebufferTargetSeconds;
+          final targetSeconds = _quickStart
+              ? _seekCatchupTargetSeconds
+              : (_prebufferSeconds > _rebufferTargetSeconds
+                  ? _prebufferSeconds
+                  : _rebufferTargetSeconds);
           final capacitySeconds = targetSeconds * 4.0;
           final capacitySamples =
               (capacitySeconds * _sampleRate * _channels).round();
@@ -1105,6 +1130,18 @@ class _PlaybackSession {
       }
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
+  }
+
+  Future<void> _flushForSeek() async {
+    _pumpSuspended = true;
+    await _waitForPumpIdle();
+    _queuedToPlayerSamples = 0;
+    _playedSamples = 0;
+    _buffer = null;
+    final player = _player;
+    _player = null;
+    player?.dispose();
+    _pumpSuspended = false;
   }
 
   Future<void> _writeToBuffer(Int16List samples) async {
@@ -1518,7 +1555,7 @@ void _audioWorkerMain(_AudioWorkerInit init) {
         break;
       case 'seek':
         final ms = (message['position_ms'] as num?)?.toInt() ?? 0;
-        engine.seekTo(Duration(milliseconds: ms));
+        await engine.seekTo(Duration(milliseconds: ms));
         break;
       case 'dispose':
         engine.dispose();
