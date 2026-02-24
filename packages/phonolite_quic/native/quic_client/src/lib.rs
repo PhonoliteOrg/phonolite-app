@@ -114,7 +114,6 @@ struct ClientState {
     prefetch_bytes: HashMap<String, usize>,
     pending_streams: HashMap<u64, VecDeque<Bytes>>,
     pending_stream_bytes: HashMap<u64, usize>,
-    dropping_active: bool,
 }
 
 impl ClientState {
@@ -131,7 +130,6 @@ impl ClientState {
             prefetch_bytes: HashMap::new(),
             pending_streams: HashMap::new(),
             pending_stream_bytes: HashMap::new(),
-            dropping_active: false,
         }
     }
 }
@@ -534,7 +532,9 @@ fn run_client(
                 }
                 ControlCommand::Seek { track_id, position_ms } => {
                     state.active_track = Some(track_id.clone());
-                    state.dropping_active = true;
+                    if let Some(stream_id) = state.track_streams.get(&track_id).cloned() {
+                        state.active_stream = Some(stream_id);
+                    }
                     enqueue_control(
                         &mut state,
                         ClientMessage::Seek {
@@ -764,7 +764,6 @@ fn handle_control_bytes(
                     let is_active = state.active_track.as_deref() == Some(track_id.as_str());
                     if is_active {
                         state.active_stream = Some(stream_id);
-                        state.dropping_active = false;
                     }
                     flush_pending_stream(state, stream_id, &track_id, tx, is_active);
                     if !is_active {
@@ -803,9 +802,6 @@ fn handle_stream_bytes(
     tx: &mpsc::Sender<Vec<u8>>,
 ) {
     if Some(stream_id) == state.active_stream {
-        if state.dropping_active {
-            return;
-        }
         let _ = tx.send(data.to_vec());
         return;
     }

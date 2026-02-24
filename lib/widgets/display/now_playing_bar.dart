@@ -44,7 +44,6 @@ Future<void> _showStreamModal(
     context: context,
     builder: (dialogContext) {
       final items = const [
-        StreamMode.auto,
         StreamMode.high,
         StreamMode.medium,
         StreamMode.low,
