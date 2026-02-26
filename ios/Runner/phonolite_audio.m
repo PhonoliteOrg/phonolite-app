@@ -172,6 +172,7 @@ PHONOLITE_EXPORT void phonolite_audio_resume(PhonoliteAudioPlayer *player) {
   if (player == NULL || player->queue == NULL) {
     return;
   }
+  phonolite_audio_prepare_session((double)player->sample_rate);
   AudioQueueStart(player->queue, NULL);
 }
 
