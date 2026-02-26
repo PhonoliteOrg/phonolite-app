@@ -23,6 +23,7 @@ import UIKit
   private var lastReportedPosition: Double = -1
   private let seekBackwardTolerance: Double = 0.75
   private var remoteCommandsConfigured = false
+  private var audioSessionObserversConfigured = false
   weak var carPlaySceneDelegate: CarPlaySceneDelegate?
   private let localNetworkPermissions = LocalNetworkPermissionManager()
 
@@ -116,6 +117,7 @@ import UIKit
     } catch {
       NSLog("Failed to activate audio session: %@", "\(error)")
     }
+    configureAudioSessionObservers()
 
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     configureNowPlayingChannel()
@@ -123,6 +125,66 @@ import UIKit
     configurePermissionsChannel()
     localNetworkPermissions.requestPermission()
     return result
+  }
+
+  private func configureAudioSessionObservers() {
+    if audioSessionObserversConfigured {
+      return
+    }
+    audioSessionObserversConfigured = true
+    let session = AVAudioSession.sharedInstance()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAudioSessionInterruption(_:)),
+      name: AVAudioSession.interruptionNotification,
+      object: session
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAudioSessionRouteChange(_:)),
+      name: AVAudioSession.routeChangeNotification,
+      object: session
+    )
+  }
+
+  @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+    guard let info = notification.userInfo else {
+      return
+    }
+    let typeValue =
+      (info[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue ?? 0
+    guard let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+      return
+    }
+    switch type {
+    case .began:
+      if currentIsPlaying {
+        sendRemoteCommandToFlutter("pause")
+      }
+    case .ended:
+      break
+    @unknown default:
+      break
+    }
+  }
+
+  @objc private func handleAudioSessionRouteChange(_ notification: Notification) {
+    guard let info = notification.userInfo else {
+      return
+    }
+    let reasonValue =
+      (info[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue ?? 0
+    guard let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+      return
+    }
+    switch reason {
+    case .oldDeviceUnavailable:
+      if currentIsPlaying {
+        sendRemoteCommandToFlutter("pause")
+      }
+    default:
+      break
+    }
   }
 
   override func application(
@@ -623,6 +685,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   private var homeTemplate: CPListTemplate?
   private var libraryTemplate: CPListTemplate?
   private var loggedOutTemplate: CPListTemplate?
+  private var tabBarTemplate: CPTabBarTemplate?
   private var nowPlayingItem: CPListItem?
   private let nowPlayingTemplate = CPNowPlayingTemplate.shared
   private var nowPlayingButtonVisible = false
@@ -655,10 +718,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       sections: [CPListSection(items: [disabledItem(text: "Loading…")])]
     )
     setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
-    if #available(iOS 14.0, *) {
-      template.tabTitle = "Home"
-      template.tabImage = UIImage(systemName: "house")
-    }
+    configureTab(template, title: "Home", systemImageName: "house", fallback: .featured)
     requestCarPlayList(method: "getHomeActions") { [weak self] entries, error in
       guard let self else {
         return
@@ -694,10 +754,12 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       sections: [CPListSection(items: buildLibraryItems(likedEnabled: false, likedSubtitle: "Loading…"))]
     )
     setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
-    if #available(iOS 14.0, *) {
-      template.tabTitle = "Library"
-      template.tabImage = UIImage(systemName: "music.note.list")
-    }
+    configureTab(
+      template,
+      title: "Library",
+      systemImageName: "music.note.list",
+      fallback: .bookmarks
+    )
     requestCarPlayStatus { [weak self] status in
       guard let self else {
         return
@@ -1175,8 +1237,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     applyNowPlayingButtonVisibility()
     if #available(iOS 14.0, *) {
       let tabBar = CPTabBarTemplate(templates: [homeTemplate, libraryTemplate])
+      tabBarTemplate = tabBar
       rootTemplate = tabBar
       interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
+      refreshTabBarTemplates()
     } else {
       rootTemplate = homeTemplate
       interfaceController.setRootTemplate(homeTemplate, animated: false)
@@ -1193,6 +1257,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     loggedOutTemplate = template
     homeTemplate = nil
     libraryTemplate = nil
+    tabBarTemplate = nil
     rootTemplate = template
     if #available(iOS 14.0, *) {
       interfaceController.setRootTemplate(template, animated: false, completion: nil)
@@ -1230,6 +1295,41 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
   }
 
+  private func configureTab(
+    _ template: CPTemplate,
+    title: String,
+    systemImageName: String,
+    fallback: UITabBarItem.SystemItem
+  ) {
+    if #available(iOS 14.0, *) {
+      template.tabTitle = title
+      if let image = UIImage(systemName: systemImageName) {
+        template.tabImage = image
+      } else {
+        template.tabSystemItem = fallback
+      }
+    }
+  }
+
+  private func refreshTabBarTemplates() {
+    guard #available(iOS 14.0, *),
+          let tabBarTemplate,
+          let homeTemplate,
+          let libraryTemplate else {
+      return
+    }
+    configureTab(homeTemplate, title: "Home", systemImageName: "house", fallback: .featured)
+    configureTab(
+      libraryTemplate,
+      title: "Library",
+      systemImageName: "music.note.list",
+      fallback: .bookmarks
+    )
+    DispatchQueue.main.async { [weak tabBarTemplate] in
+      tabBarTemplate?.updateTemplates([homeTemplate, libraryTemplate])
+    }
+  }
+
   func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController,
@@ -1258,6 +1358,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     homeTemplate = nil
     libraryTemplate = nil
     loggedOutTemplate = nil
+    tabBarTemplate = nil
     nowPlayingItem = nil
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
        appDelegate.carPlaySceneDelegate === self {
@@ -1277,6 +1378,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     homeTemplate = nil
     libraryTemplate = nil
     loggedOutTemplate = nil
+    tabBarTemplate = nil
     nowPlayingItem = nil
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
        appDelegate.carPlaySceneDelegate === self {
