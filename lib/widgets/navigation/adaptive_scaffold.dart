@@ -15,6 +15,7 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.onDestinationSelected,
     required this.page,
     required this.playbackState,
+    required this.onOpenAlbum,
     required this.onPlayPause,
     required this.onNext,
     required this.onPrev,
@@ -36,6 +37,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final ValueChanged<int> onDestinationSelected;
   final Widget page;
   final PlaybackState playbackState;
+  final VoidCallback onOpenAlbum;
   final VoidCallback onPlayPause;
   final VoidCallback onNext;
   final VoidCallback onPrev;
@@ -66,6 +68,7 @@ class AdaptiveScaffold extends StatelessWidget {
 
     final nowPlaying = NowPlayingBar(
       state: playbackState,
+      onOpenAlbum: onOpenAlbum,
       onPlayPause: onPlayPause,
       onNext: onNext,
       onPrev: onPrev,
@@ -156,7 +159,10 @@ class AdaptiveScaffold extends StatelessWidget {
               child: NowPlayingMiniBar(
                 state: playbackState,
                 onPlayPause: onPlayPause,
-                onExpand: () => showNowPlayingExpandedSheet(context),
+                onExpand: () => showNowPlayingExpandedSheet(
+                  context,
+                  onOpenAlbum: onOpenAlbum,
+                ),
               ),
             ),
           Positioned(

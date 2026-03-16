@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show IsolateNameServer;
 
@@ -403,6 +404,10 @@ class _PlaybackSession {
   bool _pumpSuspended = false;
   bool _pumpWriting = false;
   bool _quickStart = false;
+  bool _isLoopbackHost = false;
+  int _networkProfileLevel = 0;
+  int _stableBufferTicks = 0;
+  int? _lastObservedRttMs;
 
   bool _stopRequested = false;
   bool _paused = false;
@@ -520,22 +525,125 @@ class _PlaybackSession {
   }
 
   void _configureBufferProfile(String host) {
-    final isLoopback =
+    _isLoopbackHost =
         host == 'localhost' || host == '127.0.0.1' || host == '::1';
-    if (isLoopback) {
-      _prebufferSeconds = _prebufferSecondsLocal;
-      _rebufferMinSeconds = _rebufferMinSecondsLocal;
-      _rebufferTargetSeconds = _rebufferTargetSecondsLocal;
+    _networkProfileLevel = 0;
+    _stableBufferTicks = 0;
+    _lastObservedRttMs = null;
+    _applyBufferProfile(log: true);
+  }
+
+  void _applyBufferProfile({bool log = false}) {
+    double prebufferSeconds;
+    double rebufferMinSeconds;
+    double rebufferTargetSeconds;
+
+    if (_isLoopbackHost) {
+      prebufferSeconds = _prebufferSecondsLocal;
+      rebufferMinSeconds = _rebufferMinSecondsLocal;
+      rebufferTargetSeconds = _rebufferTargetSecondsLocal;
     } else {
-      _prebufferSeconds = Platform.isIOS ? 6.0 : 10.0;
-      _rebufferMinSeconds = 1.0;
-      _rebufferTargetSeconds = 8.0;
+      prebufferSeconds = Platform.isIOS ? 6.0 : 10.0;
+      rebufferMinSeconds = 1.0;
+      rebufferTargetSeconds = 8.0;
+      if (_networkProfileLevel >= 1) {
+        prebufferSeconds = math.max(prebufferSeconds, 12.0);
+        rebufferMinSeconds = math.max(rebufferMinSeconds, 1.5);
+        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 10.0);
+      }
+      if (_networkProfileLevel >= 2) {
+        prebufferSeconds = math.max(prebufferSeconds, 16.0);
+        rebufferMinSeconds = math.max(rebufferMinSeconds, 2.0);
+        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 14.0);
+      }
     }
-    _log(
-      'Buffer profile: prebuffer=${_prebufferSeconds.toStringAsFixed(1)}s '
-      'rebuffer_min=${_rebufferMinSeconds.toStringAsFixed(1)}s '
-      'rebuffer_target=${_rebufferTargetSeconds.toStringAsFixed(1)}s',
-    );
+
+    final changed =
+        prebufferSeconds != _prebufferSeconds ||
+        rebufferMinSeconds != _rebufferMinSeconds ||
+        rebufferTargetSeconds != _rebufferTargetSeconds;
+
+    _prebufferSeconds = prebufferSeconds;
+    _rebufferMinSeconds = rebufferMinSeconds;
+    _rebufferTargetSeconds = rebufferTargetSeconds;
+    _refreshBufferTargets();
+
+    if (log || changed) {
+      _log(
+        'Buffer profile: level=$_networkProfileLevel '
+        'prebuffer=${_prebufferSeconds.toStringAsFixed(1)}s '
+        'rebuffer_min=${_rebufferMinSeconds.toStringAsFixed(1)}s '
+        'rebuffer_target=${_rebufferTargetSeconds.toStringAsFixed(1)}s'
+        '${_lastObservedRttMs == null ? '' : ' rtt=${_lastObservedRttMs}ms'}',
+      );
+    }
+  }
+
+  void _refreshBufferTargets() {
+    if (_sampleRate <= 0 || _channels <= 0) {
+      return;
+    }
+
+    if (_quickStart) {
+      var startSamples = _frameSamples * _channels;
+      if (startSamples <= 0) {
+        startSamples = (_sampleRate * _channels * _seekStartSeconds).round();
+      }
+      if (startSamples <= 0) {
+        startSamples = 1;
+      }
+      _prebufferTargetSamples = startSamples;
+      _rebufferMinSamples =
+          (_sampleRate * _channels * _seekCatchupMinSeconds).round();
+      _rebufferTargetSamples =
+          (_sampleRate * _channels * _seekCatchupTargetSeconds).round();
+      return;
+    }
+
+    _prebufferTargetSamples =
+        (_sampleRate * _channels * _prebufferSeconds).round();
+    _rebufferMinSamples =
+        (_sampleRate * _channels * _rebufferMinSeconds).round();
+    _rebufferTargetSamples =
+        (_sampleRate * _channels * _rebufferTargetSeconds).round();
+  }
+
+  void _updateAdaptiveBufferProfile({
+    required int bufferedMs,
+    int? rttMs,
+  }) {
+    _lastObservedRttMs = rttMs;
+    if (_isLoopbackHost || _quickStart) {
+      return;
+    }
+
+    var desiredLevel = _networkProfileLevel;
+    if (rttMs != null) {
+      if (rttMs >= 350) {
+        desiredLevel = 2;
+      } else if (rttMs >= 180 && desiredLevel < 1) {
+        desiredLevel = 1;
+      }
+    }
+
+    final stableEnough =
+        !_autoPaused &&
+        (rttMs == null || rttMs <= 120) &&
+        bufferedMs >= (_rebufferTargetSeconds * 2000).round();
+    if (stableEnough) {
+      _stableBufferTicks += 1;
+      if (_stableBufferTicks >= 20 && desiredLevel > 0) {
+        desiredLevel -= 1;
+        _stableBufferTicks = 0;
+      }
+    } else {
+      _stableBufferTicks = 0;
+    }
+
+    if (desiredLevel != _networkProfileLevel) {
+      _networkProfileLevel = desiredLevel;
+      _applyBufferProfile(log: true);
+    }
   }
 
   Future<void> run() async {
@@ -833,28 +941,7 @@ class _PlaybackSession {
           if (_pumpChunkSamples <= 0) {
             _pumpChunkSamples = _frameSamples * _channels;
           }
-          if (_quickStart) {
-            var startSamples = _frameSamples * _channels;
-            if (startSamples <= 0) {
-              startSamples =
-                  (_sampleRate * _channels * _seekStartSeconds).round();
-            }
-            if (startSamples <= 0) {
-              startSamples = 1;
-            }
-            _prebufferTargetSamples = startSamples;
-            _rebufferMinSamples =
-                (_sampleRate * _channels * _seekCatchupMinSeconds).round();
-            _rebufferTargetSamples =
-                (_sampleRate * _channels * _seekCatchupTargetSeconds).round();
-          } else {
-            _prebufferTargetSamples =
-                (_sampleRate * _channels * _prebufferSeconds).round();
-            _rebufferMinSamples =
-                (_sampleRate * _channels * _rebufferMinSeconds).round();
-            _rebufferTargetSamples =
-                (_sampleRate * _channels * _rebufferTargetSeconds).round();
-          }
+          _refreshBufferTargets();
 
           final targetSeconds = _quickStart
               ? _seekCatchupTargetSeconds
@@ -1178,6 +1265,7 @@ class _PlaybackSession {
     }
     _reportedStart = true;
     _quickStart = false;
+    _refreshBufferTargets();
     _log('Audio playback started.');
     _send({'type': 'started'});
   }
@@ -1204,18 +1292,6 @@ class _PlaybackSession {
           : (bufferSamples * 1000 ~/ samplesPerSecond);
 
       final quic = _quic;
-      if (quic != null && _serverBackpressureEnabled) {
-        final targetMs = (_rebufferTargetSeconds * 1000).round();
-        try {
-          quic.sendBufferStats(
-            bufferMs: bufferOnlyMs,
-            targetMs: targetMs,
-          );
-        } catch (_) {
-          // Ignore closed/failed QUIC stats updates.
-        }
-      }
-
       if (quic != null) {
         try {
           final stats = quic.pollStats();
@@ -1233,6 +1309,20 @@ class _PlaybackSession {
           rttMs = quic.pollRttMs();
         } catch (_) {
           // Ignore RTT poll failures.
+        }
+      }
+
+      _updateAdaptiveBufferProfile(bufferedMs: bufferedMs, rttMs: rttMs);
+
+      if (quic != null && _serverBackpressureEnabled) {
+        final targetMs = (_rebufferTargetSeconds * 1000).round();
+        try {
+          quic.sendBufferStats(
+            bufferMs: bufferOnlyMs,
+            targetMs: targetMs,
+          );
+        } catch (_) {
+          // Ignore closed/failed QUIC stats updates.
         }
       }
 
@@ -1310,6 +1400,11 @@ class _PlaybackSession {
       return;
     }
     if (!_autoPaused && bufferedSamples <= _rebufferMinSamples) {
+      _stableBufferTicks = 0;
+      if (!_quickStart && !_isLoopbackHost && _networkProfileLevel < 2) {
+        _networkProfileLevel += 1;
+        _applyBufferProfile(log: true);
+      }
       _pauseForBuffer();
       return;
     }

@@ -16,8 +16,8 @@ class ArtistHero extends StatefulWidget {
   });
 
   final Artist artist;
-  final String coverUrl;
-  final String bannerUrl;
+  final String? coverUrl;
+  final String? bannerUrl;
   final Map<String, String> headers;
 
   @override
@@ -52,28 +52,30 @@ class ArtistHeroState extends State<ArtistHero>
             right: 0,
             top: 0,
             height: bannerHeight,
-            child: ShaderMask(
-              shaderCallback: (rect) {
-                return const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white,
-                    Colors.white,
-                    Colors.transparent,
-                  ],
-                  stops: [0.0, 0.7, 1.0],
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.dstIn,
-              child: Image.network(
-                bannerUrl,
-                headers: headers,
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
+            child: bannerUrl == null || bannerUrl.isEmpty
+                ? const SizedBox.shrink()
+                : ShaderMask(
+                    shaderCallback: (rect) {
+                      return const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white,
+                          Colors.white,
+                          Colors.transparent,
+                        ],
+                        stops: [0.0, 0.7, 1.0],
+                      ).createShader(rect);
+                    },
+                    blendMode: BlendMode.dstIn,
+                    child: Image.network(
+                      bannerUrl,
+                      headers: headers,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
           ),
           Positioned.fill(
             child: Container(
