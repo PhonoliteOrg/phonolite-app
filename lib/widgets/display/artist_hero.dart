@@ -4,9 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
+import '../ui/expandable_summary_text.dart';
 import 'artist_avatar.dart';
 
-class ArtistHero extends StatefulWidget {
+class ArtistHero extends StatelessWidget {
   const ArtistHero({
     super.key,
     required this.artist,
@@ -21,27 +22,16 @@ class ArtistHero extends StatefulWidget {
   final Map<String, String> headers;
 
   @override
-  State<ArtistHero> createState() => ArtistHeroState();
-}
-
-class ArtistHeroState extends State<ArtistHero>
-    with SingleTickerProviderStateMixin {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final scale = ObsidianScale.of(context);
     double s(double value) => value * scale;
-    final artist = widget.artist;
-    final bannerUrl = widget.bannerUrl;
-    final headers = widget.headers;
     final bannerHeight = s(240);
     final summary = artist.summary?.trim().isNotEmpty == true
         ? artist.summary!
         : 'Bio unavailable. Curate this artist profile with metadata or notes.';
-    final genresLine =
-        artist.genres.isEmpty ? null : artist.genres.join(' • ').toUpperCase();
-    final showToggle = summary.length > 140;
+    final genresLine = artist.genres.isEmpty
+        ? null
+        : artist.genres.join(' â€¢ ').toUpperCase();
 
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: s(220)),
@@ -52,7 +42,7 @@ class ArtistHeroState extends State<ArtistHero>
             right: 0,
             top: 0,
             height: bannerHeight,
-            child: bannerUrl == null || bannerUrl.isEmpty
+            child: bannerUrl == null || bannerUrl!.isEmpty
                 ? const SizedBox.shrink()
                 : ShaderMask(
                     shaderCallback: (rect) {
@@ -69,7 +59,7 @@ class ArtistHeroState extends State<ArtistHero>
                     },
                     blendMode: BlendMode.dstIn,
                     child: Image.network(
-                      bannerUrl,
+                      bannerUrl!,
                       headers: headers,
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
@@ -81,10 +71,7 @@ class ArtistHeroState extends State<ArtistHero>
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    bgDark.withOpacity(0.0),
-                    bgDark.withOpacity(0.85),
-                  ],
+                  colors: [bgDark.withOpacity(0.0), bgDark.withOpacity(0.85)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -95,10 +82,7 @@ class ArtistHeroState extends State<ArtistHero>
             left: 0,
             top: 0,
             bottom: 0,
-            child: Container(
-              width: s(2),
-              color: accentGold,
-            ),
+            child: Container(width: s(2), color: accentGold),
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),
@@ -112,8 +96,8 @@ class ArtistHeroState extends State<ArtistHero>
                     child: ArtistAvatar(
                       name: artist.name,
                       size: s(150),
-                      imageUrl: widget.coverUrl,
-                      headers: widget.headers,
+                      imageUrl: coverUrl,
+                      headers: headers,
                       fit: BoxFit.contain,
                       paddingFraction: 0,
                     ),
@@ -148,36 +132,20 @@ class ArtistHeroState extends State<ArtistHero>
                         ),
                       ],
                       SizedBox(height: s(12)),
-                      ClipRect(
-                        child: ConstrainedBox(
-                          constraints: _expanded
-                              ? const BoxConstraints()
-                              : BoxConstraints(maxHeight: s(72)),
-                          child: Text(
-                            summary,
-                            overflow: _expanded
-                                ? TextOverflow.visible
-                                : TextOverflow.ellipsis,
-                            maxLines: _expanded ? null : 3,
-                            softWrap: true,
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: s(13),
-                              height: 1.4,
-                            ),
-                          ),
+                      ExpandableSummaryText(
+                        text: summary,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white70,
+                          fontSize: s(13),
+                          height: 1.4,
+                        ),
+                        toggleColor: accentGold,
+                        collapsedMaxHeight: s(72),
+                        togglePadding: EdgeInsets.symmetric(
+                          horizontal: 0,
+                          vertical: s(4),
                         ),
                       ),
-                      if (showToggle)
-                        TextButton(
-                          onPressed: () => setState(() => _expanded = !_expanded),
-                          style: TextButton.styleFrom(
-                            foregroundColor: accentGold,
-                            padding:
-                                EdgeInsets.symmetric(horizontal: 0, vertical: s(4)),
-                          ),
-                          child: Text(_expanded ? 'Collapse' : 'Read more'),
-                        ),
                     ],
                   ),
                 ),

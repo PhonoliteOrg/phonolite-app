@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/empty_state.dart';
+import '../widgets/display/search_result_tile.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/inputs/search_filter_chips.dart';
 import '../widgets/inputs/search_hud.dart';
@@ -85,10 +85,8 @@ class _SearchPageState extends State<SearchPage> {
                     ),
                     itemBuilder: (context, index) {
                       final result = results[index];
-                      return ListTile(
-                        leading: Icon(_iconForKind(result.kind)),
-                        title: Text(result.title),
-                        subtitle: result.subtitle == null ? null : Text(result.subtitle!),
+                      return SearchResultTile(
+                        result: result,
                         onTap: () => controller.selectSearchResult(result),
                       );
                     },
@@ -101,18 +99,4 @@ class _SearchPageState extends State<SearchPage> {
       ),
     );
   }
-
-  IconData _iconForKind(String kind) {
-    switch (kind) {
-      case 'artist':
-        return Icons.person_rounded;
-      case 'album':
-        return Icons.album_rounded;
-      case 'track':
-        return Icons.music_note_rounded;
-      default:
-        return Icons.search_rounded;
-    }
-  }
-
 }

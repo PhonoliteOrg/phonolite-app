@@ -64,7 +64,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     if (_controller!.authState.isAuthorized && _controller!.artists.isEmpty) {
       unawaited(_controller!.loadArtists());
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMoreArtists());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybeLoadMoreArtists(),
+    );
     _initialized = true;
   }
 
@@ -208,7 +210,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     final options = labels.entries
         .map((entry) => _GenreOption(key: entry.key, label: entry.value))
         .toList();
-    options.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    options.sort(
+      (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+    );
     return options;
   }
 
@@ -243,7 +247,6 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
           builder: (context, loadingSnapshot) {
             final isLoading = loadingSnapshot.data ?? false;
             final showingArtists = _view == _CustomShuffleView.artists;
-            final theme = Theme.of(context);
             if (showingArtists &&
                 artists.isNotEmpty &&
                 controller.hasMoreArtists &&
@@ -264,110 +267,50 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
                 const SizedBox(height: 12),
                 const ObsidianSectionHeader(
                   title: 'Custom Shuffle',
-                  subtitle: 'Pick artists and genres used for library shuffles.',
+                  subtitle:
+                      'Pick artists and genres used for library shuffles.',
                 ),
                 const SizedBox(height: 20),
                 _buildViewToggle(),
                 const SizedBox(height: 16),
                 if (showingArtists) ...[
-                  Text(
-                    'Artists',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ObsidianTextField(
+                  _buildSelectionSection(
+                    title: 'Artists',
                     controller: _artistSearchController,
                     hintText: 'Search artists',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    height: 52,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          controller.hasMoreArtists
-                              ? 'Selected ${_selectedArtistIds.length} of loaded ${artists.length}'
-                              : 'Selected ${_selectedArtistIds.length} of ${artists.length}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: ObsidianPalette.textMuted,
-                          ),
-                        ),
-                      ),
-                      TechButton(
-                        label: 'Select all',
-                        density: TechButtonDensity.compact,
-                        onTap: artists.isEmpty && !controller.hasMoreArtists
-                            ? null
-                            : _selectAllAvailableArtists,
-                      ),
-                      const SizedBox(width: 8),
-                      TechButton(
-                        label: 'Clear',
-                        density: TechButtonDensity.compact,
-                        onTap: _selectedArtistIds.isEmpty ? null : _clearArtists,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildArtistList(
-                    canLoadArtists: canLoadArtists,
-                    artists: filteredArtists,
-                    fullCount: artists.length,
-                    isLoading: isLoading,
-                    hasMoreArtists: controller.hasMoreArtists,
-                  ),
-                ] else ...[
-                  Text(
-                    'Genres',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                      letterSpacing: 1.1,
+                    summary: controller.hasMoreArtists
+                        ? 'Selected ${_selectedArtistIds.length} of loaded ${artists.length}'
+                        : 'Selected ${_selectedArtistIds.length} of ${artists.length}',
+                    onSelectAll: artists.isEmpty && !controller.hasMoreArtists
+                        ? null
+                        : _selectAllAvailableArtists,
+                    onClear: _selectedArtistIds.isEmpty ? null : _clearArtists,
+                    child: _buildArtistList(
+                      canLoadArtists: canLoadArtists,
+                      artists: filteredArtists,
+                      fullCount: artists.length,
+                      isLoading: isLoading,
+                      hasMoreArtists: controller.hasMoreArtists,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  ObsidianTextField(
+                ] else ...[
+                  _buildSelectionSection(
+                    title: 'Genres',
                     controller: _genreSearchController,
                     hintText: 'Search genres',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    height: 52,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Selected ${_selectedGenres.length} of ${genreOptions.length}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: ObsidianPalette.textMuted,
-                          ),
-                        ),
-                      ),
-                      TechButton(
-                        label: 'Select all',
-                        density: TechButtonDensity.compact,
-                        onTap: genreOptions.isEmpty
-                            ? null
-                            : () => _selectAllGenres(genreOptions),
-                      ),
-                      const SizedBox(width: 8),
-                      TechButton(
-                        label: 'Clear',
-                        density: TechButtonDensity.compact,
-                        onTap: _selectedGenres.isEmpty ? null : _clearGenres,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildGenreList(
-                    canLoadArtists: canLoadArtists,
-                    genres: filteredGenres,
-                    fullCount: genreOptions.length,
-                    isLoading: isLoading,
-                    hasMoreArtists: controller.hasMoreArtists,
+                    summary:
+                        'Selected ${_selectedGenres.length} of ${genreOptions.length}',
+                    onSelectAll: genreOptions.isEmpty
+                        ? null
+                        : () => _selectAllGenres(genreOptions),
+                    onClear: _selectedGenres.isEmpty ? null : _clearGenres,
+                    child: _buildGenreList(
+                      canLoadArtists: canLoadArtists,
+                      genres: filteredGenres,
+                      fullCount: genreOptions.length,
+                      isLoading: isLoading,
+                      hasMoreArtists: controller.hasMoreArtists,
+                    ),
                   ),
                 ],
               ],
@@ -375,6 +318,78 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildSelectionSection({
+    required String title,
+    required TextEditingController controller,
+    required String hintText,
+    required String summary,
+    required VoidCallback? onSelectAll,
+    required VoidCallback? onClear,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionLabel(title),
+        const SizedBox(height: 12),
+        ObsidianTextField(
+          controller: controller,
+          hintText: hintText,
+          prefixIcon: const Icon(Icons.search_rounded),
+          height: 52,
+        ),
+        const SizedBox(height: 12),
+        _buildSelectionActions(
+          summary: summary,
+          onSelectAll: onSelectAll,
+          onClear: onClear,
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
+    );
+  }
+
+  Widget _buildSectionLabel(String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        color: ObsidianPalette.textMuted,
+        letterSpacing: 1.1,
+      ),
+    );
+  }
+
+  Widget _buildSelectionActions({
+    required String summary,
+    required VoidCallback? onSelectAll,
+    required VoidCallback? onClear,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            summary,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
+          ),
+        ),
+        TechButton(
+          label: 'Select all',
+          density: TechButtonDensity.compact,
+          onTap: onSelectAll,
+        ),
+        const SizedBox(width: 8),
+        TechButton(
+          label: 'Clear',
+          density: TechButtonDensity.compact,
+          onTap: onClear,
+        ),
+      ],
     );
   }
 
@@ -395,9 +410,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
               icon: Icons.people_alt_rounded,
               isActive: showingArtists,
               onTap: () => setState(() => _view = _CustomShuffleView.artists),
-              border: Border(
-                right: BorderSide(color: borderColor),
-              ),
+              border: Border(right: BorderSide(color: borderColor)),
             ),
           ),
           Expanded(
@@ -447,10 +460,10 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
               Text(
                 label.toUpperCase(),
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: textColor,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: textColor,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -470,20 +483,14 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       return _buildInlineMessage('Connect to a server to load artists.');
     }
     if (isLoading && fullCount == 0) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return _buildLoadingIndicator();
     }
     if (fullCount == 0) {
       return _buildInlineMessage('No artists available.');
     }
     if (artists.isEmpty) {
       if (isLoading || hasMoreArtists) {
-        return const Padding(
-          padding: EdgeInsets.symmetric(vertical: 24),
-          child: Center(child: CircularProgressIndicator()),
-        );
+        return _buildLoadingIndicator();
       }
       return _buildInlineMessage('No artists match your search.');
     }
@@ -504,50 +511,15 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
             final subtitle = artist.genres.isEmpty
                 ? null
                 : artist.genres.join(', ');
-            return ObsidianHoverRow(
-              isActive: selected,
+            return _buildSelectableRow(
+              title: artist.name,
+              subtitle: subtitle,
+              selected: selected,
               onTap: () => _toggleArtist(artist.id),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          artist.name,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: ObsidianPalette.textMuted,
-                                    ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    selected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_unchecked,
-                    color: selected
-                        ? ObsidianPalette.gold
-                        : ObsidianPalette.textMuted,
-                  ),
-                ],
-              ),
             );
           },
         ),
-        if (isLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator()),
-          ),
+        if (isLoading) _buildLoadingIndicator(verticalPadding: 16),
       ],
     );
   }
@@ -563,10 +535,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       return _buildInlineMessage('Connect to a server to load genres.');
     }
     if (isLoading || hasMoreArtists) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return _buildLoadingIndicator();
     }
     if (fullCount == 0) {
       return _buildInlineMessage('No genres available.');
@@ -579,36 +548,65 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: genres.length,
-      separatorBuilder: (_, __) => Divider(
-        height: 1,
-        color: ObsidianPalette.border.withOpacity(0.35),
-      ),
+      separatorBuilder: (_, __) =>
+          Divider(height: 1, color: ObsidianPalette.border.withOpacity(0.35)),
       itemBuilder: (context, index) {
         final genre = genres[index];
         final selected = _selectedGenres.contains(genre.key);
-        return ObsidianHoverRow(
-          isActive: selected,
+        return _buildSelectableRow(
+          title: genre.label,
+          selected: selected,
           onTap: () => _toggleGenre(genre.key),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  genre.label,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-              Icon(
-                selected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                color: selected
-                    ? ObsidianPalette.gold
-                    : ObsidianPalette.textMuted,
-              ),
-            ],
-          ),
         );
       },
+    );
+  }
+
+  Widget _buildLoadingIndicator({double verticalPadding = 24}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: verticalPadding),
+      child: const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  Widget _buildSelectableRow({
+    required String title,
+    String? subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return ObsidianHoverRow(
+      isActive: selected,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.bodyMedium),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: ObsidianPalette.textMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _buildSelectionIcon(selected),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionIcon(bool selected) {
+    return Icon(
+      selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      color: selected ? ObsidianPalette.gold : ObsidianPalette.textMuted,
     );
   }
 
@@ -617,10 +615,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Text(
         message,
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: ObsidianPalette.textMuted),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
       ),
     );
   }
