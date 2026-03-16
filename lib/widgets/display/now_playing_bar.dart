@@ -350,7 +350,10 @@ Future<void> _showDevicePicker(BuildContext context) async {
 bool _nowPlayingSheetOpen = false;
 Completer<void>? _nowPlayingSheetCompleter;
 
-Future<void> showNowPlayingExpandedSheet(BuildContext context) async {
+Future<void> showNowPlayingExpandedSheet(
+  BuildContext context, {
+  VoidCallback? onOpenAlbum,
+}) async {
   final controller = AppScope.of(context);
   if (MediaQuery.of(context).size.width >= 900) {
     return;
@@ -373,8 +376,15 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context) async {
           initialData: controller.playbackState,
           builder: (context, snapshot) {
             final playback = snapshot.data ?? controller.playbackState;
+            final expandedOpenAlbum = onOpenAlbum == null
+                ? null
+                : () {
+                    Navigator.of(sheetContext).pop();
+                    Future<void>.microtask(onOpenAlbum!);
+                  };
             return NowPlayingExpandedSheet(
               state: playback,
+              onOpenAlbum: expandedOpenAlbum,
               onPlayPause: () => controller.pause(playback.isPlaying),
               onNext: controller.nextTrack,
               onPrev: controller.prevTrack,
@@ -411,6 +421,7 @@ class NowPlayingBar extends StatelessWidget {
   const NowPlayingBar({
     super.key,
     required this.state,
+    required this.onOpenAlbum,
     required this.onPlayPause,
     required this.onNext,
     required this.onPrev,
@@ -425,6 +436,7 @@ class NowPlayingBar extends StatelessWidget {
   });
 
   final PlaybackState state;
+  final VoidCallback? onOpenAlbum;
   final VoidCallback onPlayPause;
   final VoidCallback onNext;
   final VoidCallback onPrev;
@@ -522,6 +534,8 @@ class NowPlayingBar extends StatelessWidget {
                       children: [
         _IntelZone(
           track: track,
+          isLoading: state.isLoading,
+          onTap: onOpenAlbum,
           techTags: techTags,
           sourceTags: _buildQueueSourceTags(state),
         ),
@@ -574,6 +588,8 @@ class NowPlayingBar extends StatelessWidget {
                           width: sideWidth,
                           child: _IntelZone(
                             track: track,
+                            isLoading: state.isLoading,
+                            onTap: onOpenAlbum,
                             techTags: techTags,
                             sourceTags: _buildQueueSourceTags(state),
                           ),
@@ -683,6 +699,7 @@ class NowPlayingMiniBar extends StatelessWidget {
     final s = (double value) => _scaled(context, value);
     final track = state.track;
     final transportEnabled = _transportControlsEnabled(state);
+    final playEnabled = transportEnabled && !state.isLoading;
     final subtitle = track == null ? 'IDLE' : _miniSubtitle(track);
     final inlineTags = _buildInlineTags(state);
     final tags = inlineTags.isEmpty ? const [_TechTag(label: 'IDLE')] : inlineTags;
@@ -776,13 +793,13 @@ class NowPlayingMiniBar extends StatelessWidget {
                     ),
                   ),
                   GestureDetector(
-                    onTap: transportEnabled ? onPlayPause : null,
+                    onTap: playEnabled ? onPlayPause : null,
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
                       padding: EdgeInsets.all(s(10)),
                       child: _HudPlayButton(
                         icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                        onPressed: transportEnabled ? onPlayPause : null,
+                        onPressed: playEnabled ? onPlayPause : null,
                         size: playSize,
                       ),
                     ),
@@ -808,7 +825,7 @@ class NowPlayingMiniBar extends StatelessWidget {
     if (album.isEmpty) {
       return artist;
     }
-    return '$artist • $album';
+    return '$artist - $album';
   }
 }
 
@@ -816,6 +833,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   const NowPlayingExpandedSheet({
     super.key,
     required this.state,
+    required this.onOpenAlbum,
     required this.onPlayPause,
     required this.onNext,
     required this.onPrev,
@@ -830,6 +848,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   });
 
   final PlaybackState state;
+  final VoidCallback? onOpenAlbum;
   final VoidCallback onPlayPause;
   final VoidCallback onNext;
   final VoidCallback onPrev;
@@ -859,6 +878,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final inlineTags = _buildInlineTags(state);
 
     final albumId = track?.albumId ?? '';
+    final canOpenAlbum = onOpenAlbum != null && albumId.isNotEmpty;
     final imageUrl = albumId.isEmpty
         ? null
         : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
@@ -901,69 +921,89 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          return SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            padding: EdgeInsets.fromLTRB(
-                              s(16),
-                              s(12),
-                              s(16),
-                              s(12),
-                            ),
-                            child: ConstrainedBox(
-                              constraints:
-                                  BoxConstraints(minHeight: constraints.maxHeight),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: artSize,
-                                    height: artSize,
-                                    decoration: BoxDecoration(
-                                      color: ObsidianPalette.obsidianGlass
-                                          .withOpacity(0.6),
-                                      border: Border.all(
-                                          color: Colors.white.withOpacity(0.18)),
-                                    ),
-                                    child: imageUrl == null
-                                        ? const SizedBox.shrink()
-                                        : Image.network(
-                                            imageUrl,
-                                            headers: headers,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                const SizedBox.shrink(),
+                          return ScrollConfiguration(
+                            behavior: ScrollConfiguration.of(
+                              context,
+                            ).copyWith(scrollbars: false),
+                            child: SingleChildScrollView(
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: EdgeInsets.fromLTRB(
+                                s(16),
+                                s(12),
+                                s(16),
+                                s(12),
+                              ),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: canOpenAlbum ? onOpenAlbum : null,
+                                      behavior: HitTestBehavior.opaque,
+                                      child: Container(
+                                        width: artSize,
+                                        height: artSize,
+                                        decoration: BoxDecoration(
+                                          color: ObsidianPalette.obsidianGlass
+                                              .withOpacity(0.6),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(0.18),
                                           ),
-                                  ),
-                                  SizedBox(height: s(22)),
-                                  _MarqueeText(
-                                    text: track?.title ?? 'Nothing playing',
-                                    style: GoogleFonts.rajdhani(
-                                      fontSize: s(26),
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: s(1.1),
-                                    ),
-                                    velocity: s(28),
-                                    gap: s(28),
-                                  ),
-                                  if (track != null) ...[
-                                    SizedBox(height: s(10)),
-                                    _MarqueeText(
-                                      text: '${track.artist} • ${track.album}',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: s(15),
-                                        color: ObsidianPalette.textMuted,
+                                        ),
+                                        child: imageUrl == null
+                                            ? const SizedBox.shrink()
+                                            : Image.network(
+                                                imageUrl,
+                                                headers: headers,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const SizedBox.shrink(),
+                                              ),
                                       ),
-                                      velocity: s(26),
-                                      gap: s(24),
                                     ),
+                                    SizedBox(height: s(22)),
+                                    _MarqueeText(
+                                      text: track?.title ?? 'Nothing playing',
+                                      style: GoogleFonts.rajdhani(
+                                        fontSize: s(26),
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: s(1.1),
+                                      ),
+                                      velocity: s(28),
+                                      gap: s(28),
+                                    ),
+                                    if (track != null) ...[
+                                      SizedBox(height: s(10)),
+                                      GestureDetector(
+                                        onTap: canOpenAlbum ? onOpenAlbum : null,
+                                        behavior: HitTestBehavior.opaque,
+                                        child: _MarqueeText(
+                                          text:
+                                              '${track.artist} - ${track.album}',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: s(15),
+                                            color: ObsidianPalette.textMuted,
+                                          ),
+                                          velocity: s(26),
+                                          gap: s(24),
+                                        ),
+                                      ),
+                                    ],
+                                    if (inlineTags.isNotEmpty) ...[
+                                      SizedBox(height: s(10)),
+                                      _techTagRow(
+                                        context,
+                                        inlineTags,
+                                        center: true,
+                                      ),
+                                    ],
+                                    SizedBox(height: s(20)),
                                   ],
-                                  if (inlineTags.isNotEmpty) ...[
-                                    SizedBox(height: s(10)),
-                                    _techTagRow(context, inlineTags, center: true),
-                                  ],
-                                  SizedBox(height: s(20)),
-                                ],
+                                ),
                               ),
                             ),
                           );
@@ -1031,11 +1071,15 @@ class NowPlayingExpandedSheet extends StatelessWidget {
 class _IntelZone extends StatelessWidget {
   const _IntelZone({
     required this.track,
+    required this.isLoading,
+    this.onTap,
     required this.techTags,
     required this.sourceTags,
   });
 
   final Track? track;
+  final bool isLoading;
+  final VoidCallback? onTap;
   final List<Widget> techTags;
   final List<Widget> sourceTags;
 
@@ -1043,9 +1087,10 @@ class _IntelZone extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final tags = techTags.isEmpty ? const [_TechTag(label: 'IDLE')] : techTags;
-    return Row(
+    final enabled = onTap != null && (track?.albumId?.isNotEmpty ?? false);
+    final content = Row(
       children: [
-        _AlbumArtThumb(track: track),
+        _AlbumArtThumb(track: track, isLoading: isLoading),
         SizedBox(width: s(12)),
         Expanded(
           child: Column(
@@ -1086,6 +1131,23 @@ class _IntelZone extends StatelessWidget {
         ),
       ],
     );
+    if (!enabled) {
+      return content;
+    }
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(s(12)),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: s(6), horizontal: s(4)),
+            child: content,
+          ),
+        ),
+      ),
+    );
   }
 
   String _subtitle(Track? track) {
@@ -1108,9 +1170,10 @@ class _IntelZone extends StatelessWidget {
 }
 
 class _AlbumArtThumb extends StatelessWidget {
-  const _AlbumArtThumb({required this.track});
+  const _AlbumArtThumb({required this.track, required this.isLoading});
 
   final Track? track;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -1150,7 +1213,28 @@ class _AlbumArtThumb extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(color: Colors.white.withOpacity(0.12)),
         ),
-        child: image,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            image,
+            if (isLoading)
+              ColoredBox(
+                color: Colors.black.withOpacity(0.34),
+                child: Center(
+                  child: SizedBox(
+                    width: s(18),
+                    height: s(18),
+                    child: CircularProgressIndicator(
+                      strokeWidth: s(2.2),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        ObsidianPalette.gold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1182,6 +1266,7 @@ class _CommandZone extends StatelessWidget {
     final s = (double value) => _scaled(context, value);
     final d = density;
     final transportEnabled = _transportControlsEnabled(state);
+    final playEnabled = transportEnabled && !state.isLoading;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -1209,7 +1294,7 @@ class _CommandZone extends StatelessWidget {
                   SizedBox(width: s(8 * d)),
                   _HudPlayButton(
                     icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                    onPressed: transportEnabled ? onPlayPause : null,
+                    onPressed: playEnabled ? onPlayPause : null,
                     size: 54 * d,
                   ),
                   SizedBox(width: s(8 * d)),
@@ -1264,6 +1349,7 @@ class _ExpandedControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final transportEnabled = _transportControlsEnabled(state);
+    final playEnabled = transportEnabled && !state.isLoading;
 
     final leftRow = Row(
       mainAxisSize: MainAxisSize.min,
@@ -1337,7 +1423,7 @@ class _ExpandedControls extends StatelessWidget {
               SizedBox(width: gap),
               _HudPlayButton(
                 icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                onPressed: transportEnabled ? onPlayPause : null,
+                onPressed: playEnabled ? onPlayPause : null,
                 size: playSize,
               ),
               SizedBox(width: gap),
@@ -1488,6 +1574,7 @@ class _CompactControls extends StatelessWidget {
     final scale = ObsidianScale.of(context);
     final playSize = 64 / scale;
     final transportEnabled = _transportControlsEnabled(state);
+    final playEnabled = transportEnabled && !state.isLoading;
     final trackAvailable = state.track != null;
     return Wrap(
       alignment: WrapAlignment.center,
@@ -1509,7 +1596,7 @@ class _CompactControls extends StatelessWidget {
         ),
         _HudPlayButton(
           icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-          onPressed: transportEnabled ? onPlayPause : null,
+          onPressed: playEnabled ? onPlayPause : null,
           size: playSize,
         ),
         ObsidianHudIconButton(

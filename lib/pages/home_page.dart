@@ -9,6 +9,8 @@ import 'liked_page.dart';
 import 'settings_page.dart';
 import 'playlists_page.dart';
 import 'stats_page.dart';
+import 'album_detail_screen.dart';
+import 'artist_detail_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -90,6 +92,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               children: pages,
             ),
             playbackState: playback,
+            onOpenAlbum: _openCurrentAlbum,
             onPlayPause: () => controller.pause(playback.isPlaying),
             onNext: controller.nextTrack,
             onPrev: controller.prevTrack,
@@ -119,5 +122,67 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         builder: (_) => child,
       ),
     );
+  }
+
+  void _openCurrentAlbum() {
+    () async {
+      final controller = AppScope.of(context);
+      final track = controller.playbackState.track;
+      final albumId = track?.albumId;
+      if (track == null || albumId == null || albumId.isEmpty) {
+        return;
+      }
+      try {
+        final album = await controller.connection.fetchAlbumById(albumId);
+        final artist = await controller.connection.fetchArtistById(album.artistId);
+        if (!mounted) {
+          return;
+        }
+        if (_selectedIndex != 0) {
+          setState(() => _selectedIndex = 0);
+        }
+        final navigator = _navigatorKeys[0].currentState;
+        if (navigator == null) {
+          return;
+        }
+        navigator.popUntil((route) => route.isFirst);
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => ArtistDetailScreen(artist: artist),
+          ),
+        );
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => AlbumDetailScreen(
+              album: album,
+              artistName: album.artist.isNotEmpty ? album.artist : track.artist,
+            ),
+          ),
+        );
+      } catch (_) {
+        try {
+          final album = await controller.connection.fetchAlbumById(albumId);
+          if (!mounted) {
+            return;
+          }
+          if (_selectedIndex != 0) {
+            setState(() => _selectedIndex = 0);
+          }
+          final navigator = _navigatorKeys[0].currentState;
+          if (navigator == null) {
+            return;
+          }
+          navigator.popUntil((route) => route.isFirst);
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => AlbumDetailScreen(
+                album: album,
+                artistName: album.artist.isNotEmpty ? album.artist : track.artist,
+              ),
+            ),
+          );
+        } catch (_) {}
+      }
+    }();
   }
 }

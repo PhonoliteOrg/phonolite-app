@@ -18,7 +18,7 @@ class ArtistCard extends StatelessWidget {
   });
 
   final Artist artist;
-  final String coverUrl;
+  final String? coverUrl;
   final Map<String, String> headers;
   final VoidCallback onTap;
 

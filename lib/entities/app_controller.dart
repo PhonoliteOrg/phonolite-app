@@ -50,6 +50,7 @@ class PlaybackState {
   PlaybackState({
     required this.track,
     required this.isPlaying,
+    required this.isLoading,
     required this.position,
     required this.duration,
     required this.bufferRatio,
@@ -66,6 +67,7 @@ class PlaybackState {
 
   final Track? track;
   final bool isPlaying;
+  final bool isLoading;
   final Duration position;
   final Duration duration;
   final double bufferRatio;
@@ -82,6 +84,7 @@ class PlaybackState {
   PlaybackState copyWith({
     Object? track = _unset,
     bool? isPlaying,
+    bool? isLoading,
     Duration? position,
     Duration? duration,
     double? bufferRatio,
@@ -98,6 +101,7 @@ class PlaybackState {
     return PlaybackState(
       track: track == _unset ? this.track : track as Track?,
       isPlaying: isPlaying ?? this.isPlaying,
+      isLoading: isLoading ?? this.isLoading,
       position: position ?? this.position,
       duration: duration ?? this.duration,
       bufferRatio: bufferRatio ?? this.bufferRatio,
@@ -123,6 +127,7 @@ class AppController {
     _playbackState = PlaybackState(
       track: null,
       isPlaying: false,
+      isLoading: false,
       position: Duration.zero,
       duration: Duration.zero,
       bufferRatio: 0.0,
@@ -180,6 +185,7 @@ class AppController {
         _clearInlineSeekWatchdog();
         if (!_audioOutputStarted) {
           _audioOutputStarted = true;
+          _updatePlayback(isLoading: false);
           _pushNowPlayingUpdate(force: true);
         }
       },
@@ -250,11 +256,13 @@ class AppController {
   String? _nowPlayingArtworkToken;
   bool _nowPlayingArtworkFetchInFlight = false;
   DateTime? _lastStartPlaybackAt;
+  DateTime? _lastManualPauseAt;
   String? _lastStartPlaybackTrackId;
   int? _lastStartPlaybackOffsetMs;
   Timer? _healthTimer;
   bool _healthPingInFlight = false;
   int? _quicPort;
+  static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);
 
   final _artistsController = StreamController<List<Artist>>.broadcast();
   final _albumsController = StreamController<List<Album>>.broadcast();
@@ -291,9 +299,13 @@ class AppController {
   int _outputDeviceId = kDefaultOutputDeviceId;
   String? _outputDeviceName;
   bool _artistsLoading = false;
+  int _artistsOffset = 0;
+  bool _artistsHasMore = true;
+  Completer<void>? _artistsPageCompleter;
   bool _albumsLoading = false;
   bool _tracksLoading = false;
   bool _searchLoading = false;
+  int _searchRequestId = 0;
   List<Track> _playQueue = <Track>[];
   int _playIndex = 0;
   final Random _shuffleRandom = Random();
@@ -375,6 +387,7 @@ class AppController {
   }
 
   bool get artistsLoading => _artistsLoading;
+  bool get hasMoreArtists => _artistsHasMore;
   bool get albumsLoading => _albumsLoading;
   bool get tracksLoading => _tracksLoading;
   bool get searchLoading => _searchLoading;
@@ -1023,17 +1036,71 @@ class AppController {
     }
   }
 
-  Future<void> loadArtists() async {
+  Future<void> loadArtists({bool refresh = false}) async {
+    if (refresh && _artistsPageCompleter != null) {
+      await _artistsPageCompleter!.future;
+    }
+    if (refresh) {
+      _artists = <Artist>[];
+      _artistsOffset = 0;
+      _artistsHasMore = true;
+      _artistsController.add(_artists);
+    }
+    if (_artists.isNotEmpty || !_artistsHasMore) {
+      return;
+    }
+    await loadMoreArtists();
+  }
+
+  Future<void> loadMoreArtists() async {
+    if (!_artistsHasMore) {
+      return;
+    }
+    final inFlight = _artistsPageCompleter;
+    if (inFlight != null) {
+      await inFlight.future;
+      return;
+    }
+    final completer = Completer<void>();
+    _artistsPageCompleter = completer;
+    const pageSize = ServerConnection.artistsPageSize;
     _setArtistsLoading(true);
     try {
-      _artists = await connection.fetchArtists();
+      final page = await connection.fetchArtistsPage(
+        limit: pageSize,
+        offset: _artistsOffset,
+      );
+      if (page.isEmpty) {
+        _artistsHasMore = false;
+        if (_artistsOffset == 0) {
+          _artists = <Artist>[];
+          _artistsController.add(_artists);
+        }
+        return;
+      }
+      _artists = [..._artists, ...page];
+      _artistsOffset += page.length;
+      _artistsHasMore = page.length == pageSize;
       _artistsController.add(_artists);
     } on ApiException catch (err) {
       _handleApiError(err, context: 'artists');
     } catch (err) {
       _pushMessage('Failed to load artists: $err', level: LogLevel.warning);
     } finally {
+      if (identical(_artistsPageCompleter, completer)) {
+        _artistsPageCompleter = null;
+      }
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
       _setArtistsLoading(false);
+    }
+  }
+
+  Future<void> loadAllArtists() async {
+    await loadArtists();
+    while (_artistsHasMore) {
+      await loadMoreArtists();
     }
   }
 
@@ -1135,16 +1202,36 @@ class AppController {
   }
 
   Future<void> search(String query, {String filter = 'all'}) async {
+    final trimmed = query.trim();
+    final requestId = ++_searchRequestId;
+    if (trimmed.isEmpty) {
+      _search = <SearchResult>[];
+      _searchController.add(_search);
+      _setSearchLoading(false);
+      return;
+    }
     _setSearchLoading(true);
     try {
-      _search = await connection.search(query, filter: filter);
+      final results = await connection.search(trimmed, filter: filter);
+      if (requestId != _searchRequestId) {
+        return;
+      }
+      _search = results;
       _searchController.add(_search);
     } on ApiException catch (err) {
+      if (requestId != _searchRequestId) {
+        return;
+      }
       _handleApiError(err, context: 'search');
     } catch (err) {
+      if (requestId != _searchRequestId) {
+        return;
+      }
       _pushMessage('Search failed: $err');
     } finally {
-      _setSearchLoading(false);
+      if (requestId == _searchRequestId) {
+        _setSearchLoading(false);
+      }
     }
   }
 
@@ -1748,6 +1835,7 @@ class AppController {
       _updatePlayback(
         track: null,
         isPlaying: false,
+        isLoading: false,
         position: Duration.zero,
         duration: Duration.zero,
         bufferRatio: 0.0,
@@ -1785,13 +1873,26 @@ class AppController {
         }
       }
 
-      _updatePlayback(isPlaying: !paused);
+      _updatePlayback(isPlaying: !paused, isLoading: paused ? false : null);
       if (paused) {
+        _lastManualPauseAt = DateTime.now();
         _audioEngine.pause();
       } else if (_playbackState.track != null) {
-        _audioEngine.resume();
-        if (!_audioEngine.hasActivePlayer) {
+        final pausedAt = _lastManualPauseAt;
+        _lastManualPauseAt = null;
+        final shouldRestartStream =
+            pausedAt != null &&
+            DateTime.now().difference(pausedAt) >=
+                _resumeStreamRestartThreshold;
+        if (shouldRestartStream || !_audioEngine.hasActivePlayer) {
+          if (shouldRestartStream) {
+            _pushMessage(
+              'Resuming after a long pause; reconnecting stream from the current position.',
+            );
+          }
           _startPlayback(_playbackState.track!, startOffset: _playbackState.position);
+        } else {
+          _audioEngine.resume();
         }
       }
       await _pushNowPlayingUpdate(force: true);
@@ -2803,6 +2904,7 @@ class AppController {
   void _updatePlayback({
     Object? track = _unset,
     bool? isPlaying,
+    bool? isLoading,
     Duration? position,
     Duration? duration,
     double? bufferRatio,
@@ -2820,6 +2922,7 @@ class AppController {
     _playbackState = _playbackState.copyWith(
       track: track,
       isPlaying: isPlaying,
+      isLoading: isLoading,
       position: position,
       duration: duration,
       bufferRatio: bufferRatio,
@@ -3041,7 +3144,12 @@ class AppController {
     () async {
       try {
         _logPlaybackContext();
-        _updatePlayback(bitrateKbps: null);
+        _updatePlayback(
+          bitrateKbps: null,
+          bufferRatio: 0.0,
+          streamConnected: false,
+          isLoading: true,
+        );
         _audioOutputStarted = false;
         _pushMessage(
           'Playback track: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"',
@@ -3060,7 +3168,7 @@ class AppController {
         );
       } catch (err) {
         _pushMessage('Playback failed: $err', level: LogLevel.error);
-        _updatePlayback(isPlaying: false);
+        _updatePlayback(isPlaying: false, isLoading: false);
       }
     }();
   }

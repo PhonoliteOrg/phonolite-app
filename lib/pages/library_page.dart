@@ -26,14 +26,13 @@ class LibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LibraryPage> {
   late final TextEditingController _searchController;
-  bool _artistsImagesReady = false;
-  String _artistsImageKey = '';
-  int _artistsImageLoadId = 0;
+  late final ScrollController _scrollController;
   Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()..addListener(_handleArtistScroll);
     _searchController = TextEditingController();
     _searchController.addListener(() => setState(() {}));
   }
@@ -41,6 +40,9 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _scrollController
+      ..removeListener(_handleArtistScroll)
+      ..dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -50,8 +52,9 @@ class _LibraryPageState extends State<LibraryPage> {
     super.didChangeDependencies();
     final controller = AppScope.of(context);
     if (controller.artists.isEmpty) {
-      controller.loadArtists();
+      unawaited(controller.loadArtists());
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMoreArtists());
   }
 
   @override
@@ -86,11 +89,16 @@ class _LibraryPageState extends State<LibraryPage> {
                         builder: (context, artistSnapshot) {
                           final artists = artistSnapshot.data ?? [];
                           final query = _searchController.text.trim();
-                          _ensureArtistsImagesReady(
-                              context, artists, authHeadersMap);
-                          final showLoading = isLoading ||
-                              (!_artistsImagesReady && artists.isNotEmpty);
+                          if (query.isEmpty &&
+                              artists.isNotEmpty &&
+                              controller.hasMoreArtists &&
+                              !isLoading) {
+                            WidgetsBinding.instance.addPostFrameCallback(
+                              (_) => _maybeLoadMoreArtists(),
+                            );
+                          }
                           return CustomScrollView(
+                            controller: _scrollController,
                             slivers: [
                               SliverPadding(
                                 padding:
@@ -112,7 +120,23 @@ class _LibraryPageState extends State<LibraryPage> {
                                   ),
                                 ),
                               ),
-                              if (query.isNotEmpty && isSearchLoading)
+                              if (query.isNotEmpty && query.length < 2)
+                                SliverPadding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                                  sliver: SliverToBoxAdapter(
+                                    child: Text(
+                                      'Type at least 2 characters',
+                                      style: GoogleFonts.rajdhani(
+                                        color: Colors.white54,
+                                        fontSize: 14,
+                                        letterSpacing: 1.2,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else if (query.isNotEmpty && isSearchLoading)
                                 loadingSliver()
                               else if (query.isNotEmpty && results.isNotEmpty)
                                 SliverPadding(
@@ -140,7 +164,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                     ),
                                   ),
                                 )
-                              else if (artists.isEmpty && showLoading)
+                              else if (artists.isEmpty && isLoading)
                                 loadingSliver()
                               else if (artists.isEmpty)
                                 const SliverFillRemaining(
@@ -151,9 +175,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                         'Add music to your library to get started.',
                                   ),
                                 )
-                              else if (showLoading)
-                                loadingSliver()
-                              else
+                              else ...[
                                 SliverPadding(
                                   padding:
                                       const EdgeInsets.fromLTRB(20, 0, 20, 32),
@@ -170,9 +192,15 @@ class _LibraryPageState extends State<LibraryPage> {
                                         final artist = artists[index];
                                         return ArtistCard(
                                           artist: artist,
-                                          coverUrl: controller.connection
-                                              .buildArtistCoverUrl(artist.id,
-                                                  kind: 'logo'),
+                                          coverUrl:
+                                              artist.logoRef == null ||
+                                                      artist.logoRef!.isEmpty
+                                                  ? null
+                                                  : controller.connection
+                                                      .buildArtistCoverUrl(
+                                                        artist.id,
+                                                        kind: 'logo',
+                                                      ),
                                           headers: authHeadersMap,
                                           onTap: () {
                                             Navigator.of(context).push(
@@ -190,6 +218,23 @@ class _LibraryPageState extends State<LibraryPage> {
                                     ),
                                   ),
                                 ),
+                                if (isLoading)
+                                  const SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding:
+                                          EdgeInsets.fromLTRB(20, 0, 20, 32),
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ],
                           );
                         },
@@ -207,6 +252,10 @@ class _LibraryPageState extends State<LibraryPage> {
 
   void _runSearch(AppController controller) {
     final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      controller.search('', filter: 'all');
+      return;
+    }
     controller.search(query, filter: 'all');
   }
 
@@ -217,7 +266,11 @@ class _LibraryPageState extends State<LibraryPage> {
       controller.search('', filter: 'all');
       return;
     }
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+    if (query.length < 2) {
+      controller.search('', filter: 'all');
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
       controller.search(query, filter: 'all');
     });
   }
@@ -226,6 +279,30 @@ class _LibraryPageState extends State<LibraryPage> {
     _searchController.clear();
     _searchDebounce?.cancel();
     controller.search('', filter: 'all');
+  }
+
+  void _handleArtistScroll() {
+    if (!mounted) {
+      return;
+    }
+    _maybeLoadMoreArtists();
+  }
+
+  void _maybeLoadMoreArtists() {
+    if (!mounted || !_scrollController.hasClients) {
+      return;
+    }
+    if (_searchController.text.trim().isNotEmpty) {
+      return;
+    }
+    final controller = AppScope.of(context);
+    if (controller.artistsLoading || !controller.hasMoreArtists) {
+      return;
+    }
+    if (_scrollController.position.extentAfter > 720) {
+      return;
+    }
+    unawaited(controller.loadMoreArtists());
   }
 
   Future<void> _handleSearchSelect(
@@ -303,36 +380,5 @@ class _LibraryPageState extends State<LibraryPage> {
           break;
       }
     } catch (_) {}
-  }
-
-  void _ensureArtistsImagesReady(
-    BuildContext context,
-    List<Artist> artists,
-    Map<String, String> headers,
-  ) {
-    final nextKey = artists.map((artist) => artist.id).join('|');
-    if (nextKey == _artistsImageKey) {
-      return;
-    }
-    _artistsImageKey = nextKey;
-    _artistsImageLoadId++;
-    final loadId = _artistsImageLoadId;
-    _artistsImagesReady = false;
-    if (artists.isEmpty) {
-      _artistsImagesReady = true;
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final urls = artists
-          .map((artist) => AppScope.of(context)
-              .connection
-              .buildArtistCoverUrl(artist.id, kind: 'logo'))
-          .toList();
-      await precacheImages(context, urls, headers: headers);
-      if (!mounted || loadId != _artistsImageLoadId) {
-        return;
-      }
-      setState(() => _artistsImagesReady = true);
-    });
   }
 }

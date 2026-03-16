@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -15,13 +18,29 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $body';
 }
 
+class RequestTimeoutException implements Exception {
+  RequestTimeoutException(this.timeout);
+
+  final Duration timeout;
+
+  @override
+  String toString() => 'Request timed out after ${timeout.inSeconds}s';
+}
+
 class ServerConnection {
+  static const int artistsPageSize = 60;
+  static const Duration _defaultRequestTimeout = Duration(seconds: 8);
+  static const Duration _healthRequestTimeout = Duration(seconds: 2);
+  static const Duration _slowRequestThreshold = Duration(milliseconds: 1200);
+  static const int _maxGetAttempts = 3;
+
   ServerConnection({required String baseUrl, http.Client? client})
       : _baseUrl = _sanitizeBaseUrl(baseUrl),
         _client = client ?? http.Client();
 
   String _baseUrl;
   final http.Client _client;
+  final Random _retryJitter = Random();
   String? _token;
 
   String get baseUrl => _baseUrl;
@@ -70,17 +89,26 @@ class ServerConnection {
     return token;
   }
 
-  Future<List<Artist>> fetchArtists() async {
-    const limit = 200;
+  Future<List<Artist>> fetchArtistsPage({
+    int limit = ServerConnection.artistsPageSize,
+    int offset = 0,
+  }) async {
+    final response = await _getList('/browse/artists?limit=$limit&offset=$offset');
+    return response.map((item) => Artist.fromJson(item)).toList();
+  }
+
+  Future<List<Artist>> fetchArtists({
+    int limit = ServerConnection.artistsPageSize,
+  }) async {
     var offset = 0;
     final artists = <Artist>[];
     while (true) {
-      final response = await _getList('/browse/artists?limit=$limit&offset=$offset');
-      artists.addAll(response.map((item) => Artist.fromJson(item)));
-      if (response.length < limit) {
+      final page = await fetchArtistsPage(limit: limit, offset: offset);
+      artists.addAll(page);
+      if (page.length < limit) {
         break;
       }
-      offset += response.length;
+      offset += page.length;
     }
     return artists;
   }
@@ -334,7 +362,8 @@ class ServerConnection {
   Future<bool> _checkHealth(String url) async {
     final healthUrl = Uri.parse('$url/health');
     try {
-      final response = await _client.get(healthUrl);
+      final response =
+          await _client.get(healthUrl).timeout(_healthRequestTimeout);
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (_) {
       return false;
@@ -356,17 +385,25 @@ class ServerConnection {
 
 
   Future<Map<String, dynamic>> _get(String path) async {
-    final response = await _client.get(
-      Uri.parse('$_baseUrl$path'),
-      headers: _headers(),
+    final response = await _executeRequest(
+      () => _client.get(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(),
+      ),
+      label: 'GET $path',
+      retryable: true,
     );
     return _decode(response);
   }
 
   Future<List<Map<String, dynamic>>> _getList(String path) async {
-    final response = await _client.get(
-      Uri.parse('$_baseUrl$path'),
-      headers: _headers(),
+    final response = await _executeRequest(
+      () => _client.get(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(),
+      ),
+      label: 'GET $path',
+      retryable: true,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
@@ -382,19 +419,25 @@ class ServerConnection {
   }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> payload) async {
-    final response = await _client.post(
-      Uri.parse('$_baseUrl$path'),
-      headers: _headers(contentType: true),
-      body: jsonEncode(payload),
+    final response = await _executeRequest(
+      () => _client.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(contentType: true),
+        body: jsonEncode(payload),
+      ),
+      label: 'POST $path',
     );
     return _decode(response);
   }
 
   Future<void> _postVoid(String path, Map<String, dynamic> payload) async {
-    final response = await _client.post(
-      Uri.parse('$_baseUrl$path'),
-      headers: _headers(contentType: true),
-      body: jsonEncode(payload),
+    final response = await _executeRequest(
+      () => _client.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(contentType: true),
+        body: jsonEncode(payload),
+      ),
+      label: 'POST $path',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
@@ -402,9 +445,12 @@ class ServerConnection {
   }
 
   Future<void> _delete(String path) async {
-    final response = await _client.delete(
-      Uri.parse('$_baseUrl$path'),
-      headers: _headers(),
+    final response = await _executeRequest(
+      () => _client.delete(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(),
+      ),
+      label: 'DELETE $path',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
@@ -420,6 +466,90 @@ class ServerConnection {
       headers['Authorization'] = 'Bearer $_token';
     }
     return headers;
+  }
+
+  Future<http.Response> _executeRequest(
+    Future<http.Response> Function() request, {
+    bool retryable = false,
+    Duration timeout = _defaultRequestTimeout,
+    String label = 'request',
+  }) async {
+    final maxAttempts = retryable ? _maxGetAttempts : 1;
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    final stopwatch = Stopwatch()..start();
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await request().timeout(timeout);
+        final retryableStatus =
+            response.statusCode >= 500 && response.statusCode < 600;
+        if (retryable && retryableStatus && attempt < maxAttempts) {
+          developer.log(
+            '$label attempt $attempt failed with ${response.statusCode}; retrying after ${stopwatch.elapsedMilliseconds}ms',
+            name: 'ServerConnection',
+          );
+          await Future<void>.delayed(_retryDelay(attempt));
+          continue;
+        }
+        if (attempt > 1 || stopwatch.elapsed >= _slowRequestThreshold) {
+          developer.log(
+            '$label completed in ${stopwatch.elapsedMilliseconds}ms after $attempt attempt(s) with ${response.statusCode}',
+            name: 'ServerConnection',
+          );
+        }
+        return response;
+      } on TimeoutException catch (_, stackTrace) {
+        lastError = RequestTimeoutException(timeout);
+        lastStackTrace = stackTrace;
+        if (attempt < maxAttempts) {
+          developer.log(
+            '$label attempt $attempt timed out after ${timeout.inMilliseconds}ms; retrying',
+            name: 'ServerConnection',
+          );
+          await Future<void>.delayed(_retryDelay(attempt));
+          continue;
+        }
+      } on SocketException catch (err, stackTrace) {
+        lastError = err;
+        lastStackTrace = stackTrace;
+        if (retryable && attempt < maxAttempts) {
+          developer.log(
+            '$label attempt $attempt hit socket error "$err"; retrying',
+            name: 'ServerConnection',
+          );
+          await Future<void>.delayed(_retryDelay(attempt));
+          continue;
+        }
+      } on http.ClientException catch (err, stackTrace) {
+        lastError = err;
+        lastStackTrace = stackTrace;
+        if (retryable && attempt < maxAttempts) {
+          developer.log(
+            '$label attempt $attempt hit client error "$err"; retrying',
+            name: 'ServerConnection',
+          );
+          await Future<void>.delayed(_retryDelay(attempt));
+          continue;
+        }
+      }
+    }
+
+    if (lastError != null && lastStackTrace != null) {
+      developer.log(
+        '$label failed after ${stopwatch.elapsedMilliseconds}ms',
+        name: 'ServerConnection',
+        error: lastError,
+        stackTrace: lastStackTrace,
+      );
+      Error.throwWithStackTrace(lastError, lastStackTrace);
+    }
+    throw RequestTimeoutException(timeout);
+  }
+
+  Duration _retryDelay(int attempt) {
+    final baseMs = attempt == 1 ? 300 : 900;
+    return Duration(milliseconds: baseMs + _retryJitter.nextInt(250));
   }
 
   Map<String, dynamic> _decode(http.Response response) {
