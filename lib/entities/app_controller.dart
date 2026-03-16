@@ -121,6 +121,8 @@ class PlaybackState {
 }
 
 class AppController {
+  static const Duration _inlineSeekWatchdogDelay = Duration(seconds: 4);
+
   AppController({required this.connection}) {
     _logListener = _addLogEntry;
     AppLogger.instance.attach(_logListener, includeHistory: true);
@@ -141,10 +143,7 @@ class AppController {
       queueSource: PlaybackQueueSource.none,
       queueSourcePlaylistId: null,
     );
-    _authState = AuthState(
-      isAuthorized: false,
-      baseUrl: connection.baseUrl,
-    );
+    _authState = AuthState(isAuthorized: false, baseUrl: connection.baseUrl);
     _audioEngine = AudioEngine(
       onMessage: _pushMessage,
       onStats: (position, bufferedAhead, bitrateKbps, rttMs) {
@@ -152,20 +151,26 @@ class AppController {
         final clamped = duration == Duration.zero
             ? position
             : position > duration
-                ? duration
-                : position;
+            ? duration
+            : position;
         _actualPositionMs = clamped.inMilliseconds;
         _updateDisplayPosition(_actualPositionMs, bufferedAhead.inMilliseconds);
         final bufferedTotal = clamped + bufferedAhead;
         final bufferRatio = duration == Duration.zero
             ? 0.0
-            : (bufferedTotal.inMilliseconds / duration.inMilliseconds)
-                .clamp(0.0, 1.0);
+            : (bufferedTotal.inMilliseconds / duration.inMilliseconds).clamp(
+                0.0,
+                1.0,
+              );
+        final displayBufferRatio = _displayBufferRatio(
+          duration: duration,
+          rawBufferRatio: bufferRatio,
+        );
         _maybeClearSeekHold(clamped, bufferedAhead);
         final nextRtt = rttMs ?? _playbackState.streamRttMs;
         _updatePlayback(
           position: Duration(milliseconds: _displayPositionMs),
-          bufferRatio: bufferRatio,
+          bufferRatio: displayBufferRatio,
           bitrateKbps: bitrateKbps,
           streamConnected: true,
           streamRttMs: nextRtt,
@@ -200,12 +205,15 @@ class AppController {
 
   final ServerConnection connection;
   late final AudioEngine _audioEngine;
-  final MethodChannel _nowPlayingChannel =
-      const MethodChannel('phonolite/now_playing');
-  final MethodChannel _carPlayChannel =
-      const MethodChannel('phonolite/carplay');
-  final MethodChannel _permissionsChannel =
-      const MethodChannel('phonolite/permissions');
+  final MethodChannel _nowPlayingChannel = const MethodChannel(
+    'phonolite/now_playing',
+  );
+  final MethodChannel _carPlayChannel = const MethodChannel(
+    'phonolite/carplay',
+  );
+  final MethodChannel _permissionsChannel = const MethodChannel(
+    'phonolite/permissions',
+  );
   final AuthStorage _authStorage = const AuthStorage();
   final CustomShuffleSettingsStorage _customShuffleStorage =
       const CustomShuffleSettingsStorage();
@@ -213,8 +221,7 @@ class AppController {
       const PlaybackPreferencesStorage();
   late final LogListener _logListener;
   AuthCredentials? _savedCredentials;
-  CustomShuffleSettings _customShuffleSettings =
-      const CustomShuffleSettings();
+  CustomShuffleSettings _customShuffleSettings = const CustomShuffleSettings();
   Future<void>? _customShuffleLoadFuture;
   Future<void>? _playbackPreferencesLoadFuture;
   Timer? _volumeSaveDebounce;
@@ -328,7 +335,8 @@ class AppController {
   Stream<List<Album>> get albumsStream => _albumsController.stream;
   Stream<List<Track>> get tracksStream => _tracksController.stream;
   Stream<List<Playlist>> get playlistsStream => _playlistsController.stream;
-  Stream<List<Track>> get playlistTracksStream => _playlistTracksController.stream;
+  Stream<List<Track>> get playlistTracksStream =>
+      _playlistTracksController.stream;
   Stream<List<Track>> get likedStream => _likedController.stream;
   Stream<StatsResponse?> get statsStream => _statsController.stream;
   Stream<List<SearchResult>> get searchStream => _searchController.stream;
@@ -452,7 +460,10 @@ class AppController {
     try {
       connection.setBaseUrl(baseUrl);
       await _refreshServerPorts();
-      final token = await connection.login(username: username, password: password);
+      final token = await connection.login(
+        username: username,
+        password: password,
+      );
       _setAuthorized(true, error: null);
       await _loadPlaybackSettings();
       if (rememberMe) {
@@ -468,7 +479,8 @@ class AppController {
         _savedCredentials = null;
       }
     } on ApiException catch (err) {
-      final message = '${_formatApiError(err)} (POST ${connection.baseUrl}/auth/login)';
+      final message =
+          '${_formatApiError(err)} (POST ${connection.baseUrl}/auth/login)';
       _setAuthorized(false, error: message);
       _pushMessage('Login failed: $message', level: LogLevel.error);
     } catch (err) {
@@ -497,7 +509,10 @@ class AppController {
     } catch (err) {
       final message = err.toString();
       _setAuthorized(false, error: message);
-      _pushMessage('Server connection failed: $message', level: LogLevel.warning);
+      _pushMessage(
+        'Server connection failed: $message',
+        level: LogLevel.warning,
+      );
       return false;
     }
   }
@@ -589,8 +604,9 @@ class AppController {
   Future<void> _refreshLocalNetworkPermission() async {
     try {
       await _permissionsChannel.invokeMethod('refreshLocalNetworkPermission');
-      final result =
-          await _permissionsChannel.invokeMethod('getLocalNetworkPermission');
+      final result = await _permissionsChannel.invokeMethod(
+        'getLocalNetworkPermission',
+      );
       final status = result?.toString().toLowerCase().trim() ?? '';
       switch (status) {
         case 'granted':
@@ -741,11 +757,14 @@ class AppController {
 
   Map<String, dynamic> _carPlayOk() => const {'ok': true};
 
-  Map<String, dynamic> _carPlayError(String code) =>
-      {'error': code, 'items': const []};
+  Map<String, dynamic> _carPlayError(String code) => {
+    'error': code,
+    'items': const [],
+  };
 
-  Map<String, dynamic> _carPlayList(List<Map<String, dynamic>> items) =>
-      {'items': items};
+  Map<String, dynamic> _carPlayList(List<Map<String, dynamic>> items) => {
+    'items': items,
+  };
 
   Future<Map<String, dynamic>> _carPlayGetArtists() async {
     if (!_authState.isAuthorized) {
@@ -759,8 +778,9 @@ class AppController {
           (artist) => {
             'id': artist.id,
             'title': artist.name,
-            'subtitle':
-                artist.albumCount > 0 ? '${artist.albumCount} albums' : null,
+            'subtitle': artist.albumCount > 0
+                ? '${artist.albumCount} albums'
+                : null,
           },
         )
         .toList();
@@ -811,17 +831,22 @@ class AppController {
     actions.add({
       'id': 'startLikedShuffle',
       'title': 'Start Liked Shuffle',
-      'subtitle': liked.isNotEmpty ? 'Shuffle liked songs' : 'No liked songs yet',
+      'subtitle': liked.isNotEmpty
+          ? 'Shuffle liked songs'
+          : 'No liked songs yet',
       'enabled': liked.isNotEmpty,
     });
 
     await _ensureCustomShuffleSettingsLoaded();
-    final customReady = _customShuffleSettings.artistIds.isNotEmpty ||
+    final customReady =
+        _customShuffleSettings.artistIds.isNotEmpty ||
         _customShuffleSettings.genres.isNotEmpty;
     actions.add({
       'id': 'startCustomShuffle',
       'title': 'Start Custom Shuffle',
-      'subtitle': customReady ? 'Shuffle with your rules' : 'Set up custom shuffle',
+      'subtitle': customReady
+          ? 'Shuffle with your rules'
+          : 'Set up custom shuffle',
       'enabled': customReady,
     });
 
@@ -932,8 +957,9 @@ class AppController {
     }
 
     final albumId = track.albumId ?? '';
-    final artworkUrl =
-        albumId.isNotEmpty ? connection.buildAlbumCoverUrl(albumId) : null;
+    final artworkUrl = albumId.isNotEmpty
+        ? connection.buildAlbumCoverUrl(albumId)
+        : null;
     final token = connection.token ?? '';
     _maybeFetchNowPlayingArtwork(artworkUrl, token);
 
@@ -1166,7 +1192,10 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'playlist tracks');
     } catch (err) {
-      _pushMessage('Failed to load playlist tracks: $err', level: LogLevel.warning);
+      _pushMessage(
+        'Failed to load playlist tracks: $err',
+        level: LogLevel.warning,
+      );
     }
   }
 
@@ -1180,7 +1209,10 @@ class AppController {
     } on ApiException catch (err) {
       _handleApiError(err, context: 'liked tracks');
     } catch (err) {
-      _pushMessage('Failed to load liked tracks: $err', level: LogLevel.warning);
+      _pushMessage(
+        'Failed to load liked tracks: $err',
+        level: LogLevel.warning,
+      );
     }
   }
 
@@ -1307,7 +1339,9 @@ class AppController {
   Future<void> deletePlaylist(String playlistId) async {
     try {
       await connection.deletePlaylist(playlistId);
-      _playlists = _playlists.where((playlist) => playlist.id != playlistId).toList();
+      _playlists = _playlists
+          .where((playlist) => playlist.id != playlistId)
+          .toList();
       _playlistsController.add(_playlists);
       if (_currentPlaylistId == playlistId) {
         _currentPlaylistId = null;
@@ -1321,9 +1355,15 @@ class AppController {
     }
   }
 
-  Future<void> updatePlaylistTracks(String playlistId, List<String> trackIds) async {
+  Future<void> updatePlaylistTracks(
+    String playlistId,
+    List<String> trackIds,
+  ) async {
     try {
-      final updated = await connection.updatePlaylistTracks(playlistId, trackIds);
+      final updated = await connection.updatePlaylistTracks(
+        playlistId,
+        trackIds,
+      );
       _playlists = _playlists
           .map((playlist) => playlist.id == updated.id ? updated : playlist)
           .toList();
@@ -1337,8 +1377,10 @@ class AppController {
 
   Future<void> addTrackToPlaylist(Playlist playlist, Track track) async {
     try {
-      final resolved =
-          _playlists.firstWhere((item) => item.id == playlist.id, orElse: () => playlist);
+      final resolved = _playlists.firstWhere(
+        (item) => item.id == playlist.id,
+        orElse: () => playlist,
+      );
       if (resolved.trackIds.contains(track.id)) {
         _pushMessage('Track already in playlist: ${resolved.name}');
         return;
@@ -1369,14 +1411,17 @@ class AppController {
 
   Future<void> removeTrackFromPlaylist(Playlist playlist, Track track) async {
     try {
-      final resolved =
-          _playlists.firstWhere((item) => item.id == playlist.id, orElse: () => playlist);
+      final resolved = _playlists.firstWhere(
+        (item) => item.id == playlist.id,
+        orElse: () => playlist,
+      );
       if (!resolved.trackIds.contains(track.id)) {
         _pushMessage('Track not in playlist: ${resolved.name}');
         return;
       }
-      final updatedIds =
-          resolved.trackIds.where((id) => id != track.id).toList();
+      final updatedIds = resolved.trackIds
+          .where((id) => id != track.id)
+          .toList();
       final updated = await connection.updatePlaylistTracks(
         resolved.id,
         updatedIds,
@@ -1386,8 +1431,9 @@ class AppController {
           .toList();
       _playlistsController.add(_playlists);
       if (_currentPlaylistId == resolved.id) {
-        _playlistTracks =
-            _playlistTracks.where((item) => item.id != track.id).toList();
+        _playlistTracks = _playlistTracks
+            .where((item) => item.id != track.id)
+            .toList();
         _playlistTracksController.add(_playlistTracks);
       }
       _pushMessage('Removed from playlist: ${resolved.name}');
@@ -1424,7 +1470,9 @@ class AppController {
         );
         return;
       }
-      _pushMessage('Queue album: $albumId${startTrackId == null ? '' : ' (start $startTrackId)'}');
+      _pushMessage(
+        'Queue album: $albumId${startTrackId == null ? '' : ' (start $startTrackId)'}',
+      );
       final tracks = await connection.fetchTracks(albumId);
       if (tracks.isEmpty) {
         _pushMessage('No tracks found for album');
@@ -1513,8 +1561,11 @@ class AppController {
         }
         return;
       }
-      _pushMessage('Queue playlist: $playlistId${startTrackId == null ? '' : ' (start $startTrackId)'}');
-      final tracks = (_currentPlaylistId == playlistId && _playlistTracks.isNotEmpty)
+      _pushMessage(
+        'Queue playlist: $playlistId${startTrackId == null ? '' : ' (start $startTrackId)'}',
+      );
+      final tracks =
+          (_currentPlaylistId == playlistId && _playlistTracks.isNotEmpty)
           ? _playlistTracks
           : await connection.fetchPlaylistTracks(playlistId);
       if (tracks.isEmpty) {
@@ -1577,8 +1628,12 @@ class AppController {
         }
         return;
       }
-      _pushMessage('Queue liked${startTrackId == null ? '' : ' (start $startTrackId)'}');
-      final tracks = _liked.isNotEmpty ? _liked : await connection.fetchLikedTracks();
+      _pushMessage(
+        'Queue liked${startTrackId == null ? '' : ' (start $startTrackId)'}',
+      );
+      final tracks = _liked.isNotEmpty
+          ? _liked
+          : await connection.fetchLikedTracks();
       if (tracks.isEmpty) {
         _pushMessage('No liked tracks found');
         return;
@@ -1617,14 +1672,15 @@ class AppController {
         return;
       }
 
-      final queueSource = queueSourceOverride ??
+      final queueSource =
+          queueSourceOverride ??
           (scope == 'playlist'
               ? PlaybackQueueSource.playlist
               : scope == 'liked'
-                  ? PlaybackQueueSource.liked
-                  : _playbackState.shuffleMode == ShuffleMode.liked
-                      ? PlaybackQueueSource.liked
-                      : PlaybackQueueSource.none);
+              ? PlaybackQueueSource.liked
+              : _playbackState.shuffleMode == ShuffleMode.liked
+              ? PlaybackQueueSource.liked
+              : PlaybackQueueSource.none);
       final queueSourcePlaylistId = queueSource == PlaybackQueueSource.playlist
           ? (queueSourcePlaylistIdOverride ?? playlistId)
           : null;
@@ -1691,7 +1747,8 @@ class AppController {
         return;
       }
 
-      if (_playbackState.shuffleMode == ShuffleMode.artist && artistId == null) {
+      if (_playbackState.shuffleMode == ShuffleMode.artist &&
+          artistId == null) {
         _pushMessage('Select an artist to shuffle');
         return;
       }
@@ -1705,8 +1762,9 @@ class AppController {
       if (isCustom) {
         await _ensureCustomShuffleSettingsLoaded();
       }
-      final customArtistIds =
-          isCustom ? _customShuffleSettings.artistIds : null;
+      final customArtistIds = isCustom
+          ? _customShuffleSettings.artistIds
+          : null;
       final customGenres = isCustom ? _customShuffleSettings.genres : null;
       if (isCustom &&
           (customArtistIds == null || customArtistIds.isEmpty) &&
@@ -1810,7 +1868,9 @@ class AppController {
         return;
       }
       _syncPlayIndexWithCurrent();
-      _playIndex = (_playIndex - 1) < 0 ? _playQueue.length - 1 : _playIndex - 1;
+      _playIndex = (_playIndex - 1) < 0
+          ? _playQueue.length - 1
+          : _playIndex - 1;
       await _playCurrent();
     } on ApiException catch (err) {
       _handleApiError(err, context: 'previous track');
@@ -1822,7 +1882,8 @@ class AppController {
   Future<void> stop() async {
     try {
       _displayPositionMs = 0;
-      final shouldDisableShuffle = _playbackState.shuffleMode == ShuffleMode.album ||
+      final shouldDisableShuffle =
+          _playbackState.shuffleMode == ShuffleMode.album ||
           _playbackState.shuffleMode == ShuffleMode.artist ||
           _playbackState.shuffleMode == ShuffleMode.currentPlaylist;
       _playQueue = <Track>[];
@@ -1890,7 +1951,10 @@ class AppController {
               'Resuming after a long pause; reconnecting stream from the current position.',
             );
           }
-          _startPlayback(_playbackState.track!, startOffset: _playbackState.position);
+          _startPlayback(
+            _playbackState.track!,
+            startOffset: _playbackState.position,
+          );
         } else {
           _audioEngine.resume();
         }
@@ -1953,8 +2017,10 @@ class AppController {
     _pendingVolumeSave = value;
     _volumeSaveQueued = true;
     _volumeSaveDebounce?.cancel();
-    _volumeSaveDebounce =
-        Timer(const Duration(milliseconds: 350), _flushVolumeSave);
+    _volumeSaveDebounce = Timer(
+      const Duration(milliseconds: 350),
+      _flushVolumeSave,
+    );
   }
 
   void _flushVolumeSave() {
@@ -1963,8 +2029,9 @@ class AppController {
     }
     _volumeSaveQueued = false;
     final value = _pendingVolumeSave;
-    _volumeSaveChain =
-        _volumeSaveChain.then((_) => _playbackPreferencesStorage.writeVolume(value));
+    _volumeSaveChain = _volumeSaveChain.then(
+      (_) => _playbackPreferencesStorage.writeVolume(value),
+    );
   }
 
   Future<List<OutputDevice>> listOutputDevices({bool refresh = false}) async {
@@ -1974,7 +2041,8 @@ class AppController {
     _outputDevices = await _audioEngine.listOutputDevices();
     final current = _outputDevices.firstWhere(
       (device) => device.id == _outputDeviceId,
-      orElse: () => OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default'),
+      orElse: () =>
+          OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default'),
     );
     _outputDeviceId = current.id;
     _outputDeviceName = current.name;
@@ -2014,10 +2082,10 @@ class AppController {
     final clamped = duration == Duration.zero
         ? position
         : position > duration
-            ? duration
-            : position < Duration.zero
-                ? Duration.zero
-                : position;
+        ? duration
+        : position < Duration.zero
+        ? Duration.zero
+        : position;
     _beginScrub();
     _seeking = true;
     _seekTargetMs = clamped.inMilliseconds;
@@ -2042,10 +2110,10 @@ class AppController {
     final clamped = duration == Duration.zero
         ? position
         : position > duration
-            ? duration
-            : position < Duration.zero
-                ? Duration.zero
-                : position;
+        ? duration
+        : position < Duration.zero
+        ? Duration.zero
+        : position;
     final now = DateTime.now();
     _lastSeekAt = now;
     _lastSeekMs = clamped.inMilliseconds;
@@ -2147,7 +2215,7 @@ class AppController {
   }) {
     _inlineSeekWatchdog?.cancel();
     _inlineSeekEpoch = epoch;
-    _inlineSeekWatchdog = Timer(const Duration(milliseconds: 1800), () {
+    _inlineSeekWatchdog = Timer(_inlineSeekWatchdogDelay, () {
       if (_inlineSeekEpoch != epoch) {
         return;
       }
@@ -2228,6 +2296,21 @@ class AppController {
     }
   }
 
+  double _displayBufferRatio({
+    required Duration duration,
+    required double rawBufferRatio,
+  }) {
+    final durationMs = duration.inMilliseconds;
+    if (durationMs <= 0) {
+      return 0.0;
+    }
+    final positionRatio = (_displayPositionMs / durationMs).clamp(0.0, 1.0);
+    if (_isScrubbing || _seeking) {
+      return positionRatio.toDouble();
+    }
+    return rawBufferRatio.clamp(positionRatio, 1.0).toDouble();
+  }
+
   void _bumpNowPlayingEpoch() {
     _nowPlayingEpoch = (_nowPlayingEpoch + 1) % 1000000;
     if (_nowPlayingEpoch < 0) {
@@ -2237,13 +2320,19 @@ class AppController {
 
   void _updateLike(String trackId, bool liked) {
     _tracks = _tracks
-        .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
+        .map(
+          (track) => track.id == trackId ? track.copyWith(liked: liked) : track,
+        )
         .toList();
     _playlistTracks = _playlistTracks
-        .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
+        .map(
+          (track) => track.id == trackId ? track.copyWith(liked: liked) : track,
+        )
         .toList();
     _playQueue = _playQueue
-        .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
+        .map(
+          (track) => track.id == trackId ? track.copyWith(liked: liked) : track,
+        )
         .toList();
     final current = _playbackState.track;
     if (current != null && current.id == trackId) {
@@ -2299,13 +2388,16 @@ class AppController {
     _autoAdvanceInFlight = false;
     _updatePlayback(
       queueSource: queueSource,
-      queueSourcePlaylistId:
-          queueSource == PlaybackQueueSource.playlist ? queueSourcePlaylistId : null,
+      queueSourcePlaylistId: queueSource == PlaybackQueueSource.playlist
+          ? queueSourcePlaylistId
+          : null,
       nowPlaying: false,
     );
   }
 
-  void _armAutoAdvanceGuard([Duration duration = const Duration(milliseconds: 1200)]) {
+  void _armAutoAdvanceGuard([
+    Duration duration = const Duration(milliseconds: 1200),
+  ]) {
     _ignoreCompleteUntil = DateTime.now().add(duration);
   }
 
@@ -2395,7 +2487,8 @@ class AppController {
     }
 
     if (_playbackState.shuffleMode == ShuffleMode.currentPlaylist) {
-      final playlistId = _playbackState.queueSource == PlaybackQueueSource.playlist
+      final playlistId =
+          _playbackState.queueSource == PlaybackQueueSource.playlist
           ? _playbackState.queueSourcePlaylistId
           : null;
       if (playlistId == null || playlistId.isEmpty) {
@@ -2548,16 +2641,18 @@ class AppController {
 
         if (customGenres.isNotEmpty) {
           final filter = customGenres.map((item) => item.toLowerCase()).toSet();
-          final albumMatch =
-              album.genres.any((genre) => filter.contains(genre.toLowerCase()));
+          final albumMatch = album.genres.any(
+            (genre) => filter.contains(genre.toLowerCase()),
+          );
           if (albumMatch) {
             return false;
           }
           if (artistId.isNotEmpty) {
             try {
               final artist = await connection.fetchArtistById(artistId);
-              final artistMatch = artist.genres
-                  .any((genre) => filter.contains(genre.toLowerCase()));
+              final artistMatch = artist.genres.any(
+                (genre) => filter.contains(genre.toLowerCase()),
+              );
               if (artistMatch) {
                 return false;
               }
@@ -2586,8 +2681,9 @@ class AppController {
     final track = _needsTrackHydration(queued)
         ? await _hydrateTrackForPlayback(queued)
         : queued;
-    _playQueue =
-        _playQueue.map((item) => item.id == track.id ? track : item).toList();
+    _playQueue = _playQueue
+        .map((item) => item.id == track.id ? track : item)
+        .toList();
     _pushMessage(
       'Now playing: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"',
     );
@@ -2715,10 +2811,7 @@ class AppController {
   }
 
   String _normalizeLookup(String value) {
-    return value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-        .trim();
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
   }
 
   Future<String?> _resolveAlbumIdBySearch({
@@ -2730,7 +2823,10 @@ class AppController {
       return null;
     }
     final normalizedArtist = _normalizeLookup(artist);
-    final query = [artist, album].where((part) => part.trim().isNotEmpty).join(' ');
+    final query = [
+      artist,
+      album,
+    ].where((part) => part.trim().isNotEmpty).join(' ');
     if (query.isEmpty) {
       return null;
     }
@@ -2750,7 +2846,8 @@ class AppController {
           break;
         }
         final subtitle = _normalizeLookup(result.subtitle ?? '');
-        if (subtitle == normalizedArtist || subtitle.contains(normalizedArtist)) {
+        if (subtitle == normalizedArtist ||
+            subtitle.contains(normalizedArtist)) {
           match = result;
           break;
         }
@@ -2777,30 +2874,28 @@ class AppController {
   }
 
   List<Track> _normalizeQueueTracks(List<Track> tracks) {
-    return tracks
-        .map((track) {
-          if (track.albumId != null && track.albumId!.isNotEmpty) {
-            return track;
-          }
-          final key = _albumKey(track.artist, track.album);
-          final albumId = _albumIdByKey[key];
-          if (albumId == null || albumId.isEmpty) {
-            return track;
-          }
-          return Track(
-            id: track.id,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            durationMs: track.durationMs,
-            liked: track.liked,
-            inPlaylists: track.inPlaylists,
-            albumId: albumId,
-            trackNo: track.trackNo,
-            discNo: track.discNo,
-          );
-        })
-        .toList();
+    return tracks.map((track) {
+      if (track.albumId != null && track.albumId!.isNotEmpty) {
+        return track;
+      }
+      final key = _albumKey(track.artist, track.album);
+      final albumId = _albumIdByKey[key];
+      if (albumId == null || albumId.isEmpty) {
+        return track;
+      }
+      return Track(
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        durationMs: track.durationMs,
+        liked: track.liked,
+        inPlaylists: track.inPlaylists,
+        albumId: albumId,
+        trackNo: track.trackNo,
+        discNo: track.discNo,
+      );
+    }).toList();
   }
 
   Future<List<Track>> _hydrateQueueStartTrack(
@@ -2864,7 +2959,9 @@ class AppController {
     if (_playbackState.track?.id != track.id) {
       return;
     }
-    _playQueue = _playQueue.map((item) => item.id == full.id ? full : item).toList();
+    _playQueue = _playQueue
+        .map((item) => item.id == full.id ? full : item)
+        .toList();
     _updatePlayback(track: full);
   }
 
@@ -3053,7 +3150,8 @@ class AppController {
     if (_playbackState.shuffleMode != ShuffleMode.custom) {
       return;
     }
-    final hasActiveShuffle = _playQueue.isNotEmpty ||
+    final hasActiveShuffle =
+        _playQueue.isNotEmpty ||
         _queueShuffleScope != null ||
         _playbackState.isPlaying ||
         _playbackState.track != null;
@@ -3135,7 +3233,9 @@ class AppController {
         _lastStartPlaybackAt != null &&
         now.difference(_lastStartPlaybackAt!) <
             const Duration(milliseconds: 800)) {
-      _pushMessage('Playback already active; skipping duplicate start for ${track.title}.');
+      _pushMessage(
+        'Playback already active; skipping duplicate start for ${track.title}.',
+      );
       return;
     }
     _lastStartPlaybackAt = now;
@@ -3156,7 +3256,9 @@ class AppController {
           level: LogLevel.status,
         );
         _pushMessage('Starting playback for ${track.title}');
-        _pushMessage('Stream settings: mode=${settings.mode} quality=${settings.quality} frame_ms=${settings.frameMs}');
+        _pushMessage(
+          'Stream settings: mode=${settings.mode} quality=${settings.quality} frame_ms=${settings.frameMs}',
+        );
         _audioEngine.setVolume(_playbackState.volume);
         await _audioEngine.playTrack(
           track: track,
@@ -3176,7 +3278,9 @@ class AppController {
   void _logPlaybackContext() {
     _pushMessage('Server base URL: ${connection.baseUrl}');
     if (Platform.isIOS) {
-      _pushMessage('Local network permission: ${_localNetworkPermissionState.name}');
+      _pushMessage(
+        'Local network permission: ${_localNetworkPermissionState.name}',
+      );
       try {
         final uri = Uri.parse(connection.baseUrl);
         final host = uri.host;
@@ -3206,7 +3310,10 @@ class AppController {
       }
     } catch (err) {
       _quicPort = null;
-      _pushMessage('Failed to load server ports: $err', level: LogLevel.warning);
+      _pushMessage(
+        'Failed to load server ports: $err',
+        level: LogLevel.warning,
+      );
     }
   }
 
@@ -3262,9 +3369,17 @@ class AppController {
       case StreamMode.auto:
         return const StreamSettings(mode: 'auto', quality: 'high', frameMs: 20);
       case StreamMode.high:
-        return const StreamSettings(mode: 'fixed', quality: 'high', frameMs: 20);
+        return const StreamSettings(
+          mode: 'fixed',
+          quality: 'high',
+          frameMs: 20,
+        );
       case StreamMode.medium:
-        return const StreamSettings(mode: 'fixed', quality: 'medium', frameMs: 20);
+        return const StreamSettings(
+          mode: 'fixed',
+          quality: 'medium',
+          frameMs: 20,
+        );
       case StreamMode.low:
         return const StreamSettings(mode: 'fixed', quality: 'low', frameMs: 20);
     }
@@ -3328,7 +3443,11 @@ class AppController {
     if (_playbackState.repeatMode == RepeatMode.one) {
       final track = _playbackState.track;
       if (track == null) {
-        _updatePlayback(isPlaying: false, position: Duration.zero, bufferRatio: 0.0);
+        _updatePlayback(
+          isPlaying: false,
+          position: Duration.zero,
+          bufferRatio: 0.0,
+        );
         _autoAdvanceInFlight = false;
         return;
       }
@@ -3354,13 +3473,21 @@ class AppController {
         () async {
           final ensured = await _ensureShuffleQueue(play: true);
           if (!ensured) {
-            _updatePlayback(isPlaying: false, position: Duration.zero, bufferRatio: 0.0);
+            _updatePlayback(
+              isPlaying: false,
+              position: Duration.zero,
+              bufferRatio: 0.0,
+            );
           }
           _autoAdvanceInFlight = false;
         }();
         return;
       }
-      _updatePlayback(isPlaying: false, position: Duration.zero, bufferRatio: 0.0);
+      _updatePlayback(
+        isPlaying: false,
+        position: Duration.zero,
+        bufferRatio: 0.0,
+      );
       _autoAdvanceInFlight = false;
       return;
     }
@@ -3386,7 +3513,10 @@ class AppController {
       final settings = await connection.fetchPlaybackSettings();
       _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
     } catch (err) {
-      _pushMessage('Failed to load playback settings: $err', level: LogLevel.warning);
+      _pushMessage(
+        'Failed to load playback settings: $err',
+        level: LogLevel.warning,
+      );
     }
   }
 

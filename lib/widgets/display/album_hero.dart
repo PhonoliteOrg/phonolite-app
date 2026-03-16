@@ -5,9 +5,10 @@ import '../../core/constants.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
 import '../ui/backdrop_color.dart';
+import '../ui/expandable_summary_text.dart';
 import 'album_art.dart';
 
-class AlbumHero extends StatefulWidget {
+class AlbumHero extends StatelessWidget {
   const AlbumHero({
     super.key,
     required this.album,
@@ -20,26 +21,20 @@ class AlbumHero extends StatefulWidget {
   final Map<String, String> headers;
 
   @override
-  State<AlbumHero> createState() => AlbumHeroState();
-}
-
-class AlbumHeroState extends State<AlbumHero> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final scale = ObsidianScale.of(context);
     double s(double value) => value * scale;
-    final album = widget.album;
-    final yearLabel = album.year == null ? 'YEAR UNKNOWN' : album.year.toString();
-    final genresLine =
-        album.genres.isEmpty ? null : album.genres.join(' • ').toUpperCase();
+    final yearLabel = album.year == null
+        ? 'YEAR UNKNOWN'
+        : album.year.toString();
+    final genresLine = album.genres.isEmpty
+        ? null
+        : album.genres.join(' â€¢ ').toUpperCase();
     final summary = album.summary?.trim();
-    final provider = NetworkImage(widget.coverUrl, headers: widget.headers);
-    final showToggle = summary != null && summary.length > 140;
+    final provider = NetworkImage(coverUrl, headers: headers);
 
     return FutureBuilder<Color>(
-      future: resolveAlbumBackdropColor(provider, widget.coverUrl),
+      future: resolveAlbumBackdropColor(provider, coverUrl),
       builder: (context, snapshot) {
         final backdrop = snapshot.data ?? bgDark;
         return Stack(
@@ -65,10 +60,7 @@ class AlbumHeroState extends State<AlbumHero> {
               left: 0,
               top: 0,
               bottom: 0,
-              child: Container(
-                width: s(2),
-                color: accentGold,
-              ),
+              child: Container(width: s(2), color: accentGold),
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),
@@ -82,8 +74,8 @@ class AlbumHeroState extends State<AlbumHero> {
                       child: AlbumArt(
                         title: album.title,
                         size: s(150),
-                        imageUrl: widget.coverUrl,
-                        headers: widget.headers,
+                        imageUrl: coverUrl,
+                        headers: headers,
                       ),
                     ),
                   ),
@@ -135,36 +127,20 @@ class AlbumHeroState extends State<AlbumHero> {
                         ],
                         if (summary != null && summary.isNotEmpty) ...[
                           SizedBox(height: s(10)),
-                          ClipRect(
-                            child: ConstrainedBox(
-                              constraints: _expanded
-                                  ? const BoxConstraints()
-                                  : BoxConstraints(maxHeight: s(60)),
-                              child: Text(
-                                summary,
-                                maxLines: _expanded ? null : 3,
-                                overflow: _expanded
-                                    ? TextOverflow.visible
-                                    : TextOverflow.ellipsis,
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white70,
-                                  fontSize: s(12),
-                                  height: 1.35,
-                                ),
-                              ),
+                          ExpandableSummaryText(
+                            text: summary,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white70,
+                              fontSize: s(12),
+                              height: 1.35,
+                            ),
+                            toggleColor: accentGold,
+                            collapsedMaxHeight: s(60),
+                            togglePadding: EdgeInsets.symmetric(
+                              horizontal: 0,
+                              vertical: s(4),
                             ),
                           ),
-                          if (showToggle)
-                            TextButton(
-                              onPressed: () =>
-                                  setState(() => _expanded = !_expanded),
-                              style: TextButton.styleFrom(
-                                foregroundColor: accentGold,
-                                padding:
-                                    EdgeInsets.symmetric(horizontal: 0, vertical: s(4)),
-                              ),
-                              child: Text(_expanded ? 'Collapse' : 'Read more'),
-                            ),
                         ],
                       ],
                     ),

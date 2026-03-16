@@ -6,7 +6,7 @@ import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/album_hero.dart';
 import '../widgets/display/empty_state.dart';
-import '../widgets/display/track_row_tile.dart';
+import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/navigation/command_link_button.dart';
@@ -101,27 +101,15 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         else
                           SliverPadding(
                             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                            sliver: SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) {
-                                  if (index.isOdd) {
-                                    return const Divider(height: 1);
-                                  }
-                                  final track = tracks[index ~/ 2];
-                                  return TrackRowTile(
-                                    track: track,
-                                    index: index ~/ 2 + 1,
-                                    isPlaying: playback.isPlaying &&
-                                        playingId == track.id,
-                                    onTap: () => controller.queueAlbum(
-                                      widget.album.id,
-                                      startTrackId: track.id,
-                                    ),
-                                    onLike: () => controller.toggleLike(track),
-                                  );
-                                },
-                                childCount: tracks.length * 2 - 1,
+                            sliver: TrackSliverList(
+                              tracks: tracks,
+                              isPlayingTrack: (track) =>
+                                  playback.isPlaying && playingId == track.id,
+                              onTrackTap: (track) => controller.queueAlbum(
+                                widget.album.id,
+                                startTrackId: track.id,
                               ),
+                              onTrackLike: controller.toggleLike,
                             ),
                           ),
                       ],

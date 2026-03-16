@@ -14,6 +14,7 @@ import '../modals/device_picker_modal.dart';
 import '../ui/blur.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
+import '../ui/marquee_text.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 
@@ -43,11 +44,7 @@ Future<void> _showStreamModal(
   final result = await showDialog<StreamMode>(
     context: context,
     builder: (dialogContext) {
-      final items = const [
-        StreamMode.high,
-        StreamMode.medium,
-        StreamMode.low,
-      ];
+      final items = const [StreamMode.high, StreamMode.medium, StreamMode.low];
       return AlertDialog(
         title: const Text('Stream Quality'),
         content: SizedBox(
@@ -66,8 +63,10 @@ Future<void> _showStreamModal(
               return _HudModalListRow(
                 title: _streamLabel(mode),
                 trailing: isSelected
-                    ? const Icon(Icons.check_rounded,
-                        color: ObsidianPalette.gold)
+                    ? const Icon(
+                        Icons.check_rounded,
+                        color: ObsidianPalette.gold,
+                      )
                     : const SizedBox.shrink(),
                 enabled: true,
                 isSelected: isSelected,
@@ -196,10 +195,7 @@ List<Widget> _buildQueueSourceTags(PlaybackState state) {
     return const [];
   }
   return [
-    _TechTag(
-      label: label,
-      outlineColor: _queueSourceGreen.withOpacity(0.7),
-    ),
+    _TechTag(label: label, outlineColor: _queueSourceGreen.withOpacity(0.7)),
   ];
 }
 
@@ -280,28 +276,24 @@ Future<void> _showShuffleModal(
           width: _scaled(dialogContext, 320),
           child: ListView(
             shrinkWrap: true,
-            children: items
-                .map(
-                  (mode) {
-                    final enabled = switch (mode) {
-                      ShuffleMode.custom => customEnabled,
-                      ShuffleMode.liked => likedEnabled,
-                      ShuffleMode.currentPlaylist => currentPlaylistEnabled,
-                      _ => true,
-                    };
-                    return ListTile(
-                      enabled: enabled,
-                      title: Text(_shuffleLabel(mode)),
-                      trailing: mode == current
-                          ? const Icon(Icons.check_rounded)
-                          : null,
-                      onTap: enabled
-                          ? () => Navigator.of(dialogContext).pop(mode)
-                          : null,
-                    );
-                  },
-                )
-                .toList(),
+            children: items.map((mode) {
+              final enabled = switch (mode) {
+                ShuffleMode.custom => customEnabled,
+                ShuffleMode.liked => likedEnabled,
+                ShuffleMode.currentPlaylist => currentPlaylistEnabled,
+                _ => true,
+              };
+              return ListTile(
+                enabled: enabled,
+                title: Text(_shuffleLabel(mode)),
+                trailing: mode == current
+                    ? const Icon(Icons.check_rounded)
+                    : null,
+                onTap: enabled
+                    ? () => Navigator.of(dialogContext).pop(mode)
+                    : null,
+              );
+            }).toList(),
           ),
         ),
       );
@@ -330,7 +322,8 @@ Future<void> _showAddToPlaylistModal(
       playlists: controller.playlists,
       trackId: track.id,
       onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
-      onRemoved: (playlist) => controller.removeTrackFromPlaylist(playlist, track),
+      onRemoved: (playlist) =>
+          controller.removeTrackFromPlaylist(playlist, track),
     ),
   );
 }
@@ -376,11 +369,12 @@ Future<void> showNowPlayingExpandedSheet(
           initialData: controller.playbackState,
           builder: (context, snapshot) {
             final playback = snapshot.data ?? controller.playbackState;
-            final expandedOpenAlbum = onOpenAlbum == null
+            final openAlbum = onOpenAlbum;
+            final expandedOpenAlbum = openAlbum == null
                 ? null
                 : () {
                     Navigator.of(sheetContext).pop();
-                    Future<void>.microtask(onOpenAlbum!);
+                    Future<void>.microtask(openAlbum);
                   };
             return NowPlayingExpandedSheet(
               state: playback,
@@ -474,8 +468,10 @@ class NowPlayingBar extends StatelessWidget {
     final track = state.track;
     final durationSeconds = state.duration.inSeconds.toDouble();
     final maxSeconds = durationSeconds <= 0 ? 1.0 : durationSeconds;
-    final positionSeconds =
-        state.position.inSeconds.toDouble().clamp(0, maxSeconds).toDouble();
+    final positionSeconds = state.position.inSeconds
+        .toDouble()
+        .clamp(0, maxSeconds)
+        .toDouble();
     final bufferedPositionSeconds =
         (state.bufferRatio.clamp(0.0, 1.0) * maxSeconds)
             .clamp(positionSeconds, maxSeconds)
@@ -485,7 +481,8 @@ class NowPlayingBar extends StatelessWidget {
     if (state.shuffleMode != ShuffleMode.off) {
       techTags.add(
         _TechTag(
-          label: 'SHUFF: ${_shuffleLabel(state.shuffleMode).replaceFirst('Shuffle: ', '')}',
+          label:
+              'SHUFF: ${_shuffleLabel(state.shuffleMode).replaceFirst('Shuffle: ', '')}',
           highlight: true,
         ),
       );
@@ -517,11 +514,9 @@ class NowPlayingBar extends StatelessWidget {
         final isCompact = width < _compactWidth;
         final barHeight = heightForWidth(width);
         final innerWidth = (width - s(72)).clamp(0.0, double.infinity);
-        final baseRowWidth = s(_wideSideWidth) * 2 +
-            s(_wideRowGap) * 2 +
-            s(_wideCommandMin);
-        final denseScale =
-            (innerWidth / baseRowWidth).clamp(0.7, 1.0);
+        final baseRowWidth =
+            s(_wideSideWidth) * 2 + s(_wideRowGap) * 2 + s(_wideCommandMin);
+        final denseScale = (innerWidth / baseRowWidth).clamp(0.7, 1.0);
         final sideWidth = s(_wideSideWidth) * denseScale;
         final rowGap = s(_wideRowGap) * denseScale;
 
@@ -532,13 +527,13 @@ class NowPlayingBar extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-        _IntelZone(
-          track: track,
-          isLoading: state.isLoading,
-          onTap: onOpenAlbum,
-          techTags: techTags,
-          sourceTags: _buildQueueSourceTags(state),
-        ),
+                        _IntelZone(
+                          track: track,
+                          isLoading: state.isLoading,
+                          onTap: onOpenAlbum,
+                          techTags: techTags,
+                          sourceTags: _buildQueueSourceTags(state),
+                        ),
                         SizedBox(height: s(8)),
                         _CompactControls(
                           state: state,
@@ -623,7 +618,8 @@ class NowPlayingBar extends StatelessWidget {
                             onToggleLike: onToggleLike,
                             onAddToPlaylist: () =>
                                 _showAddToPlaylistModal(context, state),
-                            onShowDevicePicker: () => _showDevicePicker(context),
+                            onShowDevicePicker: () =>
+                                _showDevicePicker(context),
                           ),
                         ),
                       ],
@@ -651,7 +647,10 @@ class NowPlayingBar extends StatelessWidget {
               sigma: 40,
               child: Container(
                 height: barHeight,
-                padding: EdgeInsets.symmetric(horizontal: s(20), vertical: s(6)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: s(20),
+                  vertical: s(6),
+                ),
                 decoration: BoxDecoration(
                   color: ObsidianPalette.obsidianElevated.withOpacity(0.85),
                   border: Border(
@@ -702,7 +701,9 @@ class NowPlayingMiniBar extends StatelessWidget {
     final playEnabled = transportEnabled && !state.isLoading;
     final subtitle = track == null ? 'IDLE' : _miniSubtitle(track);
     final inlineTags = _buildInlineTags(state);
-    final tags = inlineTags.isEmpty ? const [_TechTag(label: 'IDLE')] : inlineTags;
+    final tags = inlineTags.isEmpty
+        ? const [_TechTag(label: 'IDLE')]
+        : inlineTags;
     final albumId = track?.albumId;
     final imageUrl = albumId == null || albumId.isEmpty
         ? null
@@ -739,21 +740,24 @@ class NowPlayingMiniBar extends StatelessWidget {
                       height: artSize,
                       decoration: BoxDecoration(
                         color: ObsidianPalette.obsidianGlass.withOpacity(0.6),
-                        border: Border.all(color: Colors.white.withOpacity(0.12)),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.12),
+                        ),
                       ),
                       child: imageUrl == null
                           ? (track == null
-                              ? Icon(
-                                  Icons.music_note_rounded,
-                                  color: ObsidianPalette.textMuted,
-                                  size: artSize * 0.5,
-                                )
-                              : const SizedBox.shrink())
+                                ? Icon(
+                                    Icons.music_note_rounded,
+                                    color: ObsidianPalette.textMuted,
+                                    size: artSize * 0.5,
+                                  )
+                                : const SizedBox.shrink())
                           : Image.network(
                               imageUrl,
                               headers: headers,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
                             ),
                     ),
                   ),
@@ -763,7 +767,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _MarqueeText(
+                        MarqueeText(
                           text: track?.title ?? 'NO TRACK PLAYING',
                           style: GoogleFonts.rajdhani(
                             fontSize: s(16),
@@ -775,7 +779,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                         ),
                         if (subtitle.isNotEmpty) ...[
                           SizedBox(height: s(2)),
-                          _MarqueeText(
+                          MarqueeText(
                             text: subtitle,
                             style: GoogleFonts.poppins(
                               fontSize: s(12),
@@ -869,12 +873,14 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final padding = MediaQuery.of(context).padding;
     final height = size.height * 0.92;
     final maxSeconds = math.max(1, state.duration.inSeconds).toDouble();
-    final positionSeconds =
-        state.position.inSeconds.toDouble().clamp(0, maxSeconds).toDouble();
-    final bufferedPositionSeconds = (state.bufferRatio.clamp(0.0, 1.0) *
-            maxSeconds)
-        .clamp(positionSeconds, maxSeconds)
+    final positionSeconds = state.position.inSeconds
+        .toDouble()
+        .clamp(0, maxSeconds)
         .toDouble();
+    final bufferedPositionSeconds =
+        (state.bufferRatio.clamp(0.0, 1.0) * maxSeconds)
+            .clamp(positionSeconds, maxSeconds)
+            .toDouble();
     final inlineTags = _buildInlineTags(state);
 
     final albumId = track?.albumId ?? '';
@@ -951,7 +957,9 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                           color: ObsidianPalette.obsidianGlass
                                               .withOpacity(0.6),
                                           border: Border.all(
-                                            color: Colors.white.withOpacity(0.18),
+                                            color: Colors.white.withOpacity(
+                                              0.18,
+                                            ),
                                           ),
                                         ),
                                         child: imageUrl == null
@@ -966,7 +974,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                       ),
                                     ),
                                     SizedBox(height: s(22)),
-                                    _MarqueeText(
+                                    MarqueeText(
                                       text: track?.title ?? 'Nothing playing',
                                       style: GoogleFonts.rajdhani(
                                         fontSize: s(26),
@@ -979,9 +987,11 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                     if (track != null) ...[
                                       SizedBox(height: s(10)),
                                       GestureDetector(
-                                        onTap: canOpenAlbum ? onOpenAlbum : null,
+                                        onTap: canOpenAlbum
+                                            ? onOpenAlbum
+                                            : null,
                                         behavior: HitTestBehavior.opaque,
-                                        child: _MarqueeText(
+                                        child: MarqueeText(
                                           text:
                                               '${track.artist} - ${track.album}',
                                           style: GoogleFonts.poppins(
@@ -1052,7 +1062,8 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                             onVolumeChanged: onVolumeChanged,
                             onAddToPlaylist: () =>
                                 _showAddToPlaylistModal(context, state),
-                            onShowDevicePicker: () => _showDevicePicker(context),
+                            onShowDevicePicker: () =>
+                                _showDevicePicker(context),
                           ),
                         ],
                       ),
@@ -1098,7 +1109,7 @@ class _IntelZone extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _MarqueeText(
+              MarqueeText(
                 key: ValueKey('title-${track?.id ?? 'idle'}'),
                 text: track?.title ?? 'NO TRACK PLAYING',
                 style: GoogleFonts.rajdhani(
@@ -1110,7 +1121,7 @@ class _IntelZone extends StatelessWidget {
                 gap: s(24),
               ),
               SizedBox(height: s(1)),
-              _MarqueeText(
+              MarqueeText(
                 key: ValueKey('subtitle-${track?.id ?? 'idle'}'),
                 text: _subtitle(track),
                 style: GoogleFonts.poppins(
@@ -1401,10 +1412,15 @@ class _ExpandedControls extends StatelessWidget {
           final maxWidth = constraints.maxWidth;
           final rawPlaySize = s(98);
           final playSize = math.min(rawPlaySize, maxWidth);
-          final maxGap = ((maxWidth - playSize) / 2).clamp(0.0, double.infinity);
+          final maxGap = ((maxWidth - playSize) / 2).clamp(
+            0.0,
+            double.infinity,
+          );
           final gap = math.min(s(12), maxGap);
-          final sideWidth = ((maxWidth - playSize - gap * 2) / 2)
-              .clamp(0.0, double.infinity);
+          final sideWidth = ((maxWidth - playSize - gap * 2) / 2).clamp(
+            0.0,
+            double.infinity,
+          );
 
           return Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1525,15 +1541,16 @@ class _ExpandedExtras extends StatelessWidget {
         SizedBox(height: s(14)),
         Row(
           children: [
-            Icon(Icons.volume_up, size: s(28), color: ObsidianPalette.textMuted),
+            Icon(
+              Icons.volume_up,
+              size: s(28),
+              color: ObsidianPalette.textMuted,
+            ),
             SizedBox(width: s(8)),
             Expanded(
               child: SliderTheme(
                 data: volumeTheme,
-                child: Slider(
-                  value: state.volume,
-                  onChanged: onVolumeChanged,
-                ),
+                child: Slider(value: state.volume, onChanged: onVolumeChanged),
               ),
             ),
           ],
@@ -1695,7 +1712,8 @@ class _CompactFooterRow extends StatelessWidget {
                     max: maxSeconds,
                     secondaryTrackValue: bufferedPositionSeconds,
                     onChanged: enabled
-                        ? (value) => onSeekPreview(Duration(seconds: value.toInt()))
+                        ? (value) =>
+                              onSeekPreview(Duration(seconds: value.toInt()))
                         : null,
                     onChangeEnd: enabled
                         ? (value) => onSeek(Duration(seconds: value.toInt()))
@@ -1733,15 +1751,16 @@ class _CompactFooterRow extends StatelessWidget {
           width: s(110),
           child: Row(
             children: [
-              Icon(Icons.volume_up, size: s(18), color: ObsidianPalette.textMuted),
+              Icon(
+                Icons.volume_up,
+                size: s(18),
+                color: ObsidianPalette.textMuted,
+              ),
               SizedBox(width: s(6)),
               Expanded(
                 child: SliderTheme(
                   data: volumeTheme,
-                  child: Slider(
-                    value: volume,
-                    onChanged: onVolumeChanged,
-                  ),
+                  child: Slider(value: volume, onChanged: onVolumeChanged),
                 ),
               ),
             ],
@@ -1822,8 +1841,9 @@ class _OutputZone extends StatelessWidget {
                 children: controls,
               )
             : Row(
-                mainAxisAlignment:
-                    compact ? MainAxisAlignment.center : MainAxisAlignment.end,
+                mainAxisAlignment: compact
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.end,
                 children: [
                   controls[0],
                   SizedBox(width: s(14 * d)),
@@ -1837,8 +1857,7 @@ class _OutputZone extends StatelessWidget {
 
         final sliderWidth = isTight ? constraints.maxWidth : s(200 * d);
         final sliderRow = Align(
-          alignment:
-              compact ? Alignment.center : Alignment.centerRight,
+          alignment: compact ? Alignment.center : Alignment.centerRight,
           child: SizedBox(
             width: sliderWidth,
             child: Row(
@@ -1860,14 +1879,16 @@ class _OutputZone extends StatelessWidget {
         );
 
         return Row(
-          mainAxisAlignment:
-              compact ? MainAxisAlignment.center : MainAxisAlignment.end,
+          mainAxisAlignment: compact
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.end,
           children: [
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment:
-                    compact ? CrossAxisAlignment.center : CrossAxisAlignment.end,
+                crossAxisAlignment: compact
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.end,
                 children: [
                   controlsRow,
                   SizedBox(height: s(8)),
@@ -1880,7 +1901,6 @@ class _OutputZone extends StatelessWidget {
       },
     );
   }
-
 }
 
 class _HudPlayButton extends StatefulWidget {
@@ -1939,8 +1959,9 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
     final enabled = widget.onPressed != null;
     final highlight = enabled && (_hovered || _pressed);
     final glowOpacity = enabled ? (highlight ? 0.7 : 0.35) : 0.0;
-    final cursor =
-        enabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
+    final cursor = enabled
+        ? SystemMouseCursors.click
+        : SystemMouseCursors.basic;
     final baseColor = enabled
         ? ObsidianPalette.gold
         : ObsidianPalette.textMuted.withOpacity(0.28);
@@ -1975,8 +1996,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                   boxShadow: [
                     if (animatedGlow > 0)
                       BoxShadow(
-                        color:
-                            ObsidianPalette.gold.withOpacity(animatedGlow),
+                        color: ObsidianPalette.gold.withOpacity(animatedGlow),
                         blurRadius: s(14 * scaleFactor),
                       ),
                   ],
@@ -1987,9 +2007,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                     clipper: const _OctagonClipper(cutFraction: 0.3),
                     child: TweenAnimationBuilder<Color?>(
                       tween: ColorTween(
-                        end: highlight
-                            ? ObsidianPalette.gold
-                            : idleFill,
+                        end: highlight ? ObsidianPalette.gold : idleFill,
                       ),
                       duration: _transition,
                       curve: Curves.easeOut,
@@ -1999,9 +2017,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                           alignment: Alignment.center,
                           child: TweenAnimationBuilder<Color?>(
                             tween: ColorTween(
-                              end: highlight
-                                  ? Colors.black
-                                  : idleIcon,
+                              end: highlight ? Colors.black : idleIcon,
                             ),
                             duration: _transition,
                             curve: Curves.easeOut,
@@ -2162,7 +2178,8 @@ class _ProgressBar extends StatelessWidget {
                   max: maxSeconds,
                   secondaryTrackValue: bufferedPositionSeconds,
                   onChanged: enabled
-                      ? (value) => onSeekPreview(Duration(seconds: value.toInt()))
+                      ? (value) =>
+                            onSeekPreview(Duration(seconds: value.toInt()))
                       : null,
                   onChangeEnd: enabled
                       ? (value) => onSeek(Duration(seconds: value.toInt()))
@@ -2204,7 +2221,8 @@ class _TechTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final borderColor = outlineColor ??
+    final borderColor =
+        outlineColor ??
         (highlight
             ? ObsidianPalette.gold.withOpacity(0.6)
             : Colors.white.withOpacity(0.1));
@@ -2222,152 +2240,6 @@ class _TechTag extends StatelessWidget {
           letterSpacing: s(0.6),
         ),
       ),
-    );
-  }
-}
-
-class _MarqueeText extends StatefulWidget {
-  const _MarqueeText({
-    super.key,
-    required this.text,
-    required this.style,
-    this.velocity = 32,
-    this.gap = 24,
-    this.pause = const Duration(milliseconds: 800),
-  });
-
-  final String text;
-  final TextStyle style;
-  final double velocity;
-  final double gap;
-  final Duration pause;
-
-  @override
-  State<_MarqueeText> createState() => _MarqueeTextState();
-}
-
-class _MarqueeTextState extends State<_MarqueeText> {
-  final ScrollController _controller = ScrollController();
-  bool _running = false;
-  bool _shouldScroll = false;
-
-  @override
-  void didUpdateWidget(covariant _MarqueeText oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.text != widget.text ||
-        oldWidget.style != widget.style ||
-        oldWidget.velocity != widget.velocity ||
-        oldWidget.gap != widget.gap) {
-      _running = false;
-      if (_controller.hasClients) {
-        _controller.jumpTo(0);
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startLoop());
-    }
-  }
-
-  @override
-  void dispose() {
-    _running = false;
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _startLoop() async {
-    if (_running || !_shouldScroll) {
-      return;
-    }
-    _running = true;
-    await Future.delayed(const Duration(milliseconds: 200));
-    while (mounted && _running) {
-      if (!_controller.hasClients) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        continue;
-      }
-      final position = _controller.position;
-      final max = position.maxScrollExtent;
-      if (max <= 0) {
-        await Future.delayed(const Duration(milliseconds: 400));
-        continue;
-      }
-      await Future.delayed(widget.pause);
-      if (!_controller.hasClients) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        continue;
-      }
-      final distance = max - _controller.position.pixels;
-      final durationMs = (distance / widget.velocity * 1000).round();
-      await _controller.animateTo(
-        max,
-        duration: Duration(milliseconds: durationMs.clamp(1, 60000)),
-        curve: Curves.linear,
-      );
-      await Future.delayed(widget.pause);
-      if (!_running) {
-        break;
-      }
-      _controller.jumpTo(0);
-    }
-  }
-
-  void _setShouldScroll(bool value) {
-    if (_shouldScroll == value) {
-      return;
-    }
-    _shouldScroll = value;
-    if (!_shouldScroll) {
-      _running = false;
-      if (_controller.hasClients) {
-        _controller.jumpTo(0);
-      }
-    } else {
-      _startLoop();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final painter = TextPainter(
-          text: TextSpan(text: widget.text, style: widget.style),
-          maxLines: 1,
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final shouldScroll = painter.width > constraints.maxWidth;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _setShouldScroll(shouldScroll);
-          }
-        });
-
-        if (!shouldScroll) {
-          return Text(
-            widget.text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: widget.style,
-          );
-        }
-
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SingleChildScrollView(
-              controller: _controller,
-              scrollDirection: Axis.horizontal,
-              physics: const NeverScrollableScrollPhysics(),
-              child: Row(
-                children: [
-                  Text(widget.text, style: widget.style, maxLines: 1),
-                  SizedBox(width: widget.gap),
-                  Text(widget.text, style: widget.style, maxLines: 1),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }
@@ -2403,8 +2275,10 @@ class _OctagonClipper extends CustomClipper<Path> {
 
   @override
   Path getClip(Size size) {
-    final cut =
-        (size.shortestSide * cutFraction).clamp(0.0, size.shortestSide / 2);
+    final cut = (size.shortestSide * cutFraction).clamp(
+      0.0,
+      size.shortestSide / 2,
+    );
     return Path()
       ..moveTo(cut, 0)
       ..lineTo(size.width - cut, 0)
