@@ -1249,6 +1249,9 @@ class _PlaybackSession {
 
   Future<void> _writeSamples(_NativeAudioPlayer player, Int16List samples) async {
     await player.write(samples);
+    if (!identical(player, _player)) {
+      return;
+    }
     _queuedToPlayerSamples += samples.length;
   }
 
@@ -1872,7 +1875,13 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
     _inFlight.add(_WaveBuffer(header: header, data: dataPtr, sampleCount: samples.length));
     _collectDone(handle.value);
     while (_inFlight.length > _maxInFlight) {
+      if (!identical(_handle, handle)) {
+        return;
+      }
       await Future<void>.delayed(const Duration(milliseconds: 2));
+      if (!identical(_handle, handle)) {
+        return;
+      }
       _collectDone(handle.value);
     }
   }
@@ -1991,14 +2000,17 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
 
   @override
   Future<void> write(Int16List samples) async {
-    final handle = _handle;
-    if (handle == ffi.nullptr || samples.isEmpty) {
+    if (samples.isEmpty) {
       return;
     }
     final dataPtr = calloc<ffi.Int16>(samples.length);
     try {
       dataPtr.asTypedList(samples.length).setAll(0, samples);
       while (true) {
+        final handle = _handle;
+        if (handle == ffi.nullptr) {
+          return;
+        }
         final result = _bindings.write(handle, dataPtr, samples.length);
         if (result == 0) {
           break;
