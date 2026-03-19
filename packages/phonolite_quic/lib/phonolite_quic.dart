@@ -93,18 +93,26 @@ class QuicClient {
   }) {
     _ensureActive();
     final trackPtr = trackId.toNativeUtf8();
-    final result =
-        _bindings.sendPlayback(_handle, trackPtr, positionMs, playing ? 1 : 0);
+    final result = _bindings.sendPlayback(
+      _handle,
+      trackPtr,
+      positionMs,
+      playing ? 1 : 0,
+    );
     calloc.free(trackPtr);
     if (result != 0) {
       throw QuicException('failed to send playback stats (code $result)');
     }
   }
 
-  void seek({required String trackId, required int positionMs}) {
+  void seek({
+    required String trackId,
+    required int positionMs,
+    required int seekId,
+  }) {
     _ensureActive();
     final trackPtr = trackId.toNativeUtf8();
-    final result = _bindings.seek(_handle, trackPtr, positionMs);
+    final result = _bindings.seek(_handle, trackPtr, positionMs, seekId);
     calloc.free(trackPtr);
     if (result != 0) {
       throw QuicException('failed to seek track (code $result)');
@@ -207,79 +215,70 @@ String _escapeJsonString(String value) {
 
 final class _QuicHandle extends ffi.Opaque {}
 
-typedef _ConnectNative = ffi.Pointer<_QuicHandle> Function(
-  ffi.Pointer<Utf8>,
-  ffi.Uint16,
-  ffi.Pointer<Utf8>,
-);
-typedef _ConnectDart = ffi.Pointer<_QuicHandle> Function(
-  ffi.Pointer<Utf8>,
-  int,
-  ffi.Pointer<Utf8>,
-);
+typedef _ConnectNative =
+    ffi.Pointer<_QuicHandle> Function(
+      ffi.Pointer<Utf8>,
+      ffi.Uint16,
+      ffi.Pointer<Utf8>,
+    );
+typedef _ConnectDart =
+    ffi.Pointer<_QuicHandle> Function(
+      ffi.Pointer<Utf8>,
+      int,
+      ffi.Pointer<Utf8>,
+    );
 
-typedef _OpenTrackNative = ffi.Int32 Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<Utf8>,
-  ffi.Pointer<Utf8>,
-  ffi.Pointer<Utf8>,
-  ffi.Uint32,
-  ffi.Pointer<Utf8>,
-);
-typedef _OpenTrackDart = int Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<Utf8>,
-  ffi.Pointer<Utf8>,
-  ffi.Pointer<Utf8>,
-  int,
-  ffi.Pointer<Utf8>,
-);
+typedef _OpenTrackNative =
+    ffi.Int32 Function(
+      ffi.Pointer<_QuicHandle>,
+      ffi.Pointer<Utf8>,
+      ffi.Pointer<Utf8>,
+      ffi.Pointer<Utf8>,
+      ffi.Uint32,
+      ffi.Pointer<Utf8>,
+    );
+typedef _OpenTrackDart =
+    int Function(
+      ffi.Pointer<_QuicHandle>,
+      ffi.Pointer<Utf8>,
+      ffi.Pointer<Utf8>,
+      ffi.Pointer<Utf8>,
+      int,
+      ffi.Pointer<Utf8>,
+    );
 
-typedef _ReadNative = ffi.Int32 Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<ffi.Uint8>,
-  ffi.Uint64,
-);
-typedef _ReadDart = int Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<ffi.Uint8>,
-  int,
-);
+typedef _ReadNative =
+    ffi.Int32 Function(
+      ffi.Pointer<_QuicHandle>,
+      ffi.Pointer<ffi.Uint8>,
+      ffi.Uint64,
+    );
+typedef _ReadDart =
+    int Function(ffi.Pointer<_QuicHandle>, ffi.Pointer<ffi.Uint8>, int);
 
-typedef _SendBufferNative = ffi.Int32 Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Uint32,
-  ffi.Uint32,
-);
-typedef _SendBufferDart = int Function(
-  ffi.Pointer<_QuicHandle>,
-  int,
-  int,
-);
+typedef _SendBufferNative =
+    ffi.Int32 Function(ffi.Pointer<_QuicHandle>, ffi.Uint32, ffi.Uint32);
+typedef _SendBufferDart = int Function(ffi.Pointer<_QuicHandle>, int, int);
 
-typedef _SendPlaybackNative = ffi.Int32 Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<Utf8>,
-  ffi.Uint32,
-  ffi.Int32,
-);
-typedef _SendPlaybackDart = int Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<Utf8>,
-  int,
-  int,
-);
+typedef _SendPlaybackNative =
+    ffi.Int32 Function(
+      ffi.Pointer<_QuicHandle>,
+      ffi.Pointer<Utf8>,
+      ffi.Uint32,
+      ffi.Int32,
+    );
+typedef _SendPlaybackDart =
+    int Function(ffi.Pointer<_QuicHandle>, ffi.Pointer<Utf8>, int, int);
 
-typedef _SeekNative = ffi.Int32 Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<Utf8>,
-  ffi.Uint32,
-);
-typedef _SeekDart = int Function(
-  ffi.Pointer<_QuicHandle>,
-  ffi.Pointer<Utf8>,
-  int,
-);
+typedef _SeekNative =
+    ffi.Int32 Function(
+      ffi.Pointer<_QuicHandle>,
+      ffi.Pointer<Utf8>,
+      ffi.Uint32,
+      ffi.Uint32,
+    );
+typedef _SeekDart =
+    int Function(ffi.Pointer<_QuicHandle>, ffi.Pointer<Utf8>, int, int);
 
 typedef _AdvanceNative = ffi.Int32 Function(ffi.Pointer<_QuicHandle>);
 typedef _AdvanceDart = int Function(ffi.Pointer<_QuicHandle>);
@@ -301,66 +300,56 @@ typedef _CloseDart = void Function(ffi.Pointer<_QuicHandle>);
 
 class _Bindings {
   _Bindings(ffi.DynamicLibrary library)
-      : connect = library
-            .lookup<ffi.NativeFunction<_ConnectNative>>(
-              'phonolite_quic_connect',
-            )
-            .asFunction(),
-        openTrack = library
-            .lookup<ffi.NativeFunction<_OpenTrackNative>>(
-              'phonolite_quic_open_track',
-            )
-            .asFunction(),
-        read = library
-            .lookup<ffi.NativeFunction<_ReadNative>>(
-              'phonolite_quic_read',
-            )
-            .asFunction(),
-        sendBuffer = library
-            .lookup<ffi.NativeFunction<_SendBufferNative>>(
-              'phonolite_quic_send_buffer',
-            )
-            .asFunction(),
-        sendPlayback = library
-            .lookup<ffi.NativeFunction<_SendPlaybackNative>>(
-              'phonolite_quic_send_playback',
-            )
-            .asFunction(),
-        seek = library
-            .lookup<ffi.NativeFunction<_SeekNative>>(
-              'phonolite_quic_seek',
-            )
-            .asFunction(),
-        advance = library
-            .lookup<ffi.NativeFunction<_AdvanceNative>>(
-              'phonolite_quic_advance',
-            )
-            .asFunction(),
-        lastError = library
-            .lookup<ffi.NativeFunction<_LastErrorNative>>(
-              'phonolite_quic_last_error',
-            )
-            .asFunction(),
-        pollStats = library
-            .lookup<ffi.NativeFunction<_PollStatsNative>>(
-              'phonolite_quic_poll_stats',
-            )
-            .asFunction(),
-        pollRttMs = library
-            .lookup<ffi.NativeFunction<_PollRttNative>>(
-              'phonolite_quic_poll_rtt_ms',
-            )
-            .asFunction(),
-        freeString = library
-            .lookup<ffi.NativeFunction<_FreeStringNative>>(
-              'phonolite_quic_free_string',
-            )
-            .asFunction(),
-        close = library
-            .lookup<ffi.NativeFunction<_CloseNative>>(
-              'phonolite_quic_close',
-            )
-            .asFunction();
+    : connect = library
+          .lookup<ffi.NativeFunction<_ConnectNative>>('phonolite_quic_connect')
+          .asFunction(),
+      openTrack = library
+          .lookup<ffi.NativeFunction<_OpenTrackNative>>(
+            'phonolite_quic_open_track',
+          )
+          .asFunction(),
+      read = library
+          .lookup<ffi.NativeFunction<_ReadNative>>('phonolite_quic_read')
+          .asFunction(),
+      sendBuffer = library
+          .lookup<ffi.NativeFunction<_SendBufferNative>>(
+            'phonolite_quic_send_buffer',
+          )
+          .asFunction(),
+      sendPlayback = library
+          .lookup<ffi.NativeFunction<_SendPlaybackNative>>(
+            'phonolite_quic_send_playback',
+          )
+          .asFunction(),
+      seek = library
+          .lookup<ffi.NativeFunction<_SeekNative>>('phonolite_quic_seek')
+          .asFunction(),
+      advance = library
+          .lookup<ffi.NativeFunction<_AdvanceNative>>('phonolite_quic_advance')
+          .asFunction(),
+      lastError = library
+          .lookup<ffi.NativeFunction<_LastErrorNative>>(
+            'phonolite_quic_last_error',
+          )
+          .asFunction(),
+      pollStats = library
+          .lookup<ffi.NativeFunction<_PollStatsNative>>(
+            'phonolite_quic_poll_stats',
+          )
+          .asFunction(),
+      pollRttMs = library
+          .lookup<ffi.NativeFunction<_PollRttNative>>(
+            'phonolite_quic_poll_rtt_ms',
+          )
+          .asFunction(),
+      freeString = library
+          .lookup<ffi.NativeFunction<_FreeStringNative>>(
+            'phonolite_quic_free_string',
+          )
+          .asFunction(),
+      close = library
+          .lookup<ffi.NativeFunction<_CloseNative>>('phonolite_quic_close')
+          .asFunction();
 
   final _ConnectDart connect;
   final _OpenTrackDart openTrack;

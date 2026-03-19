@@ -35,15 +35,16 @@ class AudioEngine {
       Duration bufferedAhead,
       double? bitrateKbps,
       int? rttMs,
-    )? onStats,
+    )?
+    onStats,
     void Function(String? sessionId, double? bitrateKbps)? onStreamInfo,
     void Function()? onComplete,
     void Function()? onStarted,
-  })  : _onMessage = onMessage,
-        _onStats = onStats,
-        _onStreamInfo = onStreamInfo,
-        _onComplete = onComplete,
-        _onStarted = onStarted {
+  }) : _onMessage = onMessage,
+       _onStats = onStats,
+       _onStreamInfo = onStreamInfo,
+       _onComplete = onComplete,
+       _onStarted = onStarted {
     _shutdownPreviousWorker();
     _spawnWorker();
   }
@@ -54,7 +55,8 @@ class AudioEngine {
     Duration bufferedAhead,
     double? bitrateKbps,
     int? rttMs,
-  )? _onStats;
+  )?
+  _onStats;
   final void Function(String? sessionId, double? bitrateKbps)? _onStreamInfo;
   final void Function()? _onComplete;
   final void Function()? _onStarted;
@@ -171,10 +173,7 @@ class AudioEngine {
 
   void setOutputDevice(int deviceId) {
     _outputDeviceId = deviceId;
-    _sendCmd({
-      'cmd': 'device',
-      'device_id': deviceId,
-    });
+    _sendCmd({'cmd': 'device', 'device_id': deviceId});
   }
 
   Future<List<OutputDevice>> listOutputDevices() async {
@@ -186,10 +185,16 @@ class AudioEngine {
       final count = bindings.waveOutGetNumDevs();
       for (var i = 0; i < count; i++) {
         final caps = calloc<WAVEOUTCAPSW>();
-        final result = bindings.waveOutGetDevCapsW(i, caps, ffi.sizeOf<WAVEOUTCAPSW>());
+        final result = bindings.waveOutGetDevCapsW(
+          i,
+          caps,
+          ffi.sizeOf<WAVEOUTCAPSW>(),
+        );
         if (result == MMSYSERR_NOERROR) {
           final name = _utf16ArrayToString(caps.ref.szPname);
-          devices.add(OutputDevice(id: i, name: name.isEmpty ? 'Device $i' : name));
+          devices.add(
+            OutputDevice(id: i, name: name.isEmpty ? 'Device $i' : name),
+          );
         }
         calloc.free(caps);
       }
@@ -204,10 +209,12 @@ class AudioEngine {
           continue;
         }
         final name = bindings.getOutputDeviceName(deviceId);
-        devices.add(OutputDevice(
-          id: deviceId,
-          name: name?.isNotEmpty == true ? name! : 'Device $i',
-        ));
+        devices.add(
+          OutputDevice(
+            id: deviceId,
+            name: name?.isNotEmpty == true ? name! : 'Device $i',
+          ),
+        );
       }
       return devices;
     }
@@ -268,10 +275,7 @@ class AudioEngine {
     if (!_active) {
       return false;
     }
-    _workerPort?.send({
-      'cmd': 'seek',
-      'position_ms': position.inMilliseconds,
-    });
+    _workerPort?.send({'cmd': 'seek', 'position_ms': position.inMilliseconds});
     return true;
   }
 }
@@ -377,11 +381,11 @@ class _PlaybackSession {
     required this.queueTrackIds,
     required double volume,
     required int outputDeviceId,
-  })  : _send = send,
-        _playbackId = playbackId,
-        _getPlaybackId = getPlaybackId,
-        _volume = volume,
-        _outputDeviceId = outputDeviceId;
+  }) : _send = send,
+       _playbackId = playbackId,
+       _getPlaybackId = getPlaybackId,
+       _volume = volume,
+       _outputDeviceId = outputDeviceId;
 
   final void Function(Map<String, dynamic> message) _send;
   final int _playbackId;
@@ -399,6 +403,9 @@ class _PlaybackSession {
   int _baseOffsetMs = 0;
   int _pendingClientSkipMs = 0;
   int? _pendingSeekMs;
+  int _nextSeekId = 0;
+  int? _pendingSeekId;
+  int? _activeSeekId;
   bool _discardUntilSeekMarker = false;
   bool _pumpRunning = false;
   bool _pumpSuspended = false;
@@ -507,21 +514,43 @@ class _PlaybackSession {
     _quickStart = true;
     final ms = position.inMilliseconds;
     final previousBaseOffset = _baseOffsetMs;
+    final previousPendingSeekMs = _pendingSeekMs;
+    final previousPendingSeekId = _pendingSeekId;
+    final seekId = _allocateSeekId();
     _pendingSeekMs = ms;
+    _pendingSeekId = seekId;
     _streamEnded = false;
     _discardUntilSeekMarker = true;
     _baseOffsetMs = ms;
-    _log('Sending QUIC seek to ${ms}ms');
+    _log(
+      'Sending QUIC seek to ${ms}ms (seek_id=$seekId, active_seek=${_activeSeekId ?? 0})',
+    );
     try {
-      quic.seek(trackId: trackId, positionMs: ms);
+      quic.seek(trackId: trackId, positionMs: ms, seekId: seekId);
     } catch (err) {
-      _pendingSeekMs = null;
-      _discardUntilSeekMarker = false;
+      _pendingSeekMs = previousPendingSeekMs;
+      _pendingSeekId = previousPendingSeekId;
+      _discardUntilSeekMarker = previousPendingSeekId != null;
       _baseOffsetMs = previousBaseOffset;
       _log('QUIC seek failed: $err');
       return;
     }
+    if (_serverBackpressureEnabled) {
+      try {
+        quic.sendBufferStats(bufferMs: 0, targetMs: _serverBufferTargetMs());
+      } catch (_) {
+        // Ignore closed/failed QUIC stats updates.
+      }
+    }
     await _flushForSeek();
+  }
+
+  int _allocateSeekId() {
+    _nextSeekId = (_nextSeekId + 1) & 0x7fffffff;
+    if (_nextSeekId == 0) {
+      _nextSeekId = 1;
+    }
+    return _nextSeekId;
   }
 
   void _configureBufferProfile(String host) {
@@ -593,25 +622,30 @@ class _PlaybackSession {
         startSamples = 1;
       }
       _prebufferTargetSamples = startSamples;
-      _rebufferMinSamples =
-          (_sampleRate * _channels * _seekCatchupMinSeconds).round();
+      _rebufferMinSamples = (_sampleRate * _channels * _seekCatchupMinSeconds)
+          .round();
       _rebufferTargetSamples =
           (_sampleRate * _channels * _seekCatchupTargetSeconds).round();
       return;
     }
 
-    _prebufferTargetSamples =
-        (_sampleRate * _channels * _prebufferSeconds).round();
-    _rebufferMinSamples =
-        (_sampleRate * _channels * _rebufferMinSeconds).round();
-    _rebufferTargetSamples =
-        (_sampleRate * _channels * _rebufferTargetSeconds).round();
+    _prebufferTargetSamples = (_sampleRate * _channels * _prebufferSeconds)
+        .round();
+    _rebufferMinSamples = (_sampleRate * _channels * _rebufferMinSeconds)
+        .round();
+    _rebufferTargetSamples = (_sampleRate * _channels * _rebufferTargetSeconds)
+        .round();
   }
 
-  void _updateAdaptiveBufferProfile({
-    required int bufferedMs,
-    int? rttMs,
-  }) {
+  int _serverBufferTargetMs() {
+    final targetSeconds = _quickStart
+        ? _seekCatchupTargetSeconds
+        : _rebufferTargetSeconds;
+    final targetMs = (targetSeconds * 1000).round();
+    return targetMs > 0 ? targetMs : 1;
+  }
+
+  void _updateAdaptiveBufferProfile({required int bufferedMs, int? rttMs}) {
     _lastObservedRttMs = rttMs;
     if (_isLoopbackHost || _quickStart) {
       return;
@@ -703,6 +737,9 @@ class _PlaybackSession {
     _pendingClientSkipMs = startOffset.inMilliseconds;
     _quickStart = startOffset.inMilliseconds > 0;
     _pendingSeekMs = null;
+    _pendingSeekId = null;
+    _activeSeekId = null;
+    _nextSeekId = 0;
     _pumpRunning = false;
 
     final uri = Uri.parse(baseUrl);
@@ -712,10 +749,12 @@ class _PlaybackSession {
       host = '127.0.0.1';
     }
 
-    final httpPort =
-        uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80);
-    final resolvedQuicPort =
-        (quicPort != null && quicPort! > 0) ? quicPort! : httpPort + 1;
+    final httpPort = uri.hasPort
+        ? uri.port
+        : (uri.scheme == 'https' ? 443 : 80);
+    final resolvedQuicPort = (quicPort != null && quicPort! > 0)
+        ? quicPort!
+        : httpPort + 1;
     _log(
       'QUIC config: base_url=$baseUrl host=$host http_port=$httpPort '
       'quic_port=$resolvedQuicPort token_len=${token.length} platform=${Platform.operatingSystem}',
@@ -727,8 +766,11 @@ class _PlaybackSession {
       );
     }
     _log('Opening QUIC stream: $host:$resolvedQuicPort');
-    var quic =
-        QuicClient.connect(host: host, port: resolvedQuicPort, token: token);
+    var quic = QuicClient.connect(
+      host: host,
+      port: resolvedQuicPort,
+      token: token,
+    );
     _quic = quic;
     if (!_openTrackSafe(
       quic,
@@ -738,7 +780,11 @@ class _PlaybackSession {
     )) {
       _log('QUIC open failed; reconnecting.');
       quic.close();
-      quic = QuicClient.connect(host: host, port: resolvedQuicPort, token: token);
+      quic = QuicClient.connect(
+        host: host,
+        port: resolvedQuicPort,
+        token: token,
+      );
       _quic = quic;
       if (!_openTrackSafe(
         quic,
@@ -769,8 +815,11 @@ class _PlaybackSession {
     final playbackStartedAt = DateTime.now();
     var noBytesWarned = false;
     Future<void>? pumpTask;
+    var pendingSeekMarkerPayload = false;
+    var discardingStaleSeekHeader = false;
+    var discardingStaleSeekFrames = false;
 
-    Future<void> resetForSeek() async {
+    Future<void> resetForSeek(int seekId) async {
       _pumpSuspended = true;
       await _waitForPumpIdle();
       _streamEnded = false;
@@ -778,6 +827,9 @@ class _PlaybackSession {
       _reportedStart = false;
       _autoPaused = false;
       _discardUntilSeekMarker = false;
+      pendingSeekMarkerPayload = false;
+      discardingStaleSeekHeader = false;
+      discardingStaleSeekFrames = false;
       _queuedToPlayerSamples = 0;
       _playedSamples = 0;
       _bytesReceived = 0;
@@ -807,6 +859,8 @@ class _PlaybackSession {
         _baseOffsetMs = _pendingSeekMs!;
       }
       _pendingSeekMs = null;
+      _activeSeekId = seekId;
+      _pendingSeekId = null;
       _pumpSuspended = false;
     }
 
@@ -840,15 +894,101 @@ class _PlaybackSession {
       }
 
       while (_isActive) {
-        if (_discardUntilSeekMarker) {
-          _resyncRawHeader(reader);
-          final prefix = reader.peek(12);
-          if (prefix != null && _hasRawHeaderMagic(prefix)) {
-            _log('Seek marker missing; resyncing on raw header.');
-            await resetForSeek();
+        if (pendingSeekMarkerPayload) {
+          final markerBytes = reader.read(4);
+          if (markerBytes == null) {
+            break;
+          }
+          pendingSeekMarkerPayload = false;
+          final markerSeekId = _readU32Le(markerBytes, 0);
+          final expectedSeekId = _pendingSeekId;
+          if (expectedSeekId == null) {
+            _log('Ignoring unexpected seek marker (seek_id=$markerSeekId).');
+            discardingStaleSeekHeader = true;
+            discardingStaleSeekFrames = false;
             continue;
           }
+          if (markerSeekId != expectedSeekId) {
+            _log(
+              'Ignoring stale seek marker (seek_id=$markerSeekId expected=$expectedSeekId).',
+            );
+            discardingStaleSeekHeader = true;
+            discardingStaleSeekFrames = false;
+            continue;
+          }
+          _log(
+            'Accepted seek marker (seek_id=$markerSeekId); resetting decoder.',
+          );
+          pendingFrameLen = null;
+          await resetForSeek(markerSeekId);
+          continue;
         }
+
+        if (discardingStaleSeekHeader) {
+          final markerPrefix = reader.peek(2);
+          if (markerPrefix == null) {
+            break;
+          }
+          final marker = markerPrefix[0] | (markerPrefix[1] << 8);
+          if (marker == _rawSeekMarker) {
+            reader.discard(2);
+            pendingSeekMarkerPayload = true;
+            discardingStaleSeekHeader = false;
+            continue;
+          }
+          final prefix = reader.peek(12);
+          if (prefix == null) {
+            break;
+          }
+          if (!_hasRawHeaderMagic(prefix)) {
+            _resyncSeekBoundary(reader);
+            continue;
+          }
+          if (prefix[8] != 1) {
+            reader.discard(1);
+            continue;
+          }
+          final length = prefix[10] | (prefix[11] << 8);
+          if (length < _rawHeaderMinLen) {
+            reader.discard(1);
+            continue;
+          }
+          final staleHeader = reader.read(length);
+          if (staleHeader == null) {
+            break;
+          }
+          _log('Discarded stale seek header (${staleHeader.length} bytes).');
+          discardingStaleSeekHeader = false;
+          discardingStaleSeekFrames = true;
+          continue;
+        }
+
+        if (discardingStaleSeekFrames) {
+          if (pendingFrameLen == null) {
+            final lenBytes = reader.read(2);
+            if (lenBytes == null) {
+              break;
+            }
+            pendingFrameLen = lenBytes[0] | (lenBytes[1] << 8);
+            if (pendingFrameLen == _rawSeekMarker) {
+              pendingFrameLen = null;
+              pendingSeekMarkerPayload = true;
+              discardingStaleSeekFrames = false;
+              continue;
+            }
+            if (pendingFrameLen == 0) {
+              pendingFrameLen = null;
+              continue;
+            }
+          }
+          final discard = reader.read(pendingFrameLen!);
+          if (discard == null) {
+            break;
+          }
+          pendingFrameLen = null;
+          continue;
+        }
+
         if (header == null) {
           if (headerLen == null) {
             final prefix = reader.peek(12);
@@ -934,10 +1074,11 @@ class _PlaybackSession {
           final skipMs = _pendingClientSkipMs;
           _pendingClientSkipMs = 0;
           _skipSamples =
-              (skipMs * parsedHeader.sampleRate ~/ 1000) * parsedHeader.channels;
+              (skipMs * parsedHeader.sampleRate ~/ 1000) *
+              parsedHeader.channels;
 
-          _pumpChunkSamples =
-              ((_sampleRate * _channels * _pumpChunkMs) / 1000).round();
+          _pumpChunkSamples = ((_sampleRate * _channels * _pumpChunkMs) / 1000)
+              .round();
           if (_pumpChunkSamples <= 0) {
             _pumpChunkSamples = _frameSamples * _channels;
           }
@@ -946,11 +1087,11 @@ class _PlaybackSession {
           final targetSeconds = _quickStart
               ? _seekCatchupTargetSeconds
               : (_prebufferSeconds > _rebufferTargetSeconds
-                  ? _prebufferSeconds
-                  : _rebufferTargetSeconds);
+                    ? _prebufferSeconds
+                    : _rebufferTargetSeconds);
           final capacitySeconds = targetSeconds * 4.0;
-          final capacitySamples =
-              (capacitySeconds * _sampleRate * _channels).round();
+          final capacitySamples = (capacitySeconds * _sampleRate * _channels)
+              .round();
           final minCapacitySamples = _rebufferTargetSamples * 2;
           var finalCapacity = capacitySamples;
           if (minCapacitySamples > finalCapacity) {
@@ -985,9 +1126,8 @@ class _PlaybackSession {
           }
           pendingFrameLen = lenBytes[0] | (lenBytes[1] << 8);
           if (pendingFrameLen == _rawSeekMarker) {
-            _log('Seek marker received; resetting decoder.');
             pendingFrameLen = null;
-            await resetForSeek();
+            pendingSeekMarkerPayload = true;
             continue;
           }
           if (pendingFrameLen == 0) {
@@ -1247,7 +1387,10 @@ class _PlaybackSession {
     }
   }
 
-  Future<void> _writeSamples(_NativeAudioPlayer player, Int16List samples) async {
+  Future<void> _writeSamples(
+    _NativeAudioPlayer player,
+    Int16List samples,
+  ) async {
     await player.write(samples);
     if (!identical(player, _player)) {
       return;
@@ -1318,12 +1461,9 @@ class _PlaybackSession {
       _updateAdaptiveBufferProfile(bufferedMs: bufferedMs, rttMs: rttMs);
 
       if (quic != null && _serverBackpressureEnabled) {
-        final targetMs = (_rebufferTargetSeconds * 1000).round();
+        final targetMs = _serverBufferTargetMs();
         try {
-          quic.sendBufferStats(
-            bufferMs: bufferOnlyMs,
-            targetMs: targetMs,
-          );
+          quic.sendBufferStats(bufferMs: bufferOnlyMs, targetMs: targetMs);
         } catch (_) {
           // Ignore closed/failed QUIC stats updates.
         }
@@ -1448,8 +1588,8 @@ class _PlaybackSession {
 
 class _PcmRingBuffer {
   _PcmRingBuffer(int capacitySamples)
-      : _buffer = Int16List(capacitySamples),
-        _capacity = capacitySamples;
+    : _buffer = Int16List(capacitySamples),
+      _capacity = capacitySamples;
 
   final Int16List _buffer;
   final int _capacity;
@@ -1505,6 +1645,7 @@ class _PcmRingBuffer {
 }
 
 const List<int> _rawHeaderMagic = [79, 80, 85, 83, 82, 48, 49, 0];
+const List<int> _rawSeekMarkerBytes = [255, 255];
 const int _rawHeaderMinLen = 40;
 const int _rawSeekMarker = 0xFFFF;
 
@@ -1518,6 +1659,13 @@ bool _hasRawHeaderMagic(Uint8List prefix) {
     }
   }
   return true;
+}
+
+int _readU32Le(Uint8List data, int offset) {
+  return data[offset] |
+      (data[offset + 1] << 8) |
+      (data[offset + 2] << 16) |
+      (data[offset + 3] << 24);
 }
 
 String? _extractHeaderTrackId(Uint8List headerBytes) {
@@ -1590,6 +1738,30 @@ void _resyncRawHeader(_ByteQueue reader) {
   }
 }
 
+void _resyncSeekBoundary(_ByteQueue reader) {
+  final headerIdx = reader.indexOf(_rawHeaderMagic);
+  final markerIdx = reader.indexOf(_rawSeekMarkerBytes);
+  var idx = -1;
+  if (headerIdx >= 0) {
+    idx = headerIdx;
+  }
+  if (markerIdx >= 0 && (idx < 0 || markerIdx < idx)) {
+    idx = markerIdx;
+  }
+  if (idx == 0) {
+    return;
+  }
+  if (idx > 0) {
+    reader.discard(idx);
+    return;
+  }
+  final keep = math.max(_rawHeaderMagic.length, _rawSeekMarkerBytes.length) - 1;
+  final discard = reader.available - keep;
+  if (discard > 0) {
+    reader.discard(discard);
+  }
+}
+
 class _AudioWorkerInit {
   _AudioWorkerInit(this.sendPort);
 
@@ -1604,9 +1776,11 @@ void _audioWorkerMain(_AudioWorkerInit init) {
     _audioWorkerPortName,
   );
   init.sendPort.send(receivePort.sendPort);
-  final engine = _AudioWorkerEngine(send: (message) {
-    init.sendPort.send(message);
-  });
+  final engine = _AudioWorkerEngine(
+    send: (message) {
+      init.sendPort.send(message);
+    },
+  );
 
   receivePort.listen((message) async {
     if (message is! Map) {
@@ -1630,7 +1804,9 @@ void _audioWorkerMain(_AudioWorkerInit init) {
             quality: message['quality']?.toString() ?? 'high',
             frameMs: (message['frame_ms'] as num?)?.toInt() ?? 60,
           ),
-          startOffset: Duration(milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0),
+          startOffset: Duration(
+            milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0,
+          ),
           queueTrackIds: queue,
         );
         break;
@@ -1648,7 +1824,8 @@ void _audioWorkerMain(_AudioWorkerInit init) {
         engine.setVolume(value);
         break;
       case 'device':
-        final deviceId = (message['device_id'] as num?)?.toInt() ?? kDefaultOutputDeviceId;
+        final deviceId =
+            (message['device_id'] as num?)?.toInt() ?? kDefaultOutputDeviceId;
         engine.setOutputDevice(deviceId);
         break;
       case 'seek':
@@ -1732,9 +1909,7 @@ class _ByteQueue {
     if (available < length) {
       return null;
     }
-    final out = Uint8List.fromList(
-      _buffer.sublist(_offset, _offset + length),
-    );
+    final out = Uint8List.fromList(_buffer.sublist(_offset, _offset + length));
     _offset += length;
     if (_offset == _buffer.length) {
       _buffer = Uint8List(0);
@@ -1773,7 +1948,9 @@ _NativeAudioPlayer _createPlayer({
       deviceId: deviceId,
     );
   }
-  throw Exception('Audio playback is only implemented for Windows and macOS right now.');
+  throw Exception(
+    'Audio playback is only implemented for Windows and macOS right now.',
+  );
 }
 
 class _WaveOutPlayer implements _NativeAudioPlayer {
@@ -1781,9 +1958,9 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
     required int sampleRate,
     required int channels,
     required int deviceId,
-  })  : _sampleRate = sampleRate,
-        _channels = channels,
-        _deviceId = deviceId {
+  }) : _sampleRate = sampleRate,
+       _channels = channels,
+       _deviceId = deviceId {
     _open();
   }
 
@@ -1807,7 +1984,9 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
         format.ref.nSamplesPerSec * format.ref.nBlockAlign;
     format.ref.cbSize = 0;
 
-    final deviceId = _deviceId == kDefaultOutputDeviceId ? WAVE_MAPPER : _deviceId;
+    final deviceId = _deviceId == kDefaultOutputDeviceId
+        ? WAVE_MAPPER
+        : _deviceId;
     final result = _WaveOutBindings().waveOutOpen(
       handle,
       deviceId,
@@ -1856,11 +2035,7 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
       throw Exception('waveOutPrepareHeader failed: $result');
     }
 
-    result = bindings.waveOutWrite(
-      handle.value,
-      header,
-      ffi.sizeOf<WAVEHDR>(),
-    );
+    result = bindings.waveOutWrite(handle.value, header, ffi.sizeOf<WAVEHDR>());
     if (result != MMSYSERR_NOERROR) {
       bindings.waveOutUnprepareHeader(
         handle.value,
@@ -1872,7 +2047,9 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
       throw Exception('waveOutWrite failed: $result');
     }
 
-    _inFlight.add(_WaveBuffer(header: header, data: dataPtr, sampleCount: samples.length));
+    _inFlight.add(
+      _WaveBuffer(header: header, data: dataPtr, sampleCount: samples.length),
+    );
     _collectDone(handle.value);
     while (_inFlight.length > _maxInFlight) {
       if (!identical(_handle, handle)) {
@@ -1936,7 +2113,11 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
     while (i < _inFlight.length) {
       final buffer = _inFlight[i];
       if (buffer.header.ref.dwFlags & WHDR_DONE != 0) {
-        bindings.waveOutUnprepareHeader(handle, buffer.header, ffi.sizeOf<WAVEHDR>());
+        bindings.waveOutUnprepareHeader(
+          handle,
+          buffer.header,
+          ffi.sizeOf<WAVEHDR>(),
+        );
         calloc.free(buffer.header);
         calloc.free(buffer.data);
         _completedSamples += buffer.sampleCount;
@@ -1950,7 +2131,11 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
   void _collectAll(ffi.Pointer<ffi.Void> handle) {
     final bindings = _WaveOutBindings();
     for (final buffer in _inFlight) {
-      bindings.waveOutUnprepareHeader(handle, buffer.header, ffi.sizeOf<WAVEHDR>());
+      bindings.waveOutUnprepareHeader(
+        handle,
+        buffer.header,
+        ffi.sizeOf<WAVEHDR>(),
+      );
       calloc.free(buffer.header);
       calloc.free(buffer.data);
     }
@@ -1978,9 +2163,9 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
     required int sampleRate,
     required int channels,
     required int deviceId,
-  })  : _sampleRate = sampleRate,
-        _channels = channels,
-        _deviceId = deviceId {
+  }) : _sampleRate = sampleRate,
+       _channels = channels,
+       _deviceId = deviceId {
     _open();
   }
 
@@ -2158,7 +2343,11 @@ final class WAVEHDR extends ffi.Struct {
 }
 
 class _WaveBuffer {
-  _WaveBuffer({required this.header, required this.data, required this.sampleCount});
+  _WaveBuffer({
+    required this.header,
+    required this.data,
+    required this.sampleCount,
+  });
 
   final ffi.Pointer<WAVEHDR> header;
   final ffi.Pointer<ffi.Int16> data;
@@ -2167,41 +2356,49 @@ class _WaveBuffer {
 
 class _WaveOutBindings {
   _WaveOutBindings()
-      : waveOutOpen = _lib
-            .lookup<ffi.NativeFunction<_WaveOutOpenNative>>('waveOutOpen')
-            .asFunction(),
-        waveOutGetNumDevs = _lib
-            .lookup<ffi.NativeFunction<_WaveOutGetNumDevsNative>>('waveOutGetNumDevs')
-            .asFunction(),
-        waveOutGetDevCapsW = _lib
-            .lookup<ffi.NativeFunction<_WaveOutGetDevCapsWNative>>('waveOutGetDevCapsW')
-            .asFunction(),
-        waveOutPrepareHeader = _lib
-            .lookup<ffi.NativeFunction<_WaveOutPrepareHeaderNative>>(
-                'waveOutPrepareHeader')
-            .asFunction(),
-        waveOutWrite = _lib
-            .lookup<ffi.NativeFunction<_WaveOutWriteNative>>('waveOutWrite')
-            .asFunction(),
-        waveOutUnprepareHeader = _lib
-            .lookup<ffi.NativeFunction<_WaveOutUnprepareHeaderNative>>(
-                'waveOutUnprepareHeader')
-            .asFunction(),
-        waveOutClose = _lib
-            .lookup<ffi.NativeFunction<_WaveOutCloseNative>>('waveOutClose')
-            .asFunction(),
-        waveOutReset = _lib
-            .lookup<ffi.NativeFunction<_WaveOutResetNative>>('waveOutReset')
-            .asFunction(),
-        waveOutSetVolume = _lib
-            .lookup<ffi.NativeFunction<_WaveOutSetVolumeNative>>('waveOutSetVolume')
-            .asFunction(),
-        waveOutPause = _lib
-            .lookup<ffi.NativeFunction<_WaveOutPauseNative>>('waveOutPause')
-            .asFunction(),
-        waveOutRestart = _lib
-            .lookup<ffi.NativeFunction<_WaveOutRestartNative>>('waveOutRestart')
-            .asFunction();
+    : waveOutOpen = _lib
+          .lookup<ffi.NativeFunction<_WaveOutOpenNative>>('waveOutOpen')
+          .asFunction(),
+      waveOutGetNumDevs = _lib
+          .lookup<ffi.NativeFunction<_WaveOutGetNumDevsNative>>(
+            'waveOutGetNumDevs',
+          )
+          .asFunction(),
+      waveOutGetDevCapsW = _lib
+          .lookup<ffi.NativeFunction<_WaveOutGetDevCapsWNative>>(
+            'waveOutGetDevCapsW',
+          )
+          .asFunction(),
+      waveOutPrepareHeader = _lib
+          .lookup<ffi.NativeFunction<_WaveOutPrepareHeaderNative>>(
+            'waveOutPrepareHeader',
+          )
+          .asFunction(),
+      waveOutWrite = _lib
+          .lookup<ffi.NativeFunction<_WaveOutWriteNative>>('waveOutWrite')
+          .asFunction(),
+      waveOutUnprepareHeader = _lib
+          .lookup<ffi.NativeFunction<_WaveOutUnprepareHeaderNative>>(
+            'waveOutUnprepareHeader',
+          )
+          .asFunction(),
+      waveOutClose = _lib
+          .lookup<ffi.NativeFunction<_WaveOutCloseNative>>('waveOutClose')
+          .asFunction(),
+      waveOutReset = _lib
+          .lookup<ffi.NativeFunction<_WaveOutResetNative>>('waveOutReset')
+          .asFunction(),
+      waveOutSetVolume = _lib
+          .lookup<ffi.NativeFunction<_WaveOutSetVolumeNative>>(
+            'waveOutSetVolume',
+          )
+          .asFunction(),
+      waveOutPause = _lib
+          .lookup<ffi.NativeFunction<_WaveOutPauseNative>>('waveOutPause')
+          .asFunction(),
+      waveOutRestart = _lib
+          .lookup<ffi.NativeFunction<_WaveOutRestartNative>>('waveOutRestart')
+          .asFunction();
 
   static final ffi.DynamicLibrary _lib = ffi.DynamicLibrary.open('winmm.dll');
   final _WaveOutOpenDart waveOutOpen;
@@ -2217,147 +2414,138 @@ class _WaveOutBindings {
   final _WaveOutRestartDart waveOutRestart;
 }
 
-typedef _WaveOutOpenNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Pointer<ffi.Void>> phwo,
-  ffi.Uint32 uDeviceID,
-  ffi.Pointer<WAVEFORMATEX> pwfx,
-  ffi.Pointer<ffi.Void> dwCallback,
-  ffi.Pointer<ffi.Void> dwInstance,
-  ffi.Uint32 fdwOpen,
-);
-typedef _WaveOutOpenDart = int Function(
-  ffi.Pointer<ffi.Pointer<ffi.Void>> phwo,
-  int uDeviceID,
-  ffi.Pointer<WAVEFORMATEX> pwfx,
-  ffi.Pointer<ffi.Void> dwCallback,
-  ffi.Pointer<ffi.Void> dwInstance,
-  int fdwOpen,
-);
+typedef _WaveOutOpenNative =
+    ffi.Uint32 Function(
+      ffi.Pointer<ffi.Pointer<ffi.Void>> phwo,
+      ffi.Uint32 uDeviceID,
+      ffi.Pointer<WAVEFORMATEX> pwfx,
+      ffi.Pointer<ffi.Void> dwCallback,
+      ffi.Pointer<ffi.Void> dwInstance,
+      ffi.Uint32 fdwOpen,
+    );
+typedef _WaveOutOpenDart =
+    int Function(
+      ffi.Pointer<ffi.Pointer<ffi.Void>> phwo,
+      int uDeviceID,
+      ffi.Pointer<WAVEFORMATEX> pwfx,
+      ffi.Pointer<ffi.Void> dwCallback,
+      ffi.Pointer<ffi.Void> dwInstance,
+      int fdwOpen,
+    );
 
 typedef _WaveOutGetNumDevsNative = ffi.Uint32 Function();
 typedef _WaveOutGetNumDevsDart = int Function();
 
-typedef _WaveOutGetDevCapsWNative = ffi.Uint32 Function(
-  ffi.Uint32 uDeviceID,
-  ffi.Pointer<WAVEOUTCAPSW> pwoc,
-  ffi.Uint32 cbwoc,
-);
-typedef _WaveOutGetDevCapsWDart = int Function(
-  int uDeviceID,
-  ffi.Pointer<WAVEOUTCAPSW> pwoc,
-  int cbwoc,
-);
+typedef _WaveOutGetDevCapsWNative =
+    ffi.Uint32 Function(
+      ffi.Uint32 uDeviceID,
+      ffi.Pointer<WAVEOUTCAPSW> pwoc,
+      ffi.Uint32 cbwoc,
+    );
+typedef _WaveOutGetDevCapsWDart =
+    int Function(int uDeviceID, ffi.Pointer<WAVEOUTCAPSW> pwoc, int cbwoc);
 
-typedef _WaveOutPrepareHeaderNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Pointer<WAVEHDR> pwh,
-  ffi.Uint32 cbwh,
-);
-typedef _WaveOutPrepareHeaderDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Pointer<WAVEHDR> pwh,
-  int cbwh,
-);
+typedef _WaveOutPrepareHeaderNative =
+    ffi.Uint32 Function(
+      ffi.Pointer<ffi.Void> hwo,
+      ffi.Pointer<WAVEHDR> pwh,
+      ffi.Uint32 cbwh,
+    );
+typedef _WaveOutPrepareHeaderDart =
+    int Function(ffi.Pointer<ffi.Void> hwo, ffi.Pointer<WAVEHDR> pwh, int cbwh);
 
-typedef _WaveOutWriteNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Pointer<WAVEHDR> pwh,
-  ffi.Uint32 cbwh,
-);
-typedef _WaveOutWriteDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Pointer<WAVEHDR> pwh,
-  int cbwh,
-);
+typedef _WaveOutWriteNative =
+    ffi.Uint32 Function(
+      ffi.Pointer<ffi.Void> hwo,
+      ffi.Pointer<WAVEHDR> pwh,
+      ffi.Uint32 cbwh,
+    );
+typedef _WaveOutWriteDart =
+    int Function(ffi.Pointer<ffi.Void> hwo, ffi.Pointer<WAVEHDR> pwh, int cbwh);
 
-typedef _WaveOutUnprepareHeaderNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Pointer<WAVEHDR> pwh,
-  ffi.Uint32 cbwh,
-);
-typedef _WaveOutUnprepareHeaderDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Pointer<WAVEHDR> pwh,
-  int cbwh,
-);
+typedef _WaveOutUnprepareHeaderNative =
+    ffi.Uint32 Function(
+      ffi.Pointer<ffi.Void> hwo,
+      ffi.Pointer<WAVEHDR> pwh,
+      ffi.Uint32 cbwh,
+    );
+typedef _WaveOutUnprepareHeaderDart =
+    int Function(ffi.Pointer<ffi.Void> hwo, ffi.Pointer<WAVEHDR> pwh, int cbwh);
 
-typedef _WaveOutCloseNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
-typedef _WaveOutCloseDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
+typedef _WaveOutCloseNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo);
+typedef _WaveOutCloseDart = int Function(ffi.Pointer<ffi.Void> hwo);
 
-typedef _WaveOutResetNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
-typedef _WaveOutResetDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
+typedef _WaveOutResetNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo);
+typedef _WaveOutResetDart = int Function(ffi.Pointer<ffi.Void> hwo);
 
-typedef _WaveOutSetVolumeNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-  ffi.Uint32 dwVolume,
-);
-typedef _WaveOutSetVolumeDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-  int dwVolume,
-);
+typedef _WaveOutSetVolumeNative =
+    ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo, ffi.Uint32 dwVolume);
+typedef _WaveOutSetVolumeDart =
+    int Function(ffi.Pointer<ffi.Void> hwo, int dwVolume);
 
-typedef _WaveOutPauseNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
-typedef _WaveOutPauseDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
+typedef _WaveOutPauseNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo);
+typedef _WaveOutPauseDart = int Function(ffi.Pointer<ffi.Void> hwo);
 
-typedef _WaveOutRestartNative = ffi.Uint32 Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
-typedef _WaveOutRestartDart = int Function(
-  ffi.Pointer<ffi.Void> hwo,
-);
+typedef _WaveOutRestartNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo);
+typedef _WaveOutRestartDart = int Function(ffi.Pointer<ffi.Void> hwo);
 
 class _CoreAudioBindings {
   _CoreAudioBindings() {
     final lib = ffi.DynamicLibrary.process();
     open = lib
-        .lookup<ffi.NativeFunction<_CoreAudioOpenNative>>('phonolite_audio_open')
+        .lookup<ffi.NativeFunction<_CoreAudioOpenNative>>(
+          'phonolite_audio_open',
+        )
         .asFunction();
     close = lib
-        .lookup<ffi.NativeFunction<_CoreAudioCloseNative>>('phonolite_audio_close')
+        .lookup<ffi.NativeFunction<_CoreAudioCloseNative>>(
+          'phonolite_audio_close',
+        )
         .asFunction();
     write = lib
-        .lookup<ffi.NativeFunction<_CoreAudioWriteNative>>('phonolite_audio_write')
+        .lookup<ffi.NativeFunction<_CoreAudioWriteNative>>(
+          'phonolite_audio_write',
+        )
         .asFunction();
     setVolume = lib
         .lookup<ffi.NativeFunction<_CoreAudioSetVolumeNative>>(
-            'phonolite_audio_set_volume')
+          'phonolite_audio_set_volume',
+        )
         .asFunction();
     pause = lib
-        .lookup<ffi.NativeFunction<_CoreAudioPauseNative>>('phonolite_audio_pause')
+        .lookup<ffi.NativeFunction<_CoreAudioPauseNative>>(
+          'phonolite_audio_pause',
+        )
         .asFunction();
     resume = lib
-        .lookup<ffi.NativeFunction<_CoreAudioResumeNative>>('phonolite_audio_resume')
+        .lookup<ffi.NativeFunction<_CoreAudioResumeNative>>(
+          'phonolite_audio_resume',
+        )
         .asFunction();
     collectDoneSamples = lib
         .lookup<ffi.NativeFunction<_CoreAudioCollectDoneNative>>(
-            'phonolite_audio_collect_done_samples')
+          'phonolite_audio_collect_done_samples',
+        )
         .asFunction();
     isIdle = lib
-        .lookup<ffi.NativeFunction<_CoreAudioIsIdleNative>>('phonolite_audio_is_idle')
+        .lookup<ffi.NativeFunction<_CoreAudioIsIdleNative>>(
+          'phonolite_audio_is_idle',
+        )
         .asFunction();
     getOutputDeviceCount = lib
         .lookup<ffi.NativeFunction<_CoreAudioDeviceCountNative>>(
-            'phonolite_audio_get_output_device_count')
+          'phonolite_audio_get_output_device_count',
+        )
         .asFunction();
     getOutputDeviceId = lib
         .lookup<ffi.NativeFunction<_CoreAudioDeviceIdNative>>(
-            'phonolite_audio_get_output_device_id')
+          'phonolite_audio_get_output_device_id',
+        )
         .asFunction();
     _getOutputDeviceName = lib
         .lookup<ffi.NativeFunction<_CoreAudioDeviceNameNative>>(
-            'phonolite_audio_get_output_device_name')
+          'phonolite_audio_get_output_device_name',
+        )
         .asFunction();
   }
 
@@ -2388,89 +2576,62 @@ class _CoreAudioBindings {
   }
 }
 
-typedef _CoreAudioOpenNative = ffi.Pointer<ffi.Void> Function(
-  ffi.Int32 sampleRate,
-  ffi.Int32 channels,
-  ffi.Int32 deviceId,
-);
-typedef _CoreAudioOpenDart = ffi.Pointer<ffi.Void> Function(
-  int sampleRate,
-  int channels,
-  int deviceId,
-);
+typedef _CoreAudioOpenNative =
+    ffi.Pointer<ffi.Void> Function(
+      ffi.Int32 sampleRate,
+      ffi.Int32 channels,
+      ffi.Int32 deviceId,
+    );
+typedef _CoreAudioOpenDart =
+    ffi.Pointer<ffi.Void> Function(int sampleRate, int channels, int deviceId);
 
-typedef _CoreAudioCloseNative = ffi.Void Function(
-  ffi.Pointer<ffi.Void> handle,
-);
-typedef _CoreAudioCloseDart = void Function(
-  ffi.Pointer<ffi.Void> handle,
-);
+typedef _CoreAudioCloseNative = ffi.Void Function(ffi.Pointer<ffi.Void> handle);
+typedef _CoreAudioCloseDart = void Function(ffi.Pointer<ffi.Void> handle);
 
-typedef _CoreAudioWriteNative = ffi.Int32 Function(
-  ffi.Pointer<ffi.Void> handle,
-  ffi.Pointer<ffi.Int16> samples,
-  ffi.Int32 sampleCount,
-);
-typedef _CoreAudioWriteDart = int Function(
-  ffi.Pointer<ffi.Void> handle,
-  ffi.Pointer<ffi.Int16> samples,
-  int sampleCount,
-);
+typedef _CoreAudioWriteNative =
+    ffi.Int32 Function(
+      ffi.Pointer<ffi.Void> handle,
+      ffi.Pointer<ffi.Int16> samples,
+      ffi.Int32 sampleCount,
+    );
+typedef _CoreAudioWriteDart =
+    int Function(
+      ffi.Pointer<ffi.Void> handle,
+      ffi.Pointer<ffi.Int16> samples,
+      int sampleCount,
+    );
 
-typedef _CoreAudioSetVolumeNative = ffi.Void Function(
-  ffi.Pointer<ffi.Void> handle,
-  ffi.Float volume,
-);
-typedef _CoreAudioSetVolumeDart = void Function(
-  ffi.Pointer<ffi.Void> handle,
-  double volume,
-);
+typedef _CoreAudioSetVolumeNative =
+    ffi.Void Function(ffi.Pointer<ffi.Void> handle, ffi.Float volume);
+typedef _CoreAudioSetVolumeDart =
+    void Function(ffi.Pointer<ffi.Void> handle, double volume);
 
-typedef _CoreAudioPauseNative = ffi.Void Function(
-  ffi.Pointer<ffi.Void> handle,
-);
-typedef _CoreAudioPauseDart = void Function(
-  ffi.Pointer<ffi.Void> handle,
-);
+typedef _CoreAudioPauseNative = ffi.Void Function(ffi.Pointer<ffi.Void> handle);
+typedef _CoreAudioPauseDart = void Function(ffi.Pointer<ffi.Void> handle);
 
-typedef _CoreAudioResumeNative = ffi.Void Function(
-  ffi.Pointer<ffi.Void> handle,
-);
-typedef _CoreAudioResumeDart = void Function(
-  ffi.Pointer<ffi.Void> handle,
-);
+typedef _CoreAudioResumeNative =
+    ffi.Void Function(ffi.Pointer<ffi.Void> handle);
+typedef _CoreAudioResumeDart = void Function(ffi.Pointer<ffi.Void> handle);
 
-typedef _CoreAudioCollectDoneNative = ffi.Int64 Function(
-  ffi.Pointer<ffi.Void> handle,
-);
-typedef _CoreAudioCollectDoneDart = int Function(
-  ffi.Pointer<ffi.Void> handle,
-);
+typedef _CoreAudioCollectDoneNative =
+    ffi.Int64 Function(ffi.Pointer<ffi.Void> handle);
+typedef _CoreAudioCollectDoneDart = int Function(ffi.Pointer<ffi.Void> handle);
 
-typedef _CoreAudioIsIdleNative = ffi.Int32 Function(
-  ffi.Pointer<ffi.Void> handle,
-);
-typedef _CoreAudioIsIdleDart = int Function(
-  ffi.Pointer<ffi.Void> handle,
-);
+typedef _CoreAudioIsIdleNative =
+    ffi.Int32 Function(ffi.Pointer<ffi.Void> handle);
+typedef _CoreAudioIsIdleDart = int Function(ffi.Pointer<ffi.Void> handle);
 
 typedef _CoreAudioDeviceCountNative = ffi.Int32 Function();
 typedef _CoreAudioDeviceCountDart = int Function();
 
-typedef _CoreAudioDeviceIdNative = ffi.Uint32 Function(
-  ffi.Int32 index,
-);
-typedef _CoreAudioDeviceIdDart = int Function(
-  int index,
-);
+typedef _CoreAudioDeviceIdNative = ffi.Uint32 Function(ffi.Int32 index);
+typedef _CoreAudioDeviceIdDart = int Function(int index);
 
-typedef _CoreAudioDeviceNameNative = ffi.Int32 Function(
-  ffi.Uint32 deviceId,
-  ffi.Pointer<ffi.Char> buffer,
-  ffi.Int32 bufferLen,
-);
-typedef _CoreAudioDeviceNameDart = int Function(
-  int deviceId,
-  ffi.Pointer<ffi.Char> buffer,
-  int bufferLen,
-);
+typedef _CoreAudioDeviceNameNative =
+    ffi.Int32 Function(
+      ffi.Uint32 deviceId,
+      ffi.Pointer<ffi.Char> buffer,
+      ffi.Int32 bufferLen,
+    );
+typedef _CoreAudioDeviceNameDart =
+    int Function(int deviceId, ffi.Pointer<ffi.Char> buffer, int bufferLen);

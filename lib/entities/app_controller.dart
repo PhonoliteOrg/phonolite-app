@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -121,7 +120,7 @@ class PlaybackState {
 }
 
 class AppController {
-  static const Duration _inlineSeekWatchdogDelay = Duration(seconds: 4);
+  static const Duration _inlineSeekWatchdogDelay = Duration(seconds: 2);
 
   AppController({required this.connection}) {
     _logListener = _addLogEntry;
@@ -238,8 +237,6 @@ class AppController {
   int _lastNowPlayingPositionMs = -1;
   int _lastNowPlayingEpochSent = -1;
   bool _nowPlayingReady = false;
-  DateTime? _lastSeekAt;
-  int? _lastSeekMs;
   String? _lastSeekTrackId;
   bool _seeking = false;
   int _seekTargetMs = 0;
@@ -251,9 +248,13 @@ class AppController {
   int? _inlineSeekEpoch;
   Timer? _inlineSeekWatchdog;
   Timer? _seekDebounceTimer;
+  DateTime? _lastSeekCommitAt;
   int? _pendingSeekCommitMs;
   String? _pendingSeekCommitTrackId;
   static const Duration _seekDebounceDelay = Duration(milliseconds: 180);
+  static const Duration _seekCompletionGuard = Duration(seconds: 8);
+  static const Duration _rapidSeekRestartWindow = Duration(milliseconds: 1200);
+  bool _preferRestartForNextSeekCommit = false;
   bool _audioOutputStarted = false;
   int _displayPositionMs = 0;
   int _actualPositionMs = 0;
@@ -935,8 +936,6 @@ class AppController {
     final isPlaying = _playbackState.isPlaying;
     if (_seeking && _lastSeekTrackId != null && _lastSeekTrackId != track.id) {
       _seeking = false;
-      _lastSeekAt = null;
-      _lastSeekMs = null;
       _lastSeekTrackId = null;
     }
     final nowPlayingIsPlaying = isPlaying;
@@ -2078,14 +2077,7 @@ class AppController {
     if (track == null) {
       return;
     }
-    final duration = _playbackState.duration;
-    final clamped = duration == Duration.zero
-        ? position
-        : position > duration
-        ? duration
-        : position < Duration.zero
-        ? Duration.zero
-        : position;
+    final clamped = _clampSeekTarget(position);
     _beginScrub();
     _seeking = true;
     _seekTargetMs = clamped.inMilliseconds;
@@ -2104,19 +2096,9 @@ class AppController {
       return;
     }
     final wasPlaying = _playbackState.isPlaying;
-    _armAutoAdvanceGuard();
-    _suppressAutoAdvanceUntil = DateTime.now().add(const Duration(seconds: 2));
-    final duration = _playbackState.duration;
-    final clamped = duration == Duration.zero
-        ? position
-        : position > duration
-        ? duration
-        : position < Duration.zero
-        ? Duration.zero
-        : position;
-    final now = DateTime.now();
-    _lastSeekAt = now;
-    _lastSeekMs = clamped.inMilliseconds;
+    _armAutoAdvanceGuard(_seekCompletionGuard);
+    _suppressAutoAdvanceUntil = DateTime.now().add(_seekCompletionGuard);
+    final clamped = _clampSeekTarget(position);
     _lastSeekTrackId = track.id;
     _seeking = true;
     _seekTargetMs = clamped.inMilliseconds;
@@ -2156,9 +2138,29 @@ class AppController {
       return;
     }
     final wasPlaying = _playbackState.isPlaying;
+    final commitAt = DateTime.now();
+    final rapidSeekBurst =
+        _lastSeekCommitAt != null &&
+        commitAt.difference(_lastSeekCommitAt!) < _rapidSeekRestartWindow;
+    _lastSeekCommitAt = commitAt;
     _resumeAfterSeek = _scrubPaused && _scrubWasPlaying && wasPlaying;
     _seekEpoch = (_seekEpoch + 1) % 1000000;
     final epoch = _seekEpoch;
+    final preferRestart = _preferRestartForNextSeekCommit || rapidSeekBurst;
+    final restartReason = _preferRestartForNextSeekCommit
+        ? 'seek superseded'
+        : 'rapid seek burst';
+    _preferRestartForNextSeekCommit = false;
+    if (preferRestart) {
+      _restartPlaybackForSeek(
+        track: track,
+        target: target,
+        wasPlaying: wasPlaying,
+        reason: restartReason,
+      );
+      _finishScrub();
+      return;
+    }
     bool inlineSeek = false;
     try {
       inlineSeek = await _audioEngine.seekTo(target);
@@ -2192,6 +2194,10 @@ class AppController {
       return;
     }
     _isScrubbing = true;
+    if (_seeking || _inlineSeekWatchdog != null) {
+      _preferRestartForNextSeekCommit = true;
+    }
+    _clearInlineSeekWatchdog();
     _resumeAfterSeek = false;
     _scrubWasPlaying = _playbackState.isPlaying && !_audioEngine.isPaused;
     _scrubPaused = false;
@@ -2265,11 +2271,46 @@ class AppController {
     final reached = positionMs >= targetMs - 400;
     if (reached) {
       _seeking = false;
-      _lastSeekAt = null;
-      _lastSeekMs = null;
       _lastSeekTrackId = null;
+      _ignoreCompleteUntil = null;
+      _suppressAutoAdvanceUntil = null;
+      _preferRestartForNextSeekCommit = false;
       _pushNowPlayingUpdate(force: true);
     }
+  }
+
+  Duration _clampSeekTarget(Duration position) {
+    final duration = _playbackState.duration;
+    var clamped = duration == Duration.zero
+        ? position
+        : position > duration
+        ? duration
+        : position < Duration.zero
+        ? Duration.zero
+        : position;
+    final durationMs = duration.inMilliseconds;
+    if (durationMs <= 0) {
+      return clamped;
+    }
+    final tailGuardMs = _seekTailGuardMs(durationMs);
+    if (tailGuardMs <= 0) {
+      return clamped;
+    }
+    final safeMaxMs = max(0, durationMs - tailGuardMs);
+    if (clamped.inMilliseconds > safeMaxMs) {
+      clamped = Duration(milliseconds: safeMaxMs);
+    }
+    return clamped;
+  }
+
+  int _seekTailGuardMs(int durationMs) {
+    if (durationMs <= 2000) {
+      return 250;
+    }
+    if (durationMs <= 10000) {
+      return 500;
+    }
+    return 1200;
   }
 
   void _updateDisplayPosition(int actualMs, int bufferedMs) {
@@ -3434,8 +3475,18 @@ class AppController {
     if (_autoAdvanceInFlight) {
       return;
     }
-    if (_ignoreCompleteUntil != null &&
-        DateTime.now().isBefore(_ignoreCompleteUntil!)) {
+    final now = DateTime.now();
+    final seekStillResolving =
+        _isScrubbing ||
+        _seeking ||
+        (_suppressAutoAdvanceUntil != null &&
+            now.isBefore(_suppressAutoAdvanceUntil!) &&
+            (!_audioOutputStarted || _playbackState.isLoading));
+    if (seekStillResolving) {
+      _autoAdvanceInFlight = false;
+      return;
+    }
+    if (_ignoreCompleteUntil != null && now.isBefore(_ignoreCompleteUntil!)) {
       _autoAdvanceInFlight = false;
       return;
     }
