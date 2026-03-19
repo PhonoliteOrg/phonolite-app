@@ -15,7 +15,11 @@ extern int32_t phonolite_quic_send_playback(
     const char *track_id,
     uint32_t position_ms,
     int32_t playing);
-extern int32_t phonolite_quic_seek(void *handle, const char *track_id, uint32_t position_ms);
+extern int32_t phonolite_quic_seek(
+    void *handle,
+    const char *track_id,
+    uint32_t position_ms,
+    uint32_t seek_id);
 extern int32_t phonolite_quic_advance(void *handle);
 extern int32_t phonolite_quic_read(void *handle, uint8_t *buffer, uint64_t buffer_len);
 extern char *phonolite_quic_last_error(void *handle);

@@ -23,10 +23,16 @@ int32_t phonolite_quic_send_playback(
     const char* track_id,
     uint32_t position_ms,
     int32_t playing);
+int32_t phonolite_quic_seek(
+    QuicHandle* handle,
+    const char* track_id,
+    uint32_t position_ms,
+    uint32_t seek_id);
 int32_t phonolite_quic_advance(QuicHandle* handle);
 int32_t phonolite_quic_read(QuicHandle* handle, uint8_t* buffer, uint64_t buffer_len);
 char* phonolite_quic_last_error(QuicHandle* handle);
 char* phonolite_quic_poll_stats(QuicHandle* handle);
+long long phonolite_quic_poll_rtt_ms(QuicHandle* handle);
 void phonolite_quic_free_string(char* ptr);
 void phonolite_quic_close(QuicHandle* handle);
 

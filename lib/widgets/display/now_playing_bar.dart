@@ -962,15 +962,41 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                             ),
                                           ),
                                         ),
-                                        child: imageUrl == null
-                                            ? const SizedBox.shrink()
-                                            : Image.network(
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            if (imageUrl != null)
+                                              Image.network(
                                                 imageUrl,
                                                 headers: headers,
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (_, __, ___) =>
                                                     const SizedBox.shrink(),
                                               ),
+                                            if (state.isLoading)
+                                              ColoredBox(
+                                                color: Colors.black.withOpacity(
+                                                  0.34,
+                                                ),
+                                                child: Center(
+                                                  child: SizedBox(
+                                                    width: s(28),
+                                                    height: s(28),
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: s(2.6),
+                                                      valueColor:
+                                                          const AlwaysStoppedAnimation<
+                                                            Color
+                                                          >(
+                                                            ObsidianPalette
+                                                                .gold,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                     SizedBox(height: s(22)),
@@ -1712,11 +1738,14 @@ class _CompactFooterRow extends StatelessWidget {
                     max: maxSeconds,
                     secondaryTrackValue: bufferedPositionSeconds,
                     onChanged: enabled
-                        ? (value) =>
-                              onSeekPreview(Duration(seconds: value.toInt()))
+                        ? (value) => onSeekPreview(
+                            Duration(milliseconds: (value * 1000).round()),
+                          )
                         : null,
                     onChangeEnd: enabled
-                        ? (value) => onSeek(Duration(seconds: value.toInt()))
+                        ? (value) => onSeek(
+                            Duration(milliseconds: (value * 1000).round()),
+                          )
                         : null,
                   ),
                 ),
@@ -2178,11 +2207,14 @@ class _ProgressBar extends StatelessWidget {
                   max: maxSeconds,
                   secondaryTrackValue: bufferedPositionSeconds,
                   onChanged: enabled
-                      ? (value) =>
-                            onSeekPreview(Duration(seconds: value.toInt()))
+                      ? (value) => onSeekPreview(
+                          Duration(milliseconds: (value * 1000).round()),
+                        )
                       : null,
                   onChangeEnd: enabled
-                      ? (value) => onSeek(Duration(seconds: value.toInt()))
+                      ? (value) => onSeek(
+                          Duration(milliseconds: (value * 1000).round()),
+                        )
                       : null,
                 ),
               ),

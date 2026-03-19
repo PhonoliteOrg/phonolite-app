@@ -44,6 +44,7 @@ enum ControlCommand {
     Seek {
         track_id: String,
         position_ms: u32,
+        seek_id: u32,
     },
     Buffer {
         buffer_ms: u32,
@@ -67,7 +68,10 @@ enum ClientMessage<'a> {
         queue: Option<&'a [String]>,
     },
     #[serde(rename = "buffer")]
-    Buffer { buffer_ms: u32, target_ms: Option<u32> },
+    Buffer {
+        buffer_ms: u32,
+        target_ms: Option<u32>,
+    },
     #[serde(rename = "playback")]
     Playback {
         track_id: &'a str,
@@ -75,7 +79,11 @@ enum ClientMessage<'a> {
         playing: bool,
     },
     #[serde(rename = "seek")]
-    Seek { track_id: &'a str, position_ms: u32 },
+    Seek {
+        track_id: &'a str,
+        position_ms: u32,
+        seek_id: u32,
+    },
     #[serde(rename = "advance")]
     Advance,
     #[serde(rename = "ping")]
@@ -229,11 +237,18 @@ pub extern "C" fn phonolite_quic_send_buffer(
     let Some(handle) = (unsafe { handle.as_ref() }) else {
         return -1;
     };
-    let target = if target_ms == 0 { None } else { Some(target_ms) };
+    let target = if target_ms == 0 {
+        None
+    } else {
+        Some(target_ms)
+    };
     if handle
         .inner
         .tx
-        .send(ControlCommand::Buffer { buffer_ms, target_ms: target })
+        .send(ControlCommand::Buffer {
+            buffer_ms,
+            target_ms: target,
+        })
         .is_err()
     {
         return -2;
@@ -276,6 +291,7 @@ pub extern "C" fn phonolite_quic_seek(
     handle: *mut QuicHandle,
     track_id: *const c_char,
     position_ms: u32,
+    seek_id: u32,
 ) -> c_int {
     let Some(handle) = (unsafe { handle.as_ref() }) else {
         return -1;
@@ -287,7 +303,11 @@ pub extern "C" fn phonolite_quic_seek(
     if handle
         .inner
         .tx
-        .send(ControlCommand::Seek { track_id, position_ms })
+        .send(ControlCommand::Seek {
+            track_id,
+            position_ms,
+            seek_id,
+        })
         .is_err()
     {
         return -3;
@@ -501,7 +521,11 @@ fn run_client(
                     state.prefetch_bytes.clear();
                     state.pending_streams.clear();
                     state.pending_stream_bytes.clear();
-                    let queue_opt = if queue.is_empty() { None } else { Some(queue.as_slice()) };
+                    let queue_opt = if queue.is_empty() {
+                        None
+                    } else {
+                        Some(queue.as_slice())
+                    };
                     enqueue_control(
                         &mut state,
                         ClientMessage::Open {
@@ -530,7 +554,11 @@ fn run_client(
                         },
                     );
                 }
-                ControlCommand::Seek { track_id, position_ms } => {
+                ControlCommand::Seek {
+                    track_id,
+                    position_ms,
+                    seek_id,
+                } => {
                     state.active_track = Some(track_id.clone());
                     if let Some(stream_id) = state.track_streams.get(&track_id).cloned() {
                         state.active_stream = Some(stream_id);
@@ -540,10 +568,14 @@ fn run_client(
                         ClientMessage::Seek {
                             track_id: &track_id,
                             position_ms,
+                            seek_id,
                         },
                     );
                 }
-                ControlCommand::Buffer { buffer_ms, target_ms } => {
+                ControlCommand::Buffer {
+                    buffer_ms,
+                    target_ms,
+                } => {
                     enqueue_control(
                         &mut state,
                         ClientMessage::Buffer {
@@ -581,7 +613,10 @@ fn run_client(
         loop {
             match socket.recv_from(&mut recv_buf) {
                 Ok((len, from)) => {
-                    let recv_info = quiche::RecvInfo { from, to: local_addr };
+                    let recv_info = quiche::RecvInfo {
+                        from,
+                        to: local_addr,
+                    };
                     if let Err(err) = conn.recv(&mut recv_buf[..len], recv_info) {
                         if err != quiche::Error::Done {
                             set_last_error_if_empty(
@@ -599,13 +634,7 @@ fn run_client(
             }
         }
 
-        handle_readable(
-            &mut state,
-            &mut conn,
-            &tx_bytes,
-            &last_error,
-            &last_rtt_ms,
-        )?;
+        handle_readable(&mut state, &mut conn, &tx_bytes, &last_error, &last_rtt_ms)?;
         flush_control(&mut state, &mut conn);
         flush_conn(&mut conn, &socket, &mut send_buf, &last_error);
 
@@ -649,7 +678,9 @@ fn enqueue_control(state: &mut ClientState, message: ClientMessage<'_>) {
 
 fn flush_control(state: &mut ClientState, conn: &mut quiche::Connection) {
     loop {
-        let Some(front) = state.pending_control.front() else { break };
+        let Some(front) = state.pending_control.front() else {
+            break;
+        };
         let data = &front[state.control_offset..];
         match conn.stream_send(state.control_stream_id, data, false) {
             Ok(sent) => {
@@ -678,10 +709,10 @@ fn flush_conn(
             Ok((len, send_info)) => {
                 // Socket is connected; use send() to avoid EISCONN on some platforms.
                 if let Err(err) = socket.send(&out[..len]) {
-                  // Keep the original destination in the log for troubleshooting.
-                  let detail = format!("udp send error: {} (to {})", err, send_info.to);
-                  set_last_error_if_empty(last_error, detail);
-                  break;
+                    // Keep the original destination in the log for troubleshooting.
+                    let detail = format!("udp send error: {} (to {})", err, send_info.to);
+                    set_last_error_if_empty(last_error, detail);
+                    break;
                 }
             }
             Err(quiche::Error::Done) => break,
@@ -722,7 +753,10 @@ fn handle_readable(
                 }
                 Err(quiche::Error::Done) => break,
                 Err(err) => {
-                    set_last_error_if_empty(last_error, format!("QUIC stream recv error: {:?}", err));
+                    set_last_error_if_empty(
+                        last_error,
+                        format!("QUIC stream recv error: {:?}", err),
+                    );
                     break;
                 }
             }
@@ -809,7 +843,13 @@ fn handle_stream_bytes(
     if state
         .track_streams
         .iter()
-        .find_map(|(k, v)| if *v == stream_id { Some(k.clone()) } else { None })
+        .find_map(|(k, v)| {
+            if *v == stream_id {
+                Some(k.clone())
+            } else {
+                None
+            }
+        })
         .is_none()
     {
         buffer_pending_stream(state, stream_id, data);
