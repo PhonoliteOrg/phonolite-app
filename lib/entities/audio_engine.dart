@@ -1551,7 +1551,10 @@ class _PlaybackSession {
       _pauseForBuffer();
       return;
     }
-    if (_autoPaused && bufferedSamples >= _rebufferTargetSamples) {
+    final resumeThresholdSamples = _reportedStart && _playedSamples == 0
+        ? _rebufferMinSamples
+        : _rebufferTargetSamples;
+    if (_autoPaused && bufferedSamples >= resumeThresholdSamples) {
       _resumeFromAutoPause();
     }
   }
