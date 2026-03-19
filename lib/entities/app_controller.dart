@@ -2143,7 +2143,7 @@ class AppController {
         _lastSeekCommitAt != null &&
         commitAt.difference(_lastSeekCommitAt!) < _rapidSeekRestartWindow;
     _lastSeekCommitAt = commitAt;
-    _resumeAfterSeek = _scrubPaused && _scrubWasPlaying && wasPlaying;
+    _resumeAfterSeek = _scrubWasPlaying && wasPlaying;
     _seekEpoch = (_seekEpoch + 1) % 1000000;
     final epoch = _seekEpoch;
     final preferRestart = _preferRestartForNextSeekCommit || rapidSeekBurst;
@@ -2199,10 +2199,12 @@ class AppController {
     }
     _clearInlineSeekWatchdog();
     _resumeAfterSeek = false;
-    _scrubWasPlaying = _playbackState.isPlaying && !_audioEngine.isPaused;
-    _scrubPaused = false;
-    if (_scrubWasPlaying) {
-      _scrubPaused = true;
+    // Treat the UI playback intent separately from the engine's paused state.
+    // The engine also reports paused while buffering, and seeks should resume
+    // in that case too.
+    _scrubWasPlaying = _playbackState.isPlaying;
+    _scrubPaused = _scrubWasPlaying && !_audioEngine.isPaused;
+    if (_scrubPaused) {
       _audioEngine.pause();
     }
   }
