@@ -1,2 +1,0 @@
-C:\Users\aruem\Desktop\phonolite_project\phonolite-app\packages\phonolite_opus\android\src\main\cpp\CMakeLists.txt
-C:\Users\aruem\Desktop\phonolite_project\phonolite-app\packages\phonolite_opus\third_party\opus\CMakeLists.txt
