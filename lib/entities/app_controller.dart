@@ -210,7 +210,7 @@ class AppController {
     _startHealthMonitor();
     _startDisplayPositionTicker();
     _customShuffleLoadFuture = _loadCustomShuffleSettings();
-    _playbackPreferencesLoadFuture = _loadPlaybackPreferences();
+    unawaited(_loadPlaybackPreferences());
   }
 
   final ServerConnection connection;
@@ -233,12 +233,12 @@ class AppController {
   AuthCredentials? _savedCredentials;
   CustomShuffleSettings _customShuffleSettings = const CustomShuffleSettings();
   Future<void>? _customShuffleLoadFuture;
-  Future<void>? _playbackPreferencesLoadFuture;
   Timer? _volumeSaveDebounce;
   Future<void> _volumeSaveChain = Future.value();
   double _pendingVolumeSave = 1.0;
   bool _volumeSaveQueued = false;
   bool _volumeTouched = false;
+  bool _collectionListModeTouched = false;
   bool _restoringSession = false;
   LocalNetworkPermissionState _localNetworkPermissionState =
       LocalNetworkPermissionState.unknown;
@@ -300,6 +300,7 @@ class AppController {
       StreamController<LocalNetworkPermissionState>.broadcast();
   final _customShuffleSettingsController =
       StreamController<CustomShuffleSettings>.broadcast();
+  final _collectionListModeController = StreamController<bool>.broadcast();
   final _artistsLoadingController = StreamController<bool>.broadcast();
   final _albumsLoadingController = StreamController<bool>.broadcast();
   final _tracksLoadingController = StreamController<bool>.broadcast();
@@ -326,6 +327,7 @@ class AppController {
   bool _albumsLoading = false;
   bool _tracksLoading = false;
   bool _searchLoading = false;
+  bool _collectionListMode = false;
   int _searchRequestId = 0;
   List<Track> _playQueue = <Track>[];
   int _playIndex = 0;
@@ -361,6 +363,8 @@ class AppController {
       _localNetworkPermissionController.stream;
   Stream<CustomShuffleSettings> get customShuffleSettingsStream =>
       _customShuffleSettingsController.stream;
+  Stream<bool> get collectionListModeStream =>
+      _collectionListModeController.stream;
   Stream<bool> get artistsLoadingStream => _artistsLoadingController.stream;
   Stream<bool> get albumsLoadingStream => _albumsLoadingController.stream;
   Stream<bool> get tracksLoadingStream => _tracksLoadingController.stream;
@@ -382,6 +386,7 @@ class AppController {
   CustomShuffleSettings get customShuffleSettings => _customShuffleSettings;
   List<String> get customShuffleArtistIds => _customShuffleSettings.artistIds;
   List<String> get customShuffleGenres => _customShuffleSettings.genres;
+  bool get collectionListMode => _collectionListMode;
   bool get localNetworkPermissionSupported {
     if (kIsWeb) {
       return false;
@@ -452,6 +457,7 @@ class AppController {
     _authController.close();
     _localNetworkPermissionController.close();
     _customShuffleSettingsController.close();
+    _collectionListModeController.close();
     _artistsLoadingController.close();
     _albumsLoadingController.close();
     _tracksLoadingController.close();
@@ -2282,7 +2288,9 @@ class AppController {
     _ignoreCompleteUntil = null;
     _suppressAutoAdvanceUntil = null;
     _autoAdvanceInFlight = false;
-    _resetPlaybackPositionTracking(position: Duration(milliseconds: positionMs));
+    _resetPlaybackPositionTracking(
+      position: Duration(milliseconds: positionMs),
+    );
   }
 
   void _restartPlaybackForSeek({
@@ -3017,55 +3025,6 @@ class AppController {
     return updated;
   }
 
-  Future<void> _ensureTrackDetails(Track track) async {
-    if (track.artist.isNotEmpty &&
-        track.album.isNotEmpty &&
-        track.albumId != null &&
-        track.albumId!.isNotEmpty) {
-      return;
-    }
-    _pushMessage('Track details lookup: id=${track.id}');
-    Track full = track;
-    try {
-      full = await connection.fetchTrackById(track.id);
-      _pushMessage(
-        'Track details response: id=${full.id} artist="${full.artist}" album="${full.album}" albumId="${full.albumId ?? ''}"',
-      );
-    } catch (err) {
-      _pushMessage('Track details lookup failed: $err');
-    }
-
-    if (full.artist.isEmpty || full.album.isEmpty) {
-      final albumId = full.albumId ?? track.albumId;
-      if (albumId != null && albumId.isNotEmpty) {
-        try {
-          final album = await connection.fetchAlbumById(albumId);
-          _pushMessage(
-            'Album details response: id=${album.id} title="${album.title}" artist="${album.artist}" artistId="${album.artistId}"',
-          );
-          full = _mergeTrackWithAlbum(full, album);
-          if (full.artist.isEmpty && album.artistId.isNotEmpty) {
-            final artist = await connection.fetchArtistById(album.artistId);
-            _pushMessage(
-              'Artist details response: id=${artist.id} name="${artist.name}"',
-            );
-            full = _mergeTrackWithArtist(full, artist);
-          }
-        } catch (err) {
-          _pushMessage('Album/artist lookup failed: $err');
-        }
-      }
-    }
-
-    if (_playbackState.track?.id != track.id) {
-      return;
-    }
-    _playQueue = _playQueue
-        .map((item) => item.id == full.id ? full : item)
-        .toList();
-    _updatePlayback(track: full);
-  }
-
   Track _mergeTrackWithAlbum(Track track, Album album) {
     final albumTitle = track.album.isNotEmpty ? track.album : album.title;
     final artistName = track.artist.isNotEmpty ? track.artist : album.artist;
@@ -3223,6 +3182,30 @@ class AppController {
     await _refreshCustomShuffleQueueIfNeeded();
   }
 
+  void setCollectionListMode(bool value, {bool persist = true}) {
+    if (persist) {
+      _collectionListModeTouched = true;
+    }
+    if (_collectionListMode == value) {
+      return;
+    }
+    _collectionListMode = value;
+    _collectionListModeController.add(value);
+    if (persist) {
+      _persistCollectionListMode(value);
+    }
+  }
+
+  void toggleCollectionListMode() {
+    setCollectionListMode(!_collectionListMode);
+  }
+
+  void _persistCollectionListMode(bool value) {
+    _volumeSaveChain = _volumeSaveChain.then(
+      (_) => _playbackPreferencesStorage.writeCollectionListMode(value),
+    );
+  }
+
   Future<void> _loadCustomShuffleSettings() async {
     final settings = await _customShuffleStorage.read();
     _customShuffleSettings = settings;
@@ -3230,6 +3213,11 @@ class AppController {
   }
 
   Future<void> _loadPlaybackPreferences() async {
+    final storedCollectionListMode = await _playbackPreferencesStorage
+        .readCollectionListMode();
+    if (!_collectionListModeTouched && storedCollectionListMode != null) {
+      setCollectionListMode(storedCollectionListMode, persist: false);
+    }
     final storedVolume = await _playbackPreferencesStorage.readVolume();
     if (storedVolume == null) {
       return;
