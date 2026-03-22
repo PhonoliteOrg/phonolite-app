@@ -12,6 +12,7 @@ class TrackSliverList extends StatelessWidget {
     this.onTrackLongPress,
     this.onTrackLike,
     this.onTrackDelete,
+    this.showAlbumArt = false,
   });
 
   final List<Track> tracks;
@@ -20,6 +21,7 @@ class TrackSliverList extends StatelessWidget {
   final ValueChanged<Track>? onTrackLongPress;
   final ValueChanged<Track>? onTrackLike;
   final ValueChanged<Track>? onTrackDelete;
+  final bool showAlbumArt;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +35,7 @@ class TrackSliverList extends StatelessWidget {
         return TrackRowTile(
           track: track,
           index: index ~/ 2 + 1,
+          showAlbumArt: showAlbumArt,
           isPlaying: isPlayingTrack(track),
           onTap: onTrackTap == null ? null : () => onTrackTap!(track),
           onLongPress: onTrackLongPress == null

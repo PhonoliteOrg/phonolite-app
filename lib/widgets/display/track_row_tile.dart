@@ -1,8 +1,11 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/library_helpers.dart';
 import '../../entities/models.dart';
+import '../layouts/app_scope.dart';
+import 'album_art.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
 import '../ui/obsidian_theme.dart';
@@ -18,6 +21,7 @@ class TrackRowTile extends StatefulWidget {
     this.onLongPress,
     this.onLike,
     this.onDelete,
+    this.showAlbumArt = false,
   });
 
   final Track track;
@@ -27,6 +31,7 @@ class TrackRowTile extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onLike;
   final VoidCallback? onDelete;
+  final bool showAlbumArt;
 
   @override
   State<TrackRowTile> createState() => _TrackRowTileState();
@@ -69,6 +74,15 @@ class _TrackRowTileState extends State<TrackRowTile>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final controller = widget.showAlbumArt ? AppScope.of(context) : null;
+    final albumId = widget.track.albumId?.trim() ?? '';
+    final coverUrl = widget.showAlbumArt && albumId.isNotEmpty
+        ? controller?.connection.buildAlbumCoverUrl(albumId)
+        : null;
+    final headers = widget.showAlbumArt && controller != null
+        ? authHeaders(controller)
+        : const <String, String>{};
+
     return ObsidianHoverRow(
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
@@ -91,6 +105,15 @@ class _TrackRowTileState extends State<TrackRowTile>
             ),
           ),
           const SizedBox(width: 8),
+          if (widget.showAlbumArt) ...[
+            AlbumArt(
+              title: widget.track.album,
+              size: 42,
+              imageUrl: coverUrl,
+              headers: headers,
+            ),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,5 +232,3 @@ class _Bar extends StatelessWidget {
     );
   }
 }
-
-

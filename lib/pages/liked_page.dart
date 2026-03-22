@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
@@ -61,9 +61,11 @@ class _LikedPageState extends State<LikedPage> {
                               return TrackRowTile(
                                 track: track,
                                 index: index + 1,
+                                showAlbumArt: true,
                                 isPlaying:
                                     playback.isPlaying && playingId == track.id,
-                                onTap: () => controller.playLikedTrack(track.id),
+                                onTap: () =>
+                                    controller.playLikedTrack(track.id),
                                 onLike: () => controller.toggleLike(track),
                               );
                             },

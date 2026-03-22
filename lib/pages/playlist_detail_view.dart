@@ -90,6 +90,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                         final playingId = playback.track?.id;
                         return TrackSliverList(
                           tracks: tracks,
+                          showAlbumArt: true,
                           isPlayingTrack: (track) =>
                               playback.isPlaying && playingId == track.id,
                           onTrackTap: (track) => controller.queuePlaylist(
