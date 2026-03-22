@@ -6,6 +6,7 @@ import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/marquee_text.dart';
@@ -96,8 +97,8 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                             startTrackId: track.id,
                           ),
                           onTrackLike: controller.toggleLike,
-                          onTrackDelete: (track) => controller
-                              .removeTrackFromPlaylist(playlist, track),
+                          onTrackDelete: (track) =>
+                              _removeTrack(controller, playlist, track),
                         );
                       },
                     );
@@ -122,9 +123,44 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     );
   }
 
-  void _deletePlaylist(AppController controller, Playlist playlist) {
-    controller.deletePlaylist(playlist.id);
-    Navigator.of(context).pop();
+  Future<void> _removeTrack(
+    AppController controller,
+    Playlist playlist,
+    Track track,
+  ) async {
+    final confirmed = await ConfirmationModal.show(
+      context,
+      title: 'Remove song from playlist',
+      message: 'Are you sure you want to remove this song from this playlist?',
+    );
+    if (!confirmed) {
+      return;
+    }
+    await controller.removeTrackFromPlaylist(playlist, track);
+  }
+
+  Future<void> _deletePlaylist(
+    AppController controller,
+    Playlist playlist,
+  ) async {
+    final confirmed = await ConfirmationModal.show(
+      context,
+      title: 'Delete playlist',
+      message: 'Are you sure you want to delete this playlist?',
+    );
+    if (!confirmed) {
+      return;
+    }
+    await controller.deletePlaylist(playlist.id);
+    if (!mounted) {
+      return;
+    }
+    final wasDeleted = controller.playlists.every(
+      (item) => item.id != playlist.id,
+    );
+    if (wasDeleted) {
+      Navigator.of(context).pop();
+    }
   }
 }
 

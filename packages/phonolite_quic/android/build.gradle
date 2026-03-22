@@ -30,21 +30,141 @@ android {
 
 def pluginRoot = project.projectDir.parentFile
 def rustRoot = new File(pluginRoot, 'native/quic_client')
-def cargoTargetDir = new File(pluginRoot, 'android/build/cargo')
+def cargoTargetBase = System.getenv('LOCALAPPDATA') ?: System.getProperty('java.io.tmpdir')
+def cargoTargetDir = new File(cargoTargetBase, 'phonolite_quic_cargo_ninja')
 def jniLibsDir = new File(pluginRoot, 'android/src/main/jniLibs')
-
-tasks.register('cargoBuild', Exec) {
-    workingDir rustRoot
-    environment 'CARGO_TARGET_DIR', cargoTargetDir
-    doFirst {
-        jniLibsDir.mkdirs()
+def ndkDir = android.ndkDirectory
+def cargoHome = new File(System.getenv('CARGO_HOME') ?: new File(System.getProperty('user.home'), '.cargo').absolutePath)
+def cargoRegistrySrcDir = new File(cargoHome, 'registry/src')
+def quicheLockFile = new File(rustRoot, 'Cargo.lock')
+def boringsslBuildRoot = new File(cargoTargetDir, 'boringssl')
+def androidTargets = ['armeabi-v7a', 'arm64-v8a', 'x86_64']
+def ninjaExe = null
+def roamingAppData = System.getenv('APPDATA')
+if (roamingAppData != null) {
+    def ninjaMatches = fileTree(
+            dir: new File(roamingAppData, 'Python'),
+            include: '**/Scripts/ninja.exe'
+    ).files
+    if (!ninjaMatches.isEmpty()) {
+        ninjaExe = ninjaMatches.iterator().next()
     }
-    commandLine 'cargo', 'ndk',
-            '-t', 'armeabi-v7a',
-            '-t', 'arm64-v8a',
-            '-t', 'x86_64',
-            '-o', jniLibsDir,
-            'build', '--release'
+}
+
+def systemPath = System.getenv('PATH') ?: ''
+
+def configureBuildEnv = { spec ->
+    spec.environment 'ANDROID_NDK_HOME', ndkDir.absolutePath
+    spec.environment 'ANDROID_NDK_ROOT', ndkDir.absolutePath
+    if (ninjaExe != null && ninjaExe.exists()) {
+        spec.environment 'PATH', "${ninjaExe.parent}${File.pathSeparator}${systemPath}"
+    }
+}
+
+def resolveQuicheVersion = {
+    if (!quicheLockFile.exists()) {
+        throw new GradleException("Missing Cargo.lock at ${quicheLockFile}")
+    }
+    def matcher = (quicheLockFile.getText('UTF-8') =~ /(?ms)^\[\[package\]\]\Rname = "quiche"\Rversion = "([^"]+)"/)
+    if (!matcher.find()) {
+        throw new GradleException("Could not determine quiche version from ${quicheLockFile}")
+    }
+    matcher.group(1)
+}
+
+def resolveBoringSslSourceDir = {
+    def quicheVersion = resolveQuicheVersion()
+    if (!cargoRegistrySrcDir.exists()) {
+        throw new GradleException("Cargo registry source directory not found at ${cargoRegistrySrcDir}")
+    }
+
+    def matches = fileTree(dir: cargoRegistrySrcDir, include: "**/quiche-${quicheVersion}/deps/boringssl/CMakeLists.txt")
+            .files
+            .collect { it.parentFile }
+            .sort { it.absolutePath }
+    if (matches.isEmpty()) {
+        throw new GradleException("Could not find quiche ${quicheVersion} boringssl source under ${cargoRegistrySrcDir}")
+    }
+    matches.first()
+}
+
+def buildBoringSslForAbi = { File sourceDir, String abi ->
+    def buildDir = new File(boringsslBuildRoot, abi)
+    buildDir.mkdirs()
+
+    def cmakeArgs = [
+            'cmake',
+            sourceDir.absolutePath,
+            '-B', buildDir.absolutePath,
+            '-G', 'Ninja',
+            "-DANDROID_ABI=${abi}",
+            "-DCMAKE_TOOLCHAIN_FILE=${new File(ndkDir, 'build/cmake/android.toolchain.cmake').absolutePath}",
+            '-DANDROID_NATIVE_API_LEVEL=21',
+            '-DANDROID_STL=c++_shared',
+            '-DCMAKE_BUILD_TYPE=Release',
+    ]
+    if (ninjaExe != null && ninjaExe.exists()) {
+        cmakeArgs << "-DCMAKE_MAKE_PROGRAM=${ninjaExe.absolutePath}"
+    }
+
+    project.exec {
+        workingDir pluginRoot
+        configureBuildEnv(delegate)
+        commandLine cmakeArgs
+    }
+    ['ssl', 'crypto'].each { targetName ->
+        project.exec {
+            workingDir pluginRoot
+            configureBuildEnv(delegate)
+            commandLine 'cmake', '--build', buildDir.absolutePath,
+                    '--target', targetName,
+                    '--config', 'Release',
+                    '--parallel', Runtime.runtime.availableProcessors().toString()
+        }
+    }
+
+    def sslLib = new File(buildDir, 'libssl.a')
+    def cryptoLib = new File(buildDir, 'libcrypto.a')
+    if (!sslLib.exists() || !cryptoLib.exists()) {
+        throw new GradleException("Failed to build BoringSSL for ${abi} in ${buildDir}")
+    }
+
+    buildDir
+}
+
+tasks.register('cargoBuild') {
+    doLast {
+        if (ndkDir == null || !ndkDir.exists()) {
+            throw new GradleException('Android NDK not found. Install it via the Android SDK manager.')
+        }
+
+        delete cargoTargetDir
+        delete jniLibsDir
+        jniLibsDir.mkdirs()
+        boringsslBuildRoot.mkdirs()
+
+        project.exec {
+            workingDir rustRoot
+            configureBuildEnv(delegate)
+            commandLine 'cargo', 'fetch', '--locked'
+        }
+
+        def boringsslSourceDir = resolveBoringSslSourceDir()
+        androidTargets.each { abi ->
+            def boringsslDir = buildBoringSslForAbi(boringsslSourceDir, abi)
+
+            project.exec {
+                workingDir rustRoot
+                environment 'CARGO_TARGET_DIR', cargoTargetDir.absolutePath
+                environment 'QUICHE_BSSL_PATH', boringsslDir.absolutePath
+                configureBuildEnv(delegate)
+                commandLine 'cargo', 'ndk',
+                        '-t', abi,
+                        '-o', jniLibsDir.absolutePath,
+                        'build', '--release'
+            }
+        }
+    }
 }
 
 preBuild.dependsOn tasks.named('cargoBuild')

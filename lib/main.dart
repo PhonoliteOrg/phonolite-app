@@ -13,6 +13,7 @@ import 'widgets/ui/obsidian_background.dart';
 import 'widgets/ui/obsidian_theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const PhonoliteApp());
 }

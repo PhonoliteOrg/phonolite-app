@@ -5,6 +5,7 @@ import '../inputs/obsidian_text_field.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import 'confirmation_modal.dart';
 
 class AddToPlaylistModal extends StatefulWidget {
   const AddToPlaylistModal({
@@ -84,18 +85,24 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                         itemCount: filtered.length,
                         separatorBuilder: (context, index) => Divider(
                           height: 1,
-                          color: ObsidianPalette.textMuted.withOpacity(0.25),
+                          color: ObsidianPalette.textMuted.withValues(
+                            alpha: 0.25,
+                          ),
                         ),
                         itemBuilder: (context, index) {
                           final playlist = filtered[index];
-                          final wasInPlaylist =
-                              playlist.trackIds.contains(widget.trackId);
-                          final addedLocally =
-                              _addedPlaylistIds.contains(playlist.id);
-                          final removedLocally =
-                              _removedPlaylistIds.contains(playlist.id);
+                          final wasInPlaylist = playlist.trackIds.contains(
+                            widget.trackId,
+                          );
+                          final addedLocally = _addedPlaylistIds.contains(
+                            playlist.id,
+                          );
+                          final removedLocally = _removedPlaylistIds.contains(
+                            playlist.id,
+                          );
                           final isInPlaylist =
-                              (wasInPlaylist || addedLocally) && !removedLocally;
+                              (wasInPlaylist || addedLocally) &&
+                              !removedLocally;
                           var count = playlist.trackIds.length;
                           if (wasInPlaylist && removedLocally) {
                             count -= 1;
@@ -114,11 +121,22 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                                       : Icons.add_rounded,
                                   color: ObsidianPalette.gold,
                                 ),
-                                if (isInPlaylist && widget.onRemoved != null) ...[
+                                if (isInPlaylist &&
+                                    widget.onRemoved != null) ...[
                                   const SizedBox(width: 8),
                                   ObsidianHudIconButton(
                                     icon: Icons.delete_outline_rounded,
-                                    onPressed: () {
+                                    onPressed: () async {
+                                      final confirmed =
+                                          await ConfirmationModal.show(
+                                            context,
+                                            title: 'Remove song from playlist',
+                                            message:
+                                                'Are you sure you want to remove this song from this playlist?',
+                                          );
+                                      if (!confirmed || !mounted) {
+                                        return;
+                                      }
                                       widget.onRemoved?.call(playlist);
                                       setState(() {
                                         _removedPlaylistIds.add(playlist.id);
@@ -153,8 +171,8 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                 child: Text(
                   'No playlists available.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ObsidianPalette.textMuted,
-                      ),
+                    color: ObsidianPalette.textMuted,
+                  ),
                 ),
               ),
       ),
@@ -189,9 +207,7 @@ class _ModalListRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final titleStyle = theme.textTheme.titleMedium?.copyWith(
-      color: enabled
-          ? ObsidianPalette.textPrimary
-          : ObsidianPalette.textMuted,
+      color: enabled ? ObsidianPalette.textPrimary : ObsidianPalette.textMuted,
       letterSpacing: 0.4,
     );
     final subtitleStyle = theme.textTheme.bodySmall?.copyWith(

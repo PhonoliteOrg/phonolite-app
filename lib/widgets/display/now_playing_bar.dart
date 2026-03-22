@@ -562,12 +562,15 @@ class NowPlayingBar extends StatelessWidget {
                   _CompactFooterRow(
                     sliderTheme: sliderTheme,
                     maxSeconds: maxSeconds,
-                    positionSeconds: positionSeconds,
+                    position: state.position,
+                    duration: state.duration,
+                    animate:
+                        state.track != null &&
+                        state.isPlaying &&
+                        !state.isLoading,
                     bufferedPositionSeconds: bufferedPositionSeconds,
                     onSeek: onSeek,
                     onSeekPreview: onSeekPreview,
-                    positionLabel: _formatTime(state.position),
-                    durationLabel: _formatTime(state.duration),
                     enabled: state.track != null,
                     volume: state.volume,
                     onVolumeChanged: onVolumeChanged,
@@ -628,12 +631,15 @@ class NowPlayingBar extends StatelessWidget {
                   _ProgressBar(
                     sliderTheme: sliderTheme,
                     maxSeconds: maxSeconds,
-                    positionSeconds: positionSeconds,
+                    position: state.position,
+                    duration: state.duration,
+                    animate:
+                        state.track != null &&
+                        state.isPlaying &&
+                        !state.isLoading,
                     bufferedPositionSeconds: bufferedPositionSeconds,
                     onSeek: onSeek,
                     onSeekPreview: onSeekPreview,
-                    positionLabel: _formatTime(state.position),
-                    durationLabel: _formatTime(state.duration),
                     enabled: state.track != null,
                   ),
                 ],
@@ -1058,12 +1064,15 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                           _ProgressBar(
                             sliderTheme: sliderTheme,
                             maxSeconds: maxSeconds,
-                            positionSeconds: positionSeconds,
+                            position: state.position,
+                            duration: state.duration,
+                            animate:
+                                track != null &&
+                                state.isPlaying &&
+                                !state.isLoading,
                             bufferedPositionSeconds: bufferedPositionSeconds,
                             onSeek: onSeek,
                             onSeekPreview: onSeekPreview,
-                            positionLabel: _formatTime(state.position),
-                            durationLabel: _formatTime(state.duration),
                             enabled: track != null,
                           ),
                           SizedBox(height: s(22)),
@@ -1677,16 +1686,16 @@ class _CompactControls extends StatelessWidget {
   }
 }
 
-class _CompactFooterRow extends StatelessWidget {
+class _CompactFooterRow extends StatefulWidget {
   const _CompactFooterRow({
     required this.sliderTheme,
     required this.maxSeconds,
-    required this.positionSeconds,
+    required this.position,
+    required this.duration,
+    required this.animate,
     required this.bufferedPositionSeconds,
     required this.onSeek,
     required this.onSeekPreview,
-    required this.positionLabel,
-    required this.durationLabel,
     required this.enabled,
     required this.volume,
     required this.onVolumeChanged,
@@ -1694,20 +1703,103 @@ class _CompactFooterRow extends StatelessWidget {
 
   final SliderThemeData sliderTheme;
   final double maxSeconds;
-  final double positionSeconds;
+  final Duration position;
+  final Duration duration;
+  final bool animate;
   final double bufferedPositionSeconds;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekPreview;
-  final String positionLabel;
-  final String durationLabel;
   final bool enabled;
   final double volume;
   final ValueChanged<double> onVolumeChanged;
 
   @override
+  State<_CompactFooterRow> createState() => _CompactFooterRowState();
+}
+
+class _CompactFooterRowState extends State<_CompactFooterRow> {
+  Timer? _timer;
+  Duration _displayPosition = Duration.zero;
+  DateTime? _lastTickAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayPosition = widget.position;
+    _lastTickAt = DateTime.now();
+    _timer = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
+  }
+
+  @override
+  void didUpdateWidget(covariant _CompactFooterRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final deltaMs =
+        (widget.position.inMilliseconds - _displayPosition.inMilliseconds)
+            .abs();
+    if (!widget.animate ||
+        !oldWidget.animate ||
+        widget.duration != oldWidget.duration ||
+        deltaMs >= 600) {
+      _displayPosition = widget.position;
+    }
+    _lastTickAt = DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _tick() {
+    final now = DateTime.now();
+    final lastTickAt = _lastTickAt;
+    _lastTickAt = now;
+    if (!mounted || lastTickAt == null) {
+      return;
+    }
+    if (!widget.animate) {
+      if (_displayPosition != widget.position) {
+        setState(() {
+          _displayPosition = widget.position;
+        });
+      }
+      return;
+    }
+
+    var elapsedMs = now.difference(lastTickAt).inMilliseconds;
+    if (elapsedMs <= 0) {
+      return;
+    }
+    if (elapsedMs > 500) {
+      elapsedMs = 250;
+    }
+
+    final durationMs = widget.duration.inMilliseconds;
+    var nextMs = _displayPosition.inMilliseconds + elapsedMs;
+    if (durationMs > 0 && nextMs > durationMs) {
+      nextMs = durationMs;
+    }
+    final floorMs = widget.position.inMilliseconds;
+    if (nextMs < floorMs) {
+      nextMs = floorMs;
+    }
+    if (nextMs == _displayPosition.inMilliseconds) {
+      return;
+    }
+    setState(() {
+      _displayPosition = Duration(milliseconds: nextMs);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final progressTheme = sliderTheme.copyWith(
+    final positionSeconds = _displayPosition.inMilliseconds / 1000.0;
+    final bufferedPositionSeconds = math
+        .max(widget.bufferedPositionSeconds, positionSeconds)
+        .clamp(0.0, widget.maxSeconds);
+    final progressTheme = widget.sliderTheme.copyWith(
       trackHeight: s(5),
       thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(6)),
       overlayShape: SliderComponentShape.noOverlay,
@@ -1715,7 +1807,7 @@ class _CompactFooterRow extends StatelessWidget {
       activeTrackColor: ObsidianPalette.gold,
       secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
     );
-    final volumeTheme = sliderTheme.copyWith(
+    final volumeTheme = widget.sliderTheme.copyWith(
       trackHeight: s(4),
       thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(5)),
       overlayShape: SliderComponentShape.noOverlay,
@@ -1735,15 +1827,15 @@ class _CompactFooterRow extends StatelessWidget {
                   data: progressTheme,
                   child: Slider(
                     value: positionSeconds,
-                    max: maxSeconds,
+                    max: widget.maxSeconds,
                     secondaryTrackValue: bufferedPositionSeconds,
-                    onChanged: enabled
-                        ? (value) => onSeekPreview(
+                    onChanged: widget.enabled
+                        ? (value) => widget.onSeekPreview(
                             Duration(milliseconds: (value * 1000).round()),
                           )
                         : null,
-                    onChangeEnd: enabled
-                        ? (value) => onSeek(
+                    onChangeEnd: widget.enabled
+                        ? (value) => widget.onSeek(
                             Duration(milliseconds: (value * 1000).round()),
                           )
                         : null,
@@ -1755,7 +1847,7 @@ class _CompactFooterRow extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    positionLabel,
+                    _formatTime(_displayPosition),
                     style: GoogleFonts.rajdhani(
                       fontSize: s(12),
                       letterSpacing: s(0.8),
@@ -1763,7 +1855,7 @@ class _CompactFooterRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    durationLabel,
+                    _formatTime(widget.duration),
                     style: GoogleFonts.rajdhani(
                       fontSize: s(12),
                       letterSpacing: s(0.8),
@@ -1789,7 +1881,10 @@ class _CompactFooterRow extends StatelessWidget {
               Expanded(
                 child: SliderTheme(
                   data: volumeTheme,
-                  child: Slider(value: volume, onChanged: onVolumeChanged),
+                  child: Slider(
+                    value: widget.volume,
+                    onChanged: widget.onVolumeChanged,
+                  ),
                 ),
               ),
             ],
@@ -2145,33 +2240,116 @@ class _QualityBadgeState extends State<_QualityBadge> {
   }
 }
 
-class _ProgressBar extends StatelessWidget {
+class _ProgressBar extends StatefulWidget {
   const _ProgressBar({
     required this.sliderTheme,
     required this.maxSeconds,
-    required this.positionSeconds,
+    required this.position,
+    required this.duration,
+    required this.animate,
     required this.bufferedPositionSeconds,
     required this.onSeek,
     required this.onSeekPreview,
-    required this.positionLabel,
-    required this.durationLabel,
     required this.enabled,
   });
 
   final SliderThemeData sliderTheme;
   final double maxSeconds;
-  final double positionSeconds;
+  final Duration position;
+  final Duration duration;
+  final bool animate;
   final double bufferedPositionSeconds;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekPreview;
-  final String positionLabel;
-  final String durationLabel;
   final bool enabled;
+
+  @override
+  State<_ProgressBar> createState() => _ProgressBarState();
+}
+
+class _ProgressBarState extends State<_ProgressBar> {
+  Timer? _timer;
+  Duration _displayPosition = Duration.zero;
+  DateTime? _lastTickAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayPosition = widget.position;
+    _lastTickAt = DateTime.now();
+    _timer = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final deltaMs =
+        (widget.position.inMilliseconds - _displayPosition.inMilliseconds)
+            .abs();
+    if (!widget.animate ||
+        !oldWidget.animate ||
+        widget.duration != oldWidget.duration ||
+        deltaMs >= 600) {
+      _displayPosition = widget.position;
+    }
+    _lastTickAt = DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _tick() {
+    final now = DateTime.now();
+    final lastTickAt = _lastTickAt;
+    _lastTickAt = now;
+    if (!mounted || lastTickAt == null) {
+      return;
+    }
+    if (!widget.animate) {
+      if (_displayPosition != widget.position) {
+        setState(() {
+          _displayPosition = widget.position;
+        });
+      }
+      return;
+    }
+
+    var elapsedMs = now.difference(lastTickAt).inMilliseconds;
+    if (elapsedMs <= 0) {
+      return;
+    }
+    if (elapsedMs > 500) {
+      elapsedMs = 250;
+    }
+
+    final durationMs = widget.duration.inMilliseconds;
+    var nextMs = _displayPosition.inMilliseconds + elapsedMs;
+    if (durationMs > 0 && nextMs > durationMs) {
+      nextMs = durationMs;
+    }
+    final floorMs = widget.position.inMilliseconds;
+    if (nextMs < floorMs) {
+      nextMs = floorMs;
+    }
+    if (nextMs == _displayPosition.inMilliseconds) {
+      return;
+    }
+    setState(() {
+      _displayPosition = Duration(milliseconds: nextMs);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final progressTheme = sliderTheme.copyWith(
+    final positionSeconds = _displayPosition.inMilliseconds / 1000.0;
+    final bufferedPositionSeconds = math
+        .max(widget.bufferedPositionSeconds, positionSeconds)
+        .clamp(0.0, widget.maxSeconds);
+    final progressTheme = widget.sliderTheme.copyWith(
       trackHeight: s(6),
       thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(7)),
       thumbColor: Colors.white,
@@ -2187,7 +2365,7 @@ class _ProgressBar extends StatelessWidget {
           SizedBox(
             width: s(42),
             child: Text(
-              positionLabel,
+              _formatTime(_displayPosition),
               textAlign: TextAlign.center,
               style: GoogleFonts.rajdhani(
                 fontSize: s(13),
@@ -2204,15 +2382,15 @@ class _ProgressBar extends StatelessWidget {
                 data: progressTheme,
                 child: Slider(
                   value: positionSeconds,
-                  max: maxSeconds,
+                  max: widget.maxSeconds,
                   secondaryTrackValue: bufferedPositionSeconds,
-                  onChanged: enabled
-                      ? (value) => onSeekPreview(
+                  onChanged: widget.enabled
+                      ? (value) => widget.onSeekPreview(
                           Duration(milliseconds: (value * 1000).round()),
                         )
                       : null,
-                  onChangeEnd: enabled
-                      ? (value) => onSeek(
+                  onChangeEnd: widget.enabled
+                      ? (value) => widget.onSeek(
                           Duration(milliseconds: (value * 1000).round()),
                         )
                       : null,
@@ -2224,7 +2402,7 @@ class _ProgressBar extends StatelessWidget {
           SizedBox(
             width: s(42),
             child: Text(
-              durationLabel,
+              _formatTime(widget.duration),
               textAlign: TextAlign.center,
               style: GoogleFonts.rajdhani(
                 fontSize: s(13),

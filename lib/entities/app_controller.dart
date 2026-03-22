@@ -146,13 +146,23 @@ class AppController {
     _audioEngine = AudioEngine(
       onMessage: _pushMessage,
       onStats: (position, bufferedAhead, bitrateKbps, rttMs) {
+        if (!_audioOutputStarted &&
+            _playbackState.isPlaying &&
+            !_audioEngine.isPaused) {
+          _audioOutputStarted = true;
+          _updatePlayback(isLoading: false, nowPlaying: false);
+        }
         final duration = _playbackState.duration;
-        final clamped = duration == Duration.zero
+        final rawClamped = duration == Duration.zero
             ? position
             : position > duration
             ? duration
             : position;
-        _actualPositionMs = clamped.inMilliseconds;
+        final correctedPositionMs = _correctReportedPositionMs(
+          rawClamped.inMilliseconds,
+        );
+        final clamped = Duration(milliseconds: correctedPositionMs);
+        _actualPositionMs = correctedPositionMs;
         _updateDisplayPosition(_actualPositionMs, bufferedAhead.inMilliseconds);
         final bufferedTotal = clamped + bufferedAhead;
         final bufferRatio = duration == Duration.zero
@@ -198,6 +208,7 @@ class AppController {
     _configureNowPlaying();
     _configureCarPlay();
     _startHealthMonitor();
+    _startDisplayPositionTicker();
     _customShuffleLoadFuture = _loadCustomShuffleSettings();
     _playbackPreferencesLoadFuture = _loadPlaybackPreferences();
   }
@@ -248,6 +259,7 @@ class AppController {
   int? _inlineSeekEpoch;
   Timer? _inlineSeekWatchdog;
   Timer? _seekDebounceTimer;
+  Timer? _displayPositionTimer;
   DateTime? _lastSeekCommitAt;
   int? _pendingSeekCommitMs;
   String? _pendingSeekCommitTrackId;
@@ -258,6 +270,7 @@ class AppController {
   bool _audioOutputStarted = false;
   int _displayPositionMs = 0;
   int _actualPositionMs = 0;
+  DateTime? _lastDisplayTickAt;
   int _nowPlayingEpoch = 0;
   Uint8List? _nowPlayingArtworkBytes;
   String? _nowPlayingArtworkUrl;
@@ -411,6 +424,8 @@ class AppController {
     _clearNowPlaying();
     _healthTimer?.cancel();
     _healthTimer = null;
+    _displayPositionTimer?.cancel();
+    _displayPositionTimer = null;
     _isScrubbing = false;
     _scrubWasPlaying = false;
     _scrubPaused = false;
@@ -634,7 +649,7 @@ class AppController {
   }
 
   void _configureNowPlaying() {
-    if (!Platform.isIOS) {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
     _nowPlayingReady = true;
@@ -683,7 +698,7 @@ class AppController {
   }
 
   void _configureCarPlay() {
-    if (!Platform.isIOS) {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
     _carPlayChannel.setMethodCallHandler((call) async {
@@ -745,10 +760,11 @@ class AppController {
           return null;
       }
     });
+    _notifyCarPlayAuthState(_authState.isAuthorized);
   }
 
   void _notifyCarPlayAuthState(bool authorized) {
-    if (!Platform.isIOS) {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
     _carPlayChannel
@@ -914,7 +930,7 @@ class AppController {
   }
 
   Future<void> _clearNowPlaying() async {
-    if (!Platform.isIOS) {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
     try {
@@ -923,7 +939,7 @@ class AppController {
   }
 
   Future<void> _pushNowPlayingUpdate({bool force = false}) async {
-    if (!Platform.isIOS || !_nowPlayingReady) {
+    if (!(Platform.isIOS || Platform.isAndroid) || !_nowPlayingReady) {
       return;
     }
     final track = _playbackState.track;
@@ -989,7 +1005,7 @@ class AppController {
   }
 
   void _maybeFetchNowPlayingArtwork(String? artworkUrl, String token) {
-    if (!Platform.isIOS) {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
     if (artworkUrl == null || artworkUrl.isEmpty) {
@@ -1880,7 +1896,7 @@ class AppController {
 
   Future<void> stop() async {
     try {
-      _displayPositionMs = 0;
+      _resetTrackTransitionState();
       final shouldDisableShuffle =
           _playbackState.shuffleMode == ShuffleMode.album ||
           _playbackState.shuffleMode == ShuffleMode.artist ||
@@ -1906,7 +1922,6 @@ class AppController {
       );
       _audioEngine.stop();
       _audioOutputStarted = false;
-      _autoAdvanceInFlight = false;
       _closeStreamControl();
     } on ApiException catch (err) {
       _handleApiError(err, context: 'stop');
@@ -2081,7 +2096,7 @@ class AppController {
     _beginScrub();
     _seeking = true;
     _seekTargetMs = clamped.inMilliseconds;
-    _displayPositionMs = clamped.inMilliseconds;
+    _resetPlaybackPositionTracking(position: clamped);
     _updatePlayback(
       position: clamped,
       isPlaying: _playbackState.isPlaying,
@@ -2104,7 +2119,7 @@ class AppController {
     _seekTargetMs = clamped.inMilliseconds;
     _audioOutputStarted = false;
     _bumpNowPlayingEpoch();
-    _displayPositionMs = clamped.inMilliseconds;
+    _resetPlaybackPositionTracking(position: clamped);
     _updatePlayback(position: clamped, isPlaying: wasPlaying, bufferRatio: 0.0);
     _scheduleSeekCommit(clamped);
     await _pushNowPlayingUpdate(force: true);
@@ -2244,6 +2259,32 @@ class AppController {
     _inlineSeekEpoch = null;
   }
 
+  void _resetPlaybackPositionTracking({Duration position = Duration.zero}) {
+    final positionMs = max(0, position.inMilliseconds);
+    _displayPositionMs = positionMs;
+    _actualPositionMs = positionMs;
+    _lastDisplayTickAt = DateTime.now();
+  }
+
+  void _resetTrackTransitionState({Duration position = Duration.zero}) {
+    final positionMs = max(0, position.inMilliseconds);
+    _clearInlineSeekWatchdog();
+    _isScrubbing = false;
+    _scrubWasPlaying = false;
+    _scrubPaused = false;
+    _resumeAfterSeek = false;
+    _seeking = false;
+    _seekTargetMs = positionMs;
+    _pendingSeekCommitMs = null;
+    _pendingSeekCommitTrackId = null;
+    _lastSeekTrackId = null;
+    _preferRestartForNextSeekCommit = false;
+    _ignoreCompleteUntil = null;
+    _suppressAutoAdvanceUntil = null;
+    _autoAdvanceInFlight = false;
+    _resetPlaybackPositionTracking(position: Duration(milliseconds: positionMs));
+  }
+
   void _restartPlaybackForSeek({
     required Track track,
     required Duration target,
@@ -2337,6 +2378,23 @@ class AppController {
     if (_displayPositionMs < 0) {
       _displayPositionMs = 0;
     }
+  }
+
+  int _correctReportedPositionMs(int reportedMs) {
+    if (_isScrubbing || _seeking) {
+      return reportedMs;
+    }
+    if (!_playbackState.isPlaying || _audioEngine.isPaused) {
+      return reportedMs;
+    }
+    final floorMs = max(_actualPositionMs, _displayPositionMs);
+    if (floorMs <= 0) {
+      return reportedMs;
+    }
+    if (reportedMs < floorMs) {
+      return floorMs;
+    }
+    return reportedMs;
   }
 
   double _displayBufferRatio({
@@ -2731,7 +2789,7 @@ class AppController {
       'Now playing: id=${track.id} artist="${track.artist}" album="${track.album}" albumId="${track.albumId ?? ''}"',
     );
     _bumpNowPlayingEpoch();
-    _displayPositionMs = 0;
+    _resetTrackTransitionState();
     _updatePlayback(
       track: track,
       isPlaying: true,
@@ -3284,6 +3342,7 @@ class AppController {
     _lastStartPlaybackAt = now;
     _lastStartPlaybackTrackId = track.id;
     _lastStartPlaybackOffsetMs = offsetMs;
+    _resetPlaybackPositionTracking(position: startOffset);
     () async {
       try {
         _logPlaybackContext();
@@ -3367,6 +3426,56 @@ class AppController {
       (_) => _pollHealth(),
     );
     _pollHealth();
+  }
+
+  void _startDisplayPositionTicker() {
+    _displayPositionTimer?.cancel();
+    _lastDisplayTickAt = DateTime.now();
+    _displayPositionTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => _tickDisplayPosition(),
+    );
+  }
+
+  void _tickDisplayPosition() {
+    final now = DateTime.now();
+    final lastTickAt = _lastDisplayTickAt;
+    _lastDisplayTickAt = now;
+    if (lastTickAt == null) {
+      return;
+    }
+    if (_isScrubbing || _seeking) {
+      return;
+    }
+    if (!_playbackState.isPlaying ||
+        _playbackState.isLoading ||
+        _audioEngine.isPaused ||
+        !_audioOutputStarted) {
+      return;
+    }
+
+    var elapsedMs = now.difference(lastTickAt).inMilliseconds;
+    if (elapsedMs <= 0) {
+      return;
+    }
+    if (elapsedMs > 500) {
+      elapsedMs = 250;
+    }
+
+    final durationMs = _playbackState.duration.inMilliseconds;
+    var nextPositionMs = _displayPositionMs + elapsedMs;
+    if (durationMs > 0 && nextPositionMs > durationMs) {
+      nextPositionMs = durationMs;
+    }
+    if (nextPositionMs <= _displayPositionMs) {
+      return;
+    }
+
+    _displayPositionMs = nextPositionMs;
+    if (_actualPositionMs < nextPositionMs) {
+      _actualPositionMs = nextPositionMs;
+    }
+    _updatePlayback(position: Duration(milliseconds: nextPositionMs));
   }
 
   Future<void> _pollHealth() async {
