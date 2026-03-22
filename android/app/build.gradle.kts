@@ -39,6 +39,23 @@ android {
     }
 }
 
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.media:media:1.7.0")
+}
+
 flutter {
     source = "../.."
+}
+
+val copyReleaseApk by tasks.registering(Copy::class) {
+    dependsOn("assembleRelease")
+    val outputDir = layout.buildDirectory.dir("outputs/flutter-apk")
+    from(outputDir.map { it.file("app-release.apk") })
+    into(outputDir)
+    rename { "phonolite-release.apk" }
+}
+
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    finalizedBy(copyReleaseApk)
 }

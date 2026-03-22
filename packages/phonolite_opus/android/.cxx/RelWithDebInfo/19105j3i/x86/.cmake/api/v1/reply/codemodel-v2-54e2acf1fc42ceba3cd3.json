@@ -1,0 +1,104 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-RelWithDebInfo-d0094a50bb2071803777.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.6.0"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						1
+					]
+				},
+				{
+					"build" : "opus",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-opus-RelWithDebInfo-707762036570b26d8d76.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "C:/Users/aruem/Desktop/phonolite_project/phonolite-app/packages/phonolite_opus/third_party/opus",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "RelWithDebInfo",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "phonolite_opus",
+					"targetIndexes" : 
+					[
+						1
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "Opus",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "opus::@27c8c1d919c410202cbb",
+					"jsonFile" : "target-opus-RelWithDebInfo-79e8fcefd933a76f5988.json",
+					"name" : "opus",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "phonolite_opus::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-phonolite_opus-RelWithDebInfo-9785e05554dadd47436c.json",
+					"name" : "phonolite_opus",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/aruem/Desktop/phonolite_project/phonolite-app/packages/phonolite_opus/android/.cxx/RelWithDebInfo/19105j3i/x86",
+		"source" : "C:/Users/aruem/Desktop/phonolite_project/phonolite-app/packages/phonolite_opus/android/src/main/cpp"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}
