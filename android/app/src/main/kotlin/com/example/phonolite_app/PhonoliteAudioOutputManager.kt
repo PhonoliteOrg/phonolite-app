@@ -241,30 +241,50 @@ class PhonoliteAudioOutputManager(
       return devices
     }
     val seenIds = HashSet<Int>()
+    val seenRouteKeys = HashSet<String>()
     audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).forEach { device ->
       if (!seenIds.add(device.id)) {
         return@forEach
       }
+      val entry = outputDeviceEntry(device) ?: return@forEach
+      if (!seenRouteKeys.add(entry.routeKey)) {
+        return@forEach
+      }
       devices.add(
         mapOf(
-          "id" to device.id,
-          "name" to deviceDisplayName(device),
+          "id" to entry.id,
+          "name" to entry.name,
         ),
       )
     }
     return devices
   }
 
-  private fun deviceDisplayName(device: AudioDeviceInfo): String {
+  private data class OutputDeviceEntry(
+    val id: Int,
+    val name: String,
+    val routeKey: String,
+  )
+
+  private fun outputDeviceEntry(device: AudioDeviceInfo): OutputDeviceEntry? {
+    val name = deviceDisplayName(device) ?: return null
+    val routeKey =
+      if (isBuiltInOutputType(device.type)) {
+        "builtin:$name"
+      } else {
+        "device:${device.id}"
+      }
+    return OutputDeviceEntry(device.id, name, routeKey)
+  }
+
+  private fun deviceDisplayName(device: AudioDeviceInfo): String? {
     val label = device.productName?.toString()?.trim().orEmpty()
-    if (label.isNotEmpty()) {
-      return label
-    }
     return when (device.type) {
-      AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth Audio"
-      AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth Headset"
       AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Phone Earpiece"
       AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Device Speaker"
+      AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE -> "Device Speaker"
+      AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> label.ifEmpty { "Bluetooth Audio" }
+      AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> label.ifEmpty { "Bluetooth Headset" }
       AudioDeviceInfo.TYPE_DOCK -> "Dock"
       AudioDeviceInfo.TYPE_HDMI,
       AudioDeviceInfo.TYPE_HDMI_ARC,
@@ -272,12 +292,26 @@ class PhonoliteAudioOutputManager(
       AudioDeviceInfo.TYPE_LINE_ANALOG,
       AudioDeviceInfo.TYPE_LINE_DIGITAL -> "Line Out"
       AudioDeviceInfo.TYPE_USB_DEVICE,
-      AudioDeviceInfo.TYPE_USB_HEADSET -> "USB Audio"
-      AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Headphones"
-      AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired Headset"
-      else -> "Output ${device.id}"
+      AudioDeviceInfo.TYPE_USB_HEADSET -> label.ifEmpty { "USB Audio" }
+      AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> label.ifEmpty { "Headphones" }
+      AudioDeviceInfo.TYPE_WIRED_HEADSET -> label.ifEmpty { "Wired Headset" }
+      AudioDeviceInfo.TYPE_AUX_LINE -> label.ifEmpty { "Aux Output" }
+      AudioDeviceInfo.TYPE_HEARING_AID -> label.ifEmpty { "Hearing Aid" }
+      AudioDeviceInfo.TYPE_BUS,
+      AudioDeviceInfo.TYPE_REMOTE_SUBMIX,
+      AudioDeviceInfo.TYPE_TELEPHONY,
+      AudioDeviceInfo.TYPE_UNKNOWN -> null
+      else -> label.ifEmpty { "Output ${device.id}" }
     }
   }
+
+  private fun isBuiltInOutputType(type: Int): Boolean =
+    when (type) {
+      AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+      AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+      AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE -> true
+      else -> false
+    }
 
   private class AudioOutputSession(
     audioManager: AudioManager,
