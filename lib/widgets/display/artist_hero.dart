@@ -14,12 +14,14 @@ class ArtistHero extends StatelessWidget {
     required this.coverUrl,
     required this.bannerUrl,
     required this.headers,
+    this.trailing,
   });
 
   final Artist artist;
   final String? coverUrl;
   final String? bannerUrl;
   final Map<String, String> headers;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +73,10 @@ class ArtistHero extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [bgDark.withOpacity(0.0), bgDark.withOpacity(0.85)],
+                  colors: [
+                    bgDark.withValues(alpha: 0.0),
+                    bgDark.withValues(alpha: 0.85),
+                  ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -84,8 +89,15 @@ class ArtistHero extends StatelessWidget {
             bottom: 0,
             child: Container(width: s(2), color: accentGold),
           ),
+          if (trailing != null)
+            Positioned(top: s(16), right: s(16), child: trailing!),
           Padding(
-            padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),
+            padding: EdgeInsets.fromLTRB(
+              s(24),
+              s(20),
+              s(20) + (trailing != null ? s(56) : 0),
+              s(20),
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

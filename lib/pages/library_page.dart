@@ -8,12 +8,14 @@ import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/artist_card.dart';
+import '../widgets/display/artist_row_tile.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/inputs/search_hud.dart';
 import '../widgets/layout/library_header.dart';
 import '../widgets/layout/search_results_sliver.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
+import '../widgets/ui/collection_view_toggle_button.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
 
@@ -54,7 +56,9 @@ class _LibraryPageState extends State<LibraryPage> {
     if (controller.artists.isEmpty) {
       unawaited(controller.loadArtists());
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMoreArtists());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybeLoadMoreArtists(),
+    );
   }
 
   @override
@@ -97,145 +101,219 @@ class _LibraryPageState extends State<LibraryPage> {
                               (_) => _maybeLoadMoreArtists(),
                             );
                           }
-                          return CustomScrollView(
-                            controller: _scrollController,
-                            slivers: [
-                              SliverPadding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(20, 24, 20, 12),
-                                sliver: SliverToBoxAdapter(
-                                  child:
-                                      LibraryHeader(moduleCount: artists.length),
-                                ),
-                              ),
-                              SliverPadding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                                sliver: SliverToBoxAdapter(
-                                  child: SearchHud(
-                                    controller: _searchController,
-                                    onSubmit: () => _runSearch(controller),
-                                    onChanged: () => _queueSearch(controller),
-                                    onClear: () => _clearSearch(controller),
-                                  ),
-                                ),
-                              ),
-                              if (query.isNotEmpty && query.length < 2)
-                                SliverPadding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                                  sliver: SliverToBoxAdapter(
-                                    child: Text(
-                                      'Type at least 2 characters',
-                                      style: GoogleFonts.rajdhani(
-                                        color: Colors.white54,
-                                        fontSize: 14,
-                                        letterSpacing: 1.2,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                          return StreamBuilder<bool>(
+                            stream: controller.collectionListModeStream,
+                            initialData: controller.collectionListMode,
+                            builder: (context, viewModeSnapshot) {
+                              final showCollectionList =
+                                  viewModeSnapshot.data ??
+                                  controller.collectionListMode;
+                              return CustomScrollView(
+                                controller: _scrollController,
+                                slivers: [
+                                  SliverPadding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      24,
+                                      20,
+                                      12,
                                     ),
-                                  ),
-                                )
-                              else if (query.isNotEmpty && isSearchLoading)
-                                loadingSliver()
-                              else if (query.isNotEmpty && results.isNotEmpty)
-                                SliverPadding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                                  sliver: SearchResultsSliver(
-                                    results: results,
-                                    onSelect: (result) =>
-                                        _handleSearchSelect(controller, result),
-                                  ),
-                                )
-                              else if (query.isNotEmpty && results.isEmpty)
-                                SliverPadding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                                  sliver: SliverToBoxAdapter(
-                                    child: Text(
-                                      'No Results',
-                                      style: GoogleFonts.rajdhani(
-                                        color: Colors.white54,
-                                        fontSize: 14,
-                                        letterSpacing: 1.2,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              else if (artists.isEmpty && isLoading)
-                                loadingSliver()
-                              else if (artists.isEmpty)
-                                const SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: EmptyStateText(
-                                    title: 'No artists',
-                                    message:
-                                        'Add music to your library to get started.',
-                                  ),
-                                )
-                              else ...[
-                                SliverPadding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                                  sliver: SliverGrid(
-                                    gridDelegate:
-                                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                                      maxCrossAxisExtent: 240,
-                                      mainAxisSpacing: 16,
-                                      crossAxisSpacing: 16,
-                                      childAspectRatio: 0.82,
-                                    ),
-                                    delegate: SliverChildBuilderDelegate(
-                                      (context, index) {
-                                        final artist = artists[index];
-                                        return ArtistCard(
-                                          artist: artist,
-                                          coverUrl:
-                                              artist.logoRef == null ||
-                                                      artist.logoRef!.isEmpty
-                                                  ? null
-                                                  : controller.connection
-                                                      .buildArtistCoverUrl(
-                                                        artist.id,
-                                                        kind: 'logo',
-                                                      ),
-                                          headers: authHeadersMap,
-                                          onTap: () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    ArtistDetailScreen(
-                                                  artist: artist,
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        );
-                                      },
-                                      childCount: artists.length,
-                                    ),
-                                  ),
-                                ),
-                                if (isLoading)
-                                  const SliverToBoxAdapter(
-                                    child: Padding(
-                                      padding:
-                                          EdgeInsets.fromLTRB(20, 0, 20, 32),
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
+                                    sliver: SliverToBoxAdapter(
+                                      child: LibraryHeader(
+                                        moduleCount: artists.length,
+                                        trailing: CollectionViewToggleButton(
+                                          isListView: showCollectionList,
+                                          onPressed: controller
+                                              .toggleCollectionListMode,
+                                          semanticLabel:
+                                              'Library collection view',
                                         ),
                                       ),
                                     ),
                                   ),
-                              ],
-                            ],
+                                  SliverPadding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      0,
+                                      20,
+                                      20,
+                                    ),
+                                    sliver: SliverToBoxAdapter(
+                                      child: SearchHud(
+                                        controller: _searchController,
+                                        onSubmit: () => _runSearch(controller),
+                                        onChanged: () =>
+                                            _queueSearch(controller),
+                                        onClear: () => _clearSearch(controller),
+                                      ),
+                                    ),
+                                  ),
+                                  if (query.isNotEmpty && query.length < 2)
+                                    SliverPadding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        24,
+                                        20,
+                                        0,
+                                      ),
+                                      sliver: SliverToBoxAdapter(
+                                        child: Text(
+                                          'Type at least 2 characters',
+                                          style: GoogleFonts.rajdhani(
+                                            color: Colors.white54,
+                                            fontSize: 14,
+                                            letterSpacing: 1.2,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  else if (query.isNotEmpty && isSearchLoading)
+                                    loadingSliver()
+                                  else if (query.isNotEmpty &&
+                                      results.isNotEmpty)
+                                    SliverPadding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        0,
+                                        20,
+                                        24,
+                                      ),
+                                      sliver: SearchResultsSliver(
+                                        results: results,
+                                        onSelect: (result) =>
+                                            _handleSearchSelect(
+                                              controller,
+                                              result,
+                                            ),
+                                      ),
+                                    )
+                                  else if (query.isNotEmpty && results.isEmpty)
+                                    SliverPadding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        24,
+                                        20,
+                                        0,
+                                      ),
+                                      sliver: SliverToBoxAdapter(
+                                        child: Text(
+                                          'No Results',
+                                          style: GoogleFonts.rajdhani(
+                                            color: Colors.white54,
+                                            fontSize: 14,
+                                            letterSpacing: 1.2,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  else if (artists.isEmpty && isLoading)
+                                    loadingSliver()
+                                  else if (artists.isEmpty)
+                                    const SliverFillRemaining(
+                                      hasScrollBody: false,
+                                      child: EmptyStateText(
+                                        title: 'No artists',
+                                        message:
+                                            'Add music to your library to get started.',
+                                      ),
+                                    )
+                                  else ...[
+                                    SliverPadding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        0,
+                                        20,
+                                        32,
+                                      ),
+                                      sliver: showCollectionList
+                                          ? SliverList(
+                                              delegate:
+                                                  SliverChildBuilderDelegate(
+                                                    (context, index) {
+                                                      if (index.isOdd) {
+                                                        return const Divider(
+                                                          height: 1,
+                                                        );
+                                                      }
+                                                      final artist =
+                                                          artists[index ~/ 2];
+                                                      return ArtistRowTile(
+                                                        artist: artist,
+                                                        coverUrl:
+                                                            _artistCoverUrl(
+                                                              controller,
+                                                              artist,
+                                                            ),
+                                                        headers: authHeadersMap,
+                                                        onTap: () =>
+                                                            _openArtistDetail(
+                                                              artist,
+                                                            ),
+                                                      );
+                                                    },
+                                                    childCount: artists.isEmpty
+                                                        ? 0
+                                                        : artists.length * 2 -
+                                                              1,
+                                                  ),
+                                            )
+                                          : SliverGrid(
+                                              gridDelegate:
+                                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                                    maxCrossAxisExtent: 240,
+                                                    mainAxisSpacing: 16,
+                                                    crossAxisSpacing: 16,
+                                                    childAspectRatio: 0.82,
+                                                  ),
+                                              delegate:
+                                                  SliverChildBuilderDelegate(
+                                                    (context, index) {
+                                                      final artist =
+                                                          artists[index];
+                                                      return ArtistCard(
+                                                        artist: artist,
+                                                        coverUrl:
+                                                            _artistCoverUrl(
+                                                              controller,
+                                                              artist,
+                                                            ),
+                                                        headers: authHeadersMap,
+                                                        onTap: () =>
+                                                            _openArtistDetail(
+                                                              artist,
+                                                            ),
+                                                      );
+                                                    },
+                                                    childCount: artists.length,
+                                                  ),
+                                            ),
+                                    ),
+                                    if (isLoading)
+                                      const SliverToBoxAdapter(
+                                        child: Padding(
+                                          padding: EdgeInsets.fromLTRB(
+                                            20,
+                                            0,
+                                            20,
+                                            32,
+                                          ),
+                                          child: Center(
+                                            child: SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ],
+                              );
+                            },
                           );
                         },
                       );
@@ -305,6 +383,19 @@ class _LibraryPageState extends State<LibraryPage> {
     unawaited(controller.loadMoreArtists());
   }
 
+  String? _artistCoverUrl(AppController controller, Artist artist) {
+    if (artist.logoRef == null || artist.logoRef!.isEmpty) {
+      return null;
+    }
+    return controller.connection.buildArtistCoverUrl(artist.id, kind: 'logo');
+  }
+
+  void _openArtistDetail(Artist artist) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ArtistDetailScreen(artist: artist)),
+    );
+  }
+
   Future<void> _handleSearchSelect(
     AppController controller,
     SearchResult result,
@@ -325,8 +416,9 @@ class _LibraryPageState extends State<LibraryPage> {
           break;
         case 'album':
           final album = await controller.connection.fetchAlbumById(result.id);
-          final artist =
-              await controller.connection.fetchArtistById(album.artistId);
+          final artist = await controller.connection.fetchArtistById(
+            album.artistId,
+          );
           if (!mounted) {
             return;
           }
@@ -339,10 +431,8 @@ class _LibraryPageState extends State<LibraryPage> {
           );
           navigator.push(
             MaterialPageRoute(
-              builder: (_) => AlbumDetailScreen(
-                album: album,
-                artistName: album.artist,
-              ),
+              builder: (_) =>
+                  AlbumDetailScreen(album: album, artistName: album.artist),
             ),
           );
           break;
@@ -353,8 +443,9 @@ class _LibraryPageState extends State<LibraryPage> {
             return;
           }
           final album = await controller.connection.fetchAlbumById(albumId);
-          final artist =
-              await controller.connection.fetchArtistById(album.artistId);
+          final artist = await controller.connection.fetchArtistById(
+            album.artistId,
+          );
           await controller.loadTracks(album.id);
           await controller.queueAlbum(album.id, startTrackId: track.id);
           if (!mounted) {
@@ -371,7 +462,9 @@ class _LibraryPageState extends State<LibraryPage> {
             MaterialPageRoute(
               builder: (_) => AlbumDetailScreen(
                 album: album,
-                artistName: album.artist.isNotEmpty ? album.artist : track.artist,
+                artistName: album.artist.isNotEmpty
+                    ? album.artist
+                    : track.artist,
               ),
             ),
           );
