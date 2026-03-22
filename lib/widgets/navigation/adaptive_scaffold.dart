@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../display/now_playing_bar.dart';
-import '../layouts/app_scope.dart';
 import '../layouts/obsidian_scale.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
@@ -31,6 +30,7 @@ class AdaptiveScaffold extends StatelessWidget {
 
   static const double _nowPlayingPadding = 22;
   static const double _navBarHeight = 64;
+  static const double _wideLayoutWidth = 980;
 
   final List<NavigationDestination> destinations;
   final int selectedIndex;
@@ -56,15 +56,16 @@ class AdaptiveScaffold extends StatelessWidget {
     double s(double value) => value * scale;
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
-    final isWide = screenWidth >= 900;
+    final isWide = screenWidth >= _wideLayoutWidth;
     final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
     final showMiniBar = !isWide;
-    final miniBarHeight =
-        showMiniBar ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12) : 0.0;
-    final bottomInset =
-        isWide ? nowPlayingHeight + s(_nowPlayingPadding) : miniBarHeight;
+    final miniBarHeight = showMiniBar
+        ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12)
+        : 0.0;
+    final bottomInset = isWide
+        ? nowPlayingHeight + s(_nowPlayingPadding)
+        : miniBarHeight;
     final navPad = _navBarHeight + media.padding.bottom;
-
 
     final nowPlaying = NowPlayingBar(
       state: playbackState,
@@ -102,7 +103,9 @@ class AdaptiveScaffold extends StatelessWidget {
                     children: [
                       for (var i = 0; i < destinations.length; i++) ...[
                         ObsidianNavIcon(
-                          icon: destinations[i].selectedIcon ?? destinations[i].icon,
+                          icon:
+                              destinations[i].selectedIcon ??
+                              destinations[i].icon,
                           isSelected: i == selectedIndex,
                           onTap: () => onDestinationSelected(i),
                         ),
@@ -125,12 +128,7 @@ class AdaptiveScaffold extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: nowPlaying,
-                  ),
+                  Positioned(left: 0, right: 0, bottom: 0, child: nowPlaying),
                 ],
               ),
             ),
@@ -202,9 +200,7 @@ class _BottomNavBar extends StatelessWidget {
       padding: EdgeInsets.only(bottom: bottomPad),
       decoration: BoxDecoration(
         color: ObsidianPalette.obsidianElevated.withOpacity(0.92),
-        border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.08)),
-        ),
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
       ),
       child: Center(
         child: Row(

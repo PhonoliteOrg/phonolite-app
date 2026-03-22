@@ -215,11 +215,24 @@ Widget _techTagRow(
   BuildContext context,
   List<Widget> tags, {
   bool center = false,
+  bool wrap = false,
 }) {
   if (tags.isEmpty) {
     return const SizedBox.shrink();
   }
   final s = (double value) => _scaled(context, value);
+  if (wrap) {
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+        alignment: center ? WrapAlignment.center : WrapAlignment.start,
+        runAlignment: center ? WrapAlignment.center : WrapAlignment.start,
+        spacing: s(6),
+        runSpacing: s(4),
+        children: tags,
+      ),
+    );
+  }
   return ConstrainedBox(
     constraints: BoxConstraints(minHeight: s(16)),
     child: ClipRect(
@@ -443,10 +456,10 @@ class NowPlayingBar extends StatelessWidget {
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleLike;
 
-  static const double _wideHeight = 135;
+  static const double _wideHeight = 147;
   static const double _compactHeight = 180;
   static const double _tightHeight = 200;
-  static const double _compactWidth = 720;
+  static const double _compactWidth = 860;
   static const double _tightWidth = 520;
   static const double _wideSideWidth = 350;
   static const double _wideRowGap = 12;
@@ -702,6 +715,7 @@ class NowPlayingMiniBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final scale = ObsidianScale.of(context);
     final track = state.track;
     final transportEnabled = _transportControlsEnabled(state);
     final playEnabled = transportEnabled && !state.isLoading;
@@ -716,7 +730,9 @@ class NowPlayingMiniBar extends StatelessWidget {
         : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
     final headers = authHeaders(AppScope.of(context));
     final artSize = s(54);
-    final playSize = s(60);
+    final playPadding = s(6);
+    final playVisualSize = math.min(42.0, _height - playPadding * 2);
+    final playSize = playVisualSize / scale;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(s(12), 0, s(12), s(12)),
@@ -806,7 +822,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                     onTap: playEnabled ? onPlayPause : null,
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
-                      padding: EdgeInsets.all(s(10)),
+                      padding: EdgeInsets.all(playPadding),
                       child: _HudPlayButton(
                         icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
                         onPressed: playEnabled ? onPlayPause : null,
@@ -1134,6 +1150,8 @@ class _IntelZone extends StatelessWidget {
     final s = (double value) => _scaled(context, value);
     final tags = techTags.isEmpty ? const [_TechTag(label: 'IDLE')] : techTags;
     final enabled = onTap != null && (track?.albumId?.isNotEmpty ?? false);
+    final subtitle = _subtitle(track);
+    final displayTags = sourceTags.isEmpty ? tags : [...sourceTags, ...tags];
     final content = Row(
       children: [
         _AlbumArtThumb(track: track, isLoading: isLoading),
@@ -1158,7 +1176,7 @@ class _IntelZone extends StatelessWidget {
               SizedBox(height: s(1)),
               MarqueeText(
                 key: ValueKey('subtitle-${track?.id ?? 'idle'}'),
-                text: _subtitle(track),
+                text: subtitle,
                 style: GoogleFonts.poppins(
                   fontSize: s(11),
                   color: ObsidianPalette.textMuted,
@@ -1166,12 +1184,8 @@ class _IntelZone extends StatelessWidget {
                 velocity: s(28),
                 gap: s(24),
               ),
-              SizedBox(height: s(4)),
-              _techTagRow(context, tags),
-              if (sourceTags.isNotEmpty) ...[
-                SizedBox(height: s(4)),
-                _techTagRow(context, sourceTags),
-              ],
+              SizedBox(height: s(3)),
+              _techTagRow(context, displayTags, wrap: true),
             ],
           ),
         ),
