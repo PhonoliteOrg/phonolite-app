@@ -50,10 +50,14 @@ flutter {
 
 val copyReleaseApk by tasks.registering(Copy::class) {
     dependsOn("assembleRelease")
-    val outputDir = layout.buildDirectory.dir("outputs/flutter-apk")
-    from(outputDir.map { it.file("app-release.apk") })
-    into(outputDir)
-    rename { "phonolite-release.apk" }
+    val apkOutputDir = layout.buildDirectory.dir("outputs/apk/release")
+    val flutterOutputDir = layout.buildDirectory.dir("outputs/flutter-apk")
+
+    into(flutterOutputDir)
+    from(apkOutputDir.map { it.file("app-release.apk") })
+    from(apkOutputDir.map { it.file("app-release.apk") }) {
+        rename { "phonolite-release.apk" }
+    }
 }
 
 tasks.matching { it.name == "assembleRelease" }.configureEach {
