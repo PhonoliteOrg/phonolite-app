@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/playlist_module_card.dart';
+import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/ui/obsidian_theme.dart';
@@ -52,26 +53,23 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                       hasScrollBody: false,
                       child: Center(child: _EmptyPlaylistsText()),
                     )
-                  : SliverGrid(
+                  : SafeSliverGrid(
                       gridDelegate:
                           const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 520,
-                        mainAxisSpacing: 14,
-                        crossAxisSpacing: 14,
-                        mainAxisExtent: 80,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final playlist = playlists[index];
-                          return PlaylistModuleCard(
-                            playlist: playlist,
-                            onTap: () => _openDetail(context, playlist),
-                            onLongPress: () =>
-                                controller.queuePlaylist(playlist.id),
-                          );
-                        },
-                        childCount: playlists.length,
-                      ),
+                            maxCrossAxisExtent: 520,
+                            mainAxisSpacing: 14,
+                            crossAxisSpacing: 14,
+                            mainAxisExtent: 80,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final playlist = playlists[index];
+                        return PlaylistModuleCard(
+                          playlist: playlist,
+                          onTap: () => _openDetail(context, playlist),
+                          onLongPress: () =>
+                              controller.queuePlaylist(playlist.id),
+                        );
+                      }, childCount: playlists.length),
                     ),
             ),
           ],
@@ -119,17 +117,17 @@ class _HeaderRow extends StatelessWidget {
             children: [
               Text(
                 'Playlists',
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      letterSpacing: 1.1,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.headlineLarge?.copyWith(letterSpacing: 1.1),
               ),
               const SizedBox(height: 6),
               Text(
                 '$count LISTS',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                      letterSpacing: 1.4,
-                    ),
+                  color: ObsidianPalette.textMuted,
+                  letterSpacing: 1.4,
+                ),
               ),
             ],
           ),
@@ -155,9 +153,9 @@ class _EmptyPlaylistsText extends StatelessWidget {
       child: Text(
         'No Playlists',
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: ObsidianPalette.textMuted,
-              letterSpacing: 0.6,
-            ),
+          color: ObsidianPalette.textMuted,
+          letterSpacing: 0.6,
+        ),
       ),
     );
   }
