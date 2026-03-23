@@ -28,6 +28,8 @@ class PhonoliteApp extends StatefulWidget {
 class _PhonoliteAppState extends State<PhonoliteApp> {
   late final AppController _controller;
   late final Future<void> _restoreFuture;
+  bool _skipStoredSessionRestore = false;
+  bool _resettingStoredSession = false;
 
   @override
   void initState() {
@@ -46,6 +48,23 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _startFreshLoginFlow() async {
+    if (_skipStoredSessionRestore || _resettingStoredSession) {
+      return;
+    }
+    setState(() {
+      _skipStoredSessionRestore = true;
+      _resettingStoredSession = true;
+    });
+    await _controller.startFreshLoginFlow();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _resettingStoredSession = false;
+    });
   }
 
   @override
@@ -71,9 +90,15 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
                 return FutureBuilder<void>(
                   future: _restoreFuture,
                   builder: (context, restoreSnapshot) {
-                    if (restoreSnapshot.connectionState !=
-                        ConnectionState.done) {
-                      return const SplashPage();
+                    if (!_skipStoredSessionRestore &&
+                        restoreSnapshot.connectionState !=
+                            ConnectionState.done) {
+                      return SplashPage(
+                        onTryDifferentServer: _startFreshLoginFlow,
+                        isResetting: _resettingStoredSession,
+                        timeoutSeconds:
+                            AppController.storedSessionRestoreTimeout.inSeconds,
+                      );
                     }
                     final state = snapshot.data ?? _controller.authState;
                     if (!state.isAuthorized) {

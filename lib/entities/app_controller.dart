@@ -121,8 +121,11 @@ class PlaybackState {
 
 class AppController {
   static const Duration _inlineSeekWatchdogDelay = Duration(seconds: 2);
+  static const Duration storedSessionRestoreTimeout = Duration(seconds: 10);
+  static const Duration _storedSessionRequestTimeout = Duration(seconds: 4);
 
   AppController({required this.connection}) {
+    _initialBaseUrl = connection.baseUrl;
     _logListener = _addLogEntry;
     AppLogger.instance.attach(_logListener, includeHistory: true);
     _playbackState = PlaybackState(
@@ -224,6 +227,7 @@ class AppController {
   final MethodChannel _permissionsChannel = const MethodChannel(
     'phonolite/permissions',
   );
+  late final String _initialBaseUrl;
   final AuthStorage _authStorage = const AuthStorage();
   final CustomShuffleSettingsStorage _customShuffleStorage =
       const CustomShuffleSettingsStorage();
@@ -240,6 +244,8 @@ class AppController {
   bool _volumeTouched = false;
   bool _collectionListModeTouched = false;
   bool _restoringSession = false;
+  bool _savedCredentialsInvalidated = false;
+  int _restoreSessionRevision = 0;
   LocalNetworkPermissionState _localNetworkPermissionState =
       LocalNetworkPermissionState.unknown;
   DateTime? _lastNowPlayingSentAt;
@@ -494,11 +500,9 @@ class AppController {
           token: token,
           username: username,
         );
-        await _authStorage.write(credentials);
-        _savedCredentials = credentials;
+        await _storeSavedCredentials(credentials);
       } else {
-        await _authStorage.clear();
-        _savedCredentials = null;
+        await _clearSavedCredentials();
       }
     } on ApiException catch (err) {
       final message =
@@ -549,16 +553,21 @@ class AppController {
     _quicPort = null;
     _clearNowPlaying();
     if (clearSaved) {
-      await _authStorage.clear();
-      _savedCredentials = null;
+      await _clearSavedCredentials();
     }
   }
 
   Future<AuthCredentials?> loadSavedCredentials() async {
+    if (_savedCredentialsInvalidated) {
+      return null;
+    }
     if (_savedCredentials != null) {
       return _savedCredentials;
     }
     final credentials = await _authStorage.read();
+    if (_savedCredentialsInvalidated) {
+      return null;
+    }
     _savedCredentials = credentials;
     return credentials;
   }
@@ -568,32 +577,92 @@ class AppController {
       return;
     }
     _restoringSession = true;
+    final revision = ++_restoreSessionRevision;
     try {
-      final credentials = await loadSavedCredentials();
-      if (credentials == null) {
-        return;
-      }
-      connection.setBaseUrl(credentials.baseUrl);
-      if (credentials.token.trim().isEmpty) {
-        await logout(clearSaved: true);
-        return;
-      }
-      connection.setToken(credentials.token);
-      await _refreshServerPorts();
-      try {
-        final settings = await connection.fetchPlaybackSettings();
-        _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
-        _setAuthorized(true, error: null);
-      } on ApiException catch (err) {
-        _pushMessage('Auto-login failed: ${_formatApiError(err)}');
-        await logout(clearSaved: true);
-      } catch (err) {
-        _pushMessage('Auto-login failed: $err');
-        await logout(clearSaved: true);
+      await _restoreSessionInternal(
+        revision,
+      ).timeout(storedSessionRestoreTimeout);
+    } on TimeoutException {
+      if (_isRestoreSessionCurrent(revision)) {
+        _pushMessage(
+          'Auto-login timed out after ${storedSessionRestoreTimeout.inSeconds}s.',
+          level: LogLevel.warning,
+        );
+        await startFreshLoginFlow();
       }
     } finally {
-      _restoringSession = false;
+      if (_isRestoreSessionCurrent(revision)) {
+        _restoringSession = false;
+      }
     }
+  }
+
+  Future<void> startFreshLoginFlow() async {
+    _restoreSessionRevision++;
+    _restoringSession = false;
+    await logout(clearSaved: true);
+    connection.setBaseUrl(_initialBaseUrl);
+    _setAuthorized(false, error: null);
+  }
+
+  bool _isRestoreSessionCurrent(int revision) {
+    return _restoreSessionRevision == revision;
+  }
+
+  Future<void> _restoreSessionInternal(int revision) async {
+    final credentials = await loadSavedCredentials();
+    if (!_isRestoreSessionCurrent(revision) || credentials == null) {
+      return;
+    }
+
+    connection.setBaseUrl(credentials.baseUrl);
+    if (credentials.token.trim().isEmpty) {
+      await startFreshLoginFlow();
+      return;
+    }
+
+    connection.setToken(credentials.token);
+    try {
+      final settings = await connection.fetchPlaybackSettings(
+        timeout: _storedSessionRequestTimeout,
+        retryable: false,
+      );
+      if (!_isRestoreSessionCurrent(revision)) {
+        return;
+      }
+      _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
+      _setAuthorized(true, error: null);
+      unawaited(
+        _refreshServerPorts(
+          timeout: _storedSessionRequestTimeout,
+          retryable: false,
+        ),
+      );
+    } on ApiException catch (err) {
+      if (!_isRestoreSessionCurrent(revision)) {
+        return;
+      }
+      _pushMessage('Auto-login failed: ${_formatApiError(err)}');
+      await startFreshLoginFlow();
+    } catch (err) {
+      if (!_isRestoreSessionCurrent(revision)) {
+        return;
+      }
+      _pushMessage('Auto-login failed: $err');
+      await startFreshLoginFlow();
+    }
+  }
+
+  Future<void> _storeSavedCredentials(AuthCredentials credentials) async {
+    _savedCredentialsInvalidated = false;
+    _savedCredentials = credentials;
+    await _authStorage.write(credentials);
+  }
+
+  Future<void> _clearSavedCredentials() async {
+    _savedCredentialsInvalidated = true;
+    _savedCredentials = null;
+    await _authStorage.clear();
   }
 
   void _configureLocalNetworkPermissions() {
@@ -3390,9 +3459,15 @@ class AppController {
     _updatePlayback(streamConnected: false, streamRttMs: null);
   }
 
-  Future<void> _refreshServerPorts() async {
+  Future<void> _refreshServerPorts({
+    Duration timeout = const Duration(seconds: 8),
+    bool retryable = true,
+  }) async {
     try {
-      final ports = await connection.fetchServerPorts();
+      final ports = await connection.fetchServerPorts(
+        timeout: timeout,
+        retryable: retryable,
+      );
       if (ports.quicEnabled && (ports.quicPort ?? 0) > 0) {
         _quicPort = ports.quicPort;
       } else {
