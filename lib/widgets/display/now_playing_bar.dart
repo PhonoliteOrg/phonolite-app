@@ -317,30 +317,6 @@ Future<void> _showShuffleModal(
   }
 }
 
-Future<void> _showAddToPlaylistModal(
-  BuildContext context,
-  PlaybackState state,
-) async {
-  final controller = AppScope.of(context);
-  final track = state.track;
-  if (track == null) {
-    return;
-  }
-  if (controller.playlists.isEmpty) {
-    await controller.loadPlaylists();
-  }
-  await showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AddToPlaylistModal(
-      playlists: controller.playlists,
-      trackId: track.id,
-      onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
-      onRemoved: (playlist) =>
-          controller.removeTrackFromPlaylist(playlist, track),
-    ),
-  );
-}
-
 Future<void> _showDevicePicker(BuildContext context) async {
   final controller = AppScope.of(context);
   await showDialog<void>(
@@ -559,8 +535,10 @@ class NowPlayingBar extends StatelessWidget {
                             onSelected: onShuffleChanged,
                           ),
                           onRepeat: onToggleRepeat,
-                          onAddToPlaylist: () =>
-                              _showAddToPlaylistModal(context, state),
+                          onAddToPlaylist: () => showAddToPlaylistModalForTrack(
+                            context,
+                            state.track,
+                          ),
                           onToggleLike: onToggleLike,
                           onShowDevicePicker: () => _showDevicePicker(context),
                           onShowStreamMode: () => _showStreamModal(
@@ -633,7 +611,10 @@ class NowPlayingBar extends StatelessWidget {
                             onVolumeChanged: onVolumeChanged,
                             onToggleLike: onToggleLike,
                             onAddToPlaylist: () =>
-                                _showAddToPlaylistModal(context, state),
+                                showAddToPlaylistModalForTrack(
+                                  context,
+                                  state.track,
+                                ),
                             onShowDevicePicker: () =>
                                 _showDevicePicker(context),
                           ),
@@ -1112,7 +1093,10 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                             onStreamModeChanged: onStreamModeChanged,
                             onVolumeChanged: onVolumeChanged,
                             onAddToPlaylist: () =>
-                                _showAddToPlaylistModal(context, state),
+                                showAddToPlaylistModalForTrack(
+                                  context,
+                                  state.track,
+                                ),
                             onShowDevicePicker: () =>
                                 _showDevicePicker(context),
                           ),

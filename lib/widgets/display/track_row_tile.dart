@@ -19,6 +19,7 @@ class TrackRowTile extends StatefulWidget {
     this.isPlaying = false,
     this.onTap,
     this.onLongPress,
+    this.onAddToPlaylist,
     this.onLike,
     this.onDelete,
     this.showAlbumArt = false,
@@ -29,6 +30,7 @@ class TrackRowTile extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final VoidCallback? onAddToPlaylist;
   final VoidCallback? onLike;
   final VoidCallback? onDelete;
   final bool showAlbumArt;
@@ -146,6 +148,14 @@ class _TrackRowTileState extends State<TrackRowTile>
             ),
           ),
           const SizedBox(width: 8),
+          if (widget.onAddToPlaylist != null) ...[
+            ObsidianHudIconButton(
+              icon: Icons.playlist_add_rounded,
+              onPressed: widget.onAddToPlaylist,
+              size: 22,
+            ),
+            const SizedBox(width: 6),
+          ],
           LikeIconButton(
             isLiked: widget.track.liked,
             onPressed: widget.onLike,
