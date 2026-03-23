@@ -8,6 +8,7 @@ import '../widgets/display/album_card.dart';
 import '../widgets/display/album_row_tile.dart';
 import '../widgets/display/artist_hero.dart';
 import '../widgets/display/empty_state.dart';
+import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/navigation/command_link_button.dart';
@@ -75,9 +76,21 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                           sliver: SliverToBoxAdapter(
-                            child: CommandLinkButton(
-                              label: 'Back to library',
-                              onTap: () => Navigator.of(context).pop(),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: CommandLinkButton(
+                                    label: 'Back to library',
+                                    onTap: () => Navigator.of(context).pop(),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                CollectionViewToggleButton(
+                                  isListView: showCollectionList,
+                                  onPressed:
+                                      controller.toggleCollectionListMode,
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -89,10 +102,6 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                               coverUrl: coverUrl,
                               bannerUrl: bannerUrl,
                               headers: authHeadersMap,
-                              trailing: CollectionViewToggleButton(
-                                isListView: showCollectionList,
-                                onPressed: controller.toggleCollectionListMode,
-                              ),
                             ),
                           ),
                         ),
@@ -134,7 +143,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                           : albums.length * 2 - 1,
                                     ),
                                   )
-                                : SliverGrid(
+                                : SafeSliverGrid(
                                     gridDelegate:
                                         const SliverGridDelegateWithMaxCrossAxisExtent(
                                           maxCrossAxisExtent: 240,

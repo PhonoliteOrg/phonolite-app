@@ -12,6 +12,7 @@ import '../widgets/display/artist_row_tile.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/inputs/search_hud.dart';
 import '../widgets/layout/library_header.dart';
+import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layout/search_results_sliver.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
@@ -259,7 +260,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                                               1,
                                                   ),
                                             )
-                                          : SliverGrid(
+                                          : SafeSliverGrid(
                                               gridDelegate:
                                                   const SliverGridDelegateWithMaxCrossAxisExtent(
                                                     maxCrossAxisExtent: 240,
