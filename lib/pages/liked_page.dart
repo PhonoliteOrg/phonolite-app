@@ -5,6 +5,7 @@ import '../entities/models.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/display/track_row_tile.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/ui/obsidian_widgets.dart';
 
 class LikedPage extends StatefulWidget {
@@ -66,6 +67,11 @@ class _LikedPageState extends State<LikedPage> {
                                     playback.isPlaying && playingId == track.id,
                                 onTap: () =>
                                     controller.playLikedTrack(track.id),
+                                onAddToPlaylist: () =>
+                                    showAddToPlaylistModalForTrack(
+                                      context,
+                                      track,
+                                    ),
                                 onLike: () => controller.toggleLike(track),
                               );
                             },

@@ -7,6 +7,7 @@ import '../entities/models.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/confirmation_modal.dart';
+import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/marquee_text.dart';
@@ -97,6 +98,8 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                             widget.playlistId,
                             startTrackId: track.id,
                           ),
+                          onTrackAddToPlaylist: (track) =>
+                              showAddToPlaylistModalForTrack(context, track),
                           onTrackLike: controller.toggleLike,
                           onTrackDelete: (track) =>
                               _removeTrack(controller, playlist, track),

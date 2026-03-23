@@ -1,11 +1,38 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/models.dart';
+import '../layouts/app_scope.dart';
 import '../inputs/obsidian_text_field.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 import 'confirmation_modal.dart';
+
+Future<void> showAddToPlaylistModalForTrack(
+  BuildContext context,
+  Track? track,
+) async {
+  if (track == null) {
+    return;
+  }
+  final controller = AppScope.of(context);
+  if (controller.playlists.isEmpty) {
+    await controller.loadPlaylists();
+  }
+  if (!context.mounted) {
+    return;
+  }
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AddToPlaylistModal(
+      playlists: controller.playlists,
+      trackId: track.id,
+      onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
+      onRemoved: (playlist) =>
+          controller.removeTrackFromPlaylist(playlist, track),
+    ),
+  );
+}
 
 class AddToPlaylistModal extends StatefulWidget {
   const AddToPlaylistModal({

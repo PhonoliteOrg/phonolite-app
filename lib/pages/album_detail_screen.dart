@@ -9,6 +9,7 @@ import '../widgets/display/empty_state.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
+import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
@@ -109,6 +110,11 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                 widget.album.id,
                                 startTrackId: track.id,
                               ),
+                              onTrackAddToPlaylist: (track) =>
+                                  showAddToPlaylistModalForTrack(
+                                    context,
+                                    track,
+                                  ),
                               onTrackLike: controller.toggleLike,
                             ),
                           ),

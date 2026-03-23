@@ -10,6 +10,7 @@ class TrackSliverList extends StatelessWidget {
     required this.isPlayingTrack,
     this.onTrackTap,
     this.onTrackLongPress,
+    this.onTrackAddToPlaylist,
     this.onTrackLike,
     this.onTrackDelete,
     this.showAlbumArt = false,
@@ -19,6 +20,7 @@ class TrackSliverList extends StatelessWidget {
   final bool Function(Track track) isPlayingTrack;
   final ValueChanged<Track>? onTrackTap;
   final ValueChanged<Track>? onTrackLongPress;
+  final ValueChanged<Track>? onTrackAddToPlaylist;
   final ValueChanged<Track>? onTrackLike;
   final ValueChanged<Track>? onTrackDelete;
   final bool showAlbumArt;
@@ -41,6 +43,9 @@ class TrackSliverList extends StatelessWidget {
           onLongPress: onTrackLongPress == null
               ? null
               : () => onTrackLongPress!(track),
+          onAddToPlaylist: onTrackAddToPlaylist == null
+              ? null
+              : () => onTrackAddToPlaylist!(track),
           onLike: onTrackLike == null ? null : () => onTrackLike!(track),
           onDelete: onTrackDelete == null ? null : () => onTrackDelete!(track),
         );
