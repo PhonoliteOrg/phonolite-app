@@ -35,8 +35,8 @@ class ServerConnection {
   static const int _maxGetAttempts = 3;
 
   ServerConnection({required String baseUrl, http.Client? client})
-      : _baseUrl = _sanitizeBaseUrl(baseUrl),
-        _client = client ?? http.Client();
+    : _baseUrl = _sanitizeBaseUrl(baseUrl),
+      _client = client ?? http.Client();
 
   String _baseUrl;
   final http.Client _client;
@@ -55,7 +55,8 @@ class ServerConnection {
     if (trimmed.isEmpty) {
       throw Exception('Server URL is required');
     }
-    final hasScheme = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    final hasScheme =
+        trimmed.startsWith('http://') || trimmed.startsWith('https://');
     final candidates = hasScheme
         ? <String>[trimmed]
         : <String>['http://$trimmed', 'https://$trimmed'];
@@ -76,7 +77,10 @@ class ServerConnection {
     _token = token;
   }
 
-  Future<String> login({required String username, required String password}) async {
+  Future<String> login({
+    required String username,
+    required String password,
+  }) async {
     final response = await _post('/auth/login', {
       'username': username,
       'password': password,
@@ -93,7 +97,9 @@ class ServerConnection {
     int limit = ServerConnection.artistsPageSize,
     int offset = 0,
   }) async {
-    final response = await _getList('/browse/artists?limit=$limit&offset=$offset');
+    final response = await _getList(
+      '/browse/artists?limit=$limit&offset=$offset',
+    );
     return response.map((item) => Artist.fromJson(item)).toList();
   }
 
@@ -177,7 +183,10 @@ class ServerConnection {
     return StatsResponse.fromJson(response);
   }
 
-  Future<List<SearchResult>> search(String query, {String filter = 'all'}) async {
+  Future<List<SearchResult>> search(
+    String query, {
+    String filter = 'all',
+  }) async {
     if (query.trim().isEmpty) {
       return <SearchResult>[];
     }
@@ -219,7 +228,9 @@ class ServerConnection {
   }
 
   Future<Playlist> renamePlaylist(String playlistId, String name) async {
-    final response = await _post('/library/playlists/$playlistId', {'name': name});
+    final response = await _post('/library/playlists/$playlistId', {
+      'name': name,
+    });
     return Playlist.fromJson(response);
   }
 
@@ -227,14 +238,20 @@ class ServerConnection {
     await _delete('/library/playlists/$playlistId');
   }
 
-  Future<Playlist> updatePlaylistTracks(String playlistId, List<String> trackIds) async {
+  Future<Playlist> updatePlaylistTracks(
+    String playlistId,
+    List<String> trackIds,
+  ) async {
     final response = await _post('/library/playlists/$playlistId', {
       'track_ids': trackIds,
     });
     return Playlist.fromJson(response);
   }
 
-  Future<PlayerQueueResponse> queueAlbum(String albumId, {String? startTrackId}) async {
+  Future<PlayerQueueResponse> queueAlbum(
+    String albumId, {
+    String? startTrackId,
+  }) async {
     var path = '/player/queue/album/$albumId';
     if (startTrackId != null) {
       path = '$path?start=$startTrackId';
@@ -243,7 +260,10 @@ class ServerConnection {
     return PlayerQueueResponse.fromJson(response);
   }
 
-  Future<PlayerQueueResponse> queuePlaylist(String playlistId, {String? startTrackId}) async {
+  Future<PlayerQueueResponse> queuePlaylist(
+    String playlistId, {
+    String? startTrackId,
+  }) async {
     var path = '/player/queue/playlist/$playlistId';
     if (startTrackId != null) {
       path = '$path?start=$startTrackId';
@@ -292,8 +312,15 @@ class ServerConnection {
     await _postVoid('/player/pause', {'paused': paused});
   }
 
-  Future<PlaybackSettingsResponse> fetchPlaybackSettings() async {
-    final response = await _get('/player/settings');
+  Future<PlaybackSettingsResponse> fetchPlaybackSettings({
+    Duration timeout = _defaultRequestTimeout,
+    bool retryable = true,
+  }) async {
+    final response = await _get(
+      '/player/settings',
+      timeout: timeout,
+      retryable: retryable,
+    );
     return PlaybackSettingsResponse.fromJson(response);
   }
 
@@ -301,8 +328,15 @@ class ServerConnection {
     await _postVoid('/player/settings', {'repeat_mode': repeatMode});
   }
 
-  Future<ServerPortsResponse> fetchServerPorts() async {
-    final response = await _get('/server/ports');
+  Future<ServerPortsResponse> fetchServerPorts({
+    Duration timeout = _defaultRequestTimeout,
+    bool retryable = true,
+  }) async {
+    final response = await _get(
+      '/server/ports',
+      timeout: timeout,
+      retryable: retryable,
+    );
     return ServerPortsResponse.fromJson(response);
   }
 
@@ -362,15 +396,18 @@ class ServerConnection {
   Future<bool> _checkHealth(String url) async {
     final healthUrl = Uri.parse('$url/health');
     try {
-      final response =
-          await _client.get(healthUrl).timeout(_healthRequestTimeout);
+      final response = await _client
+          .get(healthUrl)
+          .timeout(_healthRequestTimeout);
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (_) {
       return false;
     }
   }
 
-  Future<int?> pingHealthMs({Duration timeout = const Duration(seconds: 3)}) async {
+  Future<int?> pingHealthMs({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
     final rootUrl = _ensureRoot(_baseUrl);
     final healthUrl = Uri.parse('$rootUrl/health');
     final start = DateTime.now();
@@ -383,27 +420,30 @@ class ServerConnection {
     return null;
   }
 
-
-  Future<Map<String, dynamic>> _get(String path) async {
+  Future<Map<String, dynamic>> _get(
+    String path, {
+    Duration timeout = _defaultRequestTimeout,
+    bool retryable = true,
+  }) async {
     final response = await _executeRequest(
-      () => _client.get(
-        Uri.parse('$_baseUrl$path'),
-        headers: _headers(),
-      ),
+      () => _client.get(Uri.parse('$_baseUrl$path'), headers: _headers()),
       label: 'GET $path',
-      retryable: true,
+      retryable: retryable,
+      timeout: timeout,
     );
     return _decode(response);
   }
 
-  Future<List<Map<String, dynamic>>> _getList(String path) async {
+  Future<List<Map<String, dynamic>>> _getList(
+    String path, {
+    Duration timeout = _defaultRequestTimeout,
+    bool retryable = true,
+  }) async {
     final response = await _executeRequest(
-      () => _client.get(
-        Uri.parse('$_baseUrl$path'),
-        headers: _headers(),
-      ),
+      () => _client.get(Uri.parse('$_baseUrl$path'), headers: _headers()),
       label: 'GET $path',
-      retryable: true,
+      retryable: retryable,
+      timeout: timeout,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
@@ -418,7 +458,10 @@ class ServerConnection {
     throw Exception('Expected list response for $path');
   }
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> _post(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
     final response = await _executeRequest(
       () => _client.post(
         Uri.parse('$_baseUrl$path'),
@@ -446,10 +489,7 @@ class ServerConnection {
 
   Future<void> _delete(String path) async {
     final response = await _executeRequest(
-      () => _client.delete(
-        Uri.parse('$_baseUrl$path'),
-        headers: _headers(),
-      ),
+      () => _client.delete(Uri.parse('$_baseUrl$path'), headers: _headers()),
       label: 'DELETE $path',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
