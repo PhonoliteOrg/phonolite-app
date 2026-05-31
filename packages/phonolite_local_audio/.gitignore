@@ -1,0 +1,6 @@
+/android/src/main/jniLibs/
+/native/local_audio/target/
+/ios/target/
+/macos/target/
+/ios/libphonolite_local_audio.a
+/macos/libphonolite_local_audio.a

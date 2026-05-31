@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
 import '../widgets/layouts/app_scope.dart';
-import '../widgets/display/now_playing_bar.dart';
 import '../widgets/navigation/adaptive_scaffold.dart';
 import 'library_page.dart';
 import 'liked_page.dart';
@@ -21,9 +20,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  late final List<GlobalKey<NavigatorState>> _navigatorKeys =
-      List.generate(5, (_) => GlobalKey<NavigatorState>());
-  bool _nowPlayingSheetOpen = false;
+  late final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
+    5,
+    (_) => GlobalKey<NavigatorState>(),
+  );
 
   @override
   void initState() {
@@ -77,20 +77,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           return AdaptiveScaffold(
             destinations: const [
               NavigationDestination(
-                  icon: Icon(Icons.library_music), label: 'Library'),
+                icon: Icon(Icons.library_music),
+                label: 'Library',
+              ),
               NavigationDestination(
-                  icon: Icon(Icons.queue_music), label: 'Playlists'),
+                icon: Icon(Icons.queue_music),
+                label: 'Playlists',
+              ),
               NavigationDestination(icon: Icon(Icons.favorite), label: 'Liked'),
-              NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
-              NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
+              NavigationDestination(
+                icon: Icon(Icons.bar_chart),
+                label: 'Stats',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings),
+                label: 'Settings',
+              ),
             ],
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) =>
                 setState(() => _selectedIndex = index),
-            page: IndexedStack(
-              index: _selectedIndex,
-              children: pages,
-            ),
+            page: IndexedStack(index: _selectedIndex, children: pages),
             playbackState: playback,
             onOpenAlbum: _openCurrentAlbum,
             onPlayPause: () => controller.pause(playback.isPlaying),
@@ -118,9 +125,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _buildTabNavigator(int index, Widget child) {
     return Navigator(
       key: _navigatorKeys[index],
-      onGenerateRoute: (settings) => MaterialPageRoute(
-        builder: (_) => child,
-      ),
+      onGenerateRoute: (settings) => MaterialPageRoute(builder: (_) => child),
     );
   }
 
@@ -129,12 +134,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final controller = AppScope.of(context);
       final track = controller.playbackState.track;
       final albumId = track?.albumId;
-      if (track == null || albumId == null || albumId.isEmpty) {
+      if (track == null ||
+          albumId == null ||
+          albumId.isEmpty ||
+          controller.playbackState.isLocalPlayback ||
+          !controller.authState.isAuthorized) {
         return;
       }
       try {
         final album = await controller.connection.fetchAlbumById(albumId);
-        final artist = await controller.connection.fetchArtistById(album.artistId);
+        final artist = await controller.connection.fetchArtistById(
+          album.artistId,
+        );
         if (!mounted) {
           return;
         }
@@ -147,9 +158,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
         navigator.popUntil((route) => route.isFirst);
         navigator.push(
-          MaterialPageRoute(
-            builder: (_) => ArtistDetailScreen(artist: artist),
-          ),
+          MaterialPageRoute(builder: (_) => ArtistDetailScreen(artist: artist)),
         );
         navigator.push(
           MaterialPageRoute(
@@ -177,7 +186,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             MaterialPageRoute(
               builder: (_) => AlbumDetailScreen(
                 album: album,
-                artistName: album.artist.isNotEmpty ? album.artist : track.artist,
+                artistName: album.artist.isNotEmpty
+                    ? album.artist
+                    : track.artist,
               ),
             ),
           );

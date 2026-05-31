@@ -1,0 +1,11 @@
+[package]
+name = "phonolite_local_audio"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "phonolite_local_audio"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3", "flac"] }

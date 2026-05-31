@@ -5,6 +5,7 @@ import 'chamfer_clipper.dart';
 import 'obsidian_theme.dart';
 
 enum TechButtonVariant { standard, danger }
+
 enum TechButtonDensity { standard, compact }
 
 class TechButton extends StatelessWidget {
@@ -48,26 +49,26 @@ class TechButton extends StatelessWidget {
       clipper: const ChamferClipper(cutSize: 10),
       child: Material(
         color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              padding: padding,
-              decoration: BoxDecoration(
-                color: fill,
-                border: Border.all(color: borderColor),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: iconSize, color: textStyle.color),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(label.toUpperCase(), style: textStyle),
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: fill,
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: iconSize, color: textStyle.color),
+                  const SizedBox(width: 6),
                 ],
-              ),
+                Text(label.toUpperCase(), style: textStyle),
+              ],
             ),
           ),
+        ),
       ),
     );
   }

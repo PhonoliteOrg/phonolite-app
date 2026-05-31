@@ -17,11 +17,16 @@ dependencies:
   ffi: ^2.1.0
   phonolite_opus:
     path: packages/phonolite_opus
+  phonolite_local_audio:
+    path: packages/phonolite_local_audio
   phonolite_quic:
     path: packages/phonolite_quic
   http: ^1.2.1
+  crypto: ^3.0.6
   palette_generator: ^0.3.3
   path_provider: ^2.1.5
+  sqlite3: ^2.4.7
+  sqlite3_flutter_libs: ^0.5.24
 
 dev_dependencies:
   flutter_test:

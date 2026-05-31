@@ -281,10 +281,14 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
                     summary: controller.hasMoreArtists
                         ? 'Selected ${_selectedArtistIds.length} of loaded ${artists.length}'
                         : 'Selected ${_selectedArtistIds.length} of ${artists.length}',
-                    onSelectAll: artists.isEmpty && !controller.hasMoreArtists
+                    onSelectAll:
+                        !canLoadArtists ||
+                            (artists.isEmpty && !controller.hasMoreArtists)
                         ? null
                         : _selectAllAvailableArtists,
-                    onClear: _selectedArtistIds.isEmpty ? null : _clearArtists,
+                    onClear: !canLoadArtists || _selectedArtistIds.isEmpty
+                        ? null
+                        : _clearArtists,
                     child: _buildArtistList(
                       canLoadArtists: canLoadArtists,
                       artists: filteredArtists,
@@ -300,10 +304,12 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
                     hintText: 'Search genres',
                     summary:
                         'Selected ${_selectedGenres.length} of ${genreOptions.length}',
-                    onSelectAll: genreOptions.isEmpty
+                    onSelectAll: !canLoadArtists || genreOptions.isEmpty
                         ? null
                         : () => _selectAllGenres(genreOptions),
-                    onClear: _selectedGenres.isEmpty ? null : _clearGenres,
+                    onClear: !canLoadArtists || _selectedGenres.isEmpty
+                        ? null
+                        : _clearGenres,
                     child: _buildGenreList(
                       canLoadArtists: canLoadArtists,
                       genres: filteredGenres,

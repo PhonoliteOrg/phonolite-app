@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
+import '../ui/dismissible_selection_area.dart';
 import '../ui/expandable_summary_text.dart';
+import 'album_labels.dart';
 import 'artist_avatar.dart';
 
 class ArtistHero extends StatelessWidget {
@@ -26,12 +30,11 @@ class ArtistHero extends StatelessWidget {
     final scale = ObsidianScale.of(context);
     double s(double value) => value * scale;
     final bannerHeight = s(240);
+    final bannerPath = bannerUrl?.trim();
     final summary = artist.summary?.trim().isNotEmpty == true
         ? artist.summary!
         : 'Bio unavailable. Curate this artist profile with metadata or notes.';
-    final genresLine = artist.genres.isEmpty
-        ? null
-        : artist.genres.join(' â€¢ ').toUpperCase();
+    final detailsLine = artistDetailLabel(artist, genreLimit: 4);
 
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: s(220)),
@@ -42,7 +45,7 @@ class ArtistHero extends StatelessWidget {
             right: 0,
             top: 0,
             height: bannerHeight,
-            child: bannerUrl == null || bannerUrl!.isEmpty
+            child: bannerPath == null || bannerPath.isEmpty
                 ? const SizedBox.shrink()
                 : ShaderMask(
                     shaderCallback: (rect) {
@@ -58,13 +61,22 @@ class ArtistHero extends StatelessWidget {
                       ).createShader(rect);
                     },
                     blendMode: BlendMode.dstIn,
-                    child: Image.network(
-                      bannerUrl!,
-                      headers: headers,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
+                    child: _isRemoteImage(bannerPath)
+                        ? Image.network(
+                            bannerPath,
+                            headers: headers,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.center,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          )
+                        : Image.file(
+                            File(bannerPath),
+                            fit: BoxFit.cover,
+                            alignment: Alignment.center,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          ),
                   ),
           ),
           Positioned.fill(
@@ -123,17 +135,20 @@ class ArtistHero extends StatelessWidget {
                           height: 1.05,
                         ),
                       ),
-                      if (genresLine != null) ...[
-                        SizedBox(height: s(6)),
-                        Text(
-                          genresLine,
-                          style: GoogleFonts.rajdhani(
-                            color: Colors.white54,
-                            fontSize: s(12),
-                            letterSpacing: s(1.4),
+                      SizedBox(height: s(6)),
+                      DefaultSelectionStyle(
+                        selectionColor: accentGold.withValues(alpha: 0.35),
+                        child: DismissibleSelectionArea(
+                          child: Text(
+                            detailsLine,
+                            style: GoogleFonts.rajdhani(
+                              color: Colors.white54,
+                              fontSize: s(12),
+                              letterSpacing: s(1.4),
+                            ),
                           ),
                         ),
-                      ],
+                      ),
                       SizedBox(height: s(12)),
                       ExpandableSummaryText(
                         text: summary,
@@ -158,5 +173,10 @@ class ArtistHero extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  bool _isRemoteImage(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
   }
 }

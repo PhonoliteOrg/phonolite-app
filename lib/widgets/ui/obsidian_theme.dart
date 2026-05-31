@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'obsidian_shapes.dart';
+
 class ObsidianPalette {
   static const Color obsidian = Color(0xFF050505);
   static const Color obsidianElevated = Color(0xFF0A0A0D);
@@ -27,8 +28,9 @@ class ObsidianTheme {
       letterSpacing: style.letterSpacing == null
           ? null
           : style.letterSpacing! * scale,
-      wordSpacing:
-          style.wordSpacing == null ? null : style.wordSpacing! * scale,
+      wordSpacing: style.wordSpacing == null
+          ? null
+          : style.wordSpacing! * scale,
     );
   }
 
@@ -115,15 +117,17 @@ class ObsidianTheme {
           color: ObsidianPalette.textPrimary,
           letterSpacing: 1.1,
         ),
-        contentTextStyle:
-            scaledBody.bodyMedium?.copyWith(color: ObsidianPalette.textPrimary),
+        contentTextStyle: scaledBody.bodyMedium?.copyWith(
+          color: ObsidianPalette.textPrimary,
+        ),
       ),
       listTileTheme: ListTileThemeData(
         iconColor: ObsidianPalette.textMuted,
         textColor: ObsidianPalette.textPrimary,
         titleTextStyle: scaledBody.titleMedium,
-        subtitleTextStyle:
-            scaledBody.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
+        subtitleTextStyle: scaledBody.bodySmall?.copyWith(
+          color: ObsidianPalette.textMuted,
+        ),
       ),
       iconTheme: const IconThemeData(color: ObsidianPalette.textMuted),
       chipTheme: base.chipTheme.copyWith(
@@ -140,7 +144,9 @@ class ObsidianTheme {
         backgroundColor: ObsidianPalette.obsidian.withOpacity(0.35),
         labelType: NavigationRailLabelType.none,
         selectedIconTheme: const IconThemeData(color: ObsidianPalette.gold),
-        unselectedIconTheme: const IconThemeData(color: ObsidianPalette.textMuted),
+        unselectedIconTheme: const IconThemeData(
+          color: ObsidianPalette.textMuted,
+        ),
         indicatorColor: Colors.transparent,
         useIndicator: false,
       ),
@@ -162,7 +168,9 @@ class ObsidianTheme {
         labelColor: ObsidianPalette.gold,
         unselectedLabelColor: ObsidianPalette.textMuted,
         indicatorColor: ObsidianPalette.gold,
-        labelStyle: scaledDisplay.labelLarge?.copyWith(letterSpacing: 1.1 * scale),
+        labelStyle: scaledDisplay.labelLarge?.copyWith(
+          letterSpacing: 1.1 * scale,
+        ),
       ),
       sliderTheme: base.sliderTheme.copyWith(
         activeTrackColor: ObsidianPalette.gold,
@@ -173,25 +181,27 @@ class ObsidianTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-              backgroundColor: ObsidianPalette.gold,
-              foregroundColor: Colors.black,
-              padding:
-                  EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
-              textStyle:
-                  scaledDisplay.labelLarge?.copyWith(letterSpacing: 1.1 * scale),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14 * scale),
-              ),
-            )
-            .copyWith(overlayColor: noOverlay),
+          backgroundColor: ObsidianPalette.gold,
+          foregroundColor: Colors.black,
+          padding: EdgeInsets.symmetric(
+            horizontal: 20 * scale,
+            vertical: 14 * scale,
+          ),
+          textStyle: scaledDisplay.labelLarge?.copyWith(
+            letterSpacing: 1.1 * scale,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14 * scale),
+          ),
+        ).copyWith(overlayColor: noOverlay),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-              foregroundColor: ObsidianPalette.gold,
-              textStyle:
-                  scaledDisplay.labelLarge?.copyWith(letterSpacing: 1.1 * scale),
-            )
-            .copyWith(overlayColor: noOverlay),
+          foregroundColor: ObsidianPalette.gold,
+          textStyle: scaledDisplay.labelLarge?.copyWith(
+            letterSpacing: 1.1 * scale,
+          ),
+        ).copyWith(overlayColor: noOverlay),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: const ButtonStyle(overlayColor: noOverlay),

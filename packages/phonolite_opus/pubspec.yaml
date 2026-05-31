@@ -18,5 +18,7 @@ flutter:
         ffiPlugin: true
       macos:
         ffiPlugin: true
+      linux:
+        ffiPlugin: true
       windows:
         ffiPlugin: true

@@ -61,9 +61,7 @@ class ChamferedButton extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
-        decoration: const BoxDecoration(
-          color: accentGold,
-        ),
+        decoration: const BoxDecoration(color: accentGold),
         child: Icon(icon, color: Colors.black),
       ),
     );

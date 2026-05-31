@@ -31,7 +31,8 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolvedGradient = gradient ??
+    final resolvedGradient =
+        gradient ??
         LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -46,11 +47,7 @@ class GlassPanel extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
-          BoxShadow(
-            color: shadow,
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
+          BoxShadow(color: shadow, blurRadius: 24, offset: const Offset(0, 12)),
         ],
       ),
       child: ClipPath(
@@ -62,10 +59,7 @@ class GlassPanel extends StatelessWidget {
               gradient: resolvedGradient,
               border: Border.all(color: border),
             ),
-            child: Padding(
-              padding: padding,
-              child: child,
-            ),
+            child: Padding(padding: padding, child: child),
           ),
         ),
       ),
@@ -97,8 +91,8 @@ class ObsidianIconButton extends StatelessWidget {
     final color = !enabled
         ? ObsidianPalette.textMuted.withOpacity(0.4)
         : isActive
-            ? ObsidianPalette.gold
-            : ObsidianPalette.textMuted;
+        ? ObsidianPalette.gold
+        : ObsidianPalette.textMuted;
     final gradient = isActive && enabled && style == ObsidianButtonStyle.glass
         ? LinearGradient(
             colors: [
@@ -115,8 +109,9 @@ class ObsidianIconButton extends StatelessWidget {
             cut: cut,
             padding: EdgeInsets.zero,
             gradient: gradient,
-            shadowColor:
-                enabled ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.2),
+            shadowColor: enabled
+                ? Colors.black.withOpacity(0.4)
+                : Colors.black.withOpacity(0.2),
             child: _buildInk(color),
           )
         : ClipPath(
@@ -134,11 +129,7 @@ class ObsidianIconButton extends StatelessWidget {
             ),
           );
 
-    return SizedBox(
-      width: size,
-      height: size,
-      child: panel,
-    );
+    return SizedBox(width: size, height: size, child: panel);
   }
 
   Widget _buildInk(Color color) {
@@ -146,9 +137,7 @@ class ObsidianIconButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        child: Center(
-          child: Icon(icon, color: color, size: 20),
-        ),
+        child: Center(child: Icon(icon, color: color, size: 20)),
       ),
     );
   }
@@ -232,8 +221,9 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
     final highlight = enabled && (widget.isActive || _hovered || _pressed);
-    final glowOpacity =
-        !enabled ? 0.0 : (_hovered ? 0.7 : (widget.isActive ? 0.35 : 0.0));
+    final glowOpacity = !enabled
+        ? 0.0
+        : (_hovered ? 0.7 : (widget.isActive ? 0.35 : 0.0));
     final idleColor = enabled
         ? ObsidianPalette.textMuted
         : ObsidianPalette.textMuted.withOpacity(0.6);
@@ -434,21 +424,13 @@ class _OctagonBorderPainter extends CustomPainter {
         ..color = color
         ..strokeWidth = 2;
       final inset = 6.0;
-      canvas.drawLine(
-        Offset(inset, 0),
-        Offset(size.width - inset, 0),
-        accent,
-      );
+      canvas.drawLine(Offset(inset, 0), Offset(size.width - inset, 0), accent);
       canvas.drawLine(
         Offset(inset, size.height),
         Offset(size.width - inset, size.height),
         accent,
       );
-      canvas.drawLine(
-        Offset(0, inset),
-        Offset(0, size.height - inset),
-        accent,
-      );
+      canvas.drawLine(Offset(0, inset), Offset(0, size.height - inset), accent);
       canvas.drawLine(
         Offset(size.width, inset),
         Offset(size.width, size.height - inset),
@@ -501,20 +483,20 @@ class ObsidianNavIcon extends StatelessWidget {
         final border = isSelected
             ? ObsidianPalette.gold
             : hovered
-                ? Colors.grey.shade300.withOpacity(0.8)
-                : Colors.white.withOpacity(0.05);
+            ? Colors.grey.shade300.withOpacity(0.8)
+            : Colors.white.withOpacity(0.05);
         final iconColor = isSelected
             ? ObsidianPalette.gold
             : hovered
-                ? Colors.grey.shade300.withOpacity(0.9)
-                : ObsidianPalette.textMuted;
+            ? Colors.grey.shade300.withOpacity(0.9)
+            : ObsidianPalette.textMuted;
         final shadow = [
           BoxShadow(
             color: isSelected
                 ? ObsidianPalette.goldSoft
                 : hovered
-                    ? Colors.grey.shade300.withOpacity(0.25)
-                    : Colors.transparent,
+                ? Colors.grey.shade300.withOpacity(0.25)
+                : Colors.transparent,
             blurRadius: isSelected || hovered ? 12 : 0,
           ),
         ];
@@ -541,10 +523,7 @@ class ObsidianNavIcon extends StatelessWidget {
                     tween: ColorTween(end: iconColor),
                     curve: Curves.easeOut,
                     builder: (context, color, child) => IconTheme(
-                      data: IconThemeData(
-                        color: color,
-                        size: resolvedIconSize,
-                      ),
+                      data: IconThemeData(color: color, size: resolvedIconSize),
                       child: child!,
                     ),
                     child: icon,
@@ -579,10 +558,7 @@ class ObsidianChamferPanel extends StatelessWidget {
       clipper: ChamferClipper(cutSize: cut),
       child: DecoratedBox(
         decoration: decoration,
-        child: Padding(
-          padding: padding,
-          child: child,
-        ),
+        child: Padding(padding: padding, child: child),
       ),
     );
   }
@@ -624,10 +600,6 @@ class ObsidianCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassPanel(
-      cut: 18,
-      padding: padding,
-      child: child,
-    );
+    return GlassPanel(cut: 18, padding: padding, child: child);
   }
 }

@@ -78,9 +78,7 @@ class _StatsHeader extends StatelessWidget {
             const Icon(Icons.bar_chart_rounded, size: 42),
             const SizedBox(width: 20),
             const Expanded(
-              child: ObsidianSectionHeader(
-                title: 'Listening Statistics',
-              ),
+              child: ObsidianSectionHeader(title: 'Listening Statistics'),
             ),
             if (onRefresh != null) ...[
               SizedBox(width: s(12)),
@@ -314,11 +312,7 @@ class _KpiGrid extends StatelessWidget {
             ],
           );
         }
-        return Wrap(
-          spacing: s(16),
-          runSpacing: s(16),
-          children: cards,
-        );
+        return Wrap(spacing: s(16), runSpacing: s(16), children: cards);
       },
     );
   }
@@ -431,10 +425,7 @@ class _AnalysisSection extends StatelessWidget {
 }
 
 class _TopGenresSection extends StatelessWidget {
-  const _TopGenresSection({
-    required this.genres,
-    required this.totalMinutes,
-  });
+  const _TopGenresSection({required this.genres, required this.totalMinutes});
 
   final List<StatsItem> genres;
   final int totalMinutes;
@@ -489,9 +480,9 @@ class _GenreBar extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: ObsidianPalette.textMuted,
-                    letterSpacing: s(1.0),
-                  ),
+                color: ObsidianPalette.textMuted,
+                letterSpacing: s(1.0),
+              ),
             ),
           ),
           SizedBox(width: s(12)),
@@ -582,10 +573,7 @@ class _TopArtistsSection extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final artist = artists[index].name;
-              return _ArtistCard(
-                artist: artist,
-                rank: index + 1,
-              );
+              return _ArtistCard(artist: artist, rank: index + 1);
             },
           );
         },
@@ -638,8 +626,10 @@ class _ArtistCard extends StatelessWidget {
               child: ClipPath(
                 clipper: ChamferClipper(cutSize: s(6)),
                 child: Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: s(8), vertical: s(4)),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: s(8),
+                    vertical: s(4),
+                  ),
                   color: ObsidianPalette.gold.withOpacity(0.2),
                   child: Text(
                     '$rank',
@@ -660,9 +650,9 @@ class _ArtistCard extends StatelessWidget {
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                letterSpacing: s(0.8),
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(letterSpacing: s(0.8)),
         ),
       ],
     );
@@ -732,9 +722,9 @@ class _TrackRow extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    letterSpacing: s(0.6),
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(letterSpacing: s(0.6)),
             ),
           ),
           Text(
@@ -803,16 +793,16 @@ class _ModuleShell extends StatelessWidget {
 }
 
 Widget _emptyText(String text) {
-  return Builder(builder: (context) {
-    final s = (double value) => _scaled(context, value);
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: s(12)),
-      child: Text(
-        text,
-        style: GoogleFonts.poppins(
-          color: ObsidianPalette.textMuted,
+  return Builder(
+    builder: (context) {
+      final s = (double value) => _scaled(context, value);
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: s(12)),
+        child: Text(
+          text,
+          style: GoogleFonts.poppins(color: ObsidianPalette.textMuted),
         ),
-      ),
-    );
-  });
+      );
+    },
+  );
 }

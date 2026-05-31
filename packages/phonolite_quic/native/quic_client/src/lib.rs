@@ -118,8 +118,6 @@ struct ClientState {
     active_track: Option<String>,
     active_stream: Option<u64>,
     track_streams: HashMap<String, u64>,
-    prefetch_buffers: HashMap<String, VecDeque<Bytes>>,
-    prefetch_bytes: HashMap<String, usize>,
     pending_streams: HashMap<u64, VecDeque<Bytes>>,
     pending_stream_bytes: HashMap<u64, usize>,
 }
@@ -134,8 +132,6 @@ impl ClientState {
             active_track: None,
             active_stream: None,
             track_streams: HashMap::new(),
-            prefetch_buffers: HashMap::new(),
-            prefetch_bytes: HashMap::new(),
             pending_streams: HashMap::new(),
             pending_stream_bytes: HashMap::new(),
         }
@@ -517,8 +513,6 @@ fn run_client(
                     state.active_track = Some(track_id.clone());
                     state.active_stream = None;
                     state.track_streams.clear();
-                    state.prefetch_buffers.clear();
-                    state.prefetch_bytes.clear();
                     state.pending_streams.clear();
                     state.pending_stream_bytes.clear();
                     let queue_opt = if queue.is_empty() {
@@ -799,11 +793,7 @@ fn handle_control_bytes(
                     if is_active {
                         state.active_stream = Some(stream_id);
                     }
-                    flush_pending_stream(state, stream_id, &track_id, tx, is_active);
-                    if !is_active {
-                        state.prefetch_buffers.remove(&track_id);
-                        state.prefetch_bytes.remove(&track_id);
-                    }
+                    flush_pending_stream(state, stream_id, tx, is_active);
                 }
                 ServerMessage::Error { message } => {
                     set_last_error_if_empty(last_error, message);
@@ -872,7 +862,6 @@ fn buffer_pending_stream(state: &mut ClientState, stream_id: u64, data: &[u8]) {
 fn flush_pending_stream(
     state: &mut ClientState,
     stream_id: u64,
-    track_id: &str,
     tx: &mpsc::Sender<Vec<u8>>,
     active: bool,
 ) {

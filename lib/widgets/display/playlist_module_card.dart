@@ -23,8 +23,9 @@ class PlaylistModuleCard extends StatelessWidget {
     return ObsidianHoverBuilder(
       cursor: SystemMouseCursors.click,
       builder: (context, hovered) {
-        final barColor =
-            hovered ? ObsidianPalette.gold : Colors.white.withOpacity(0.1);
+        final barColor = hovered
+            ? ObsidianPalette.gold
+            : Colors.white.withOpacity(0.1);
         final glow = hovered
             ? [
                 BoxShadow(

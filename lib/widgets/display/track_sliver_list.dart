@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/models.dart';
+import '../../entities/offline_library.dart';
 import 'track_row_tile.dart';
 
 class TrackSliverList extends StatelessWidget {
@@ -11,8 +12,16 @@ class TrackSliverList extends StatelessWidget {
     this.onTrackTap,
     this.onTrackLongPress,
     this.onTrackAddToPlaylist,
+    this.onTrackDownload,
+    this.onTrackRemoveDownload,
     this.onTrackLike,
     this.onTrackDelete,
+    this.selectionMode = false,
+    this.canSelectTrack,
+    this.isTrackSelected,
+    this.onTrackSelectionToggle,
+    this.onTrackSelectionModeRequested,
+    this.offlineDownloadForTrack,
     this.showAlbumArt = false,
   });
 
@@ -21,8 +30,16 @@ class TrackSliverList extends StatelessWidget {
   final ValueChanged<Track>? onTrackTap;
   final ValueChanged<Track>? onTrackLongPress;
   final ValueChanged<Track>? onTrackAddToPlaylist;
+  final ValueChanged<Track>? onTrackDownload;
+  final ValueChanged<Track>? onTrackRemoveDownload;
   final ValueChanged<Track>? onTrackLike;
   final ValueChanged<Track>? onTrackDelete;
+  final bool selectionMode;
+  final bool Function(Track track)? canSelectTrack;
+  final bool Function(Track track)? isTrackSelected;
+  final ValueChanged<Track>? onTrackSelectionToggle;
+  final ValueChanged<Track>? onTrackSelectionModeRequested;
+  final OfflineTrackDownload? Function(Track track)? offlineDownloadForTrack;
   final bool showAlbumArt;
 
   @override
@@ -34,6 +51,10 @@ class TrackSliverList extends StatelessWidget {
           return const Divider(height: 1);
         }
         final track = tracks[index ~/ 2];
+        final offlineDownload = offlineDownloadForTrack?.call(track);
+        final isDeleting =
+            offlineDownload?.status == OfflineDownloadStatus.removing;
+        final selectable = (canSelectTrack?.call(track) ?? true) && !isDeleting;
         return TrackRowTile(
           track: track,
           index: index ~/ 2 + 1,
@@ -46,8 +67,24 @@ class TrackSliverList extends StatelessWidget {
           onAddToPlaylist: onTrackAddToPlaylist == null
               ? null
               : () => onTrackAddToPlaylist!(track),
+          onDownload: onTrackDownload == null
+              ? null
+              : () => onTrackDownload!(track),
+          onRemoveDownload: onTrackRemoveDownload == null
+              ? null
+              : () => onTrackRemoveDownload!(track),
           onLike: onTrackLike == null ? null : () => onTrackLike!(track),
           onDelete: onTrackDelete == null ? null : () => onTrackDelete!(track),
+          selectionMode: selectionMode,
+          selected: isTrackSelected?.call(track) ?? false,
+          onSelectionToggle: selectable && onTrackSelectionToggle != null
+              ? () => onTrackSelectionToggle!(track)
+              : null,
+          onSelectionModeRequested:
+              selectable && onTrackSelectionModeRequested != null
+              ? () => onTrackSelectionModeRequested!(track)
+              : null,
+          offlineDownload: offlineDownload,
         );
       }, childCount: itemCount),
     );

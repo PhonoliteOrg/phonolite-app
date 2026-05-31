@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../layouts/app_scope.dart';
 import '../layouts/obsidian_scale.dart';
 import '../modals/add_to_playlist_modal.dart';
 import '../modals/device_picker_modal.dart';
+import 'album_art.dart';
 import '../ui/blur.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
@@ -164,6 +166,9 @@ List<Widget> _buildTechTags(PlaybackState state) {
   if (state.repeatMode == RepeatMode.one) {
     tags.add(const _TechTag(label: 'LOOP', highlight: true));
   }
+  if (state.isLocalPlayback) {
+    tags.add(const _TechTag(label: 'LOCAL', highlight: true));
+  }
   final bitrate = _bitrateLabel(state);
   if (bitrate != null) {
     tags.add(_TechTag(label: bitrate));
@@ -183,6 +188,8 @@ String? _queueSourceLabel(PlaybackState state) {
       return 'SOURCE: LIKED';
     case PlaybackQueueSource.playlist:
       return 'SOURCE: PLAYLIST';
+    case PlaybackQueueSource.offline:
+      return null;
   }
 }
 
@@ -261,7 +268,8 @@ Future<void> _showShuffleModal(
   required ValueChanged<ShuffleMode> onSelected,
 }) async {
   final controller = AppScope.of(context);
-  if (controller.authState.isAuthorized && controller.liked.isEmpty) {
+  final serverAvailable = controller.authState.isAuthorized;
+  if (serverAvailable && controller.liked.isEmpty) {
     await controller.loadLikedTracks();
   }
   final customSettings = controller.customShuffleSettings;
@@ -291,6 +299,7 @@ Future<void> _showShuffleModal(
             shrinkWrap: true,
             children: items.map((mode) {
               final enabled = switch (mode) {
+                _ when !serverAvailable && mode != ShuffleMode.off => false,
                 ShuffleMode.custom => customEnabled,
                 ShuffleMode.liked => likedEnabled,
                 ShuffleMode.currentPlaylist => currentPlaylistEnabled,
@@ -455,9 +464,11 @@ class NowPlayingBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final track = state.track;
-    final durationSeconds = state.duration.inSeconds.toDouble();
-    final maxSeconds = durationSeconds <= 0 ? 1.0 : durationSeconds;
-    final positionSeconds = state.position.inSeconds
+    final durationSeconds = state.duration.inMilliseconds <= 0
+        ? 1.0
+        : state.duration.inMilliseconds / 1000.0;
+    final maxSeconds = durationSeconds;
+    final positionSeconds = (state.position.inMilliseconds / 1000.0)
         .toDouble()
         .clamp(0, maxSeconds)
         .toDouble();
@@ -478,6 +489,9 @@ class NowPlayingBar extends StatelessWidget {
     }
     if (state.repeatMode == RepeatMode.one) {
       techTags.add(const _TechTag(label: 'LOOP', highlight: true));
+    }
+    if (state.isLocalPlayback) {
+      techTags.add(const _TechTag(label: 'LOCAL', highlight: true));
     }
     final bitrate = _bitrateLabel(state);
     if (bitrate != null) {
@@ -705,11 +719,17 @@ class NowPlayingMiniBar extends StatelessWidget {
     final tags = inlineTags.isEmpty
         ? const [_TechTag(label: 'IDLE')]
         : inlineTags;
-    final albumId = track?.albumId;
-    final imageUrl = albumId == null || albumId.isEmpty
+    final albumId = track?.albumId?.trim();
+    final localImageUrl = track?.albumArtPath?.trim();
+    final hasLocalImage = localImageUrl != null && localImageUrl.isNotEmpty;
+    final imageUrl = hasLocalImage
+        ? localImageUrl
+        : albumId == null || albumId.isEmpty || state.isLocalPlayback
         ? null
         : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
-    final headers = authHeaders(AppScope.of(context));
+    final headers = hasLocalImage
+        ? const <String, String>{}
+        : authHeaders(AppScope.of(context));
     final artSize = s(54);
     final playPadding = s(6);
     final playVisualSize = math.min(42.0, _height - playPadding * 2);
@@ -747,20 +767,17 @@ class NowPlayingMiniBar extends StatelessWidget {
                           color: Colors.white.withOpacity(0.12),
                         ),
                       ),
-                      child: imageUrl == null
-                          ? (track == null
-                                ? Icon(
-                                    Icons.music_note_rounded,
-                                    color: ObsidianPalette.textMuted,
-                                    size: artSize * 0.5,
-                                  )
-                                : const SizedBox.shrink())
-                          : Image.network(
-                              imageUrl,
+                      child: track == null
+                          ? Icon(
+                              Icons.music_note_rounded,
+                              color: ObsidianPalette.textMuted,
+                              size: artSize * 0.5,
+                            )
+                          : AlbumArt(
+                              title: track.album,
+                              size: artSize,
+                              imageUrl: imageUrl,
                               headers: headers,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  const SizedBox.shrink(),
                             ),
                     ),
                   ),
@@ -875,8 +892,10 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
     final height = size.height * 0.92;
-    final maxSeconds = math.max(1, state.duration.inSeconds).toDouble();
-    final positionSeconds = state.position.inSeconds
+    final maxSeconds = state.duration.inMilliseconds <= 0
+        ? 1.0
+        : state.duration.inMilliseconds / 1000.0;
+    final positionSeconds = (state.position.inMilliseconds / 1000.0)
         .toDouble()
         .clamp(0, maxSeconds)
         .toDouble();
@@ -886,12 +905,18 @@ class NowPlayingExpandedSheet extends StatelessWidget {
             .toDouble();
     final inlineTags = _buildInlineTags(state);
 
-    final albumId = track?.albumId ?? '';
+    final albumId = track?.albumId?.trim() ?? '';
     final canOpenAlbum = onOpenAlbum != null && albumId.isNotEmpty;
-    final imageUrl = albumId.isEmpty
+    final localImageUrl = track?.albumArtPath?.trim();
+    final hasLocalImage = localImageUrl != null && localImageUrl.isNotEmpty;
+    final imageUrl = hasLocalImage
+        ? localImageUrl
+        : albumId.isEmpty || state.isLocalPlayback
         ? null
         : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
-    final headers = authHeaders(AppScope.of(context));
+    final headers = hasLocalImage
+        ? const <String, String>{}
+        : authHeaders(AppScope.of(context));
     final artSize = math.min(size.width * 0.78, 320.0);
 
     final sliderTheme = SliderTheme.of(context).copyWith(
@@ -968,13 +993,12 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                         child: Stack(
                                           fit: StackFit.expand,
                                           children: [
-                                            if (imageUrl != null)
-                                              Image.network(
-                                                imageUrl,
+                                            if (track != null)
+                                              AlbumArt(
+                                                title: track.album,
+                                                size: artSize,
+                                                imageUrl: imageUrl,
                                                 headers: headers,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) =>
-                                                    const SizedBox.shrink(),
                                               ),
                                             if (state.isLoading)
                                               ColoredBox(
@@ -1222,8 +1246,12 @@ class _AlbumArtThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final albumId = track?.albumId;
-    final imageUrl = albumId == null || albumId.isEmpty
+    final albumId = track?.albumId?.trim();
+    final localImageUrl = track?.albumArtPath?.trim();
+    final hasLocalImage = localImageUrl != null && localImageUrl.isNotEmpty;
+    final imageUrl = hasLocalImage
+        ? localImageUrl
+        : albumId == null || albumId.isEmpty
         ? null
         : AppScope.of(context).connection.buildAlbumCoverUrl(albumId);
     final placeholder = Container(
@@ -1240,13 +1268,15 @@ class _AlbumArtThumb extends StatelessWidget {
       ),
     );
 
-    final image = imageUrl == null || imageUrl.isEmpty
+    final image = imageUrl == null || imageUrl.isEmpty || track == null
         ? placeholder
-        : Image.network(
-            imageUrl,
-            headers: authHeaders(AppScope.of(context)),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder,
+        : AlbumArt(
+            title: track!.album,
+            size: s(64),
+            imageUrl: imageUrl,
+            headers: hasLocalImage
+                ? const <String, String>{}
+                : authHeaders(AppScope.of(context)),
           );
 
     return ClipPath(
@@ -1525,15 +1555,16 @@ class _ExpandedExtras extends StatelessWidget {
       activeTrackColor: Colors.white.withOpacity(0.6),
     );
 
+    final userActionsEnabled = trackAvailable;
     final actions = <Widget>[
       ObsidianHudIconButton(
         icon: Icons.playlist_add,
-        onPressed: trackAvailable ? onAddToPlaylist : null,
+        onPressed: userActionsEnabled ? onAddToPlaylist : null,
         size: s(32),
       ),
       LikeIconButton(
         isLiked: state.track?.liked == true,
-        onPressed: trackAvailable ? onToggleLike : null,
+        onPressed: userActionsEnabled ? onToggleLike : null,
         size: s(32),
       ),
       ObsidianHudIconButton(
@@ -1542,12 +1573,14 @@ class _ExpandedExtras extends StatelessWidget {
         size: s(32),
       ),
       _QualityBadge(
-        label: _streamLabel(state.streamMode),
-        onTap: () => _showStreamModal(
-          context,
-          current: state.streamMode,
-          onSelected: onStreamModeChanged,
-        ),
+        label: state.isLocalPlayback ? 'LOCAL' : _streamLabel(state.streamMode),
+        onTap: state.isLocalPlayback
+            ? null
+            : () => _showStreamModal(
+                context,
+                current: state.streamMode,
+                onSelected: onStreamModeChanged,
+              ),
       ),
     ];
 
@@ -1626,6 +1659,7 @@ class _CompactControls extends StatelessWidget {
     final transportEnabled = _transportControlsEnabled(state);
     final playEnabled = transportEnabled && !state.isLoading;
     final trackAvailable = state.track != null;
+    final userActionsEnabled = trackAvailable;
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: s(8),
@@ -1662,12 +1696,12 @@ class _CompactControls extends StatelessWidget {
         ),
         ObsidianHudIconButton(
           icon: Icons.playlist_add,
-          onPressed: trackAvailable ? onAddToPlaylist : null,
+          onPressed: userActionsEnabled ? onAddToPlaylist : null,
           size: s(22),
         ),
         LikeIconButton(
           isLiked: state.track?.liked == true,
-          onPressed: trackAvailable ? onToggleLike : null,
+          onPressed: userActionsEnabled ? onToggleLike : null,
           size: s(22),
         ),
         ObsidianHudIconButton(
@@ -1676,8 +1710,10 @@ class _CompactControls extends StatelessWidget {
           size: s(22),
         ),
         _QualityBadge(
-          label: _streamLabel(state.streamMode),
-          onTap: onShowStreamMode,
+          label: state.isLocalPlayback
+              ? 'LOCAL'
+              : _streamLabel(state.streamMode),
+          onTap: state.isLocalPlayback ? null : onShowStreamMode,
         ),
       ],
     );
@@ -1750,50 +1786,58 @@ class _CompactFooterRowState extends State<_CompactFooterRow> {
   }
 
   void _tick() {
+    developer.Timeline.startSync('nowPlaying.progress.tick');
     final now = DateTime.now();
-    final lastTickAt = _lastTickAt;
-    _lastTickAt = now;
-    if (!mounted || lastTickAt == null) {
-      return;
-    }
-    if (!widget.animate) {
-      if (_displayPosition != widget.position) {
-        setState(() {
-          _displayPosition = widget.position;
-        });
+    try {
+      final lastTickAt = _lastTickAt;
+      _lastTickAt = now;
+      if (!mounted || lastTickAt == null || !TickerMode.of(context)) {
+        return;
       }
-      return;
-    }
+      if (!widget.animate) {
+        if (_displayPosition != widget.position) {
+          setState(() {
+            _displayPosition = widget.position;
+          });
+        }
+        return;
+      }
 
-    var elapsedMs = now.difference(lastTickAt).inMilliseconds;
-    if (elapsedMs <= 0) {
-      return;
-    }
-    if (elapsedMs > 500) {
-      elapsedMs = 250;
-    }
+      var elapsedMs = now.difference(lastTickAt).inMilliseconds;
+      if (elapsedMs <= 0) {
+        return;
+      }
+      if (elapsedMs > 500) {
+        elapsedMs = 250;
+      }
 
-    final durationMs = widget.duration.inMilliseconds;
-    var nextMs = _displayPosition.inMilliseconds + elapsedMs;
-    if (durationMs > 0 && nextMs > durationMs) {
-      nextMs = durationMs;
+      final durationMs = widget.duration.inMilliseconds;
+      var nextMs = _displayPosition.inMilliseconds + elapsedMs;
+      if (durationMs > 0 && nextMs > durationMs) {
+        nextMs = durationMs;
+      }
+      final floorMs = widget.position.inMilliseconds;
+      if (nextMs < floorMs) {
+        nextMs = floorMs;
+      }
+      if (nextMs == _displayPosition.inMilliseconds) {
+        return;
+      }
+      setState(() {
+        _displayPosition = Duration(milliseconds: nextMs);
+      });
+    } finally {
+      developer.Timeline.finishSync();
     }
-    final floorMs = widget.position.inMilliseconds;
-    if (nextMs < floorMs) {
-      nextMs = floorMs;
-    }
-    if (nextMs == _displayPosition.inMilliseconds) {
-      return;
-    }
-    setState(() {
-      _displayPosition = Duration(milliseconds: nextMs);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final positionSeconds = _displayPosition.inMilliseconds / 1000.0;
+    final positionSeconds = (_displayPosition.inMilliseconds / 1000.0).clamp(
+      0.0,
+      widget.maxSeconds,
+    );
     final bufferedPositionSeconds = math
         .max(widget.bufferedPositionSeconds, positionSeconds)
         .clamp(0.0, widget.maxSeconds);
@@ -1930,15 +1974,16 @@ class _OutputZone extends StatelessWidget {
       builder: (context, constraints) {
         final isTight = compact || constraints.maxWidth < s(320 * d);
         final controlSpacing = isTight ? s(10 * d) : s(16 * d);
+        final userActionsEnabled = state.track != null;
         final controls = <Widget>[
           ObsidianHudIconButton(
             icon: Icons.playlist_add,
-            onPressed: state.track == null ? null : onAddToPlaylist,
+            onPressed: userActionsEnabled ? onAddToPlaylist : null,
             size: s(26 * d),
           ),
           LikeIconButton(
             isLiked: state.track?.liked == true,
-            onPressed: state.track == null ? null : onToggleLike,
+            onPressed: userActionsEnabled ? onToggleLike : null,
             size: s(26 * d),
           ),
           ObsidianHudIconButton(
@@ -1947,12 +1992,16 @@ class _OutputZone extends StatelessWidget {
             size: s(26 * d),
           ),
           _QualityBadge(
-            label: _streamLabel(state.streamMode),
-            onTap: () => _showStreamModal(
-              context,
-              current: state.streamMode,
-              onSelected: onStreamModeChanged,
-            ),
+            label: state.isLocalPlayback
+                ? 'LOCAL'
+                : _streamLabel(state.streamMode),
+            onTap: state.isLocalPlayback
+                ? null
+                : () => _showStreamModal(
+                    context,
+                    current: state.streamMode,
+                    onSelected: onStreamModeChanged,
+                  ),
           ),
         ];
         final controlsRow = isTight
@@ -2169,7 +2218,7 @@ class _QualityBadge extends StatefulWidget {
   const _QualityBadge({required this.label, required this.onTap});
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   State<_QualityBadge> createState() => _QualityBadgeState();
@@ -2189,18 +2238,24 @@ class _QualityBadgeState extends State<_QualityBadge> {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final bgColor = _hovered
+    final enabled = widget.onTap != null;
+    final active = enabled && _hovered;
+    final bgColor = active
         ? ObsidianPalette.gold
         : Colors.white.withOpacity(0.05);
-    final borderColor = _hovered
+    final borderColor = active
         ? ObsidianPalette.gold
         : Colors.white.withOpacity(0.12);
-    final textColor = _hovered ? Colors.black : ObsidianPalette.gold;
+    final textColor = active
+        ? Colors.black
+        : enabled
+        ? ObsidianPalette.gold
+        : ObsidianPalette.textMuted;
 
     return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
-      cursor: SystemMouseCursors.click,
+      onEnter: enabled ? (_) => _setHovered(true) : null,
+      onExit: enabled ? (_) => _setHovered(false) : null,
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
@@ -2343,7 +2398,10 @@ class _ProgressBarState extends State<_ProgressBar> {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final positionSeconds = _displayPosition.inMilliseconds / 1000.0;
+    final positionSeconds = (_displayPosition.inMilliseconds / 1000.0).clamp(
+      0.0,
+      widget.maxSeconds,
+    );
     final bufferedPositionSeconds = math
         .max(widget.bufferedPositionSeconds, positionSeconds)
         .clamp(0.0, widget.maxSeconds);

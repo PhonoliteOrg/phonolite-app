@@ -16,20 +16,44 @@ Future<void> showAddToPlaylistModalForTrack(
     return;
   }
   final controller = AppScope.of(context);
-  if (controller.playlists.isEmpty) {
+  if (controller.localPlaylists.isEmpty) {
+    await controller.loadLocalPlaylists();
+  }
+  if (controller.authState.isAuthorized && controller.playlists.isEmpty) {
     await controller.loadPlaylists();
   }
   if (!context.mounted) {
     return;
   }
+  final localDownload = controller.availableOfflineDownloadForTrack(track.id);
+  final canUseLocal = localDownload?.localTrackId != null;
+  final serverTrack = controller.serverTrackForCurrentServer(track);
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => AddToPlaylistModal(
-      playlists: controller.playlists,
-      trackId: track.id,
-      onSelected: (playlist) => controller.addTrackToPlaylist(playlist, track),
-      onRemoved: (playlist) =>
-          controller.removeTrackFromPlaylist(playlist, track),
+      localPlaylists: controller.localPlaylists,
+      serverPlaylists: serverTrack != null && controller.authState.isAuthorized
+          ? controller.playlists
+          : const <Playlist>[],
+      trackId: serverTrack?.id ?? track.id,
+      localTrackId: track.localId ?? localDownload?.localTrackId,
+      canUseLocalPlaylists: canUseLocal,
+      onLocalSelected: (playlist) =>
+          controller.addTrackToLocalPlaylist(playlist, track),
+      onLocalRemoved: (playlist) =>
+          controller.removeTrackFromLocalPlaylist(playlist, track),
+      onServerSelected: (playlist) {
+        final scopedTrack = serverTrack;
+        if (scopedTrack != null) {
+          controller.addTrackToPlaylist(playlist, scopedTrack);
+        }
+      },
+      onServerRemoved: (playlist) {
+        final scopedTrack = serverTrack;
+        if (scopedTrack != null) {
+          controller.removeTrackFromPlaylist(playlist, scopedTrack);
+        }
+      },
     ),
   );
 }
@@ -37,16 +61,26 @@ Future<void> showAddToPlaylistModalForTrack(
 class AddToPlaylistModal extends StatefulWidget {
   const AddToPlaylistModal({
     super.key,
-    required this.playlists,
+    required this.localPlaylists,
+    required this.serverPlaylists,
     required this.trackId,
-    required this.onSelected,
-    this.onRemoved,
+    this.localTrackId,
+    required this.canUseLocalPlaylists,
+    required this.onLocalSelected,
+    required this.onServerSelected,
+    this.onLocalRemoved,
+    this.onServerRemoved,
   });
 
-  final List<Playlist> playlists;
+  final List<Playlist> localPlaylists;
+  final List<Playlist> serverPlaylists;
   final String trackId;
-  final ValueChanged<Playlist> onSelected;
-  final ValueChanged<Playlist>? onRemoved;
+  final String? localTrackId;
+  final bool canUseLocalPlaylists;
+  final ValueChanged<Playlist> onLocalSelected;
+  final ValueChanged<Playlist> onServerSelected;
+  final ValueChanged<Playlist>? onLocalRemoved;
+  final ValueChanged<Playlist>? onServerRemoved;
 
   @override
   State<AddToPlaylistModal> createState() => _AddToPlaylistModalState();
@@ -75,14 +109,11 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
 
   @override
   Widget build(BuildContext context) {
-    final hasPlaylists = widget.playlists.isNotEmpty;
+    final hasPlaylists =
+        widget.localPlaylists.isNotEmpty || widget.serverPlaylists.isNotEmpty;
     final normalized = _query.trim().toLowerCase();
-    final filtered = widget.playlists.where((playlist) {
-      if (normalized.isEmpty) {
-        return true;
-      }
-      return playlist.name.toLowerCase().contains(normalized);
-    }).toList();
+    final filteredLocal = _filterPlaylists(widget.localPlaylists, normalized);
+    final filteredServer = _filterPlaylists(widget.serverPlaylists, normalized);
 
     return AlertDialog(
       title: const Text('Add to playlist'),
@@ -109,7 +140,7 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                         shrinkWrap: true,
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-                        itemCount: filtered.length,
+                        itemCount: _rowCount(filteredLocal, filteredServer),
                         separatorBuilder: (context, index) => Divider(
                           height: 1,
                           color: ObsidianPalette.textMuted.withValues(
@@ -117,75 +148,28 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                           ),
                         ),
                         itemBuilder: (context, index) {
-                          final playlist = filtered[index];
-                          final wasInPlaylist = playlist.trackIds.contains(
-                            widget.trackId,
+                          final row = _rowAt(
+                            index,
+                            filteredLocal,
+                            filteredServer,
                           );
-                          final addedLocally = _addedPlaylistIds.contains(
-                            playlist.id,
-                          );
-                          final removedLocally = _removedPlaylistIds.contains(
-                            playlist.id,
-                          );
-                          final isInPlaylist =
-                              (wasInPlaylist || addedLocally) &&
-                              !removedLocally;
-                          var count = playlist.trackIds.length;
-                          if (wasInPlaylist && removedLocally) {
-                            count -= 1;
-                          } else if (!wasInPlaylist && addedLocally) {
-                            count += 1;
+                          if (row.header != null) {
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                              child: Text(
+                                row.header!,
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: ObsidianPalette.gold,
+                                      letterSpacing: 1.2,
+                                    ),
+                              ),
+                            );
                           }
-                          return _ModalListRow(
-                            title: playlist.name,
-                            subtitle: '$count tracks',
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  isInPlaylist
-                                      ? Icons.check_rounded
-                                      : Icons.add_rounded,
-                                  color: ObsidianPalette.gold,
-                                ),
-                                if (isInPlaylist &&
-                                    widget.onRemoved != null) ...[
-                                  const SizedBox(width: 8),
-                                  ObsidianHudIconButton(
-                                    icon: Icons.delete_outline_rounded,
-                                    onPressed: () async {
-                                      final confirmed =
-                                          await ConfirmationModal.show(
-                                            context,
-                                            title: 'Remove song from playlist',
-                                            message:
-                                                'Are you sure you want to remove this song from this playlist?',
-                                          );
-                                      if (!confirmed || !mounted) {
-                                        return;
-                                      }
-                                      widget.onRemoved?.call(playlist);
-                                      setState(() {
-                                        _removedPlaylistIds.add(playlist.id);
-                                        _addedPlaylistIds.remove(playlist.id);
-                                      });
-                                    },
-                                    size: 20,
-                                  ),
-                                ],
-                              ],
-                            ),
-                            enabled: !isInPlaylist,
-                            isSelected: isInPlaylist,
-                            onTap: isInPlaylist
-                                ? null
-                                : () {
-                                    widget.onSelected(playlist);
-                                    setState(() {
-                                      _addedPlaylistIds.add(playlist.id);
-                                      _removedPlaylistIds.remove(playlist.id);
-                                    });
-                                  },
+                          return _buildPlaylistRow(
+                            context,
+                            row.playlist!,
+                            isLocal: row.isLocal,
                           );
                         },
                       ),
@@ -211,6 +195,134 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
       ],
     );
   }
+
+  List<Playlist> _filterPlaylists(List<Playlist> playlists, String normalized) {
+    return playlists.where((playlist) {
+      if (normalized.isEmpty) {
+        return true;
+      }
+      return playlist.name.toLowerCase().contains(normalized);
+    }).toList();
+  }
+
+  int _rowCount(List<Playlist> local, List<Playlist> server) {
+    return (local.isEmpty ? 0 : local.length + 1) +
+        (server.isEmpty ? 0 : server.length + 1);
+  }
+
+  _PlaylistModalRow _rowAt(
+    int index,
+    List<Playlist> local,
+    List<Playlist> server,
+  ) {
+    var cursor = index;
+    if (local.isNotEmpty) {
+      if (cursor == 0) {
+        return const _PlaylistModalRow.header('Local Playlists');
+      }
+      cursor -= 1;
+      if (cursor < local.length) {
+        return _PlaylistModalRow.playlist(local[cursor], isLocal: true);
+      }
+      cursor -= local.length;
+    }
+    if (server.isNotEmpty) {
+      if (cursor == 0) {
+        return const _PlaylistModalRow.header('Server Playlists');
+      }
+      cursor -= 1;
+      return _PlaylistModalRow.playlist(server[cursor], isLocal: false);
+    }
+    return const _PlaylistModalRow.header('');
+  }
+
+  Widget _buildPlaylistRow(
+    BuildContext context,
+    Playlist playlist, {
+    required bool isLocal,
+  }) {
+    final membershipId = isLocal
+        ? widget.localTrackId ?? widget.trackId
+        : widget.trackId;
+    final wasInPlaylist = playlist.trackIds.contains(membershipId);
+    final addedLocally = _addedPlaylistIds.contains(playlist.id);
+    final removedLocally = _removedPlaylistIds.contains(playlist.id);
+    final isInPlaylist = (wasInPlaylist || addedLocally) && !removedLocally;
+    var count = playlist.trackIds.length;
+    if (wasInPlaylist && removedLocally) {
+      count -= 1;
+    } else if (!wasInPlaylist && addedLocally) {
+      count += 1;
+    }
+    final localDisabled = isLocal && !widget.canUseLocalPlaylists;
+    final removable = isLocal ? widget.onLocalRemoved : widget.onServerRemoved;
+    final select = isLocal ? widget.onLocalSelected : widget.onServerSelected;
+
+    return _ModalListRow(
+      title: playlist.name,
+      subtitle: localDisabled
+          ? 'Download this song first'
+          : '${isLocal ? 'Local' : 'Server'} - $count tracks',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isInPlaylist ? Icons.check_rounded : Icons.add_rounded,
+            color: localDisabled
+                ? ObsidianPalette.textMuted
+                : ObsidianPalette.gold,
+          ),
+          if (isInPlaylist && removable != null) ...[
+            const SizedBox(width: 8),
+            ObsidianHudIconButton(
+              icon: Icons.delete_outline_rounded,
+              onPressed: () async {
+                final confirmed = await ConfirmationModal.show(
+                  context,
+                  title: 'Remove song from playlist',
+                  message:
+                      'Are you sure you want to remove this song from this playlist?',
+                );
+                if (!confirmed || !mounted) {
+                  return;
+                }
+                removable.call(playlist);
+                setState(() {
+                  _removedPlaylistIds.add(playlist.id);
+                  _addedPlaylistIds.remove(playlist.id);
+                });
+              },
+              size: 20,
+            ),
+          ],
+        ],
+      ),
+      enabled: !isInPlaylist && !localDisabled,
+      isSelected: isInPlaylist,
+      onTap: isInPlaylist || localDisabled
+          ? null
+          : () {
+              select(playlist);
+              setState(() {
+                _addedPlaylistIds.add(playlist.id);
+                _removedPlaylistIds.remove(playlist.id);
+              });
+            },
+    );
+  }
+}
+
+class _PlaylistModalRow {
+  const _PlaylistModalRow.header(this.header)
+    : playlist = null,
+      isLocal = false;
+
+  const _PlaylistModalRow.playlist(this.playlist, {required this.isLocal})
+    : header = null;
+
+  final String? header;
+  final Playlist? playlist;
+  final bool isLocal;
 }
 
 class _ModalListRow extends StatelessWidget {

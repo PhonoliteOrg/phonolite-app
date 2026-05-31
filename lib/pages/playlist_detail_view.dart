@@ -4,39 +4,58 @@ import 'package:google_fonts/google_fonts.dart';
 import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
+import '../entities/offline_library.dart';
+import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
+import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/marquee_text.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/tech_button.dart';
 
 class PlaylistDetailView extends StatefulWidget {
-  const PlaylistDetailView({super.key, required this.playlistId});
+  const PlaylistDetailView({
+    super.key,
+    required this.playlistId,
+    this.isLocal = false,
+  });
 
   final String playlistId;
+  final bool isLocal;
 
   @override
   State<PlaylistDetailView> createState() => _PlaylistDetailViewState();
 }
 
 class _PlaylistDetailViewState extends State<PlaylistDetailView> {
+  bool _selectionMode = false;
+  final Set<String> _selectedTrackIds = <String>{};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final controller = AppScope.of(context);
-    controller.loadPlaylistTracks(widget.playlistId);
+    if (widget.isLocal) {
+      controller.loadLocalPlaylistTracks(widget.playlistId);
+    } else {
+      controller.loadPlaylistTracks(widget.playlistId);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
     return StreamBuilder<List<Playlist>>(
-      stream: controller.playlistsStream,
-      initialData: controller.playlists,
+      stream: widget.isLocal
+          ? controller.localPlaylistsStream
+          : controller.playlistsStream,
+      initialData: widget.isLocal
+          ? controller.localPlaylists
+          : controller.playlists,
       builder: (context, snapshot) {
         final playlist = (snapshot.data ?? []).firstWhere(
           (item) => item.id == widget.playlistId,
@@ -72,14 +91,24 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 sliver: StreamBuilder<List<Track>>(
-                  stream: controller.playlistTracksStream,
-                  initialData: controller.playlistTracks,
+                  stream: widget.isLocal
+                      ? controller.localPlaylistTracksStream
+                      : controller.playlistTracksStream,
+                  initialData: widget.isLocal
+                      ? controller.localPlaylistTracks
+                      : controller.playlistTracks,
                   builder: (context, tracksSnapshot) {
                     final tracks = tracksSnapshot.data ?? [];
                     if (tracks.isEmpty) {
-                      return const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(child: _EmptyPlaylistText()),
+                      return SliverMainAxisGroup(
+                        slivers: [
+                          if (!_selectionMode)
+                            _editSelectionSliver(enabled: false),
+                          const SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(child: _EmptyPlaylistText()),
+                          ),
+                        ],
                       );
                     }
                     return StreamBuilder<PlaybackState>(
@@ -89,20 +118,88 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                         final playback =
                             playbackSnapshot.data ?? controller.playbackState;
                         final playingId = playback.track?.id;
-                        return TrackSliverList(
-                          tracks: tracks,
-                          showAlbumArt: true,
-                          isPlayingTrack: (track) =>
-                              playback.isPlaying && playingId == track.id,
-                          onTrackTap: (track) => controller.queuePlaylist(
-                            widget.playlistId,
-                            startTrackId: track.id,
-                          ),
-                          onTrackAddToPlaylist: (track) =>
-                              showAddToPlaylistModalForTrack(context, track),
-                          onTrackLike: controller.toggleLike,
-                          onTrackDelete: (track) =>
-                              _removeTrack(controller, playlist, track),
+                        return StreamBuilder<List<OfflineTrackDownload>>(
+                          stream: controller.offlineDownloadsStream,
+                          initialData: controller.offlineDownloads,
+                          builder: (context, _) {
+                            final removableTracks = _removableTracks(
+                              controller,
+                              tracks,
+                            );
+                            final selectedTracks = _selectedTracks(
+                              removableTracks,
+                            );
+                            return SliverMainAxisGroup(
+                              slivers: [
+                                if (!_selectionMode)
+                                  _editSelectionSliver(
+                                    enabled: removableTracks.isNotEmpty,
+                                  ),
+                                if (_selectionMode)
+                                  SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      child: DownloadSelectionToolbar(
+                                        selectedCount: selectedTracks.length,
+                                        totalCount: removableTracks.length,
+                                        onCancel: _clearSelection,
+                                        onSelectAll: () =>
+                                            _selectAll(removableTracks),
+                                        onRemove: selectedTracks.isEmpty
+                                            ? null
+                                            : () => _removeDownloads(
+                                                controller,
+                                                selectedTracks,
+                                                playlist.name,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                TrackSliverList(
+                                  tracks: tracks,
+                                  showAlbumArt: true,
+                                  isPlayingTrack: (track) =>
+                                      playback.isPlaying &&
+                                      playingId == track.id,
+                                  onTrackTap: (track) => widget.isLocal
+                                      ? controller.queueLocalPlaylist(
+                                          widget.playlistId,
+                                          startTrackId: track.id,
+                                        )
+                                      : controller.queuePlaylist(
+                                          widget.playlistId,
+                                          startTrackId: track.id,
+                                        ),
+                                  onTrackAddToPlaylist: (track) =>
+                                      showAddToPlaylistModalForTrack(
+                                        context,
+                                        track,
+                                      ),
+                                  onTrackDownload: widget.isLocal
+                                      ? null
+                                      : controller.downloadTrack,
+                                  onTrackLike: widget.isLocal
+                                      ? controller.toggleLocalLike
+                                      : controller.toggleLike,
+                                  onTrackDelete: (track) =>
+                                      _removeTrack(controller, playlist, track),
+                                  selectionMode: _selectionMode,
+                                  canSelectTrack: (track) =>
+                                      _canRemoveTrack(controller, track),
+                                  isTrackSelected: (track) => _selectedTrackIds
+                                      .contains(_selectionKey(track)),
+                                  onTrackSelectionToggle: (track) =>
+                                      _toggleSelection(controller, track),
+                                  onTrackSelectionModeRequested: (track) =>
+                                      _enterSelection(controller, track),
+                                  offlineDownloadForTrack: (track) => controller
+                                      .offlineDownloadForTrack(track.id),
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
                     );
@@ -122,7 +219,25 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
       builder: (context) => PlaylistEditorModal(
         title: 'Rename playlist',
         initialValue: playlist.name,
-        onSubmit: (value) => controller.renamePlaylist(playlist.id, value),
+        onSubmit: (value) => widget.isLocal
+            ? controller.renameLocalPlaylist(playlist.id, value)
+            : controller.renamePlaylist(playlist.id, value),
+      ),
+    );
+  }
+
+  Widget _editSelectionSliver({required bool enabled}) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: TechButton(
+            label: 'Edit',
+            icon: Icons.edit_rounded,
+            onTap: enabled ? _startSelection : null,
+          ),
+        ),
       ),
     );
   }
@@ -140,7 +255,33 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     if (!confirmed) {
       return;
     }
-    await controller.removeTrackFromPlaylist(playlist, track);
+    if (widget.isLocal) {
+      await controller.removeTrackFromLocalPlaylist(playlist, track);
+    } else {
+      await controller.removeTrackFromPlaylist(playlist, track);
+    }
+  }
+
+  Future<void> _removeDownloads(
+    AppController controller,
+    List<Track> tracks,
+    String label,
+  ) async {
+    if (tracks.isEmpty) {
+      return;
+    }
+    final confirmed = await confirmRemoveDownloadedTracks(
+      context,
+      tracks,
+      label: label,
+    );
+    if (!confirmed || !mounted) {
+      return;
+    }
+    await controller.removeDownloadedTracks(tracks, label: label);
+    if (mounted) {
+      _clearSelection();
+    }
   }
 
   Future<void> _deletePlaylist(
@@ -155,16 +296,87 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     if (!confirmed) {
       return;
     }
-    await controller.deletePlaylist(playlist.id);
+    if (widget.isLocal) {
+      await controller.deleteLocalPlaylist(playlist.id);
+    } else {
+      await controller.deletePlaylist(playlist.id);
+    }
     if (!mounted) {
       return;
     }
-    final wasDeleted = controller.playlists.every(
-      (item) => item.id != playlist.id,
-    );
+    final source = widget.isLocal
+        ? controller.localPlaylists
+        : controller.playlists;
+    final wasDeleted = source.every((item) => item.id != playlist.id);
     if (wasDeleted) {
       Navigator.of(context).pop();
     }
+  }
+
+  List<Track> _removableTracks(AppController controller, List<Track> tracks) {
+    return tracks
+        .where((track) => _canRemoveTrack(controller, track))
+        .toList(growable: false);
+  }
+
+  List<Track> _selectedTracks(List<Track> tracks) {
+    return tracks
+        .where((track) => _selectedTrackIds.contains(_selectionKey(track)))
+        .toList(growable: false);
+  }
+
+  bool _canRemoveTrack(AppController controller, Track track) {
+    return controller.availableOfflineDownloadForTrack(track.id) != null;
+  }
+
+  void _enterSelection(AppController controller, Track track) {
+    if (!_canRemoveTrack(controller, track)) {
+      return;
+    }
+    setState(() {
+      _selectionMode = true;
+      _selectedTrackIds.add(_selectionKey(track));
+    });
+  }
+
+  void _toggleSelection(AppController controller, Track track) {
+    if (!_canRemoveTrack(controller, track)) {
+      return;
+    }
+    final key = _selectionKey(track);
+    setState(() {
+      _selectionMode = true;
+      if (!_selectedTrackIds.remove(key)) {
+        _selectedTrackIds.add(key);
+      }
+    });
+  }
+
+  void _selectAll(List<Track> tracks) {
+    setState(() {
+      _selectionMode = true;
+      _selectedTrackIds
+        ..clear()
+        ..addAll(tracks.map(_selectionKey));
+    });
+  }
+
+  void _startSelection() {
+    setState(() {
+      _selectionMode = true;
+      _selectedTrackIds.clear();
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selectedTrackIds.clear();
+    });
+  }
+
+  String _selectionKey(Track track) {
+    return track.localId ?? track.serverTrackId ?? track.id;
   }
 }
 

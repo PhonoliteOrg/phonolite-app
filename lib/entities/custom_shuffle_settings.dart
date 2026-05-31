@@ -26,10 +26,7 @@ class CustomShuffleSettings {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'artistIds': artistIds,
-        'genres': genres,
-      };
+  Map<String, dynamic> toJson() => {'artistIds': artistIds, 'genres': genres};
 
   static CustomShuffleSettings fromJson(Map<String, dynamic> json) {
     return CustomShuffleSettings(
@@ -38,10 +35,7 @@ class CustomShuffleSettings {
     );
   }
 
-  static List<String> _normalizeList(
-    dynamic value, {
-    bool lowerCase = false,
-  }) {
+  static List<String> _normalizeList(dynamic value, {bool lowerCase = false}) {
     if (value is! List) {
       return const [];
     }

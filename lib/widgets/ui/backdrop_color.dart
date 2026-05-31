@@ -26,10 +26,12 @@ Color _tuneBackdropColor(Color? color) {
   final luminance = opaque.computeLuminance();
   final Color blended;
   if (luminance < artistBackdropMinLuminance) {
-    blended = Color.lerp(opaque, Colors.white, artistBackdropLightenFactor) ??
+    blended =
+        Color.lerp(opaque, Colors.white, artistBackdropLightenFactor) ??
         artistLogoBackdrop;
   } else {
-    blended = Color.lerp(opaque, Colors.black, artistBackdropDarkenFactor) ??
+    blended =
+        Color.lerp(opaque, Colors.black, artistBackdropDarkenFactor) ??
         artistLogoBackdrop;
   }
   return _ensureMinLightness(blended, artistBackdropMinLightness);

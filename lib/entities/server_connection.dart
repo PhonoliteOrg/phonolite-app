@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
@@ -25,6 +26,35 @@ class RequestTimeoutException implements Exception {
 
   @override
   String toString() => 'Request timed out after ${timeout.inSeconds}s';
+}
+
+class TrackDownloadStream {
+  TrackDownloadStream({
+    required this.statusCode,
+    required this.stream,
+    this.contentLength,
+    this.contentRange,
+    this.contentType,
+    this.contentDisposition,
+    this.etag,
+    this.sha256,
+  });
+
+  final int statusCode;
+  final Stream<List<int>> stream;
+  final int? contentLength;
+  final String? contentRange;
+  final String? contentType;
+  final String? contentDisposition;
+  final String? etag;
+  final String? sha256;
+}
+
+class ServerArtwork {
+  ServerArtwork({required this.bytes, this.contentType});
+
+  final List<int> bytes;
+  final String? contentType;
 }
 
 class ServerConnection {
@@ -93,6 +123,10 @@ class ServerConnection {
     return token;
   }
 
+  Future<void> logout() async {
+    await _postVoid('/auth/logout', {});
+  }
+
   Future<List<Artist>> fetchArtistsPage({
     int limit = ServerConnection.artistsPageSize,
     int offset = 0,
@@ -120,12 +154,14 @@ class ServerConnection {
   }
 
   Future<List<Album>> fetchAlbums(String artistId) async {
-    final response = await _getList('/browse/artists/$artistId/albums');
+    final encoded = _encodePathSegment(artistId);
+    final response = await _getList('/browse/artists/$encoded/albums');
     return response.map((item) => Album.fromJson(item)).toList();
   }
 
   Future<List<Track>> fetchTracks(String albumId) async {
-    final response = await _getList('/browse/albums/$albumId/tracks');
+    final encoded = _encodePathSegment(albumId);
+    final response = await _getList('/browse/albums/$encoded/tracks');
     return response.map((item) => Track.fromJson(item)).toList();
   }
 
@@ -135,7 +171,8 @@ class ServerConnection {
   }
 
   Future<List<Track>> fetchPlaylistTracks(String playlistId) async {
-    final response = await _getList('/browse/playlists/$playlistId/tracks');
+    final encoded = _encodePathSegment(playlistId);
+    final response = await _getList('/browse/playlists/$encoded/tracks');
     return response.map((item) => Track.fromJson(item)).toList();
   }
 
@@ -200,26 +237,156 @@ class ServerConnection {
   }
 
   Future<Album> fetchAlbumById(String albumId) async {
-    final response = await _get('/library/albums/$albumId');
+    final encoded = _encodePathSegment(albumId);
+    final response = await _get('/library/albums/$encoded');
     return Album.fromJson(response);
   }
 
   Future<Artist> fetchArtistById(String artistId) async {
-    final response = await _get('/browse/artists/$artistId');
+    final encoded = _encodePathSegment(artistId);
+    final response = await _get('/browse/artists/$encoded');
     return Artist.fromJson(response);
   }
 
   Future<Track> fetchTrackById(String trackId) async {
-    final response = await _get('/browse/tracks/$trackId');
+    final encoded = _encodePathSegment(trackId);
+    final response = await _get('/browse/tracks/$encoded');
     return Track.fromJson(response);
   }
 
+  Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) async {
+    final encoded = _encodePathSegment(trackId);
+    final response = await _get('/library/tracks/$encoded/offline-metadata');
+    return OfflineTrackMetadata.fromJson(response);
+  }
+
+  Future<DownloadBatchManifest> createDownloadBatch(
+    List<String> trackIds, {
+    String? clientBatchId,
+  }) async {
+    final payload = <String, dynamic>{
+      'track_ids': trackIds,
+      if (clientBatchId != null && clientBatchId.trim().isNotEmpty)
+        'client_batch_id': clientBatchId.trim(),
+    };
+    final response = await _post('/download/batches', payload);
+    return DownloadBatchManifest.fromJson(response);
+  }
+
+  Future<ServerCapabilities> fetchCapabilities() async {
+    final response = await _get(
+      '/server/capabilities',
+      timeout: _healthRequestTimeout,
+      retryable: false,
+    );
+    return ServerCapabilities.fromJson(response);
+  }
+
+  Future<DownloadJobV2> createDownloadJob({
+    required String clientId,
+    required String clientRequestId,
+    required DownloadJobScopeV2 scope,
+  }) async {
+    final response = await _post('/download/v2/jobs', {
+      'client_id': clientId,
+      'client_request_id': clientRequestId,
+      'scope': scope.toJson(),
+    });
+    return DownloadJobV2.fromJson(response);
+  }
+
+  Future<List<DownloadJobV2>> fetchDownloadJobs({
+    String? clientId,
+    String? scopeKind,
+    String? scopeId,
+  }) async {
+    final query = <String, String>{
+      if (clientId != null && clientId.trim().isNotEmpty)
+        'client_id': clientId.trim(),
+      if (scopeKind != null && scopeKind.trim().isNotEmpty)
+        'scope_kind': scopeKind.trim(),
+      if (scopeId != null && scopeId.trim().isNotEmpty)
+        'scope_id': scopeId.trim(),
+    };
+    final suffix = query.isEmpty
+        ? ''
+        : '?${query.entries.map((entry) => '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}').join('&')}';
+    final response = await _getList('/download/v2/jobs$suffix');
+    return response.map((item) => DownloadJobV2.fromJson(item)).toList();
+  }
+
+  Future<void> applyDownloadJobAction({
+    required String jobId,
+    required String action,
+  }) async {
+    final encoded = _encodePathSegment(jobId);
+    await _postVoid('/download/v2/jobs/$encoded/actions', {'action': action});
+  }
+
+  Future<List<TrackMatchResult>> matchTracks(
+    List<TrackMatchDescriptor> tracks,
+  ) async {
+    if (tracks.isEmpty) {
+      return const <TrackMatchResult>[];
+    }
+    final response = await _post('/library/match-tracks', {
+      'tracks': tracks.map((track) => track.toJson()).toList(growable: false),
+    });
+    final rawMatches = response['matches'];
+    if (rawMatches is! List) {
+      return const <TrackMatchResult>[];
+    }
+    return rawMatches
+        .whereType<Map>()
+        .map(
+          (item) => TrackMatchResult.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where(
+          (item) =>
+              item.localTrackId.trim().isNotEmpty &&
+              item.serverTrackId.trim().isNotEmpty,
+        )
+        .toList(growable: false);
+  }
+
   Future<void> likeTrack(String trackId) async {
-    await _postVoid('/library/likes/$trackId', {});
+    final encoded = _encodePathSegment(trackId);
+    await _postVoid('/library/likes/$encoded', {});
   }
 
   Future<void> unlikeTrack(String trackId) async {
-    await _delete('/library/likes/$trackId');
+    final encoded = _encodePathSegment(trackId);
+    await _delete('/library/likes/$encoded');
+  }
+
+  Future<List<ServerLikeState>> updateLikeStates(
+    Map<String, bool> states, {
+    Map<String, int> updatedAtByTrack = const <String, int>{},
+  }) async {
+    if (states.isEmpty) {
+      return const <ServerLikeState>[];
+    }
+    final response = await _postList('/library/likes/batch', {
+      'items': states.entries
+          .map((entry) {
+            final updatedAt = updatedAtByTrack[entry.key];
+            return {
+              'track_id': entry.key,
+              'liked': entry.value,
+              if (updatedAt != null && updatedAt > 0) 'updated_at': updatedAt,
+            };
+          })
+          .toList(growable: false),
+    });
+    return response
+        .map((item) => ServerLikeState.fromJson(item))
+        .where((item) => item.trackId.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<ServerLikeState?> setLikeState(String trackId, bool liked) async {
+    final states = await updateLikeStates({trackId: liked});
+    return states.isEmpty ? null : states.first;
   }
 
   Future<Playlist> createPlaylist(String name) async {
@@ -228,88 +395,25 @@ class ServerConnection {
   }
 
   Future<Playlist> renamePlaylist(String playlistId, String name) async {
-    final response = await _post('/library/playlists/$playlistId', {
-      'name': name,
-    });
+    final encoded = _encodePathSegment(playlistId);
+    final response = await _post('/library/playlists/$encoded', {'name': name});
     return Playlist.fromJson(response);
   }
 
   Future<void> deletePlaylist(String playlistId) async {
-    await _delete('/library/playlists/$playlistId');
+    final encoded = _encodePathSegment(playlistId);
+    await _delete('/library/playlists/$encoded');
   }
 
   Future<Playlist> updatePlaylistTracks(
     String playlistId,
     List<String> trackIds,
   ) async {
-    final response = await _post('/library/playlists/$playlistId', {
+    final encoded = _encodePathSegment(playlistId);
+    final response = await _post('/library/playlists/$encoded', {
       'track_ids': trackIds,
     });
     return Playlist.fromJson(response);
-  }
-
-  Future<PlayerQueueResponse> queueAlbum(
-    String albumId, {
-    String? startTrackId,
-  }) async {
-    var path = '/player/queue/album/$albumId';
-    if (startTrackId != null) {
-      path = '$path?start=$startTrackId';
-    }
-    final response = await _post(path, {});
-    return PlayerQueueResponse.fromJson(response);
-  }
-
-  Future<PlayerQueueResponse> queuePlaylist(
-    String playlistId, {
-    String? startTrackId,
-  }) async {
-    var path = '/player/queue/playlist/$playlistId';
-    if (startTrackId != null) {
-      path = '$path?start=$startTrackId';
-    }
-    final response = await _post(path, {});
-    return PlayerQueueResponse.fromJson(response);
-  }
-
-  Future<PlayerQueueResponse> queueLiked({String? startTrackId}) async {
-    var path = '/player/queue/liked';
-    if (startTrackId != null) {
-      path = '$path?start=$startTrackId';
-    }
-    final response = await _post(path, {});
-    return PlayerQueueResponse.fromJson(response);
-  }
-
-  Future<PlayerQueueResponse> queueShuffle({
-    required String mode,
-    required String scope,
-    String? playlistId,
-  }) async {
-    var path = '/player/queue/shuffle?mode=$mode&scope=$scope';
-    if (playlistId != null) {
-      path = '$path&playlist_id=$playlistId';
-    }
-    final response = await _post(path, {});
-    return PlayerQueueResponse.fromJson(response);
-  }
-
-  Future<PlayerQueueResponse> nextTrack() async {
-    final response = await _post('/player/queue/next', {});
-    return PlayerQueueResponse.fromJson(response);
-  }
-
-  Future<PlayerQueueResponse> prevTrack() async {
-    final response = await _post('/player/queue/prev', {});
-    return PlayerQueueResponse.fromJson(response);
-  }
-
-  Future<void> stopPlayback() async {
-    await _postVoid('/player/stop', {});
-  }
-
-  Future<void> pausePlayback(bool paused) async {
-    await _postVoid('/player/pause', {'paused': paused});
   }
 
   Future<PlaybackSettingsResponse> fetchPlaybackSettings({
@@ -340,18 +444,159 @@ class ServerConnection {
     return ServerPortsResponse.fromJson(response);
   }
 
+  Stream<MetadataUpdateEvent> streamMetadataEvents() async* {
+    final request = http.Request(
+      'GET',
+      Uri.parse('$_baseUrl/library/metadata-events'),
+    );
+    request.headers.addAll(_headers());
+    final response = await _client.send(request);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      throw ApiException(response.statusCode, body);
+    }
+
+    var buffer = '';
+    await for (final chunk in response.stream.transform(utf8.decoder)) {
+      buffer = (buffer + chunk).replaceAll('\r\n', '\n');
+      var separator = buffer.indexOf('\n\n');
+      while (separator >= 0) {
+        final frame = buffer.substring(0, separator);
+        buffer = buffer.substring(separator + 2);
+        final event = _metadataEventFromSseFrame(frame);
+        if (event != null) {
+          yield event;
+        }
+        separator = buffer.indexOf('\n\n');
+      }
+    }
+
+    final trailingFrame = buffer.trim();
+    if (trailingFrame.isNotEmpty) {
+      final event = _metadataEventFromSseFrame(trailingFrame);
+      if (event != null) {
+        yield event;
+      }
+    }
+  }
+
   String buildAlbumCoverUrl(String albumId) {
-    final encoded = Uri.encodeComponent(albumId);
+    final encoded = _encodePathSegment(albumId);
     return '$_baseUrl/library/albums/$encoded/cover';
   }
 
   String buildArtistCoverUrl(String artistId, {String? kind}) {
-    final encoded = Uri.encodeComponent(artistId);
+    final encoded = _encodePathSegment(artistId);
     var path = '/library/artists/$encoded/cover';
     if (kind != null && kind.isNotEmpty) {
       path = '$path?kind=${Uri.encodeComponent(kind)}';
     }
     return '$_baseUrl$path';
+  }
+
+  Future<ServerArtwork?> fetchAlbumCoverBytes(
+    String albumId, {
+    Duration timeout = _defaultRequestTimeout,
+  }) {
+    return _fetchArtworkUrl(buildAlbumCoverUrl(albumId), timeout: timeout);
+  }
+
+  Future<ServerArtwork?> fetchArtistCoverBytes(
+    String artistId, {
+    String kind = 'logo',
+    Duration timeout = _defaultRequestTimeout,
+  }) {
+    return _fetchArtworkUrl(
+      buildArtistCoverUrl(artistId, kind: kind),
+      timeout: timeout,
+    );
+  }
+
+  String buildTrackDownloadUrl(String trackId) {
+    final encoded = _encodePathSegment(trackId);
+    return '$_baseUrl/download/tracks/$encoded';
+  }
+
+  String buildDownloadUrl(String trackId, {String? downloadUrl}) {
+    final value = downloadUrl?.trim();
+    if (value == null || value.isEmpty) {
+      return buildTrackDownloadUrl(trackId);
+    }
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    if (value.startsWith('/api/')) {
+      final root = _ensureRoot(_baseUrl);
+      return '${root.endsWith('/') ? root.substring(0, root.length - 1) : root}$value';
+    }
+    if (value.startsWith('/')) {
+      return '$_baseUrl$value';
+    }
+    return '$_baseUrl/$value';
+  }
+
+  Future<TrackDownloadStream> openTrackDownload(
+    String trackId, {
+    int? startByte,
+    String? ifRange,
+    Duration timeout = _defaultRequestTimeout,
+  }) async {
+    final request = http.Request(
+      'GET',
+      Uri.parse(buildTrackDownloadUrl(trackId)),
+    );
+    request.headers.addAll(_headers());
+    if (startByte != null && startByte > 0) {
+      request.headers[HttpHeaders.rangeHeader] = 'bytes=$startByte-';
+      if (ifRange != null && ifRange.trim().isNotEmpty) {
+        request.headers[HttpHeaders.ifRangeHeader] = ifRange.trim();
+      }
+    }
+
+    final response = await _client.send(request).timeout(timeout);
+    if (response.statusCode != 200 && response.statusCode != 206) {
+      final body = await response.stream.bytesToString();
+      throw ApiException(response.statusCode, body);
+    }
+
+    return TrackDownloadStream(
+      statusCode: response.statusCode,
+      stream: response.stream,
+      contentLength:
+          response.contentLength == null || response.contentLength! < 0
+          ? null
+          : response.contentLength,
+      contentRange: response.headers[HttpHeaders.contentRangeHeader],
+      contentType: response.headers[HttpHeaders.contentTypeHeader],
+      contentDisposition: response.headers['content-disposition'],
+      etag: response.headers[HttpHeaders.etagHeader],
+      sha256: response.headers['x-phonolite-sha256'],
+    );
+  }
+
+  Future<ServerArtwork?> _fetchArtworkUrl(
+    String url, {
+    required Duration timeout,
+  }) async {
+    final response = await _executeRequest(
+      () => _client.get(Uri.parse(url), headers: _headers()),
+      label: 'GET artwork',
+      retryable: true,
+      timeout: timeout,
+    );
+    if (response.statusCode == 404 || response.statusCode == 204) {
+      return null;
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    if (response.bodyBytes.isEmpty) {
+      return null;
+    }
+    return ServerArtwork(
+      bytes: response.bodyBytes,
+      contentType: response.headers[HttpHeaders.contentTypeHeader],
+    );
   }
 
   String _ensureApiBase(String url) {
@@ -365,7 +610,7 @@ class ServerConnection {
     if (!path.endsWith('/api/v1')) {
       path = '$path/api/v1';
     }
-    return uri.replace(path: path, query: '').toString();
+    return uri.replace(path: path, query: null).toString();
   }
 
   String _ensureRoot(String baseUrl) {
@@ -377,7 +622,7 @@ class ServerConnection {
         path = '/';
       }
     }
-    return uri.replace(path: path, query: '').toString();
+    return uri.replace(path: path, query: null).toString();
   }
 
   static String _sanitizeInput(String input) {
@@ -391,6 +636,10 @@ class ServerConnection {
   static String _sanitizeBaseUrl(String input) {
     final cleaned = _sanitizeInput(input);
     return cleaned.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  static String _encodePathSegment(String value) {
+    return Uri.encodeComponent(value);
   }
 
   Future<bool> _checkHealth(String url) async {
@@ -448,7 +697,7 @@ class ServerConnection {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
     }
-    final decoded = jsonDecode(response.body);
+    final decoded = await _decodeJson(response.body);
     if (decoded is List) {
       return decoded.cast<Map<String, dynamic>>();
     }
@@ -471,6 +720,31 @@ class ServerConnection {
       label: 'POST $path',
     );
     return _decode(response);
+  }
+
+  Future<List<Map<String, dynamic>>> _postList(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _executeRequest(
+      () => _client.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(contentType: true),
+        body: jsonEncode(payload),
+      ),
+      label: 'POST $path',
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    final decoded = await _decodeJson(response.body);
+    if (decoded is List) {
+      return decoded.cast<Map<String, dynamic>>();
+    }
+    if (decoded is Map && decoded['items'] is List) {
+      return (decoded['items'] as List).cast<Map<String, dynamic>>();
+    }
+    throw Exception('Expected list response for $path');
   }
 
   Future<void> _postVoid(String path, Map<String, dynamic> payload) async {
@@ -592,19 +866,58 @@ class ServerConnection {
     return Duration(milliseconds: baseMs + _retryJitter.nextInt(250));
   }
 
-  Map<String, dynamic> _decode(http.Response response) {
+  Future<Map<String, dynamic>> _decode(http.Response response) async {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);
     }
     if (response.body.isEmpty) {
       return <String, dynamic>{};
     }
-    final decoded = jsonDecode(response.body);
+    final decoded = await _decodeJson(response.body);
     if (decoded is Map<String, dynamic>) {
       return decoded;
     }
     throw Exception('Unexpected response payload');
   }
+}
+
+MetadataUpdateEvent? _metadataEventFromSseFrame(String frame) {
+  final data = <String>[];
+  for (final rawLine in frame.split('\n')) {
+    final line = rawLine.endsWith('\r')
+        ? rawLine.substring(0, rawLine.length - 1)
+        : rawLine;
+    if (line.startsWith('data:')) {
+      data.add(line.substring(5).trimLeft());
+    }
+  }
+  if (data.isEmpty) {
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(data.join('\n'));
+    if (decoded is Map<String, dynamic>) {
+      final event = MetadataUpdateEvent.fromJson(decoded);
+      if (event.kind.isNotEmpty && event.id.isNotEmpty) {
+        return event;
+      }
+    }
+  } catch (err, stackTrace) {
+    developer.log(
+      'Ignoring malformed metadata event',
+      name: 'ServerConnection',
+      error: err,
+      stackTrace: stackTrace,
+    );
+  }
+  return null;
+}
+
+Future<dynamic> _decodeJson(String body) {
+  if (body.length < 64 * 1024) {
+    return Future<dynamic>.value(jsonDecode(body));
+  }
+  return Isolate.run<dynamic>(() => jsonDecode(body));
 }
 
 class PlaybackSettingsResponse {
