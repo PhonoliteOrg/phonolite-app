@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../entities/app_controller.dart';
 import '../entities/app_log.dart';
 import '../widgets/display/message_log.dart';
 import '../widgets/layouts/app_scope.dart';

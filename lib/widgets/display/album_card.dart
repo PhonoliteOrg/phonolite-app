@@ -18,12 +18,22 @@ class AlbumCard extends StatelessWidget {
     required this.coverUrl,
     required this.headers,
     required this.onTap,
+    this.selectionMode = false,
+    this.selected = false,
+    this.selectable = true,
+    this.isDeleting = false,
+    this.onSelectionToggle,
   });
 
   final Album album;
   final String coverUrl;
   final Map<String, String> headers;
   final VoidCallback onTap;
+  final bool selectionMode;
+  final bool selected;
+  final bool selectable;
+  final bool isDeleting;
+  final VoidCallback? onSelectionToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -32,11 +42,19 @@ class AlbumCard extends StatelessWidget {
     final boost = isMobile ? 1.2 : 1.0;
     double s(double value) => value * scale;
     double t(double value) => value * scale * boost;
+    final canInteract = selectable && !isDeleting;
+    final effectiveOnTap = selectionMode
+        ? canInteract
+              ? onSelectionToggle
+              : null
+        : isDeleting
+        ? null
+        : onTap;
     return ObsidianHoverCard(
       cut: s(20),
       padding: EdgeInsets.all(s(14)),
-      onTap: onTap,
-      splashColor: accentGold.withOpacity(0.2),
+      onTap: effectiveOnTap,
+      splashColor: accentGold.withValues(alpha: 0.2),
       childBuilder: (context, hovered) => LayoutBuilder(
         builder: (context, constraints) {
           final minImageSize = s(80.0) * boost;
@@ -49,7 +67,7 @@ class AlbumCard extends StatelessWidget {
               .clamp(minImageSize, albumPortraitSize * scale * boost);
           final imageSize = math.min(maxImageSize, availableForImage);
 
-          return Column(
+          final content = Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -77,7 +95,7 @@ class AlbumCard extends StatelessWidget {
               ),
               SizedBox(height: s(4)),
               Text(
-                albumYearLabel(album),
+                albumMetaLabel(album),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -87,8 +105,65 @@ class AlbumCard extends StatelessWidget {
                   letterSpacing: s(1.1),
                 ),
               ),
-              SizedBox(height: s(4)),
-              const SizedBox.shrink(),
+            ],
+          );
+
+          final effectiveContent = AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: isDeleting ? 0.45 : 1,
+            child: content,
+          );
+
+          if (!selectionMode && !isDeleting) {
+            return effectiveContent;
+          }
+
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 160),
+                  opacity: selected ? 1 : 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: accentGold, width: 1.5),
+                    ),
+                  ),
+                ),
+              ),
+              effectiveContent,
+              if (isDeleting)
+                Positioned(
+                  right: s(4),
+                  bottom: s(4),
+                  child: SizedBox(
+                    width: s(24),
+                    height: s(24),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: accentGold,
+                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                    ),
+                  ),
+                ),
+              Positioned(
+                top: 0,
+                right: 0,
+                child: selectionMode
+                    ? Checkbox(
+                        value: selected,
+                        onChanged: canInteract && onSelectionToggle != null
+                            ? (_) => onSelectionToggle!()
+                            : null,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        activeColor: accentGold,
+                        side: BorderSide(
+                          color: canInteract ? Colors.white70 : Colors.white24,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ],
           );
         },

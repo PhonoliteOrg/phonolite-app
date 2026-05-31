@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -24,10 +26,7 @@ class AlbumArt extends StatelessWidget {
       height: size,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xFFFFE581),
-            accentGold,
-          ],
+          colors: [Color(0xFFFFE581), accentGold],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -43,11 +42,20 @@ class AlbumArt extends StatelessWidget {
       ),
     );
 
-    final image = imageUrl == null || imageUrl!.isEmpty
+    final imagePath = imageUrl?.trim();
+    final image = imagePath == null || imagePath.isEmpty
         ? placeholder
-        : Image.network(
-            imageUrl!,
+        : _isRemoteImage(imagePath)
+        ? Image.network(
+            imagePath,
             headers: headers,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => placeholder,
+          )
+        : Image.file(
+            File(imagePath),
             width: size,
             height: size,
             fit: BoxFit.cover,
@@ -55,5 +63,10 @@ class AlbumArt extends StatelessWidget {
           );
 
     return image;
+  }
+
+  bool _isRemoteImage(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
   }
 }

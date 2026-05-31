@@ -37,8 +37,9 @@ class _MessageLogState extends State<MessageLog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final defaultSubtitle =
-        widget.messages.isEmpty ? 'No events yet' : 'System log';
+    final defaultSubtitle = widget.messages.isEmpty
+        ? 'No events yet'
+        : 'System log';
     final combined = widget.messages.map((entry) => entry.format()).join('\n');
     final canCopy = combined.isNotEmpty;
     final copyButton = TextButton.icon(
@@ -65,16 +66,15 @@ class _MessageLogState extends State<MessageLog> {
             icon: const Icon(Icons.clear_all_rounded),
             label: const Text('Clear'),
           );
-    final trailing = widget.trailing ??
+    final trailing =
+        widget.trailing ??
         Wrap(
           spacing: 8,
-          children: [
-            copyButton,
-            if (clearButton != null) clearButton,
-          ],
+          children: [copyButton, if (clearButton != null) clearButton],
         );
 
-    final baseStyle = theme.textTheme.bodyMedium?.copyWith(height: 1.4) ??
+    final baseStyle =
+        theme.textTheme.bodyMedium?.copyWith(height: 1.4) ??
         const TextStyle(height: 1.4);
 
     final lineColor = ObsidianPalette.border.withOpacity(0.35);

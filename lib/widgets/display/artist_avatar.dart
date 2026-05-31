@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -31,10 +33,7 @@ class ArtistAvatar extends StatelessWidget {
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: [
-            Color(0xFFFFE581),
-            accentGold,
-          ],
+          colors: [Color(0xFFFFE581), accentGold],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -50,14 +49,17 @@ class ArtistAvatar extends StatelessWidget {
       ),
     );
 
-    if (imageUrl == null || imageUrl!.isEmpty) {
+    final imagePath = imageUrl?.trim();
+    if (imagePath == null || imagePath.isEmpty) {
       return placeholder;
     }
 
-    final provider = NetworkImage(imageUrl!, headers: headers);
+    final provider = _isRemoteImage(imagePath)
+        ? NetworkImage(imagePath, headers: headers) as ImageProvider
+        : FileImage(File(imagePath));
     return ClipOval(
       child: FutureBuilder<Color>(
-        future: resolveLogoBackdropColor(provider, imageUrl!),
+        future: resolveLogoBackdropColor(provider, imagePath),
         builder: (context, snapshot) {
           final backdrop = snapshot.data ?? artistLogoBackdrop;
           return Container(
@@ -76,5 +78,10 @@ class ArtistAvatar extends StatelessWidget {
         },
       ),
     );
+  }
+
+  bool _isRemoteImage(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
   }
 }

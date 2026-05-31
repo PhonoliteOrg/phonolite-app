@@ -1,0 +1,62 @@
+group 'com.phonolite.phonolite_local_audio'
+version '0.1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.phonolite.phonolite_local_audio'
+    compileSdkVersion 34
+
+    defaultConfig {
+        minSdkVersion 21
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+        }
+    }
+}
+
+def pluginRoot = project.projectDir.parentFile
+def rustRoot = new File(pluginRoot, 'native/local_audio')
+def cargoTargetBase = System.getenv('LOCALAPPDATA') ?: System.getProperty('java.io.tmpdir')
+def cargoTargetDir = new File(cargoTargetBase, 'phonolite_local_audio_cargo')
+def jniLibsDir = new File(pluginRoot, 'android/src/main/jniLibs')
+def androidTargets = ['armeabi-v7a', 'arm64-v8a', 'x86_64']
+
+tasks.register('cargoBuild') {
+    doLast {
+        delete cargoTargetDir
+        delete jniLibsDir
+        jniLibsDir.mkdirs()
+
+        androidTargets.each { abi ->
+            project.exec {
+                workingDir rustRoot
+                environment 'CARGO_TARGET_DIR', cargoTargetDir.absolutePath
+                commandLine 'cargo', 'ndk',
+                        '-t', abi,
+                        '-o', jniLibsDir.absolutePath,
+                        'build', '--release'
+            }
+        }
+    }
+}
+
+preBuild.dependsOn tasks.named('cargoBuild')
+
+repositories {
+    google()
+    mavenCentral()
+}

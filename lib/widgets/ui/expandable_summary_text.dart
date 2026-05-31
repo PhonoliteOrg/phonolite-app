@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'dismissible_selection_area.dart';
+
 class ExpandableSummaryText extends StatefulWidget {
   const ExpandableSummaryText({
     super.key,
@@ -38,14 +40,19 @@ class _ExpandableSummaryTextState extends State<ExpandableSummaryText> {
             constraints: _expanded
                 ? const BoxConstraints()
                 : BoxConstraints(maxHeight: widget.collapsedMaxHeight),
-            child: Text(
-              widget.text,
-              overflow: _expanded
-                  ? TextOverflow.visible
-                  : TextOverflow.ellipsis,
-              maxLines: _expanded ? null : widget.collapsedMaxLines,
-              softWrap: true,
-              style: widget.style,
+            child: DefaultSelectionStyle(
+              selectionColor: widget.toggleColor.withValues(alpha: 0.35),
+              child: DismissibleSelectionArea(
+                child: Text(
+                  widget.text,
+                  overflow: _expanded
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
+                  maxLines: _expanded ? null : widget.collapsedMaxLines,
+                  softWrap: true,
+                  style: widget.style,
+                ),
+              ),
             ),
           ),
         ),

@@ -1,17 +1,38 @@
+enum SessionStatus { offline, checking, serverReachable, authenticated }
+
 class AuthState {
   AuthState({
-    required this.isAuthorized,
+    bool? isAuthorized,
+    SessionStatus? status,
     required this.baseUrl,
     this.error,
-  });
+  }) : status =
+           status ??
+           (isAuthorized == true
+               ? SessionStatus.authenticated
+               : SessionStatus.offline);
 
-  final bool isAuthorized;
+  final SessionStatus status;
   final String baseUrl;
   final String? error;
 
-  AuthState copyWith({bool? isAuthorized, String? baseUrl, String? error}) {
+  bool get isAuthorized => status == SessionStatus.authenticated;
+
+  AuthState copyWith({
+    bool? isAuthorized,
+    SessionStatus? status,
+    String? baseUrl,
+    String? error,
+  }) {
+    final nextStatus =
+        status ??
+        (isAuthorized == null
+            ? this.status
+            : isAuthorized
+            ? SessionStatus.authenticated
+            : SessionStatus.offline);
     return AuthState(
-      isAuthorized: isAuthorized ?? this.isAuthorized,
+      status: nextStatus,
       baseUrl: baseUrl ?? this.baseUrl,
       error: error,
     );

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,6 +9,7 @@ import '../layouts/obsidian_scale.dart';
 import '../ui/backdrop_color.dart';
 import '../ui/expandable_summary_text.dart';
 import 'album_art.dart';
+import 'album_labels.dart';
 
 class AlbumHero extends StatelessWidget {
   const AlbumHero({
@@ -24,31 +27,33 @@ class AlbumHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = ObsidianScale.of(context);
     double s(double value) => value * scale;
-    final yearLabel = album.year == null
-        ? 'YEAR UNKNOWN'
-        : album.year.toString();
-    final genresLine = album.genres.isEmpty
-        ? null
-        : album.genres.join(' â€¢ ').toUpperCase();
+    final detailsLine = albumDetailLabel(album, genreLimit: 4);
     final summary = album.summary?.trim();
-    final provider = NetworkImage(coverUrl, headers: headers);
+    final imagePath = coverUrl.trim();
+    final provider = imagePath.isEmpty
+        ? null
+        : _isRemoteImage(imagePath)
+        ? NetworkImage(imagePath, headers: headers) as ImageProvider
+        : FileImage(File(imagePath));
 
     return FutureBuilder<Color>(
-      future: resolveAlbumBackdropColor(provider, coverUrl),
+      future: provider == null
+          ? Future<Color>.value(bgDark)
+          : resolveAlbumBackdropColor(provider, imagePath),
       builder: (context, snapshot) {
         final backdrop = snapshot.data ?? bgDark;
         return Stack(
           children: [
             Positioned.fill(
-              child: Container(color: backdrop.withOpacity(0.75)),
+              child: Container(color: backdrop.withValues(alpha: 0.75)),
             ),
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      backdrop.withOpacity(0.35),
-                      bgDark.withOpacity(0.85),
+                      backdrop.withValues(alpha: 0.35),
+                      bgDark.withValues(alpha: 0.85),
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -107,24 +112,13 @@ class AlbumHero extends StatelessWidget {
                         ),
                         SizedBox(height: s(6)),
                         Text(
-                          yearLabel,
+                          detailsLine,
                           style: GoogleFonts.rajdhani(
                             color: Colors.white54,
                             fontSize: s(12),
                             letterSpacing: s(1.4),
                           ),
                         ),
-                        if (genresLine != null) ...[
-                          SizedBox(height: s(6)),
-                          Text(
-                            genresLine,
-                            style: GoogleFonts.rajdhani(
-                              color: Colors.white38,
-                              fontSize: s(11),
-                              letterSpacing: s(1.2),
-                            ),
-                          ),
-                        ],
                         if (summary != null && summary.isNotEmpty) ...[
                           SizedBox(height: s(10)),
                           ExpandableSummaryText(
@@ -152,5 +146,10 @@ class AlbumHero extends StatelessWidget {
         );
       },
     );
+  }
+
+  bool _isRemoteImage(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
   }
 }

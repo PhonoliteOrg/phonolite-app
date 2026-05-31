@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
+import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/obsidian_widgets.dart';
 
@@ -70,8 +71,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
-            final minHeight =
-                (constraints.maxHeight - 48 - keyboardInset).clamp(0.0, double.infinity);
+            final minHeight = (constraints.maxHeight - 48 - keyboardInset)
+                .clamp(0.0, double.infinity);
             return SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(0, 24, 0, 24 + keyboardInset),
               child: ConstrainedBox(
@@ -85,6 +86,13 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          if (Navigator.of(context).canPop()) ...[
+                            CommandLinkButton(
+                              label: 'Back to settings',
+                              onTap: () => Navigator.of(context).pop(),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                           ObsidianSectionHeader(
                             title: 'PHONOLITE',
                             subtitle: _connected
@@ -102,7 +110,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                             SelectableText(
                               _error!,
                               style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error),
+                                color: Theme.of(context).colorScheme.error,
+                              ),
                             ),
                           ],
                           const SizedBox(height: 16),
@@ -112,7 +121,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                                 ? const SizedBox(
                                     height: 18,
                                     width: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : Text(_connected ? 'Sign in' : 'Connect'),
                           ),
@@ -121,10 +132,17 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                               onPressed: _isSubmitting
                                   ? null
                                   : () => setState(() {
-                                        _connected = false;
-                                        _error = null;
-                                      }),
+                                      _connected = false;
+                                      _error = null;
+                                    }),
                               child: const Text('Change server'),
+                            ),
+                          if (Navigator.of(context).canPop())
+                            TextButton(
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              child: const Text('Continue offline'),
                             ),
                         ],
                       ),
@@ -142,7 +160,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   Future<void> _submit() async {
     final portValue = _parsePortInput();
     if (_serverPortController.text.trim().isNotEmpty && portValue == null) {
-      _setStateIfMounted(() => _error = 'Port must be a number between 1 and 65535');
+      _setStateIfMounted(
+        () => _error = 'Port must be a number between 1 and 65535',
+      );
       return;
     }
     final baseUrl = _resolveBaseUrl();
@@ -161,7 +181,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
       _setStateIfMounted(() {
         _connected = ok;
         _isSubmitting = false;
-        _error = ok ? null : widget.controller.authState.error ?? 'Connection failed';
+        _error = ok
+            ? null
+            : widget.controller.authState.error ?? 'Connection failed';
       });
       return;
     }
@@ -194,6 +216,12 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         _error = null;
       }
     });
+    if (mounted && widget.controller.authState.isAuthorized) {
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    }
   }
 
   Widget _buildServerSection(BuildContext context) {
@@ -216,7 +244,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
           label: null,
           hintText: 'server.example.com',
           keyboardType: TextInputType.url,
-          textInputAction: _connected ? TextInputAction.next : TextInputAction.next,
+          textInputAction: _connected
+              ? TextInputAction.next
+              : TextInputAction.next,
           enabled: !_connected,
           onSubmitted: null,
         ),
@@ -226,7 +256,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
           label: null,
           hintText: '3000',
           keyboardType: TextInputType.number,
-          textInputAction: _connected ? TextInputAction.next : TextInputAction.done,
+          textInputAction: _connected
+              ? TextInputAction.next
+              : TextInputAction.done,
           enabled: !_connected,
           onSubmitted: _connected ? null : (_) => _submit(),
         ),
@@ -267,10 +299,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
               const SizedBox(width: 6),
               Text(
                 'Remember me',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: ObsidianPalette.textMuted),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ObsidianPalette.textMuted,
+                ),
               ),
             ],
           ),
@@ -284,7 +315,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
       stream: widget.controller.localNetworkPermissionStream,
       initialData: widget.controller.localNetworkPermissionState,
       builder: (context, snapshot) {
-        final supported = widget.controller.localNetworkPermissionSupported ||
+        final supported =
+            widget.controller.localNetworkPermissionSupported ||
             Theme.of(context).platform == TargetPlatform.iOS;
         if (!supported) {
           return const SizedBox.shrink();
@@ -306,7 +338,10 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.wifi_off_rounded, color: theme.colorScheme.error),
+                    Icon(
+                      Icons.wifi_off_rounded,
+                      color: theme.colorScheme.error,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -352,10 +387,7 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     final hasServer = _serverHostController.text.trim().isNotEmpty;
     final hasUsername = _usernameController.text.trim().isNotEmpty;
     if (!hasServer && saved.baseUrl.trim().isNotEmpty) {
-      final parsed = Uri.tryParse(saved.baseUrl);
-      if (parsed != null && parsed.scheme.isNotEmpty) {
-        _useHttps = parsed.scheme == 'https';
-      }
+      _initializeServerAddress(saved.baseUrl);
     }
     if (!hasUsername && saved.username.trim().isNotEmpty) {
       _usernameController.text = saved.username;
@@ -396,7 +428,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
       return;
     }
     final hasScheme =
-        value.toLowerCase().startsWith('http://') || value.toLowerCase().startsWith('https://');
+        value.toLowerCase().startsWith('http://') ||
+        value.toLowerCase().startsWith('https://');
     if (hasScheme) {
       final isHttps = value.toLowerCase().startsWith('https://');
       if (_useHttps != isHttps) {
@@ -405,7 +438,10 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
           setState(() {});
         }
       }
-      value = value.replaceFirst(RegExp(r'^https?://', caseSensitive: false), '');
+      value = value.replaceFirst(
+        RegExp(r'^https?://', caseSensitive: false),
+        '',
+      );
     }
     value = value.replaceFirst(RegExp(r'^/+'), '');
     value = _stripApiSuffix(value);
@@ -417,8 +453,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     if (normalized != raw) {
       _normalizingAddress = true;
       _serverHostController.text = normalized;
-      _serverHostController.selection =
-          TextSelection.collapsed(offset: normalized.length);
+      _serverHostController.selection = TextSelection.collapsed(
+        offset: normalized.length,
+      );
       _normalizingAddress = false;
     }
   }
@@ -430,7 +467,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     }
     final sanitized = raw.replaceAll(RegExp(r'\s+'), '');
     final withoutScheme = sanitized.replaceFirst(RegExp(r'^https?://'), '');
-    final cleaned = _stripApiSuffix(withoutScheme.replaceFirst(RegExp(r'^/+'), ''));
+    final cleaned = _stripApiSuffix(
+      withoutScheme.replaceFirst(RegExp(r'^/+'), ''),
+    );
     if (cleaned.isEmpty) {
       return '';
     }
@@ -490,7 +529,6 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     final portValue = parsed.hasPort ? parsed.port.toString() : null;
     return _HostPortParts(hostValue, portValue);
   }
-
 }
 
 class _HostPortParts {
@@ -586,7 +624,9 @@ class _GlowToggleOptionState extends State<_GlowToggleOption> {
     return MouseRegion(
       onEnter: widget.enabled ? (_) => _setHovered(true) : null,
       onExit: widget.enabled ? (_) => _setHovered(false) : null,
-      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: widget.enabled
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: widget.enabled ? widget.onTap : null,
         behavior: HitTestBehavior.opaque,
@@ -610,7 +650,8 @@ class _GlowToggleOptionState extends State<_GlowToggleOption> {
           child: AnimatedDefaultTextStyle(
             duration: _transition,
             curve: Curves.easeOut,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            style:
+                Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: textColor,
                   letterSpacing: 1.0,
                 ) ??

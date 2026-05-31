@@ -72,63 +72,65 @@ class _DevicePickerModalState extends State<DevicePickerModal> {
             child: Center(child: CircularProgressIndicator()),
           )
         : _error != null
-            ? Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  _error!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                ),
-              )
-            : Scrollbar(
-                controller: _listController,
-                thumbVisibility: true,
-                child: ListView.separated(
-                  controller: _listController,
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-                  itemCount: _devices.length,
-                  separatorBuilder: (context, index) => Divider(
-                    height: 1,
-                    color: ObsidianPalette.textMuted.withOpacity(0.25),
-                  ),
-                  itemBuilder: (context, index) {
-                    final device = _devices[index];
-                    final isSelected = device.id == widget.selectedId;
-                    return ObsidianHoverRow(
-                      onTap: () async {
-                        await widget.onSelected(device);
-                        if (!mounted) {
-                          return;
-                        }
-                        Navigator.of(context).pop();
-                      },
-                      enabled: true,
-                      isActive: isSelected,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              device.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    letterSpacing: 0.4,
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          isSelected
-                              ? const Icon(Icons.check_rounded,
-                                  color: ObsidianPalette.gold)
-                              : const SizedBox.shrink(),
-                        ],
-                      ),
-                    );
+        ? Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          )
+        : Scrollbar(
+            controller: _listController,
+            thumbVisibility: true,
+            child: ListView.separated(
+              controller: _listController,
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
+              itemCount: _devices.length,
+              separatorBuilder: (context, index) => Divider(
+                height: 1,
+                color: ObsidianPalette.textMuted.withOpacity(0.25),
+              ),
+              itemBuilder: (context, index) {
+                final device = _devices[index];
+                final isSelected = device.id == widget.selectedId;
+                return ObsidianHoverRow(
+                  onTap: () async {
+                    await widget.onSelected(device);
+                    if (!mounted) {
+                      return;
+                    }
+                    Navigator.of(context).pop();
                   },
-                ),
-              );
+                  enabled: true,
+                  isActive: isSelected,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          device.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(letterSpacing: 0.4),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      isSelected
+                          ? const Icon(
+                              Icons.check_rounded,
+                              color: ObsidianPalette.gold,
+                            )
+                          : const SizedBox.shrink(),
+                    ],
+                  ),
+                );
+              },
+            ),
+          );
 
     return AlertDialog(
       title: const Text('Select output device'),

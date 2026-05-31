@@ -8,10 +8,8 @@ bool obsidianSupportsHover() {
       defaultTargetPlatform == TargetPlatform.linux;
 }
 
-typedef ObsidianHoverWidgetBuilder = Widget Function(
-  BuildContext context,
-  bool hovered,
-);
+typedef ObsidianHoverWidgetBuilder =
+    Widget Function(BuildContext context, bool hovered);
 
 class ObsidianHoverBuilder extends StatefulWidget {
   const ObsidianHoverBuilder({

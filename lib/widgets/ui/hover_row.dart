@@ -36,8 +36,9 @@ class ObsidianHoverRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actionable = enabled && onTap != null;
-    final cursor =
-        actionable ? SystemMouseCursors.click : SystemMouseCursors.basic;
+    final cursor = actionable
+        ? SystemMouseCursors.click
+        : SystemMouseCursors.basic;
     return ObsidianHoverBuilder(
       cursor: cursor,
       builder: (context, hovered) {
@@ -45,17 +46,18 @@ class ObsidianHoverRow extends StatelessWidget {
         final activeBorder = highlight ? borderColor : Colors.transparent;
         final resolvedGradient = hovered
             ? hoverGradient ??
-                LinearGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.06),
-                    Colors.transparent,
-                  ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                )
+                  LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.06),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  )
             : null;
-        final resolvedColor =
-            hovered && hoverGradient == null ? hoverColor : null;
+        final resolvedColor = hovered && hoverGradient == null
+            ? hoverColor
+            : null;
 
         return Material(
           color: Colors.transparent,

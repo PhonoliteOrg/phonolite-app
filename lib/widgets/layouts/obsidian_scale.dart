@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 class ObsidianScale extends InheritedWidget {
-  const ObsidianScale({
-    super.key,
-    required this.scale,
-    required super.child,
-  });
+  const ObsidianScale({super.key, required this.scale, required super.child});
 
   final double scale;
 

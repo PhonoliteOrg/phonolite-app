@@ -4,7 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants.dart';
 
 class CommandLinkButton extends StatelessWidget {
-  const CommandLinkButton({super.key, required this.label, required this.onTap});
+  const CommandLinkButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+  });
 
   final String label;
   final VoidCallback onTap;
@@ -16,17 +20,15 @@ class CommandLinkButton extends StatelessWidget {
       child: TextButton.icon(
         onPressed: onTap,
         style: ButtonStyle(
-          foregroundColor: MaterialStateProperty.resolveWith<Color>(
-            (states) {
-              if (states.contains(MaterialState.pressed)) {
-                return accentGold.withOpacity(0.75);
-              }
-              if (states.contains(MaterialState.hovered)) {
-                return accentGold.withOpacity(0.9);
-              }
-              return accentGold;
-            },
-          ),
+          foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+            if (states.contains(MaterialState.pressed)) {
+              return accentGold.withOpacity(0.75);
+            }
+            if (states.contains(MaterialState.hovered)) {
+              return accentGold.withOpacity(0.9);
+            }
+            return accentGold;
+          }),
           overlayColor: MaterialStateProperty.all(Colors.transparent),
           padding: MaterialStateProperty.all(
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

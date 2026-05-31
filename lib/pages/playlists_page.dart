@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
+import '../entities/auth_state.dart';
 import '../entities/models.dart';
 import '../widgets/display/playlist_module_card.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
@@ -18,11 +19,21 @@ class PlaylistsPage extends StatefulWidget {
 }
 
 class _PlaylistsPageState extends State<PlaylistsPage> {
+  bool _requestedLocalLoad = false;
+  bool _requestedServerLoad = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final controller = AppScope.of(context);
-    if (controller.playlists.isEmpty) {
+    if (!_requestedLocalLoad) {
+      _requestedLocalLoad = true;
+      controller.loadLocalPlaylists();
+    }
+    if (controller.authState.isAuthorized &&
+        !_requestedServerLoad &&
+        controller.playlists.isEmpty) {
+      _requestedServerLoad = true;
       controller.loadPlaylists();
     }
   }
@@ -30,67 +41,107 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    return StreamBuilder<List<Playlist>>(
-      stream: controller.playlistsStream,
-      initialData: controller.playlists,
-      builder: (context, snapshot) {
-        final playlists = snapshot.data ?? [];
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-              sliver: SliverToBoxAdapter(
-                child: _HeaderRow(
-                  count: playlists.length,
-                  onCreate: () => _openCreate(controller),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              sliver: playlists.isEmpty
-                  ? const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: _EmptyPlaylistsText()),
-                    )
-                  : SafeSliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 520,
-                            mainAxisSpacing: 14,
-                            crossAxisSpacing: 14,
-                            mainAxisExtent: 80,
-                          ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final playlist = playlists[index];
-                        return PlaylistModuleCard(
-                          playlist: playlist,
-                          onTap: () => _openDetail(context, playlist),
-                          onLongPress: () =>
-                              controller.queuePlaylist(playlist.id),
-                        );
-                      }, childCount: playlists.length),
+    return StreamBuilder<AuthState>(
+      stream: controller.authStream,
+      initialData: controller.authState,
+      builder: (context, authSnapshot) {
+        final authState = authSnapshot.data ?? controller.authState;
+        if (authState.isAuthorized &&
+            !_requestedServerLoad &&
+            controller.playlists.isEmpty) {
+          _requestedServerLoad = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && controller.authState.isAuthorized) {
+              controller.loadPlaylists();
+            }
+          });
+        }
+        return StreamBuilder<List<Playlist>>(
+          stream: controller.localPlaylistsStream,
+          initialData: controller.localPlaylists,
+          builder: (context, localSnapshot) {
+            final localPlaylists = localSnapshot.data ?? const <Playlist>[];
+            return StreamBuilder<List<Playlist>>(
+              stream: controller.playlistsStream,
+              initialData: controller.playlists,
+              builder: (context, serverSnapshot) {
+                final serverPlaylists = authState.isAuthorized
+                    ? serverSnapshot.data ?? const <Playlist>[]
+                    : const <Playlist>[];
+                return CustomScrollView(
+                  slivers: [
+                    _PlaylistSection(
+                      title: 'Local Playlists',
+                      subtitle: '${localPlaylists.length} lists',
+                      playlists: localPlaylists,
+                      onCreate: () => _openCreateLocal(controller),
+                      onOpen: (playlist) =>
+                          _openDetail(context, playlist, isLocal: true),
+                      onQueue: (playlist) =>
+                          controller.queueLocalPlaylist(playlist.id),
+                      emptyText: 'No local playlists',
                     ),
-            ),
-          ],
+                    if (authState.isAuthorized)
+                      _PlaylistSection(
+                        title: 'Server Playlists',
+                        subtitle: '${serverPlaylists.length} lists',
+                        playlists: serverPlaylists,
+                        onCreate: () => _openCreateServer(controller),
+                        onOpen: (playlist) =>
+                            _openDetail(context, playlist, isLocal: false),
+                        onQueue: (playlist) =>
+                            controller.queuePlaylist(playlist.id),
+                        emptyText: 'No server playlists',
+                      )
+                    else
+                      const SliverPadding(
+                        padding: EdgeInsets.fromLTRB(20, 8, 20, 28),
+                        sliver: SliverToBoxAdapter(
+                          child: Text(
+                            'Connect to a server to show server playlists.',
+                            style: TextStyle(color: ObsidianPalette.textMuted),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
         );
       },
     );
   }
 
-  void _openDetail(BuildContext context, Playlist playlist) {
+  void _openDetail(
+    BuildContext context,
+    Playlist playlist, {
+    required bool isLocal,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => PlaylistDetailView(playlistId: playlist.id),
+        builder: (context) =>
+            PlaylistDetailView(playlistId: playlist.id, isLocal: isLocal),
       ),
     );
   }
 
-  void _openCreate(AppController controller) {
+  void _openCreateLocal(AppController controller) {
     showDialog<void>(
       context: context,
       builder: (context) => PlaylistEditorModal(
-        title: 'Create playlist',
+        title: 'Create local playlist',
+        initialValue: '',
+        onSubmit: controller.createLocalPlaylist,
+      ),
+    );
+  }
+
+  void _openCreateServer(AppController controller) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => PlaylistEditorModal(
+        title: 'Create server playlist',
         initialValue: '',
         onSubmit: controller.createPlaylist,
       ),
@@ -98,10 +149,85 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
   }
 }
 
-class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.count, required this.onCreate});
+class _PlaylistSection extends StatelessWidget {
+  const _PlaylistSection({
+    required this.title,
+    required this.subtitle,
+    required this.playlists,
+    required this.onCreate,
+    required this.onOpen,
+    required this.onQueue,
+    required this.emptyText,
+  });
 
-  final int count;
+  final String title;
+  final String subtitle;
+  final List<Playlist> playlists;
+  final VoidCallback onCreate;
+  final ValueChanged<Playlist> onOpen;
+  final ValueChanged<Playlist> onQueue;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+          sliver: SliverToBoxAdapter(
+            child: _HeaderRow(
+              title: title,
+              subtitle: subtitle,
+              onCreate: onCreate,
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          sliver: playlists.isEmpty
+              ? SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      emptyText,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: ObsidianPalette.textMuted,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                )
+              : SafeSliverGrid(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 520,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    mainAxisExtent: 80,
+                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final playlist = playlists[index];
+                    return PlaylistModuleCard(
+                      playlist: playlist,
+                      onTap: () => onOpen(playlist),
+                      onLongPress: () => onQueue(playlist),
+                    );
+                  }, childCount: playlists.length),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeaderRow extends StatelessWidget {
+  const _HeaderRow({
+    required this.title,
+    required this.subtitle,
+    required this.onCreate,
+  });
+
+  final String title;
+  final String subtitle;
   final VoidCallback onCreate;
 
   @override
@@ -116,14 +242,14 @@ class _HeaderRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Playlists',
+                title,
                 style: Theme.of(
                   context,
                 ).textTheme.headlineLarge?.copyWith(letterSpacing: 1.1),
               ),
               const SizedBox(height: 6),
               Text(
-                '$count LISTS',
+                subtitle.toUpperCase(),
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: ObsidianPalette.textMuted,
                   letterSpacing: 1.4,
@@ -139,24 +265,6 @@ class _HeaderRow extends StatelessWidget {
           density: TechButtonDensity.compact,
         ),
       ],
-    );
-  }
-}
-
-class _EmptyPlaylistsText extends StatelessWidget {
-  const _EmptyPlaylistsText();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Text(
-        'No Playlists',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: ObsidianPalette.textMuted,
-          letterSpacing: 0.6,
-        ),
-      ),
     );
   }
 }

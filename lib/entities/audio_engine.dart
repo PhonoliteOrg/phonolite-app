@@ -11,6 +11,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'models.dart';
 import 'server_connection.dart';
+import 'package:phonolite_local_audio/phonolite_local_audio.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
 
@@ -39,14 +40,13 @@ class AudioEngine {
       Duration bufferedAhead,
       double? bitrateKbps,
       int? rttMs,
+      bool isLocalPlayback,
     )?
     onStats,
-    void Function(String? sessionId, double? bitrateKbps)? onStreamInfo,
     void Function()? onComplete,
     void Function()? onStarted,
   }) : _onMessage = onMessage,
        _onStats = onStats,
-       _onStreamInfo = onStreamInfo,
        _onComplete = onComplete,
        _onStarted = onStarted {
     _shutdownPreviousWorker();
@@ -59,9 +59,9 @@ class AudioEngine {
     Duration bufferedAhead,
     double? bitrateKbps,
     int? rttMs,
+    bool isLocalPlayback,
   )?
   _onStats;
-  final void Function(String? sessionId, double? bitrateKbps)? _onStreamInfo;
   final void Function()? _onComplete;
   final void Function()? _onStarted;
   final ReceivePort _receivePort = ReceivePort();
@@ -72,6 +72,7 @@ class AudioEngine {
   bool _paused = false;
   int _playbackId = 0;
   int _outputDeviceId = kDefaultOutputDeviceId;
+  double _volume = 1.0;
   final RootIsolateToken? _rootIsolateToken = RootIsolateToken.instance;
 
   static void _shutdownPreviousWorker() {
@@ -127,15 +128,7 @@ class AudioEngine {
             Duration(milliseconds: bufferedMs),
             (message['bitrate_kbps'] as num?)?.toDouble(),
             rttMs,
-          );
-        }
-        break;
-      case 'stream_info':
-        final handler = _onStreamInfo;
-        if (handler != null) {
-          handler(
-            message['session_id']?.toString(),
-            (message['bitrate_kbps'] as num?)?.toDouble(),
+            message['local'] == true,
           );
         }
         break;
@@ -178,7 +171,8 @@ class AudioEngine {
   }
 
   void setVolume(double value) {
-    _sendCmd({'cmd': 'volume', 'value': value});
+    _volume = value.clamp(0.0, 1.0);
+    _sendCmd({'cmd': 'volume', 'value': _volume});
   }
 
   void setOutputDevice(int deviceId) {
@@ -317,6 +311,28 @@ class AudioEngine {
     });
     return true;
   }
+
+  Future<void> playLocalFile({
+    required Track track,
+    required String filePath,
+    String? contentType,
+    Duration startOffset = Duration.zero,
+  }) async {
+    _sendCmd({'cmd': 'stop'});
+    final playbackId = ++_playbackId;
+    _active = true;
+    _paused = false;
+    _sendCmd({
+      'cmd': 'play_local',
+      'playback_id': playbackId,
+      'track_id': track.id,
+      'track_title': track.title,
+      'file_path': filePath,
+      'content_type': contentType ?? '',
+      'start_ms': startOffset.inMilliseconds,
+      'device_id': _outputDeviceId,
+    });
+  }
 }
 
 class _AudioWorkerEngine {
@@ -395,7 +411,7 @@ class _AudioWorkerEngine {
   }) async {
     stop(notify: false);
     _playbackId = playbackId;
-    final session = _PlaybackSession(
+    final session = _PlaybackSession.remote(
       send: _send,
       playbackId: playbackId,
       getPlaybackId: () => _playbackId,
@@ -419,10 +435,40 @@ class _AudioWorkerEngine {
       }
     }
   }
+
+  Future<void> playLocalFile({
+    required int playbackId,
+    required String trackId,
+    required String trackTitle,
+    required String filePath,
+    Duration startOffset = Duration.zero,
+  }) async {
+    stop(notify: false);
+    _playbackId = playbackId;
+    final session = _PlaybackSession.local(
+      send: _send,
+      playbackId: playbackId,
+      getPlaybackId: () => _playbackId,
+      trackId: trackId,
+      trackTitle: trackTitle,
+      filePath: filePath,
+      startOffset: startOffset,
+      volume: _volume,
+      outputDeviceId: _outputDeviceId,
+    );
+    _session = session;
+    try {
+      await session.run();
+    } finally {
+      if (identical(_session, session)) {
+        _session = null;
+      }
+    }
+  }
 }
 
 class _PlaybackSession {
-  _PlaybackSession({
+  _PlaybackSession.remote({
     required void Function(Map<String, dynamic> message) send,
     required int playbackId,
     required int Function() getPlaybackId,
@@ -440,7 +486,30 @@ class _PlaybackSession {
        _playbackId = playbackId,
        _getPlaybackId = getPlaybackId,
        _volume = volume,
-       _outputDeviceId = outputDeviceId;
+       _outputDeviceId = outputDeviceId,
+       localFilePath = null;
+
+  _PlaybackSession.local({
+    required void Function(Map<String, dynamic> message) send,
+    required int playbackId,
+    required int Function() getPlaybackId,
+    required this.trackId,
+    required this.trackTitle,
+    required String filePath,
+    required this.startOffset,
+    required double volume,
+    required int outputDeviceId,
+  }) : _send = send,
+       _playbackId = playbackId,
+       _getPlaybackId = getPlaybackId,
+       baseUrl = '',
+       token = '',
+       quicPort = null,
+       settings = const StreamSettings(mode: 'local', quality: 'source'),
+       queueTrackIds = const <String>[],
+       _volume = volume,
+       _outputDeviceId = outputDeviceId,
+       localFilePath = filePath;
 
   final void Function(Map<String, dynamic> message) _send;
   final int _playbackId;
@@ -453,11 +522,13 @@ class _PlaybackSession {
   final StreamSettings settings;
   final Duration startOffset;
   final List<String> queueTrackIds;
+  final String? localFilePath;
   double _volume;
   int _outputDeviceId;
   int _baseOffsetMs = 0;
   int _pendingClientSkipMs = 0;
   int? _pendingSeekMs;
+  int? _pendingSeekRequestedAtMs;
   int _nextSeekId = 0;
   int? _pendingSeekId;
   int? _activeSeekId;
@@ -506,6 +577,7 @@ class _PlaybackSession {
 
   QuicClient? _quic;
   OpusDecoder? _decoder;
+  LocalAudioDecoder? _localDecoder;
   _NativeAudioPlayer? _player;
   int? _playerSampleRate;
   int? _playerChannels;
@@ -527,6 +599,8 @@ class _PlaybackSession {
     _send({'playback_id': _playbackId, ...message});
   }
 
+  bool get _isLocalFile => localFilePath != null;
+
   bool get _isActive => !_stopRequested && _playbackId == _getPlaybackId();
 
   void requestStop() {
@@ -537,6 +611,8 @@ class _PlaybackSession {
     _buffer = null;
     _decoder?.dispose();
     _decoder = null;
+    _localDecoder?.close();
+    _localDecoder = null;
     _player?.dispose();
     _player = null;
     _playerSampleRate = null;
@@ -569,11 +645,7 @@ class _PlaybackSession {
     final player = _player;
     if (player != null) {
       player.resume();
-      _sendPlaybackMessage({
-        'type': 'state',
-        'active': true,
-        'paused': false,
-      });
+      _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': false});
     }
   }
 
@@ -587,6 +659,15 @@ class _PlaybackSession {
   }
 
   Future<void> seekTo(Duration position) async {
+    if (_isLocalFile) {
+      _quickStart = true;
+      _pendingSeekMs = position.inMilliseconds < 0
+          ? 0
+          : position.inMilliseconds;
+      _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
+      _streamEnded = false;
+      return;
+    }
     final quic = _quic;
     if (quic == null) {
       _log('Seek ignored: QUIC client not ready.');
@@ -597,12 +678,13 @@ class _PlaybackSession {
     final previousBaseOffset = _baseOffsetMs;
     final previousPendingSeekMs = _pendingSeekMs;
     final previousPendingSeekId = _pendingSeekId;
+    final previousPendingSeekRequestedAtMs = _pendingSeekRequestedAtMs;
     final seekId = _allocateSeekId();
     _pendingSeekMs = ms;
     _pendingSeekId = seekId;
+    _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
     _streamEnded = false;
     _discardUntilSeekMarker = true;
-    _baseOffsetMs = ms;
     _log(
       'Sending QUIC seek to ${ms}ms (seek_id=$seekId, active_seek=${_activeSeekId ?? 0})',
     );
@@ -611,6 +693,7 @@ class _PlaybackSession {
     } catch (err) {
       _pendingSeekMs = previousPendingSeekMs;
       _pendingSeekId = previousPendingSeekId;
+      _pendingSeekRequestedAtMs = previousPendingSeekRequestedAtMs;
       _discardUntilSeekMarker = previousPendingSeekId != null;
       _baseOffsetMs = previousBaseOffset;
       _log('QUIC seek failed: $err');
@@ -623,7 +706,6 @@ class _PlaybackSession {
         // Ignore closed/failed QUIC stats updates.
       }
     }
-    await _flushForSeek();
   }
 
   int _allocateSeekId() {
@@ -637,6 +719,14 @@ class _PlaybackSession {
   void _configureBufferProfile(String host) {
     _isLoopbackHost =
         host == 'localhost' || host == '127.0.0.1' || host == '::1';
+    _networkProfileLevel = 0;
+    _stableBufferTicks = 0;
+    _lastObservedRttMs = null;
+    _applyBufferProfile(log: true);
+  }
+
+  void _configureLocalBufferProfile() {
+    _isLoopbackHost = true;
     _networkProfileLevel = 0;
     _stableBufferTicks = 0;
     _lastObservedRttMs = null;
@@ -766,15 +856,13 @@ class _PlaybackSession {
       await _runPlayback();
     } catch (err) {
       _log('Playback failed: $err');
-      _sendPlaybackMessage({
-        'type': 'state',
-        'active': false,
-        'paused': false,
-      });
+      _sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
     } finally {
       _stopStats();
       _decoder?.dispose();
       _decoder = null;
+      _localDecoder?.close();
+      _localDecoder = null;
       _player?.dispose();
       _player = null;
       _playerSampleRate = null;
@@ -806,6 +894,163 @@ class _PlaybackSession {
     }
   }
 
+  Future<void> _runLocalFilePlayback(String filePath) async {
+    _configureLocalBufferProfile();
+    _log('Opening local audio file: $filePath');
+    final decoder = LocalAudioDecoder.open(filePath, startOffset: startOffset);
+    _localDecoder = decoder;
+
+    _sampleRate = decoder.sampleRate;
+    _channels = decoder.channels;
+    _baseOffsetMs = startOffset.inMilliseconds;
+    _pendingClientSkipMs = 0;
+    _quickStart = startOffset.inMilliseconds > 0;
+    _log(
+      'Local decoder: $_sampleRate Hz, ${_channels}ch, duration=${decoder.duration.inMilliseconds} ms',
+    );
+    _createLocalPcmOutput();
+    _startStats();
+
+    Future<void>? pumpTask;
+    if (!_pumpRunning) {
+      pumpTask = _runPump();
+    }
+
+    final readSamples = math.max(
+      _channels,
+      ((_sampleRate * _channels * 200) / 1000).round(),
+    );
+    final alignedReadSamples = readSamples - (readSamples % _channels);
+    final readBuffer = Int16List(
+      alignedReadSamples > 0 ? alignedReadSamples : _channels,
+    );
+
+    while (_isActive) {
+      final pendingSeekMs = _pendingSeekMs;
+      if (pendingSeekMs != null) {
+        await _applyLocalSeek(decoder, pendingSeekMs);
+        continue;
+      }
+
+      final buffer = _buffer;
+      if (buffer != null && !_streamEnded) {
+        final minFree = _pumpChunkSamples > 0 ? _pumpChunkSamples : _channels;
+        if (buffer.free < minFree) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          continue;
+        }
+      }
+
+      final read = decoder.readInto(readBuffer);
+      if (read == 0) {
+        _streamEnded = true;
+        break;
+      }
+      await _writeToBuffer(Int16List.fromList(readBuffer.sublist(0, read)));
+    }
+
+    _streamEnded = true;
+    _log('Local file ended.');
+    if (_autoPaused && !_userPaused) {
+      _resumeFromAutoPause();
+    }
+    if (pumpTask != null) {
+      await pumpTask;
+    }
+    if (_isActive) {
+      _sendPlaybackMessage({'type': 'complete'});
+    }
+  }
+
+  Future<void> _applyLocalSeek(
+    LocalAudioDecoder decoder,
+    int requestedMs,
+  ) async {
+    final seekId = _allocateSeekId();
+    _pumpSuspended = true;
+    await _waitForPumpIdle();
+    if (!_isActive) {
+      return;
+    }
+    _streamEnded = false;
+    _startedPlayback = false;
+    _reportedStart = false;
+    _autoPaused = false;
+    _queuedToPlayerSamples = 0;
+    _playedSamples = 0;
+    _bytesReceived = 0;
+    _lastBitrateBytes = 0;
+    _lastBitrateAt = null;
+    _buffer = null;
+    _player?.dispose();
+    _player = null;
+    _playerSampleRate = null;
+    _playerChannels = null;
+    _playerDeviceId = null;
+    _pendingSeekMs = null;
+    _pendingSeekId = null;
+    _activeSeekId = seekId;
+
+    final actual = decoder.seek(Duration(milliseconds: requestedMs));
+    if (!_isActive) {
+      return;
+    }
+    _baseOffsetMs = actual.inMilliseconds;
+    final requestedAtMs = _pendingSeekRequestedAtMs;
+    if (requestedAtMs != null) {
+      final latencyMs = DateTime.now().millisecondsSinceEpoch - requestedAtMs;
+      _log('Local seek accepted after ${latencyMs}ms (seek_id=$seekId).');
+    }
+    _pendingSeekRequestedAtMs = null;
+    _createLocalPcmOutput();
+    _pumpSuspended = false;
+  }
+
+  void _createLocalPcmOutput() {
+    _frameSamples = (_sampleRate * 20 / 1000).round();
+    _pumpChunkSamples = ((_sampleRate * _channels * _pumpChunkMs) / 1000)
+        .round();
+    if (_pumpChunkSamples <= 0) {
+      _pumpChunkSamples = math.max(1, _frameSamples * _channels);
+    }
+    _refreshBufferTargets();
+
+    final targetSeconds = _quickStart
+        ? _seekCatchupTargetSeconds
+        : (_prebufferSeconds > _rebufferTargetSeconds
+              ? _prebufferSeconds
+              : _rebufferTargetSeconds);
+    final capacitySamples = (targetSeconds * 4.0 * _sampleRate * _channels)
+        .round();
+    final minCapacitySamples = _rebufferTargetSamples * 2;
+    var finalCapacity = capacitySamples;
+    if (minCapacitySamples > finalCapacity) {
+      finalCapacity = minCapacitySamples;
+    }
+    final minPumpCapacity = _pumpChunkSamples * 4;
+    if (minPumpCapacity > finalCapacity) {
+      finalCapacity = minPumpCapacity;
+    }
+    _buffer = _PcmRingBuffer(finalCapacity);
+
+    final createdPlayer = _createPlayer(
+      sampleRate: _sampleRate,
+      channels: _channels,
+      deviceId: _outputDeviceId,
+    );
+    _player = createdPlayer;
+    _playerSampleRate = _sampleRate;
+    _playerChannels = _channels;
+    _playerDeviceId = _outputDeviceId;
+    createdPlayer.setVolume(_volume);
+    if (_paused) {
+      createdPlayer.pause();
+    } else {
+      createdPlayer.resume();
+    }
+    _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': _paused});
+  }
+
   Future<void> _runPlayback() async {
     if (!(Platform.isWindows ||
         Platform.isMacOS ||
@@ -833,6 +1078,12 @@ class _PlaybackSession {
     _activeSeekId = null;
     _nextSeekId = 0;
     _pumpRunning = false;
+
+    final localPath = localFilePath;
+    if (localPath != null) {
+      await _runLocalFilePlayback(localPath);
+      return;
+    }
 
     final uri = Uri.parse(baseUrl);
     var host = uri.host.isNotEmpty ? uri.host : '127.0.0.1';
@@ -954,6 +1205,12 @@ class _PlaybackSession {
       if (_pendingSeekMs != null) {
         _baseOffsetMs = _pendingSeekMs!;
       }
+      final requestedAtMs = _pendingSeekRequestedAtMs;
+      if (requestedAtMs != null) {
+        final latencyMs = DateTime.now().millisecondsSinceEpoch - requestedAtMs;
+        _log('Seek marker accepted after ${latencyMs}ms (seek_id=$seekId).');
+      }
+      _pendingSeekRequestedAtMs = null;
       _pendingSeekMs = null;
       _activeSeekId = seekId;
       _pendingSeekId = null;
@@ -1488,33 +1745,6 @@ class _PlaybackSession {
     }
   }
 
-  Future<void> _flushForSeek() async {
-    _pumpSuspended = true;
-    await _waitForPumpIdle();
-    _queuedToPlayerSamples = 0;
-    _playedSamples = 0;
-    _buffer = null;
-    final player = _player;
-    if (Platform.isAndroid && player is _AndroidChannelPlayer) {
-      try {
-        await player.flush();
-      } catch (_) {
-        _player = null;
-        _playerSampleRate = null;
-        _playerChannels = null;
-        _playerDeviceId = null;
-        player.dispose();
-      }
-    } else {
-      _player = null;
-      _playerSampleRate = null;
-      _playerChannels = null;
-      _playerDeviceId = null;
-      player?.dispose();
-    }
-    _pumpSuspended = false;
-  }
-
   Future<void> _writeToBuffer(Int16List samples) async {
     final buffer = _buffer;
     if (buffer == null) {
@@ -1572,6 +1802,11 @@ class _PlaybackSession {
     _reportedStart = true;
     _quickStart = false;
     _refreshBufferTargets();
+    final activeSeekId = _activeSeekId;
+    if (activeSeekId != null) {
+      _log('Seek audio resumed (seek_id=$activeSeekId).');
+      _activeSeekId = null;
+    }
     _log('Audio playback started.');
     _sendPlaybackMessage({'type': 'started'});
   }
@@ -1662,8 +1897,9 @@ class _PlaybackSession {
         'type': 'stats',
         'position_ms': position.inMilliseconds,
         'buffered_ms': bufferedMs,
-        'bitrate_kbps': _currentBitrateKbps(),
-        'rtt_ms': rttMs,
+        'bitrate_kbps': _isLocalFile ? null : _currentBitrateKbps(),
+        'rtt_ms': _isLocalFile ? null : rttMs,
+        'local': _isLocalFile,
       });
     } finally {
       _statsCollectionInFlight = false;
@@ -2001,6 +2237,21 @@ void _audioWorkerMain(_AudioWorkerInit init) {
             milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0,
           ),
           queueTrackIds: queue,
+        );
+        break;
+      case 'play_local':
+        final playbackId = (message['playback_id'] as num?)?.toInt() ?? 0;
+        if (playbackId <= 0) {
+          break;
+        }
+        await engine.playLocalFile(
+          playbackId: playbackId,
+          trackId: message['track_id']?.toString() ?? '',
+          trackTitle: message['track_title']?.toString() ?? '',
+          filePath: message['file_path']?.toString() ?? '',
+          startOffset: Duration(
+            milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0,
+          ),
         );
         break;
       case 'stop':

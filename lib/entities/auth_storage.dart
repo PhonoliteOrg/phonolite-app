@@ -19,10 +19,10 @@ class AuthCredentials {
   final String username;
 
   Map<String, dynamic> toJson() => {
-        'baseUrl': baseUrl,
-        'token': token,
-        'username': username,
-      };
+    'baseUrl': baseUrl,
+    'token': token,
+    'username': username,
+  };
 
   static AuthCredentials? fromJson(Map<String, dynamic> json) {
     final baseUrl = json['baseUrl']?.toString() ?? '';
@@ -31,11 +31,7 @@ class AuthCredentials {
     if (baseUrl.trim().isEmpty) {
       return null;
     }
-    return AuthCredentials(
-      baseUrl: baseUrl,
-      token: token,
-      username: username,
-    );
+    return AuthCredentials(baseUrl: baseUrl, token: token, username: username);
   }
 }
 

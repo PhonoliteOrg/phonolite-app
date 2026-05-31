@@ -52,8 +52,9 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
       _clamping = true;
       final next = text.substring(0, _maxNameLength);
       final cursor = _controller.selection.baseOffset;
-      final nextCursor =
-          cursor < 0 ? next.length : (cursor > next.length ? next.length : cursor);
+      final nextCursor = cursor < 0
+          ? next.length
+          : (cursor > next.length ? next.length : cursor);
       _controller.value = TextEditingValue(
         text: next,
         selection: TextSelection.collapsed(offset: nextCursor),
@@ -67,11 +68,13 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rawLength = _controller.text.length;
-    final currentLength =
-        rawLength > _maxNameLength ? _maxNameLength : rawLength;
+    final currentLength = rawLength > _maxNameLength
+        ? _maxNameLength
+        : rawLength;
     final canSave = _controller.text.trim().isNotEmpty;
-    final dialogWidth =
-        (MediaQuery.of(context).size.width - 48).clamp(0.0, 420.0).toDouble();
+    final dialogWidth = (MediaQuery.of(context).size.width - 48)
+        .clamp(0.0, 420.0)
+        .toDouble();
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
@@ -96,9 +99,9 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
               child: Text(
                 '$currentLength/$_maxNameLength',
                 style: theme.textTheme.labelSmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                      letterSpacing: 0.6,
-                    ),
+                  color: ObsidianPalette.textMuted,
+                  letterSpacing: 0.6,
+                ),
               ),
             ),
             const SizedBox(height: 14),

@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../../core/library_helpers.dart';
 import '../../entities/models.dart';
+import '../../entities/offline_library.dart';
 import '../layouts/app_scope.dart';
-import 'album_art.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import 'album_art.dart';
+
+const double _trackActionButtonExtent = 38;
 
 class TrackRowTile extends StatefulWidget {
   const TrackRowTile({
@@ -20,8 +23,15 @@ class TrackRowTile extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onAddToPlaylist,
+    this.onDownload,
+    this.onRemoveDownload,
     this.onLike,
     this.onDelete,
+    this.selectionMode = false,
+    this.selected = false,
+    this.onSelectionToggle,
+    this.onSelectionModeRequested,
+    this.offlineDownload,
     this.showAlbumArt = false,
   });
 
@@ -31,8 +41,15 @@ class TrackRowTile extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onAddToPlaylist;
+  final VoidCallback? onDownload;
+  final VoidCallback? onRemoveDownload;
   final VoidCallback? onLike;
   final VoidCallback? onDelete;
+  final bool selectionMode;
+  final bool selected;
+  final VoidCallback? onSelectionToggle;
+  final VoidCallback? onSelectionModeRequested;
+  final OfflineTrackDownload? offlineDownload;
   final bool showAlbumArt;
 
   @override
@@ -78,98 +95,146 @@ class _TrackRowTileState extends State<TrackRowTile>
     final theme = Theme.of(context);
     final controller = widget.showAlbumArt ? AppScope.of(context) : null;
     final albumId = widget.track.albumId?.trim() ?? '';
-    final coverUrl = widget.showAlbumArt && albumId.isNotEmpty
+    final canLoadRemoteArt = controller?.authState.isAuthorized == true;
+    final localCoverPath = widget.track.albumArtPath?.trim();
+    final hasLocalCover = localCoverPath != null && localCoverPath.isNotEmpty;
+    final coverUrl = widget.showAlbumArt && hasLocalCover
+        ? localCoverPath
+        : widget.showAlbumArt && albumId.isNotEmpty && canLoadRemoteArt
         ? controller?.connection.buildAlbumCoverUrl(albumId)
         : null;
-    final headers = widget.showAlbumArt && controller != null
+    final headers =
+        widget.showAlbumArt &&
+            !hasLocalCover &&
+            controller != null &&
+            canLoadRemoteArt
         ? authHeaders(controller)
         : const <String, String>{};
 
+    final selectionMode = widget.selectionMode;
+    final isDeleting =
+        widget.offlineDownload?.status == OfflineDownloadStatus.removing;
+
     return ObsidianHoverRow(
-      onTap: widget.onTap,
-      onLongPress: widget.onLongPress,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 32,
-            child: Center(
-              child: widget.isPlaying
-                  ? _NowPlayingBars(
-                      controller: _controller ?? kAlwaysDismissedAnimation,
-                    )
-                  : Text(
-                      widget.index.toString().padLeft(2, '0'),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: ObsidianPalette.gold,
-                        letterSpacing: 1.2,
+      onTap: isDeleting
+          ? null
+          : selectionMode
+          ? widget.onSelectionToggle
+          : widget.onTap,
+      onLongPress: isDeleting
+          ? null
+          : selectionMode
+          ? widget.onSelectionToggle
+          : widget.onSelectionModeRequested ?? widget.onLongPress,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: isDeleting ? 0.45 : 1,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 32,
+              child: Center(
+                child: selectionMode
+                    ? Checkbox(
+                        value: widget.selected,
+                        onChanged:
+                            widget.onSelectionToggle == null || isDeleting
+                            ? null
+                            : (_) => widget.onSelectionToggle!(),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: const BorderSide(color: ObsidianPalette.border),
+                        activeColor: ObsidianPalette.gold,
+                      )
+                    : widget.isPlaying
+                    ? _NowPlayingBars(
+                        controller: _controller ?? kAlwaysDismissedAnimation,
+                      )
+                    : Text(
+                        widget.index.toString().padLeft(2, '0'),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: ObsidianPalette.gold,
+                          letterSpacing: 1.2,
+                        ),
                       ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (widget.showAlbumArt) ...[
+              AlbumArt(
+                title: widget.track.album,
+                size: 42,
+                imageUrl: coverUrl,
+                headers: headers,
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      letterSpacing: 0.6,
                     ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (widget.showAlbumArt) ...[
-            AlbumArt(
-              title: widget.track.album,
-              size: 42,
-              imageUrl: coverUrl,
-              headers: headers,
-            ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    letterSpacing: 0.6,
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _artistAlbumLine(widget.track),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: ObsidianPalette.textMuted,
+                  const SizedBox(height: 2),
+                  Text(
+                    _artistAlbumLine(widget.track),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: ObsidianPalette.textMuted,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Text(
-            _formatDuration(widget.track.durationMs),
-            style: theme.textTheme.labelLarge?.copyWith(
-              letterSpacing: 1.0,
-              color: ObsidianPalette.textMuted,
+            Text(
+              _formatDuration(widget.track.durationMs),
+              style: theme.textTheme.labelLarge?.copyWith(
+                letterSpacing: 1.0,
+                color: ObsidianPalette.textMuted,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          if (widget.onAddToPlaylist != null) ...[
-            ObsidianHudIconButton(
-              icon: Icons.playlist_add_rounded,
-              onPressed: widget.onAddToPlaylist,
-              size: 22,
-            ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
+            if (!selectionMode &&
+                (widget.onDownload != null ||
+                    widget.offlineDownload != null)) ...[
+              _DownloadStatusButton(
+                download: widget.offlineDownload,
+                onDownload: widget.onDownload,
+                onRemoveDownload: widget.onRemoveDownload,
+              ),
+              const SizedBox(width: 6),
+            ],
+            if (!selectionMode && widget.onAddToPlaylist != null) ...[
+              ObsidianHudIconButton(
+                icon: Icons.playlist_add_rounded,
+                onPressed: isDeleting ? null : widget.onAddToPlaylist,
+                size: 22,
+              ),
+              const SizedBox(width: 6),
+            ],
+            if (!selectionMode)
+              LikeIconButton(
+                isLiked: widget.track.liked,
+                onPressed: isDeleting ? null : widget.onLike,
+                size: 22,
+              ),
+            if (!selectionMode && widget.onDelete != null) ...[
+              const SizedBox(width: 6),
+              ObsidianHudIconButton(
+                icon: Icons.delete_outline_rounded,
+                onPressed: isDeleting ? null : widget.onDelete,
+                size: 22,
+              ),
+            ],
           ],
-          LikeIconButton(
-            isLiked: widget.track.liked,
-            onPressed: widget.onLike,
-            size: 22,
-          ),
-          if (widget.onDelete != null) ...[
-            const SizedBox(width: 6),
-            ObsidianHudIconButton(
-              icon: Icons.delete_outline_rounded,
-              onPressed: widget.onDelete,
-              size: 22,
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -190,7 +255,111 @@ class _TrackRowTileState extends State<TrackRowTile>
     if (album.isEmpty) {
       return artist;
     }
-    return '$artist • $album';
+    return '$artist / $album';
+  }
+}
+
+class _DownloadStatusButton extends StatelessWidget {
+  const _DownloadStatusButton({
+    required this.download,
+    required this.onDownload,
+    required this.onRemoveDownload,
+  });
+
+  final OfflineTrackDownload? download;
+  final VoidCallback? onDownload;
+  final VoidCallback? onRemoveDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = download?.status;
+    final queued = status == OfflineDownloadStatus.queued;
+    final preparing = status == OfflineDownloadStatus.preparing;
+    final downloading = status == OfflineDownloadStatus.downloading;
+    final validating = status == OfflineDownloadStatus.validating;
+    final busy = queued || preparing || downloading || validating;
+    final removing = status == OfflineDownloadStatus.removing;
+    final downloaded = status == OfflineDownloadStatus.downloaded;
+    final failed = status == OfflineDownloadStatus.failed;
+    final color = downloaded
+        ? onRemoveDownload == null
+              ? ObsidianPalette.gold
+              : Theme.of(context).colorScheme.error
+        : failed
+        ? Theme.of(context).colorScheme.error
+        : ObsidianPalette.textMuted;
+    final progress = download?.progress;
+    final showProgressRing = downloading;
+    final action = downloaded
+        ? onRemoveDownload
+        : busy || removing
+        ? null
+        : onDownload;
+    final tooltip = removing
+        ? 'Removing download'
+        : downloaded
+        ? onRemoveDownload == null
+              ? 'Downloaded'
+              : 'Remove download'
+        : downloading
+        ? 'Downloading'
+        : validating
+        ? 'Validating download'
+        : preparing
+        ? 'Preparing download'
+        : queued
+        ? 'Queued download'
+        : failed
+        ? 'Retry download'
+        : 'Download';
+
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: action,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: _trackActionButtonExtent,
+          height: _trackActionButtonExtent,
+          child: Center(
+            child: showProgressRing
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2,
+                      color: ObsidianPalette.gold,
+                      backgroundColor: ObsidianPalette.border.withValues(
+                        alpha: 0.4,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    downloaded
+                        ? onRemoveDownload == null
+                              ? Icons.offline_pin_rounded
+                              : Icons.delete_outline_rounded
+                        : removing
+                        ? Icons.delete_sweep_rounded
+                        : validating
+                        ? Icons.verified_rounded
+                        : preparing
+                        ? Icons.sync_rounded
+                        : queued
+                        ? Icons.schedule_rounded
+                        : downloading
+                        ? Icons.downloading_rounded
+                        : failed
+                        ? Icons.download_for_offline_rounded
+                        : Icons.download_for_offline_outlined,
+                    color: color,
+                    size: 22,
+                  ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

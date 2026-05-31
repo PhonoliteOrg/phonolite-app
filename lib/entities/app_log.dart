@@ -3,11 +3,8 @@ typedef LogListener = void Function(LogEntry entry);
 enum LogLevel { info, status, warning, error, debug }
 
 class LogEntry {
-  LogEntry({
-    required this.message,
-    required this.level,
-    DateTime? timestamp,
-  }) : timestamp = (timestamp ?? DateTime.now()).toLocal();
+  LogEntry({required this.message, required this.level, DateTime? timestamp})
+    : timestamp = (timestamp ?? DateTime.now()).toLocal();
 
   final String message;
   final LogLevel level;

@@ -27,7 +27,9 @@ class ObsidianHoverCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final enableHover = obsidianSupportsHover();
     return ObsidianHoverBuilder(
-      cursor: onTap == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      cursor: onTap == null
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.click,
       enableHover: enableHover,
       builder: (context, hovered) {
         final card = ClipPath(
@@ -57,7 +59,9 @@ class ObsidianHoverCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              Colors.white.withOpacity(cardHoverOverlayTopOpacity),
+                              Colors.white.withOpacity(
+                                cardHoverOverlayTopOpacity,
+                              ),
                               Colors.white.withOpacity(
                                 cardHoverOverlayBottomOpacity,
                               ),
@@ -95,11 +99,7 @@ class ObsidianHoverCard extends StatelessWidget {
 
         return Material(
           color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            splashColor: splashColor,
-            child: card,
-          ),
+          child: InkWell(onTap: onTap, splashColor: splashColor, child: card),
         );
       },
     );

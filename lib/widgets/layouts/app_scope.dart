@@ -16,5 +16,6 @@ class AppScope extends InheritedWidget {
   }
 
   @override
-  bool updateShouldNotify(AppScope oldWidget) => controller != oldWidget.controller;
+  bool updateShouldNotify(AppScope oldWidget) =>
+      controller != oldWidget.controller;
 }
