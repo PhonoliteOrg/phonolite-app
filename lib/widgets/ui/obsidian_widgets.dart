@@ -41,7 +41,7 @@ class GlassPanel extends StatelessWidget {
             Colors.white.withOpacity(0.01),
           ],
         );
-    final border = borderColor ?? ObsidianPalette.border.withOpacity(0.7);
+    final border = borderColor ?? ObsidianPalette.border;
     final shadow = shadowColor ?? Colors.black.withOpacity(0.6);
 
     return Container(

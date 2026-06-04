@@ -12,7 +12,9 @@ class AlbumRowTile extends StatelessWidget {
     required this.album,
     required this.coverUrl,
     required this.headers,
-    required this.onTap,
+    this.onTap,
+    this.subtitle,
+    this.trailing,
     this.selectionMode = false,
     this.selected = false,
     this.selectable = true,
@@ -23,7 +25,9 @@ class AlbumRowTile extends StatelessWidget {
   final Album album;
   final String coverUrl;
   final Map<String, String> headers;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final String? subtitle;
+  final Widget? trailing;
   final bool selectionMode;
   final bool selected;
   final bool selectable;
@@ -33,6 +37,7 @@ class AlbumRowTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final detailText = subtitle ?? albumDetailLabel(album);
     final canInteract = selectable && !isDeleting;
     final effectiveOnTap = selectionMode
         ? canInteract
@@ -82,14 +87,15 @@ class AlbumRowTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    albumDetailLabel(album),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
+                  if (detailText.isNotEmpty)
+                    Text(
+                      detailText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: ObsidianPalette.textMuted,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -100,6 +106,8 @@ class AlbumRowTile extends StatelessWidget {
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
+            else if (trailing != null)
+              trailing!
             else if (!selectionMode)
               const Icon(Icons.chevron_right_rounded, color: Colors.white38),
           ],

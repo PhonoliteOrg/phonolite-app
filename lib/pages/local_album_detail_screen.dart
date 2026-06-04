@@ -13,7 +13,7 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
-import '../widgets/ui/tech_button.dart';
+import '../widgets/ui/obsidian_widgets.dart';
 
 class LocalAlbumDetailScreen extends StatefulWidget {
   const LocalAlbumDetailScreen({super.key, required this.album});
@@ -65,16 +65,32 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                                 alignment: WrapAlignment.end,
                                 spacing: 10,
                                 runSpacing: 10,
-                                children: [
-                                  if (!_selectionMode)
-                                    TechButton(
-                                      label: 'Edit',
-                                      icon: Icons.edit_rounded,
-                                      onTap: album.tracks.isNotEmpty
-                                          ? _startSelection
-                                          : null,
-                                    ),
-                                ],
+                                children: _selectionMode
+                                    ? [
+                                        DownloadSelectionToolbar(
+                                          selectedCount: selectedTracks.length,
+                                          totalCount: album.tracks.length,
+                                          onCancel: _clearSelection,
+                                          onSelectAll: () =>
+                                              _selectAll(album.tracks),
+                                          onDeselectAll: _deselectAll,
+                                          onRemove: selectedTracks.isEmpty
+                                              ? null
+                                              : () => _removeDownloads(
+                                                  context,
+                                                  controller,
+                                                  selectedTracks,
+                                                  album.title,
+                                                ),
+                                        ),
+                                      ]
+                                    : [
+                                        _editTrackSelectionButton(
+                                          album.tracks.isNotEmpty
+                                              ? _startSelection
+                                              : null,
+                                        ),
+                                      ],
                               ),
                             ],
                           ),
@@ -103,26 +119,6 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                         ),
                       )
                     else ...[
-                      if (_selectionMode)
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                          sliver: SliverToBoxAdapter(
-                            child: DownloadSelectionToolbar(
-                              selectedCount: selectedTracks.length,
-                              totalCount: album.tracks.length,
-                              onCancel: _clearSelection,
-                              onSelectAll: () => _selectAll(album.tracks),
-                              onRemove: selectedTracks.isEmpty
-                                  ? null
-                                  : () => _removeDownloads(
-                                      context,
-                                      controller,
-                                      selectedTracks,
-                                      album.title,
-                                    ),
-                            ),
-                          ),
-                        ),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                         sliver: TrackSliverList(
@@ -245,6 +241,13 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
     });
   }
 
+  void _deselectAll() {
+    setState(() {
+      _selectionMode = true;
+      _selectedTrackIds.clear();
+    });
+  }
+
   void _startSelection() {
     setState(() {
       _selectionMode = true;
@@ -257,6 +260,16 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
       _selectionMode = false;
       _selectedTrackIds.clear();
     });
+  }
+
+  Widget _editTrackSelectionButton(VoidCallback? onPressed) {
+    return Tooltip(
+      message: 'Edit',
+      child: ObsidianHudIconButton(
+        icon: Icons.edit_rounded,
+        onPressed: onPressed,
+      ),
+    );
   }
 
   String _selectionKey(Track track) {

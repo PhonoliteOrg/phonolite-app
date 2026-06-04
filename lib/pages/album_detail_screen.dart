@@ -131,30 +131,47 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                         runSpacing: 10,
                                         crossAxisAlignment:
                                             WrapCrossAlignment.center,
-                                        children: [
-                                          TechButton(
-                                            label: downloadSummary.label,
-                                            icon: downloadSummary.icon,
-                                            onTap:
-                                                !isLoading &&
-                                                    downloadSummary.canStart
-                                                ? () {
-                                                    controller.downloadAlbum(
-                                                      _album,
-                                                      tracks,
-                                                    );
-                                                  }
-                                                : null,
-                                          ),
-                                          if (!_selectionMode)
-                                            TechButton(
-                                              label: 'Edit',
-                                              icon: Icons.edit_rounded,
-                                              onTap: removableTracks.isNotEmpty
-                                                  ? _startSelection
-                                                  : null,
-                                            ),
-                                        ],
+                                        children: _selectionMode
+                                            ? [
+                                                DownloadSelectionToolbar(
+                                                  selectedCount:
+                                                      selectedTracks.length,
+                                                  totalCount:
+                                                      removableTracks.length,
+                                                  onCancel: _clearSelection,
+                                                  onSelectAll: () => _selectAll(
+                                                    removableTracks,
+                                                  ),
+                                                  onDeselectAll: _deselectAll,
+                                                  onRemove:
+                                                      selectedTracks.isEmpty
+                                                      ? null
+                                                      : () =>
+                                                            _removeSelectedDownloads(
+                                                              controller,
+                                                              selectedTracks,
+                                                              _album.title,
+                                                            ),
+                                                ),
+                                              ]
+                                            : [
+                                                TechButton(
+                                                  label: downloadSummary.label,
+                                                  icon: downloadSummary.icon,
+                                                  chrome: TechButtonChrome
+                                                      .borderless,
+                                                  onTap:
+                                                      !isLoading &&
+                                                          downloadSummary
+                                                              .canStart
+                                                      ? () => controller
+                                                            .downloadAlbum(
+                                                              _album,
+                                                              tracks,
+                                                            )
+                                                      : null,
+                                                ),
+                                              ],
                                       ),
                                     ],
                                   ),
@@ -181,33 +198,6 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                     title: 'No tracks',
                                     message:
                                         'Pick another album to see tracks.',
-                                  ),
-                                ),
-                              ),
-                            if (!isLoading &&
-                                tracks.isNotEmpty &&
-                                _selectionMode)
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  0,
-                                  20,
-                                  12,
-                                ),
-                                sliver: SliverToBoxAdapter(
-                                  child: DownloadSelectionToolbar(
-                                    selectedCount: selectedTracks.length,
-                                    totalCount: removableTracks.length,
-                                    onCancel: _clearSelection,
-                                    onSelectAll: () =>
-                                        _selectAll(removableTracks),
-                                    onRemove: selectedTracks.isEmpty
-                                        ? null
-                                        : () => _removeSelectedDownloads(
-                                            controller,
-                                            selectedTracks,
-                                            _album.title,
-                                          ),
                                   ),
                                 ),
                               ),
@@ -242,8 +232,6 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                       .contains(_selectionKey(track)),
                                   onTrackSelectionToggle: (track) =>
                                       _toggleSelection(controller, track),
-                                  onTrackSelectionModeRequested: (track) =>
-                                      _enterSelection(controller, track),
                                   offlineDownloadForTrack: (track) => controller
                                       .offlineDownloadForTrack(track.id),
                                 ),
@@ -312,16 +300,6 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
     return controller.availableOfflineDownloadForTrack(track.id) != null;
   }
 
-  void _enterSelection(AppController controller, Track track) {
-    if (!_canRemoveTrack(controller, track)) {
-      return;
-    }
-    setState(() {
-      _selectionMode = true;
-      _selectedTrackIds.add(_selectionKey(track));
-    });
-  }
-
   void _toggleSelection(AppController controller, Track track) {
     if (!_canRemoveTrack(controller, track)) {
       return;
@@ -344,7 +322,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
     });
   }
 
-  void _startSelection() {
+  void _deselectAll() {
     setState(() {
       _selectionMode = true;
       _selectedTrackIds.clear();

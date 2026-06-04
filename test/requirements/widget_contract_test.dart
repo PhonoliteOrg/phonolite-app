@@ -11,11 +11,14 @@ import 'package:phonolite_app/widgets/display/track_row_tile.dart';
 import 'package:phonolite_app/widgets/inputs/search_filter_chips.dart';
 import 'package:phonolite_app/widgets/inputs/search_hud.dart';
 import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
+import 'package:phonolite_app/widgets/modals/confirmation_modal.dart';
 import 'package:phonolite_app/widgets/modals/download_manager_panel.dart';
 import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/collection_view_toggle_button.dart';
 import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
 import 'package:phonolite_app/widgets/ui/expandable_summary_text.dart';
+import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
+import 'package:phonolite_app/widgets/ui/tech_button.dart';
 
 import '../support/source_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
@@ -121,6 +124,107 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tapped, 1);
+    });
+
+    testWidgets('borderless tech button uses hud hover treatment', (
+      tester,
+    ) async {
+      var tapped = 0;
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          TechButton(
+            label: 'Download Artist',
+            icon: Icons.download_for_offline_outlined,
+            chrome: TechButtonChrome.borderless,
+            onTap: () => tapped += 1,
+          ),
+        ),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byType(TechButton),
+          matching: find.byType(AnimatedContainer),
+        ),
+        findsNothing,
+      );
+
+      final label = find.text('DOWNLOAD ARTIST');
+      expect(
+        tester.widget<Text>(label).style?.color,
+        ObsidianPalette.textMuted,
+      );
+      expect(
+        tester
+            .widget<Icon>(find.byIcon(Icons.download_for_offline_outlined))
+            .color,
+        ObsidianPalette.textMuted,
+      );
+
+      tester
+          .widget<MouseRegion>(
+            find.descendant(
+              of: find.byType(TechButton),
+              matching: find.byType(MouseRegion),
+            ),
+          )
+          .onEnter
+          ?.call(const PointerEnterEvent());
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(tester.widget<Text>(label).style?.color, ObsidianPalette.gold);
+      expect(tester.widget<Text>(label).style?.shadows, isNotEmpty);
+      final hoveredIcon = tester.widget<Icon>(
+        find.byIcon(Icons.download_for_offline_outlined),
+      );
+      expect(hoveredIcon.color, ObsidianPalette.gold);
+      expect(hoveredIcon.shadows, isNotEmpty);
+
+      await tester.tap(label);
+      await tester.pump();
+
+      expect(tapped, 1);
+    });
+
+    testWidgets('confirmation modal can use borderless action buttons', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrapInTestApp(
+          const ConfirmationModal(
+            title: 'Download artist',
+            message: 'Queue downloads for Artist?',
+            confirmLabel: 'Download',
+            confirmVariant: TechButtonVariant.standard,
+            actionChrome: TechButtonChrome.borderless,
+          ),
+        ),
+      );
+
+      expect(find.text('DOWNLOAD'), findsOneWidget);
+      expect(find.text('CANCEL'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TechButton),
+        ),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextButton),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TechButton),
+          matching: find.byType(AnimatedContainer),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets(
@@ -494,38 +598,154 @@ void main() {
       expect(toggled, 1);
     });
 
-    testWidgets('download selection toolbar hides remove until selected', (
+    testWidgets('download selection toolbar disables remove until selected', (
       tester,
     ) async {
+      var removed = 0;
+      var selectedAll = 0;
+      var deselectedAll = 0;
       await tester.pumpWidget(
         wrapInTestApp(
           DownloadSelectionToolbar(
             selectedCount: 0,
             totalCount: 3,
             onCancel: () {},
-            onSelectAll: () {},
-            onRemove: () {},
+            onSelectAll: () => selectedAll += 1,
+            onDeselectAll: () => deselectedAll += 1,
+            onRemove: () => removed += 1,
           ),
         ),
       );
 
-      expect(find.text('CANCEL'), findsOneWidget);
+      expect(find.byTooltip('Cancel'), findsOneWidget);
+      expect(find.byTooltip('Select all'), findsOneWidget);
+      expect(find.byTooltip('Deselect all'), findsNothing);
       expect(find.text('SELECT ALL'), findsOneWidget);
+      expect(find.text('DESELECT ALL'), findsNothing);
+      expect(find.text('0 selected / 3 available'), findsNothing);
+      expect(find.byIcon(Icons.done_all_rounded), findsNothing);
+      expect(find.byIcon(Icons.deselect_rounded), findsNothing);
       expect(find.text('REMOVE'), findsNothing);
+      expect(find.byTooltip('Remove selected'), findsOneWidget);
+      final selectAllLabel = find.descendant(
+        of: find.byType(TextButton),
+        matching: find.text('SELECT ALL'),
+      );
+      final selectText = tester.widget<Text>(selectAllLabel);
+      expect(selectText.style, isNull);
+
+      final selectButton = tester.widget<TextButton>(find.byType(TextButton));
+      final selectStyle = selectButton.style?.textStyle?.resolve(
+        const <WidgetState>{},
+      );
+      expect(
+        selectButton.style?.foregroundColor?.resolve(const <WidgetState>{}),
+        ObsidianPalette.textMuted,
+      );
+      expect(selectStyle?.fontFamily, contains('Rajdhani'));
+      expect(selectStyle?.fontSize, 14);
+      expect(selectStyle?.fontWeight, FontWeight.w700);
+      expect(
+        selectButton.style?.foregroundColor?.resolve(const {
+          WidgetState.hovered,
+        }),
+        ObsidianPalette.gold,
+      );
+      expect(
+        selectButton.style?.textStyle?.resolve(const {
+          WidgetState.hovered,
+        })?.shadows,
+        isNotEmpty,
+      );
+
+      await tester.tap(selectAllLabel);
+      await tester.pump();
+
+      expect(selectedAll, 1);
+      expect(deselectedAll, 0);
+
+      await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+      await tester.pump();
+
+      expect(removed, 0);
 
       await tester.pumpWidget(
         wrapInTestApp(
           DownloadSelectionToolbar(
-            selectedCount: 2,
+            selectedCount: 3,
             totalCount: 3,
             onCancel: () {},
-            onSelectAll: () {},
-            onRemove: () {},
+            onSelectAll: () => selectedAll += 1,
+            onDeselectAll: () => deselectedAll += 1,
+            onRemove: () => removed += 1,
           ),
         ),
       );
 
-      expect(find.text('REMOVE'), findsOneWidget);
+      expect(find.byTooltip('Select all'), findsNothing);
+      expect(find.byTooltip('Deselect all'), findsOneWidget);
+      expect(find.text('SELECT ALL'), findsNothing);
+      expect(find.text('DESELECT ALL'), findsOneWidget);
+      expect(find.byIcon(Icons.done_all_rounded), findsNothing);
+      expect(find.byIcon(Icons.deselect_rounded), findsNothing);
+      expect(find.text('REMOVE'), findsNothing);
+      expect(find.byTooltip('Remove selected'), findsOneWidget);
+      final deselectAllLabel = find.descendant(
+        of: find.byType(TextButton),
+        matching: find.text('DESELECT ALL'),
+      );
+      final deselectText = tester.widget<Text>(deselectAllLabel);
+      expect(deselectText.style, isNull);
+      final deselectButton = tester.widget<TextButton>(find.byType(TextButton));
+      final deselectStyle = deselectButton.style?.textStyle?.resolve(
+        const <WidgetState>{},
+      );
+      expect(
+        deselectButton.style?.foregroundColor?.resolve(const <WidgetState>{}),
+        ObsidianPalette.gold,
+      );
+      expect(deselectStyle?.fontFamily, contains('Rajdhani'));
+      expect(deselectStyle?.fontSize, 14);
+      expect(deselectStyle?.fontWeight, FontWeight.w700);
+
+      await tester.tap(deselectAllLabel);
+      await tester.pump();
+
+      expect(selectedAll, 1);
+      expect(deselectedAll, 1);
+
+      await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+      await tester.pump();
+
+      expect(removed, 1);
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          DownloadSelectionToolbar(
+            selectedCount: 0,
+            totalCount: 0,
+            onCancel: () {},
+            onSelectAll: () => selectedAll += 1,
+            onDeselectAll: () => deselectedAll += 1,
+            onRemove: () => removed += 1,
+          ),
+        ),
+      );
+
+      final disabledSelectAllLabel = find.descendant(
+        of: find.byType(TextButton),
+        matching: find.text('SELECT ALL'),
+      );
+      expect(tester.widget<Text>(disabledSelectAllLabel).style, isNull);
+      final disabledSelectButton = tester.widget<TextButton>(
+        find.byType(TextButton),
+      );
+      expect(
+        disabledSelectButton.style?.foregroundColor?.resolve(const {
+          WidgetState.disabled,
+        }),
+        ObsidianPalette.textMuted.withValues(alpha: 0.6),
+      );
     });
 
     testWidgets('stats cards render selectors and summary modules', (
@@ -589,14 +809,31 @@ void main() {
       expect(find.text('Queue'), findsOneWidget);
       expect(find.text('Paused'), findsOneWidget);
       expect(find.text('Needs Attention'), findsOneWidget);
+      expect(find.text('PAUSE ALL'), findsOneWidget);
       expect(find.text('RESUME PAUSED'), findsOneWidget);
       expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
       expect(find.text('CLEAR PAUSED / CACHED'), findsNothing);
-      expect(find.byTooltip('Pause'), findsNWidgets(3));
-      expect(find.byTooltip('Resume'), findsNWidgets(3));
-      expect(find.byTooltip('Retry'), findsNWidgets(3));
-      expect(find.byTooltip('Cancel'), findsNWidgets(3));
-      expect(find.byTooltip('Remove partial cache'), findsNWidgets(3));
+      final managerPanel = find.byType(DownloadManagerPanel);
+      expect(
+        find.descendant(of: managerPanel, matching: find.byType(TextButton)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: managerPanel, matching: find.byType(TechButton)),
+        findsNWidgets(3),
+      );
+      expect(
+        find.descendant(
+          of: managerPanel,
+          matching: find.byType(AnimatedContainer),
+        ),
+        findsWidgets,
+      );
+      expect(find.byTooltip('Pause'), findsWidgets);
+      expect(find.byTooltip('Resume'), findsWidgets);
+      expect(find.byTooltip('Retry'), findsWidgets);
+      expect(find.byTooltip('Cancel'), findsWidgets);
+      expect(find.byTooltip('Remove partial cache'), findsWidgets);
       expect(find.text('Track cached'), findsNothing);
       expect(find.text('Downloaded / Cached'), findsNothing);
       expect(find.byTooltip('Remove download'), findsNothing);
@@ -614,6 +851,7 @@ void main() {
       );
 
       expect(find.text('Track cached'), findsNothing);
+      expect(find.text('PAUSE ALL'), findsOneWidget);
       expect(find.text('RESUME PAUSED'), findsOneWidget);
       expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
       expect(find.text('No queued downloads'), findsOneWidget);
@@ -725,8 +963,8 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Pause artist download'), findsNWidgets(2));
-      expect(find.byTooltip('Resume artist download'), findsNWidgets(2));
+      expect(find.byTooltip('Pause download job'), findsNWidgets(2));
+      expect(find.byTooltip('Resume download job'), findsNWidgets(2));
       expect(find.byTooltip('Cancel and remove job'), findsNWidgets(2));
     });
 
@@ -742,14 +980,15 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Resume artist download'), findsOneWidget);
-      expect(find.byTooltip('Pause artist download'), findsOneWidget);
+      expect(find.byTooltip('Resume download job'), findsOneWidget);
+      expect(find.byTooltip('Pause download job'), findsOneWidget);
       expect(find.byTooltip('Cancel and remove job'), findsOneWidget);
+      expect(find.text('PAUSE ALL'), findsOneWidget);
       expect(find.text('RESUME PAUSED'), findsOneWidget);
       expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
     });
 
-    testWidgets('non-artist rolling jobs keep artist controls disabled', (
+    testWidgets('non-artist rolling jobs show downloader controls', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -763,8 +1002,8 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Pause artist download'), findsOneWidget);
-      expect(find.byTooltip('Resume artist download'), findsOneWidget);
+      expect(find.byTooltip('Pause download job'), findsOneWidget);
+      expect(find.byTooltip('Resume download job'), findsOneWidget);
       expect(find.byTooltip('Cancel and remove job'), findsOneWidget);
     });
 

@@ -1,9 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../../core/library_helpers.dart';
 import '../../entities/app_controller.dart';
+import '../../entities/models.dart';
+import '../../entities/offline_download_manager.dart';
 import '../../entities/offline_library.dart';
+import '../display/album_row_tile.dart';
+import '../display/artist_row_tile.dart';
 import '../display/empty_state.dart';
+import '../display/track_row_tile.dart';
 import '../layouts/app_scope.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
@@ -77,9 +83,40 @@ class DownloadManagerPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final downloadsOverride = this.downloadsOverride;
     final jobsOverride = this.jobsOverride;
+    if (downloadsOverride != null || jobsOverride != null) {
+      return _panel(
+        context,
+        _DownloadManagerViewState(
+          downloadsOverride ?? const <OfflineTrackDownload>[],
+          jobsOverride ?? const <OfflineDownloadJob>[],
+        ),
+      );
+    }
+
+    return StreamBuilder<OfflineDownloadSnapshot>(
+      stream: controller!.offlineDownloadSnapshotStream,
+      initialData: controller!.offlineDownloadSnapshot,
+      builder: (context, snapshot) {
+        final state =
+            snapshot.data ??
+            const OfflineDownloadSnapshot(
+              downloads: <OfflineTrackDownload>[],
+              batches: <OfflineDownloadBatch>[],
+              jobs: <OfflineDownloadJob>[],
+              revision: 0,
+            );
+        return _panel(
+          context,
+          _DownloadManagerViewState(state.downloads, state.jobs),
+        );
+      },
+    );
+  }
+
+  Widget _panel(BuildContext context, _DownloadManagerViewState state) {
     return GlassPanel(
       cut: cut,
-      blur: 20,
+      blur: state.hasActiveWork ? 0 : 20,
       padding: EdgeInsets.zero,
       gradient: LinearGradient(
         begin: Alignment.topLeft,
@@ -89,61 +126,11 @@ class DownloadManagerPanel extends StatelessWidget {
           ObsidianPalette.obsidian.withValues(alpha: 0.96),
         ],
       ),
-      child: SafeArea(
-        child: downloadsOverride != null || jobsOverride != null
-            ? _content(
-                context,
-                downloadsOverride ?? const <OfflineTrackDownload>[],
-                jobsOverride ?? const <OfflineDownloadJob>[],
-              )
-            : StreamBuilder<List<OfflineTrackDownload>>(
-                stream: controller!.offlineDownloadsStream,
-                initialData: controller!.offlineDownloads,
-                builder: (context, snapshot) {
-                  final downloads =
-                      snapshot.data ?? const <OfflineTrackDownload>[];
-                  return StreamBuilder<List<OfflineDownloadJob>>(
-                    stream: controller!.offlineDownloadJobsStream,
-                    initialData: controller!.offlineDownloadJobs,
-                    builder: (context, jobSnapshot) {
-                      final jobs =
-                          jobSnapshot.data ?? const <OfflineDownloadJob>[];
-                      return _content(context, downloads, jobs);
-                    },
-                  );
-                },
-              ),
-      ),
+      child: SafeArea(child: _content(context, state)),
     );
   }
 
-  Widget _content(
-    BuildContext context,
-    List<OfflineTrackDownload> downloads,
-    List<OfflineDownloadJob> jobs,
-  ) {
-    final visibleDownloads = downloads
-        .where(
-          (download) => download.status != OfflineDownloadStatus.downloaded,
-        )
-        .toList(growable: false);
-    final visibleJobs = jobs
-        .where(
-          (job) =>
-              job.status != OfflineDownloadStatus.downloaded &&
-              job.status != OfflineDownloadStatus.canceled,
-        )
-        .toList(growable: false);
-    final groups = _groups(visibleDownloads);
-    final needsAttention = groups[_DownloadSection.needsAttention]!;
-    final pausedJobCount = visibleJobs
-        .where((job) => job.status == OfflineDownloadStatus.paused)
-        .length;
-    final hasPaused =
-        groups[_DownloadSection.paused]!.isNotEmpty || pausedJobCount > 0;
-    final clearableCount =
-        groups[_DownloadSection.paused]!.length + needsAttention.length;
-    final hasClearable = clearableCount > 0;
+  Widget _content(BuildContext context, _DownloadManagerViewState state) {
     return Column(
       children: [
         Padding(
@@ -171,27 +158,41 @@ class DownloadManagerPanel extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  TextButton.icon(
-                    onPressed: controller == null || !hasPaused
+                  TechButton(
+                    label: 'Pause all',
+                    icon: Icons.pause_rounded,
+                    density: TechButtonDensity.compact,
+                    chrome: TechButtonChrome.borderless,
+                    onTap: controller == null || !state.hasPausable
+                        ? null
+                        : () =>
+                              unawaited(controller!.pauseAllOfflineDownloads()),
+                  ),
+                  TechButton(
+                    label: 'Resume paused',
+                    icon: Icons.play_arrow_rounded,
+                    density: TechButtonDensity.compact,
+                    chrome: TechButtonChrome.borderless,
+                    onTap: controller == null || !state.hasPaused
                         ? null
                         : () => unawaited(
                             controller!.resumePausedOfflineDownloads(),
                           ),
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('RESUME PAUSED'),
                   ),
-                  TextButton.icon(
-                    onPressed: controller == null || !hasClearable
+                  TechButton(
+                    label: 'Clear partial / failed',
+                    icon: Icons.delete_sweep_rounded,
+                    density: TechButtonDensity.compact,
+                    chrome: TechButtonChrome.borderless,
+                    onTap: controller == null || !state.hasClearable
                         ? null
                         : () => unawaited(
                             _confirmClearPausedCached(
                               context,
                               controller!,
-                              clearableCount,
+                              state.clearableCount,
                             ),
                           ),
-                    icon: const Icon(Icons.delete_sweep_rounded),
-                    label: const Text('CLEAR PARTIAL / FAILED'),
                   ),
                 ],
               ),
@@ -200,39 +201,16 @@ class DownloadManagerPanel extends StatelessWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          child: visibleDownloads.isEmpty && visibleJobs.isEmpty
+          child: state.isEmpty
               ? const EmptyStateText(
                   title: 'No queued downloads',
                   message: 'New album and artist downloads will appear here.',
                 )
-              : ListView(
+              : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  children: [
-                    _DownloadJobSectionView(
-                      jobs: visibleJobs,
-                      controller: controller,
-                    ),
-                    _DownloadSectionView(
-                      title: 'Queue',
-                      downloads: groups[_DownloadSection.queue]!,
-                      controller: controller,
-                    ),
-                    _DownloadSectionView(
-                      title: 'Removing',
-                      downloads: groups[_DownloadSection.removing]!,
-                      controller: controller,
-                    ),
-                    _DownloadSectionView(
-                      title: 'Paused',
-                      downloads: groups[_DownloadSection.paused]!,
-                      controller: controller,
-                    ),
-                    _DownloadSectionView(
-                      title: 'Needs Attention',
-                      downloads: needsAttention,
-                      controller: controller,
-                    ),
-                  ],
+                  itemCount: state.entries.length,
+                  itemBuilder: (context, index) =>
+                      _entry(context, state.entries[index]),
                 ),
         ),
       ],
@@ -254,6 +232,7 @@ class DownloadManagerPanel extends StatelessWidget {
           'Remove $clearableCount $itemLabel from this device? Completed downloads and active downloads will not be removed.',
       confirmLabel: 'Clear',
       confirmVariant: TechButtonVariant.danger,
+      actionChrome: TechButtonChrome.borderless,
     );
     if (!confirmed) {
       return;
@@ -261,43 +240,37 @@ class DownloadManagerPanel extends StatelessWidget {
     await controller.clearPausedAndCachedOfflineDownloads();
   }
 
-  Map<_DownloadSection, List<OfflineTrackDownload>> _groups(
-    List<OfflineTrackDownload> downloads,
-  ) {
-    final groups = {
-      _DownloadSection.queue: <OfflineTrackDownload>[],
-      _DownloadSection.removing: <OfflineTrackDownload>[],
-      _DownloadSection.paused: <OfflineTrackDownload>[],
-      _DownloadSection.needsAttention: <OfflineTrackDownload>[],
-    };
-    for (final download in downloads) {
-      switch (download.status) {
-        case OfflineDownloadStatus.queued:
-        case OfflineDownloadStatus.preparing:
-        case OfflineDownloadStatus.downloading:
-        case OfflineDownloadStatus.validating:
-          groups[_DownloadSection.queue]!.add(download);
-          break;
-        case OfflineDownloadStatus.removing:
-          groups[_DownloadSection.removing]!.add(download);
-          break;
-        case OfflineDownloadStatus.paused:
-          groups[_DownloadSection.paused]!.add(download);
-          break;
-        case OfflineDownloadStatus.failed:
-        case OfflineDownloadStatus.corrupt:
-        case OfflineDownloadStatus.canceled:
-          groups[_DownloadSection.needsAttention]!.add(download);
-          break;
-        case OfflineDownloadStatus.downloaded:
-          break;
-      }
-    }
-    groups[_DownloadSection.queue]!.sort(_compareQueueDownloads);
-    groups[_DownloadSection.removing]!.sort(_compareUpdatedNewestFirst);
-    groups[_DownloadSection.paused]!.sort(_compareUpdatedNewestFirst);
-    groups[_DownloadSection.needsAttention]!.sort(_compareUpdatedNewestFirst);
-    return groups;
+  Widget _entry(BuildContext context, _DownloadManagerEntry entry) {
+    return KeyedSubtree(
+      key: ValueKey(entry.key),
+      child: switch (entry.kind) {
+        _DownloadManagerEntryKind.jobHeader => Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+          child: Text(
+            'Rolling Jobs',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        _DownloadManagerEntryKind.job => _DownloadJobRow(
+          job: entry.job!,
+          controller: controller,
+        ),
+        _DownloadManagerEntryKind.sectionHeader => Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
+          child: ObsidianSectionHeader(
+            title: entry.title!,
+            subtitle: '${entry.count} items',
+          ),
+        ),
+        _DownloadManagerEntryKind.download => RepaintBoundary(
+          child: _DownloadItemRow(
+            download: entry.download!,
+            controller: controller,
+          ),
+        ),
+        _DownloadManagerEntryKind.spacer => SizedBox(height: entry.height),
+      },
+    );
   }
 
   static int _compareQueueDownloads(
@@ -333,35 +306,231 @@ class DownloadManagerPanel extends StatelessWidget {
   ) {
     return right.updatedAt.compareTo(left.updatedAt);
   }
+
+  static bool _canPauseDownloadStatus(OfflineDownloadStatus status) {
+    return switch (status) {
+      OfflineDownloadStatus.queued ||
+      OfflineDownloadStatus.preparing ||
+      OfflineDownloadStatus.downloading ||
+      OfflineDownloadStatus.validating => true,
+      _ => false,
+    };
+  }
 }
 
-class _DownloadJobSectionView extends StatelessWidget {
-  const _DownloadJobSectionView({required this.jobs, required this.controller});
+class _DownloadManagerViewState {
+  _DownloadManagerViewState(
+    List<OfflineTrackDownload> downloads,
+    List<OfflineDownloadJob> jobs,
+  ) {
+    final visibleDownloads = downloads
+        .where(
+          (download) => download.status != OfflineDownloadStatus.downloaded,
+        )
+        .toList(growable: false);
+    final visibleJobs = jobs
+        .where(
+          (job) =>
+              job.status != OfflineDownloadStatus.downloaded &&
+              job.status != OfflineDownloadStatus.canceled,
+        )
+        .toList(growable: false);
+    final groups = _groups(visibleDownloads);
+    final needsAttention = groups[_DownloadSection.needsAttention]!;
+    final pausedDownloads = groups[_DownloadSection.paused]!;
+    final pausableDownloadCount = visibleDownloads
+        .where(
+          (download) =>
+              DownloadManagerPanel._canPauseDownloadStatus(download.status),
+        )
+        .length;
+    final pausableJobCount = visibleJobs
+        .where(
+          (job) => DownloadManagerPanel._canPauseDownloadStatus(job.status),
+        )
+        .length;
+    final pausedJobCount = visibleJobs
+        .where((job) => job.status == OfflineDownloadStatus.paused)
+        .length;
 
-  final List<OfflineDownloadJob> jobs;
-  final AppController? controller;
-
-  @override
-  Widget build(BuildContext context) {
-    if (jobs.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-          child: Text(
-            'Rolling Jobs',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        for (final job in jobs)
-          _DownloadJobRow(job: job, controller: controller),
-        const SizedBox(height: 12),
-      ],
+    hasPausable = pausableDownloadCount + pausableJobCount > 0;
+    hasPaused = pausedDownloads.isNotEmpty || pausedJobCount > 0;
+    clearableCount = pausedDownloads.length + needsAttention.length;
+    hasClearable = clearableCount > 0;
+    isEmpty = visibleDownloads.isEmpty && visibleJobs.isEmpty;
+    hasActiveWork =
+        visibleDownloads.any((download) => _hasActiveWork(download.status)) ||
+        visibleJobs.any((job) => _hasActiveWork(job.status));
+    entries = List<_DownloadManagerEntry>.unmodifiable(
+      _entries(visibleJobs, groups),
     );
   }
+
+  late final bool hasPausable;
+  late final bool hasPaused;
+  late final int clearableCount;
+  late final bool hasClearable;
+  late final bool isEmpty;
+  late final bool hasActiveWork;
+  late final List<_DownloadManagerEntry> entries;
+
+  static Map<_DownloadSection, List<OfflineTrackDownload>> _groups(
+    List<OfflineTrackDownload> downloads,
+  ) {
+    final groups = {
+      _DownloadSection.queue: <OfflineTrackDownload>[],
+      _DownloadSection.removing: <OfflineTrackDownload>[],
+      _DownloadSection.paused: <OfflineTrackDownload>[],
+      _DownloadSection.needsAttention: <OfflineTrackDownload>[],
+    };
+    for (final download in downloads) {
+      switch (download.status) {
+        case OfflineDownloadStatus.queued:
+        case OfflineDownloadStatus.preparing:
+        case OfflineDownloadStatus.downloading:
+        case OfflineDownloadStatus.validating:
+          groups[_DownloadSection.queue]!.add(download);
+          break;
+        case OfflineDownloadStatus.removing:
+          groups[_DownloadSection.removing]!.add(download);
+          break;
+        case OfflineDownloadStatus.paused:
+          groups[_DownloadSection.paused]!.add(download);
+          break;
+        case OfflineDownloadStatus.failed:
+        case OfflineDownloadStatus.corrupt:
+        case OfflineDownloadStatus.canceled:
+          groups[_DownloadSection.needsAttention]!.add(download);
+          break;
+        case OfflineDownloadStatus.downloaded:
+          break;
+      }
+    }
+    groups[_DownloadSection.queue]!.sort(
+      DownloadManagerPanel._compareQueueDownloads,
+    );
+    groups[_DownloadSection.removing]!.sort(
+      DownloadManagerPanel._compareUpdatedNewestFirst,
+    );
+    groups[_DownloadSection.paused]!.sort(
+      DownloadManagerPanel._compareUpdatedNewestFirst,
+    );
+    groups[_DownloadSection.needsAttention]!.sort(
+      DownloadManagerPanel._compareUpdatedNewestFirst,
+    );
+    return groups;
+  }
+
+  static List<_DownloadManagerEntry> _entries(
+    List<OfflineDownloadJob> jobs,
+    Map<_DownloadSection, List<OfflineTrackDownload>> groups,
+  ) {
+    final entries = <_DownloadManagerEntry>[];
+    if (jobs.isNotEmpty) {
+      entries.add(const _DownloadManagerEntry.jobHeader());
+      for (final job in jobs) {
+        entries.add(_DownloadManagerEntry.job(job));
+      }
+      entries.add(const _DownloadManagerEntry.spacer('jobs-bottom', 12));
+    }
+    void addSection(_DownloadSection section, String title) {
+      final downloads = groups[section]!;
+      if (downloads.isEmpty) {
+        return;
+      }
+      entries.add(
+        _DownloadManagerEntry.sectionHeader(
+          section.name,
+          title,
+          downloads.length,
+        ),
+      );
+      for (final download in downloads) {
+        entries.add(_DownloadManagerEntry.download(download));
+      }
+      entries.add(_DownloadManagerEntry.spacer('${section.name}-bottom', 12));
+    }
+
+    addSection(_DownloadSection.queue, 'Queue');
+    addSection(_DownloadSection.removing, 'Removing');
+    addSection(_DownloadSection.paused, 'Paused');
+    addSection(_DownloadSection.needsAttention, 'Needs Attention');
+    return entries;
+  }
+
+  static bool _hasActiveWork(OfflineDownloadStatus status) {
+    return switch (status) {
+      OfflineDownloadStatus.preparing ||
+      OfflineDownloadStatus.downloading ||
+      OfflineDownloadStatus.validating ||
+      OfflineDownloadStatus.removing => true,
+      _ => false,
+    };
+  }
+}
+
+enum _DownloadManagerEntryKind {
+  jobHeader,
+  job,
+  sectionHeader,
+  download,
+  spacer,
+}
+
+class _DownloadManagerEntry {
+  const _DownloadManagerEntry._({
+    required this.kind,
+    required this.key,
+    this.job,
+    this.download,
+    this.title,
+    this.count = 0,
+    this.height = 0,
+  });
+
+  const _DownloadManagerEntry.jobHeader()
+    : this._(kind: _DownloadManagerEntryKind.jobHeader, key: 'job-header');
+
+  _DownloadManagerEntry.job(OfflineDownloadJob job)
+    : this._(
+        kind: _DownloadManagerEntryKind.job,
+        key: 'job:${job.jobId}',
+        job: job,
+      );
+
+  _DownloadManagerEntry.sectionHeader(
+    String sectionKey,
+    String title,
+    int count,
+  ) : this._(
+        kind: _DownloadManagerEntryKind.sectionHeader,
+        key: 'section:$sectionKey',
+        title: title,
+        count: count,
+      );
+
+  _DownloadManagerEntry.download(OfflineTrackDownload download)
+    : this._(
+        kind: _DownloadManagerEntryKind.download,
+        key:
+            'download:${download.serverBaseUrl}:${download.track.serverTrackId ?? download.track.id}',
+        download: download,
+      );
+
+  const _DownloadManagerEntry.spacer(String key, double height)
+    : this._(
+        kind: _DownloadManagerEntryKind.spacer,
+        key: 'spacer:$key',
+        height: height,
+      );
+
+  final _DownloadManagerEntryKind kind;
+  final String key;
+  final OfflineDownloadJob? job;
+  final OfflineTrackDownload? download;
+  final String? title;
+  final int count;
+  final double height;
 }
 
 class _DownloadJobRow extends StatelessWidget {
@@ -372,74 +541,151 @@ class _DownloadJobRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = job.totalCount > 0 ? job.totalCount : job.discoveredCount;
-    final subtitle = total > 0
-        ? '${job.completedCount}/$total complete'
-        : '${job.discoveredCount} discovered';
-    final failed = job.failedCount > 0 ? ' - ${job.failedCount} failed' : '';
+    final title = _jobTitle;
+    final coverUrl = _coverUrl;
+    final headers = _headers;
+    final trailing = _DownloadJobActions(job: job, controller: controller);
+    final subtitle = _subtitle;
+    if (job.kind == 'artist') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ArtistRowTile(
+          artist: Artist(
+            id: _sourceId ?? job.jobId,
+            name: title,
+            albumCount: 0,
+          ),
+          coverUrl: coverUrl,
+          headers: headers,
+          subtitle: subtitle,
+          trailing: trailing,
+        ),
+      );
+    }
+    if (job.kind == 'album') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: AlbumRowTile(
+          album: Album(
+            id: _sourceId ?? job.jobId,
+            title: title,
+            artist: '',
+            artistId: '',
+            trackCount: job.totalCount > 0
+                ? job.totalCount
+                : job.discoveredCount,
+          ),
+          coverUrl: coverUrl ?? '',
+          headers: headers,
+          subtitle: subtitle,
+          trailing: trailing,
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: ObsidianCard(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            const Icon(Icons.pending_actions_rounded, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    job.label ?? job.kind,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$subtitle$failed',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            Text(job.status.name.toUpperCase()),
-            const SizedBox(width: 4),
-            _ActionButton(
-              tooltip: 'Pause artist download',
-              icon: Icons.pause_rounded,
-              onPressed: controller == null || !_canPauseArtistJob(job)
-                  ? null
-                  : () => unawaited(controller!.pauseOfflineDownloadJob(job)),
-            ),
-            const SizedBox(width: 4),
-            _ActionButton(
-              tooltip: 'Resume artist download',
-              icon: Icons.play_arrow_rounded,
-              onPressed: controller == null || !_canResumeArtistJob(job)
-                  ? null
-                  : () => unawaited(controller!.resumeOfflineDownloadJob(job)),
-            ),
-            const SizedBox(width: 4),
-            _ActionButton(
-              tooltip: 'Cancel and remove job',
-              icon: Icons.close_rounded,
-              onPressed: controller == null
-                  ? null
-                  : () => unawaited(controller!.cancelOfflineDownloadJob(job)),
-            ),
-          ],
-        ),
+      child: ArtistRowTile(
+        artist: Artist(id: job.jobId, name: title, albumCount: 0),
+        coverUrl: null,
+        headers: const {},
+        subtitle: subtitle,
+        trailing: trailing,
       ),
     );
   }
 
-  static bool _canPauseArtistJob(OfflineDownloadJob job) {
-    if (job.kind != 'artist') {
-      return false;
+  String get _jobTitle {
+    final label = job.label?.trim();
+    if (label != null && label.isNotEmpty) {
+      return label;
     }
+    return switch (job.kind) {
+      'artist' => 'Artist download',
+      'album' => 'Album download',
+      _ => '${job.kind} download',
+    };
+  }
+
+  String get _subtitle {
+    final total = job.totalCount > 0 ? job.totalCount : job.discoveredCount;
+    final progress = total > 0
+        ? '${job.completedCount}/$total complete'
+        : '${job.discoveredCount} discovered';
+    final failed = job.failedCount > 0 ? ' - ${job.failedCount} failed' : '';
+    return '${job.status.name.toUpperCase()} - $progress$failed';
+  }
+
+  String? get _sourceId {
+    final id = job.sourceId?.trim();
+    return id == null || id.isEmpty ? null : id;
+  }
+
+  String? get _coverUrl {
+    final sourceId = _sourceId;
+    if (sourceId == null) {
+      return null;
+    }
+    final baseUrl = job.serverBaseUrl.trim();
+    if (baseUrl.isEmpty) {
+      return null;
+    }
+    final encoded = Uri.encodeComponent(sourceId);
+    return switch (job.kind) {
+      'artist' => '$baseUrl/library/artists/$encoded/cover?kind=logo',
+      'album' => '$baseUrl/library/albums/$encoded/cover',
+      _ => null,
+    };
+  }
+
+  Map<String, String> get _headers {
+    final activeController = controller;
+    if (activeController == null ||
+        job.serverBaseUrl != activeController.connection.baseUrl) {
+      return const {};
+    }
+    return authHeaders(activeController);
+  }
+}
+
+class _DownloadJobActions extends StatelessWidget {
+  const _DownloadJobActions({required this.job, required this.controller});
+
+  final OfflineDownloadJob job;
+  final AppController? controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ActionButton(
+          tooltip: 'Pause download job',
+          icon: Icons.pause_rounded,
+          onPressed: controller == null || !_canPauseJob(job)
+              ? null
+              : () => unawaited(controller!.pauseOfflineDownloadJob(job)),
+        ),
+        const SizedBox(width: 4),
+        _ActionButton(
+          tooltip: 'Resume download job',
+          icon: Icons.play_arrow_rounded,
+          onPressed: controller == null || !_canResumeJob(job)
+              ? null
+              : () => unawaited(controller!.resumeOfflineDownloadJob(job)),
+        ),
+        const SizedBox(width: 4),
+        _ActionButton(
+          tooltip: 'Cancel and remove job',
+          icon: Icons.close_rounded,
+          onPressed: controller == null
+              ? null
+              : () => unawaited(controller!.cancelOfflineDownloadJob(job)),
+        ),
+      ],
+    );
+  }
+
+  static bool _canPauseJob(OfflineDownloadJob job) {
     return switch (job.status) {
       OfflineDownloadStatus.queued ||
       OfflineDownloadStatus.preparing ||
@@ -449,48 +695,8 @@ class _DownloadJobRow extends StatelessWidget {
     };
   }
 
-  static bool _canResumeArtistJob(OfflineDownloadJob job) {
-    return job.kind == 'artist' && job.status == OfflineDownloadStatus.paused;
-  }
-}
-
-class _DownloadSectionView extends StatelessWidget {
-  const _DownloadSectionView({
-    required this.title,
-    required this.downloads,
-    required this.controller,
-  });
-
-  final String title;
-  final List<OfflineTrackDownload> downloads;
-  final AppController? controller;
-
-  @override
-  Widget build(BuildContext context) {
-    if (downloads.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ObsidianSectionHeader(
-            title: title,
-            subtitle: '${downloads.length} items',
-          ),
-          const SizedBox(height: 10),
-          ...downloads.map(
-            (download) => RepaintBoundary(
-              child: _DownloadItemRow(
-                download: download,
-                controller: controller,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  static bool _canResumeJob(OfflineDownloadJob job) {
+    return job.status == OfflineDownloadStatus.paused;
   }
 }
 
@@ -502,60 +708,63 @@ class _DownloadItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.035),
-        border: Border.all(color: ObsidianPalette.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      download.track.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${download.track.artist} / ${download.track.album}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: ObsidianPalette.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _DownloadActions(download: download, controller: controller),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _DownloadProgressTrack(download: download),
-          const SizedBox(height: 8),
-          Text(
-            _statusText(download),
-            style: textTheme.labelSmall?.copyWith(
-              color: ObsidianPalette.textMuted,
-              letterSpacing: 0.8,
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TrackRowTile(
+        track: download.track,
+        index: 0,
+        showIndex: false,
+        showAlbumArt: true,
+        showDuration: false,
+        albumArtUrl: _albumArtUrl,
+        albumArtHeaders: _headers,
+        subtitle: _subtitle,
+        offlineDownload: download,
+        leading: _DownloadStatusGlyph(download: download),
+        trailing: _DownloadActions(download: download, controller: controller),
       ),
     );
+  }
+
+  String get _subtitle {
+    final metadata = _trackMetadataLine(download.track);
+    final status = _statusText(download);
+    return metadata.isEmpty ? status : '$metadata - $status';
+  }
+
+  String? get _albumArtUrl {
+    final localPath = download.track.albumArtPath?.trim();
+    if (localPath != null && localPath.isNotEmpty) {
+      return localPath;
+    }
+    final albumId = download.track.albumId?.trim();
+    final baseUrl = download.serverBaseUrl.trim();
+    if (albumId == null || albumId.isEmpty || baseUrl.isEmpty) {
+      return null;
+    }
+    return '$baseUrl/library/albums/${Uri.encodeComponent(albumId)}/cover';
+  }
+
+  Map<String, String> get _headers {
+    final activeController = controller;
+    if (activeController == null ||
+        download.serverBaseUrl != activeController.connection.baseUrl ||
+        (download.track.albumArtPath?.trim().isNotEmpty ?? false)) {
+      return const {};
+    }
+    return authHeaders(activeController);
+  }
+
+  String _trackMetadataLine(Track track) {
+    final artist = track.artist.trim();
+    final album = track.album.trim();
+    if (artist.isEmpty) {
+      return album;
+    }
+    if (album.isEmpty) {
+      return artist;
+    }
+    return '$artist / $album';
   }
 
   String _statusText(OfflineTrackDownload download) {
@@ -570,65 +779,53 @@ class _DownloadItemRow extends StatelessWidget {
   }
 }
 
-class _DownloadProgressTrack extends StatelessWidget {
-  const _DownloadProgressTrack({required this.download});
+class _DownloadStatusGlyph extends StatelessWidget {
+  const _DownloadStatusGlyph({required this.download});
 
   final OfflineTrackDownload download;
 
   @override
   Widget build(BuildContext context) {
-    final progress = download.progress;
+    final icon = switch (download.status) {
+      OfflineDownloadStatus.queued => Icons.schedule_rounded,
+      OfflineDownloadStatus.preparing => Icons.sync_rounded,
+      OfflineDownloadStatus.downloading => Icons.downloading_rounded,
+      OfflineDownloadStatus.paused => Icons.pause_circle_outline_rounded,
+      OfflineDownloadStatus.validating => Icons.downloading_rounded,
+      OfflineDownloadStatus.removing => Icons.delete_sweep_rounded,
+      OfflineDownloadStatus.failed ||
+      OfflineDownloadStatus.corrupt => Icons.error_outline_rounded,
+      OfflineDownloadStatus.canceled => Icons.cancel_outlined,
+      OfflineDownloadStatus.downloaded => Icons.offline_pin_rounded,
+    };
     if (download.status == OfflineDownloadStatus.downloading) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: LinearProgressIndicator(
-          value: progress,
-          minHeight: 4,
-          backgroundColor: Colors.white.withValues(alpha: 0.08),
-          color: ObsidianPalette.gold,
+      return SizedBox.square(
+        dimension: 24,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(
+                value: download.progress,
+                strokeWidth: 2,
+                color: ObsidianPalette.gold,
+                backgroundColor: ObsidianPalette.border.withValues(alpha: 0.4),
+              ),
+            ),
+            Icon(icon, size: 14, color: ObsidianPalette.gold),
+          ],
         ),
       );
     }
-
-    final fill = _fillFor(download);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(3),
-      child: SizedBox(
-        height: 4,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
-            ),
-            if (fill > 0)
-              FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: fill,
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(color: ObsidianPalette.gold),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  double _fillFor(OfflineTrackDownload download) {
-    final progress = download.progress;
-    if (progress != null) {
-      return progress;
-    }
-    return switch (download.status) {
-      OfflineDownloadStatus.preparing => 0.08,
-      OfflineDownloadStatus.downloading => 0.18,
-      OfflineDownloadStatus.validating => 0.96,
-      OfflineDownloadStatus.downloaded => 1.0,
-      _ => 0.0,
+    final color = switch (download.status) {
+      OfflineDownloadStatus.failed ||
+      OfflineDownloadStatus.corrupt ||
+      OfflineDownloadStatus.canceled => Theme.of(context).colorScheme.error,
+      OfflineDownloadStatus.downloaded => ObsidianPalette.gold,
+      _ => ObsidianPalette.textMuted,
     };
+    return Icon(icon, size: 22, color: color);
   }
 }
 

@@ -5,10 +5,16 @@ import '../../core/constants.dart';
 import '../ui/gradient_text.dart';
 
 class LibraryHeader extends StatelessWidget {
-  const LibraryHeader({super.key, required this.moduleCount, this.trailing});
+  const LibraryHeader({
+    super.key,
+    required this.moduleCount,
+    this.trailing,
+    this.title = 'LIBRARY',
+  });
 
   final int moduleCount;
   final Widget? trailing;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +23,7 @@ class LibraryHeader extends StatelessWidget {
       children: [
         Expanded(
           child: GradientText(
-            'LIBRARY',
+            title,
             gradient: const LinearGradient(
               colors: [Color(0xFFFFF2A8), accentGold],
             ),
@@ -28,10 +34,7 @@ class LibraryHeader extends StatelessWidget {
             ),
           ),
         ),
-        if (trailing != null) ...[
-          const SizedBox(width: 16),
-          Padding(padding: const EdgeInsets.only(top: 10), child: trailing!),
-        ],
+        if (trailing != null) ...[const SizedBox(width: 16), trailing!],
       ],
     );
   }

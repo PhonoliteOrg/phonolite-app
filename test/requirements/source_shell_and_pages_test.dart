@@ -69,10 +69,13 @@ void main() {
         final source = readProjectFile('lib/pages/library_page.dart');
 
         expectContainsAll(source, const [
-          'CollectionViewToggleButton(',
+          '_collectionViewButton(',
+          '_editLibraryButton(',
+          'isActive: isListView',
           'SearchHud(',
           "'No Results'",
           "'Downloaded Music'",
+          "_sectionHeaderSliver('Downloaded Music'),",
           "'Download Manager'",
           "'Connected Server Artists'",
           "'Connected Server Results'",
@@ -100,6 +103,12 @@ void main() {
           'AlbumDetailScreen(',
           'await controller.queueAlbum(album.id, startTrackId: track.id);',
         ]);
+        expect(
+          source,
+          isNot(
+            contains('trailing: _artistSelectionMode && groups.isNotEmpty'),
+          ),
+        );
       },
     );
 
@@ -130,15 +139,20 @@ void main() {
         final customShuffleSource = readProjectFile(
           'lib/pages/custom_shuffle_settings_page.dart',
         );
+        final removeDownloadModalSource = readProjectFile(
+          'lib/widgets/modals/remove_download_modal.dart',
+        );
         final logsSource = readProjectFile('lib/pages/logs_page.dart');
         final splashSource = readProjectFile('lib/pages/splash_page.dart');
 
         expectContainsAll(artistSource, const [
           "label: 'Back to library'",
           "'Download Artist'",
-          "label: 'Edit'",
+          'TechButtonChrome',
+          '.borderless',
           'DownloadSelectionToolbar',
           'ConfirmationModal.show',
+          'actionChrome:',
           'confirmRemoveDownloadedDownloads',
           'controller.downloadArtist(',
           'controller.removeOfflineDownloads(',
@@ -147,17 +161,23 @@ void main() {
           "message: 'This artist has no albums yet.'",
         ]);
         expect(artistSource, isNot(contains("'Remove Downloads'")));
+        expect(artistSource, isNot(contains('_editAlbumSelectionButton(')));
+        expect(artistSource, isNot(contains("message: 'Edit'")));
         expectContainsAll(albumSource, const [
           "label: 'Back to artist'",
           "'Download Album'",
-          "label: 'Edit'",
+          'TechButtonChrome',
+          '.borderless',
           'DownloadSelectionToolbar',
-          'controller.downloadAlbum(',
+          'downloadAlbum(',
           'confirmRemoveDownloadedTracks',
           "title: 'No tracks'",
           "'Pick another album to see tracks.'",
         ]);
         expect(albumSource, isNot(contains('onTrackRemoveDownload')));
+        expect(albumSource, isNot(contains('_editTrackSelectionButton(')));
+        expect(albumSource, isNot(contains("message: 'Edit'")));
+        expect(albumSource, isNot(contains('onTrackSelectionModeRequested:')));
         expectContainsAll(localArtistSource, const [
           'class LocalArtistDetailScreen',
           "label: 'Back to library'",
@@ -165,7 +185,7 @@ void main() {
           'AlbumRowTile(',
           'AlbumCard(',
           'LocalAlbumDetailScreen(album: album)',
-          "label: 'Edit'",
+          '_editAlbumSelectionButton(',
           'DownloadSelectionToolbar',
           'confirmRemoveDownloadedTracks',
           'controller.removeDownloadedTracks(',
@@ -177,7 +197,7 @@ void main() {
           'class LocalAlbumDetailScreen',
           "label: 'Back to artist'",
           'AlbumHero(',
-          "label: 'Edit'",
+          '_editTrackSelectionButton(',
           'DownloadSelectionToolbar',
           'TrackSliverList(',
           'controller.playOfflineTrack(',
@@ -210,7 +230,7 @@ void main() {
           'controller.queueLocalPlaylist(',
           "title: 'Rename playlist'",
           "title: 'Delete playlist'",
-          "label: 'Edit'",
+          "message: 'Edit'",
           'DownloadSelectionToolbar',
           'controller.removeDownloadedTracks(tracks, label: label)',
         ]);
@@ -227,7 +247,7 @@ void main() {
           'controller.playLocalLikedTrack(track.id)',
           'controller.toggleLocalLike',
           'controller.playLikedTrack(track.id)',
-          "label: 'Edit'",
+          "message: 'Edit'",
           'DownloadSelectionToolbar',
           'controller.removeDownloadedTracks(tracks, label: label)',
         ]);
@@ -266,6 +286,12 @@ void main() {
           "title: 'Custom Shuffle'",
           "label: 'Select all'",
           "label: 'Clear'",
+        ]);
+        expectContainsAll(removeDownloadModalSource, const [
+          "title: 'Remove download'",
+          "confirmLabel: 'Remove'",
+          'confirmVariant: TechButtonVariant.danger',
+          'actionChrome: TechButtonChrome.borderless',
         ]);
         expectContainsAll(logsSource, const [
           "label: 'Back to settings'",

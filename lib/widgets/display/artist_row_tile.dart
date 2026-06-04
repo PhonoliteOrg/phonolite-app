@@ -12,7 +12,9 @@ class ArtistRowTile extends StatelessWidget {
     required this.artist,
     required this.coverUrl,
     required this.headers,
-    required this.onTap,
+    this.onTap,
+    this.subtitle,
+    this.trailing,
     this.selectionMode = false,
     this.selected = false,
     this.selectable = true,
@@ -23,7 +25,9 @@ class ArtistRowTile extends StatelessWidget {
   final Artist artist;
   final String? coverUrl;
   final Map<String, String> headers;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final String? subtitle;
+  final Widget? trailing;
   final bool selectionMode;
   final bool selected;
   final bool selectable;
@@ -33,6 +37,7 @@ class ArtistRowTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final detailText = subtitle ?? artistDetailLabel(artist);
     final canInteract = selectable && !isDeleting;
     final effectiveOnTap = selectionMode
         ? canInteract
@@ -84,14 +89,15 @@ class ArtistRowTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    artistDetailLabel(artist),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
+                  if (detailText.isNotEmpty)
+                    Text(
+                      detailText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: ObsidianPalette.textMuted,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -102,6 +108,8 @@ class ArtistRowTile extends StatelessWidget {
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
+            else if (trailing != null)
+              trailing!
             else if (!selectionMode)
               const Icon(Icons.chevron_right_rounded, color: Colors.white38),
           ],

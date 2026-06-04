@@ -60,5 +60,6 @@ Future<bool> _confirmRemoveDownload(
         'Remove $target from this device? This deletes downloaded audio and unused local metadata/artwork; the music stays in your server library.',
     confirmLabel: 'Remove',
     confirmVariant: TechButtonVariant.danger,
+    actionChrome: TechButtonChrome.borderless,
   );
 }

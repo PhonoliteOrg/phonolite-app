@@ -4,11 +4,12 @@ import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
 import '../entities/models.dart';
 import '../widgets/display/playlist_module_card.dart';
+import '../widgets/layout/library_header.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/ui/obsidian_theme.dart';
-import '../widgets/ui/tech_button.dart';
+import '../widgets/ui/obsidian_widgets.dart';
 import 'playlist_detail_view.dart';
 
 class PlaylistsPage extends StatefulWidget {
@@ -70,6 +71,16 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                     : const <Playlist>[];
                 return CustomScrollView(
                   slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      sliver: SliverToBoxAdapter(
+                        child: LibraryHeader(
+                          title: 'PLAYLISTS',
+                          moduleCount:
+                              localPlaylists.length + serverPlaylists.length,
+                        ),
+                      ),
+                    ),
                     _PlaylistSection(
                       title: 'Local Playlists',
                       subtitle: '${localPlaylists.length} lists',
@@ -232,39 +243,16 @@ class _HeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(Icons.queue_music, size: 42),
-        const SizedBox(width: 20),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.headlineLarge?.copyWith(letterSpacing: 1.1),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                subtitle.toUpperCase(),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: ObsidianPalette.textMuted,
-                  letterSpacing: 1.4,
-                ),
-              ),
-            ],
-          ),
+    return ObsidianSectionHeader(
+      title: title,
+      subtitle: subtitle,
+      trailing: Tooltip(
+        message: 'Create New',
+        child: ObsidianHudIconButton(
+          icon: Icons.add_rounded,
+          onPressed: onCreate,
         ),
-        TechButton(
-          label: 'Create New',
-          icon: Icons.add,
-          onTap: onCreate,
-          density: TechButtonDensity.compact,
-        ),
-      ],
+      ),
     );
   }
 }

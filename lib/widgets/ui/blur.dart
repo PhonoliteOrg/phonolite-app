@@ -8,7 +8,7 @@ bool enableBackdropBlur() {
 }
 
 Widget maybeBlur({required double sigma, required Widget child}) {
-  if (!enableBackdropBlur()) {
+  if (sigma <= 0 || !enableBackdropBlur()) {
     return child;
   }
   return BackdropFilter(

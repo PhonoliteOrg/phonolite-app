@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../ui/obsidian_widgets.dart';
 import '../ui/obsidian_theme.dart';
-import '../ui/tech_button.dart';
 
 class DownloadSelectionToolbar extends StatelessWidget {
   const DownloadSelectionToolbar({
@@ -10,6 +11,7 @@ class DownloadSelectionToolbar extends StatelessWidget {
     required this.totalCount,
     required this.onCancel,
     required this.onSelectAll,
+    required this.onDeselectAll,
     required this.onRemove,
   });
 
@@ -17,85 +19,130 @@ class DownloadSelectionToolbar extends StatelessWidget {
   final int totalCount;
   final VoidCallback onCancel;
   final VoidCallback onSelectAll;
+  final VoidCallback onDeselectAll;
   final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final label = selectedCount == 1 ? '1 selected' : '$selectedCount selected';
-    final totalLabel = totalCount == 1
-        ? '1 available'
-        : '$totalCount available';
+    final allSelected = totalCount > 0 && selectedCount == totalCount;
+    final toggleLabel = allSelected ? 'Deselect all' : 'Select all';
+    final toggleEnabled = totalCount > 0;
+    final buttonTextStyle = GoogleFonts.rajdhani(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 1.2,
+    );
     final actions = <Widget>[
-      TechButton(
-        label: 'Cancel',
-        icon: Icons.close_rounded,
-        density: TechButtonDensity.compact,
-        onTap: onCancel,
-      ),
-      TechButton(
-        label: 'Select all',
-        icon: Icons.select_all_rounded,
-        density: TechButtonDensity.compact,
-        onTap: onSelectAll,
-      ),
-      if (selectedCount > 0 && onRemove != null)
-        TechButton(
-          label: 'Remove',
-          icon: Icons.delete_outline_rounded,
-          density: TechButtonDensity.compact,
-          variant: TechButtonVariant.danger,
-          onTap: onRemove,
+      Tooltip(
+        message: toggleLabel,
+        child: _HudTextButton(
+          label: toggleLabel,
+          isActive: allSelected,
+          onPressed: !toggleEnabled
+              ? null
+              : allSelected
+              ? onDeselectAll
+              : onSelectAll,
+          textStyle: buttonTextStyle,
         ),
+      ),
+      Tooltip(
+        message: 'Remove selected',
+        child: ObsidianHudIconButton(
+          icon: Icons.delete_outline_rounded,
+          onPressed: selectedCount > 0 ? onRemove : null,
+        ),
+      ),
+      Tooltip(
+        message: 'Cancel',
+        child: ObsidianHudIconButton(
+          icon: Icons.close_rounded,
+          onPressed: onCancel,
+        ),
+      ),
     ];
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.035),
-        border: Border.all(color: ObsidianPalette.border),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final countLabel = Text(
-            '$label / $totalLabel',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: ObsidianPalette.textMuted,
-              letterSpacing: 1.0,
-            ),
-          );
-          final actionWrap = Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: actions,
-          );
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: actions,
+    );
+  }
+}
 
-          if (constraints.maxWidth < 520) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                countLabel,
-                const SizedBox(height: 10),
-                Align(alignment: Alignment.centerRight, child: actionWrap),
-              ],
-            );
-          }
+class _HudTextButton extends StatelessWidget {
+  const _HudTextButton({
+    required this.label,
+    required this.isActive,
+    required this.onPressed,
+    required this.textStyle,
+  });
 
-          return Row(
-            children: [
-              Expanded(child: countLabel),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: actionWrap,
-                ),
-              ),
-            ],
-          );
-        },
+  final String label;
+  final bool isActive;
+  final VoidCallback? onPressed;
+  final TextStyle? textStyle;
+
+  static const _transition = Duration(milliseconds: 200);
+
+  Color _colorFor(Set<WidgetState> states) {
+    final enabled = !states.contains(WidgetState.disabled);
+    if (!enabled) {
+      return ObsidianPalette.textMuted.withValues(alpha: 0.6);
+    }
+    final highlight =
+        isActive ||
+        states.contains(WidgetState.hovered) ||
+        states.contains(WidgetState.pressed);
+    return highlight ? ObsidianPalette.gold : ObsidianPalette.textMuted;
+  }
+
+  double _glowFor(Set<WidgetState> states) {
+    if (states.contains(WidgetState.disabled)) {
+      return 0.0;
+    }
+    return states.contains(WidgetState.hovered)
+        ? 0.7
+        : (isActive || states.contains(WidgetState.pressed) ? 0.35 : 0.0);
+  }
+
+  TextStyle? _textStyleFor(Set<WidgetState> states) {
+    final glowOpacity = _glowFor(states);
+    return textStyle?.copyWith(
+      fontWeight: FontWeight.w700,
+      shadows: [
+        if (glowOpacity > 0)
+          Shadow(
+            color: ObsidianPalette.gold.withValues(alpha: glowOpacity),
+            blurRadius: 10,
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: ButtonStyle(
+        animationDuration: _transition,
+        foregroundColor: WidgetStateProperty.resolveWith(_colorFor),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        ),
+        minimumSize: const WidgetStatePropertyAll(Size.zero),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: WidgetStateProperty.resolveWith(_textStyleFor),
+        mouseCursor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? SystemMouseCursors.basic
+              : SystemMouseCursors.click,
+        ),
       ),
+      child: Text(label.toUpperCase()),
     );
   }
 }
