@@ -20,16 +20,17 @@ class CollectionViewToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      toggled: isListView,
-      label: semanticLabel,
-      child: ObsidianNavIcon(
-        icon: const Icon(Icons.view_agenda_rounded),
-        isSelected: isListView,
-        onTap: onPressed,
-        size: 40,
-        iconSize: 22,
+    return Tooltip(
+      message: isListView ? showCardTooltip : showListTooltip,
+      child: Semantics(
+        button: true,
+        toggled: isListView,
+        label: semanticLabel,
+        child: ObsidianHudIconButton(
+          icon: Icons.view_agenda_rounded,
+          isActive: isListView,
+          onPressed: onPressed,
+        ),
       ),
     );
   }

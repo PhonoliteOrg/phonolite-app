@@ -194,6 +194,7 @@ class OfflineDownloadJob {
     this.materializedCount = 0,
     this.sourceCursor = 0,
     this.label,
+    this.sourceId,
     this.error,
   });
 
@@ -210,6 +211,7 @@ class OfflineDownloadJob {
   final int materializedCount;
   final int sourceCursor;
   final String? label;
+  final String? sourceId;
   final String? error;
 
   OfflineDownloadJob copyWith({
@@ -222,6 +224,7 @@ class OfflineDownloadJob {
     int? materializedCount,
     int? sourceCursor,
     Object? label = _offlineUnset,
+    Object? sourceId = _offlineUnset,
     Object? error = _offlineUnset,
   }) {
     return OfflineDownloadJob(
@@ -238,6 +241,7 @@ class OfflineDownloadJob {
       materializedCount: materializedCount ?? this.materializedCount,
       sourceCursor: sourceCursor ?? this.sourceCursor,
       label: label == _offlineUnset ? this.label : label as String?,
+      sourceId: sourceId == _offlineUnset ? this.sourceId : sourceId as String?,
       error: error == _offlineUnset ? this.error : error as String?,
     );
   }
@@ -2364,9 +2368,11 @@ class OfflineLibraryStorage {
         materialized_count INTEGER NOT NULL DEFAULT 0,
         source_cursor INTEGER NOT NULL DEFAULT 0,
         label TEXT,
+        source_id TEXT,
         error TEXT
       )
     ''');
+    _ensureColumn(db, 'download_jobs', 'source_id', 'TEXT');
     db.execute(
       'CREATE INDEX IF NOT EXISTS idx_download_jobs_server ON download_jobs(server_base_url, status)',
     );
@@ -2898,6 +2904,7 @@ class OfflineLibraryStorage {
       materializedCount: _readInt(row, 'materialized_count'),
       sourceCursor: _readInt(row, 'source_cursor'),
       label: _readNullableString(row, 'label'),
+      sourceId: _tryReadNullableString(row, 'source_id'),
       error: _readNullableString(row, 'error'),
     );
   }
@@ -3363,8 +3370,9 @@ class OfflineLibraryStorage {
         materialized_count,
         source_cursor,
         label,
+        source_id,
         error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(job_id) DO UPDATE SET
         kind = excluded.kind,
         server_base_url = excluded.server_base_url,
@@ -3377,6 +3385,7 @@ class OfflineLibraryStorage {
         materialized_count = excluded.materialized_count,
         source_cursor = excluded.source_cursor,
         label = excluded.label,
+        source_id = excluded.source_id,
         error = excluded.error
     ''',
       [
@@ -3393,6 +3402,7 @@ class OfflineLibraryStorage {
         job.materializedCount,
         job.sourceCursor,
         job.label,
+        job.sourceId,
         job.error,
       ],
     );

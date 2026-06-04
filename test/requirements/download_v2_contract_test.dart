@@ -64,4 +64,51 @@ void main() {
       'OfflineDownloadStatus.paused',
     ]);
   });
+
+  test('download manager observes a single combined download snapshot', () {
+    final source = readProjectFile(
+      'lib/widgets/modals/download_manager_panel.dart',
+    );
+
+    expectContainsAll(source, [
+      'StreamBuilder<OfflineDownloadSnapshot>',
+      'controller!.offlineDownloadSnapshotStream',
+      '_DownloadManagerViewState(state.downloads, state.jobs)',
+      'ListView.builder',
+    ]);
+    expect(source, isNot(contains('controller!.offlineDownloadsStream')));
+    expect(source, isNot(contains('controller!.offlineDownloadJobsStream')));
+  });
+
+  test('offline actor splits download and library state updates', () {
+    final source = readProjectFile(
+      'lib/entities/offline_download_manager.dart',
+    );
+
+    expectContainsAll(source, [
+      'class _OfflineActorDownloadState',
+      'class _OfflineActorLibraryState',
+      'scheduleDownloadState();',
+      'scheduleLibraryState();',
+      'core.localLikedStream.listen((_) => scheduleLibraryState())',
+      '_applyDownloadState',
+      '_applyLibraryState',
+      '_actorSameTrackSnapshots',
+    ]);
+    expect(source, isNot(contains('class _OfflineActorSnapshot')));
+  });
+
+  test('v2 download jobs only materialize the rolling window initially', () {
+    final source = readProjectFile(
+      'lib/entities/offline_download_manager.dart',
+    );
+
+    expectContainsAll(source, [
+      'static const int _rollingWindowSize = 20',
+      'for (final item in serverJob.items)',
+      'if (downloads.length >= _rollingWindowSize)',
+      'await _persistMaterializedDownloads(jobId, downloads)',
+      'await _topUpRollingJob(job)',
+    ]);
+  });
 }

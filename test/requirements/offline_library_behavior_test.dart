@@ -1321,6 +1321,8 @@ void main() {
       expect(secondQueued, 0);
       expect(manager.jobs, hasLength(1));
       expect(manager.jobs.single.kind, 'artist');
+      expect(manager.jobs.single.sourceId, artist.id);
+      expect((await storage.readDownloadJobs()).single.sourceId, artist.id);
     });
 
     test(
@@ -1424,6 +1426,91 @@ void main() {
         );
       },
     );
+
+    test('server bulk pause freezes queued rolling jobs and tracks', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_server_pause_all_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: temp);
+      final serverBaseUrl = 'http://server-one.test/api/v1';
+      final jobId = 'job-server-pause-all';
+      final now = DateTime.fromMillisecondsSinceEpoch(10);
+      final firstTrack = _track(id: 'server-track-1');
+      final secondTrack = _track(id: 'server-track-2', title: 'Second Song');
+      await storage.upsertDownloadJob(
+        OfflineDownloadJob(
+          jobId: jobId,
+          kind: 'artist',
+          serverBaseUrl: serverBaseUrl,
+          status: OfflineDownloadStatus.queued,
+          createdAt: now,
+          updatedAt: now,
+          totalCount: 2,
+          discoveredCount: 2,
+          materializedCount: 2,
+          label: 'Gorillaz',
+        ),
+      );
+      await storage.upsertDownloadJobItems([
+        OfflineDownloadJobItem(
+          jobId: jobId,
+          position: 0,
+          serverTrackId: firstTrack.id,
+          status: OfflineDownloadStatus.queued,
+          materialized: true,
+          createdAt: now,
+          updatedAt: now,
+          track: firstTrack,
+        ),
+        OfflineDownloadJobItem(
+          jobId: jobId,
+          position: 1,
+          serverTrackId: secondTrack.id,
+          status: OfflineDownloadStatus.queued,
+          materialized: true,
+          createdAt: now,
+          updatedAt: now,
+          track: secondTrack,
+        ),
+      ]);
+      final downloads = await storage.prepareDownloads([
+        _download(
+          serverBaseUrl: serverBaseUrl,
+          batchId: jobId,
+          track: firstTrack,
+          status: OfflineDownloadStatus.queued,
+        ),
+        _download(
+          serverBaseUrl: serverBaseUrl,
+          batchId: jobId,
+          track: secondTrack,
+          status: OfflineDownloadStatus.queued,
+        ),
+      ]);
+      await storage.upsertDownloads(downloads);
+
+      final manager = OfflineDownloadManager(
+        connection: ServerConnection(baseUrl: serverBaseUrl),
+        storage: storage,
+      );
+      addTearDown(manager.dispose);
+      await manager.load();
+
+      await manager.pauseDownloadsForServer(serverBaseUrl);
+
+      expect(manager.jobs.single.status, OfflineDownloadStatus.paused);
+      expect(
+        manager.downloads.map((download) => download.status).toSet(),
+        <OfflineDownloadStatus>{OfflineDownloadStatus.paused},
+      );
+      expect(
+        (await storage.readDownloadJobItems(
+          jobId,
+        )).map((item) => item.status).toSet(),
+        <OfflineDownloadStatus>{OfflineDownloadStatus.paused},
+      );
+    });
 
     test('re-queueing a paused artist job starts a fresh queued job', () async {
       final temp = await Directory.systemTemp.createTemp(

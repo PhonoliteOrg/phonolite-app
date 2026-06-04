@@ -11,7 +11,6 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/ui/obsidian_widgets.dart';
-import '../widgets/ui/tech_button.dart';
 
 class LikedPage extends StatefulWidget {
   const LikedPage({super.key});
@@ -130,6 +129,7 @@ class _LikedPageState extends State<LikedPage> {
                                 local: true,
                                 tracks: localRemovableTracks,
                               ),
+                              onDeselectAll: () => _deselectAll(local: true),
                               onRemoveSelected: selectedLocalTracks.isEmpty
                                   ? null
                                   : () => _removeDownloads(
@@ -184,6 +184,7 @@ class _LikedPageState extends State<LikedPage> {
                                   local: false,
                                   tracks: serverRemovableTracks,
                                 ),
+                                onDeselectAll: () => _deselectAll(local: false),
                                 onRemoveSelected: selectedServerTracks.isEmpty
                                     ? null
                                     : () => _removeDownloads(
@@ -336,6 +337,18 @@ class _LikedPageState extends State<LikedPage> {
     });
   }
 
+  void _deselectAll({required bool local}) {
+    setState(() {
+      if (local) {
+        _localSelectionMode = true;
+        _selectedLocalTrackIds.clear();
+      } else {
+        _serverSelectionMode = true;
+        _selectedServerTrackIds.clear();
+      }
+    });
+  }
+
   void _clearSelection({required bool local}) {
     setState(() {
       if (local) {
@@ -370,6 +383,7 @@ class _LikedSection extends StatelessWidget {
     required this.onStartSelection,
     required this.onCancelSelection,
     required this.onSelectAll,
+    required this.onDeselectAll,
     required this.onRemoveSelected,
     required this.canSelectTrack,
     required this.isTrackSelected,
@@ -394,6 +408,7 @@ class _LikedSection extends StatelessWidget {
   final VoidCallback onStartSelection;
   final VoidCallback onCancelSelection;
   final VoidCallback onSelectAll;
+  final VoidCallback onDeselectAll;
   final VoidCallback? onRemoveSelected;
   final bool Function(Track track) canSelectTrack;
   final bool Function(Track track) isTrackSelected;
@@ -411,19 +426,6 @@ class _LikedSection extends StatelessWidget {
             child: _buildHeader(context, tracks.length),
           ),
         ),
-        if (selectionMode)
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            sliver: SliverToBoxAdapter(
-              child: DownloadSelectionToolbar(
-                selectedCount: selectedCount,
-                totalCount: removableCount,
-                onCancel: onCancelSelection,
-                onSelectAll: onSelectAll,
-                onRemove: onRemoveSelected,
-              ),
-            ),
-          ),
         if (tracks.isEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -476,11 +478,22 @@ class _LikedSection extends StatelessWidget {
         Expanded(
           child: ObsidianSectionHeader(title: title, subtitle: '$count tracks'),
         ),
-        if (!selectionMode)
-          TechButton(
-            label: 'Edit',
-            icon: Icons.edit_rounded,
-            onTap: removableCount > 0 ? onStartSelection : null,
+        if (selectionMode)
+          DownloadSelectionToolbar(
+            selectedCount: selectedCount,
+            totalCount: removableCount,
+            onCancel: onCancelSelection,
+            onSelectAll: onSelectAll,
+            onDeselectAll: onDeselectAll,
+            onRemove: onRemoveSelected,
+          )
+        else
+          Tooltip(
+            message: 'Edit',
+            child: ObsidianHudIconButton(
+              icon: Icons.edit_rounded,
+              onPressed: removableCount > 0 ? onStartSelection : null,
+            ),
           ),
       ],
     );

@@ -23,9 +23,7 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/download_manager_panel.dart';
 import '../widgets/modals/remove_download_modal.dart';
-import '../widgets/ui/collection_view_toggle_button.dart';
 import '../widgets/ui/obsidian_widgets.dart';
-import '../widgets/ui/tech_button.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
 import 'local_artist_detail_screen.dart';
@@ -160,6 +158,9 @@ class _LibraryPageState extends State<LibraryPage> {
                               final offlineGroups = query.isEmpty
                                   ? offlineSnapshot.artistGroups
                                   : offlineArtistGroups(filteredOfflineTracks);
+                              final selectedGroups = _selectedOfflineArtists(
+                                offlineGroups,
+                              );
                               final slivers = query.isEmpty
                                   ? <Widget>[
                                       ..._downloadedMusicSlivers(
@@ -208,29 +209,42 @@ class _LibraryPageState extends State<LibraryPage> {
                                   SliverPadding(
                                     padding: const EdgeInsets.fromLTRB(
                                       20,
-                                      24,
+                                      16,
                                       20,
                                       12,
                                     ),
                                     sliver: SliverToBoxAdapter(
                                       child: LibraryHeader(
                                         moduleCount: artists.length,
-                                        trailing: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _refreshLibraryButton(controller),
-                                            const SizedBox(width: 10),
-                                            _downloadManagerButton(),
-                                            const SizedBox(width: 10),
-                                            CollectionViewToggleButton(
-                                              isListView: showCollectionList,
-                                              onPressed: controller
-                                                  .toggleCollectionListMode,
-                                              semanticLabel:
-                                                  'Library collection view',
-                                            ),
-                                          ],
-                                        ),
+                                        trailing: _artistSelectionMode
+                                            ? _artistSelectionToolbar(
+                                                controller: controller,
+                                                groups: offlineGroups,
+                                                selectedGroups: selectedGroups,
+                                              )
+                                            : Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  _refreshLibraryButton(
+                                                    controller,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  _downloadManagerButton(),
+                                                  const SizedBox(width: 10),
+                                                  _editLibraryButton(
+                                                    offlineGroups.isNotEmpty
+                                                        ? _startArtistSelection
+                                                        : null,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  _collectionViewButton(
+                                                    isListView:
+                                                        showCollectionList,
+                                                    onPressed: controller
+                                                        .toggleCollectionListMode,
+                                                  ),
+                                                ],
+                                              ),
                                       ),
                                     ),
                                   ),
@@ -303,34 +317,36 @@ class _LibraryPageState extends State<LibraryPage> {
                 controller: _scrollController,
                 slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                     sliver: SliverToBoxAdapter(
                       child: LibraryHeader(
                         moduleCount: tracks.length,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _refreshLibraryButton(controller),
-                            const SizedBox(width: 10),
-                            _downloadManagerButton(),
-                            const SizedBox(width: 10),
-                            if (!_artistSelectionMode) ...[
-                              TechButton(
-                                label: 'Edit',
-                                icon: Icons.edit_rounded,
-                                onTap: filteredGroups.isNotEmpty
-                                    ? _startArtistSelection
-                                    : null,
+                        trailing: _artistSelectionMode
+                            ? _artistSelectionToolbar(
+                                controller: controller,
+                                groups: filteredGroups,
+                                selectedGroups: selectedGroups,
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _refreshLibraryButton(controller),
+                                  const SizedBox(width: 10),
+                                  _downloadManagerButton(),
+                                  const SizedBox(width: 10),
+                                  _editLibraryButton(
+                                    filteredGroups.isNotEmpty
+                                        ? _startArtistSelection
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _collectionViewButton(
+                                    isListView: showCollectionList,
+                                    onPressed:
+                                        controller.toggleCollectionListMode,
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
-                            ],
-                            CollectionViewToggleButton(
-                              isListView: showCollectionList,
-                              onPressed: controller.toggleCollectionListMode,
-                              semanticLabel: 'Library collection view',
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ),
@@ -348,26 +364,6 @@ class _LibraryPageState extends State<LibraryPage> {
                       ),
                     ),
                   ),
-                  if (_artistSelectionMode && filteredGroups.isNotEmpty)
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      sliver: SliverToBoxAdapter(
-                        child: DownloadSelectionToolbar(
-                          selectedCount: selectedGroups.length,
-                          totalCount: filteredGroups.length,
-                          onCancel: _clearArtistSelection,
-                          onSelectAll: () => _selectAllArtists(
-                            filteredGroups.map(_artistSelectionKey),
-                          ),
-                          onRemove: selectedGroups.isEmpty
-                              ? null
-                              : () => _removeSelectedArtistDownloads(
-                                  controller,
-                                  selectedGroups,
-                                ),
-                        ),
-                      ),
-                    ),
                   if (tracks.isEmpty)
                     const SliverFillRemaining(
                       hasScrollBody: false,
@@ -403,24 +399,75 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  Widget _downloadManagerButton() {
+  Widget _downloadManagerButton({bool enabled = true}) {
     return Tooltip(
       message: 'Download Manager',
       child: ObsidianHudIconButton(
         icon: Icons.download_for_offline_rounded,
-        onPressed: () => unawaited(showDownloadManagerPanel(context)),
+        onPressed: enabled
+            ? () => unawaited(showDownloadManagerPanel(context))
+            : null,
       ),
     );
   }
 
-  Widget _refreshLibraryButton(AppController controller) {
+  Widget _editLibraryButton(VoidCallback? onPressed) {
+    return Tooltip(
+      message: 'Edit',
+      child: ObsidianHudIconButton(
+        icon: Icons.edit_rounded,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _collectionViewButton({
+    required bool isListView,
+    required VoidCallback? onPressed,
+  }) {
+    return Tooltip(
+      message: isListView ? 'Show cards' : 'Show list',
+      child: Semantics(
+        button: true,
+        toggled: isListView,
+        label: 'Library collection view',
+        child: ObsidianHudIconButton(
+          icon: Icons.view_agenda_rounded,
+          isActive: isListView,
+          onPressed: onPressed,
+        ),
+      ),
+    );
+  }
+
+  Widget _artistSelectionToolbar({
+    required AppController controller,
+    required List<OfflineArtistGroup> groups,
+    required List<OfflineArtistGroup> selectedGroups,
+  }) {
+    return DownloadSelectionToolbar(
+      selectedCount: selectedGroups.length,
+      totalCount: groups.length,
+      onCancel: _clearArtistSelection,
+      onSelectAll: () => _selectAllArtists(groups.map(_artistSelectionKey)),
+      onDeselectAll: _deselectAllArtists,
+      onRemove: selectedGroups.isEmpty
+          ? null
+          : () => _removeSelectedArtistDownloads(controller, selectedGroups),
+    );
+  }
+
+  Widget _refreshLibraryButton(
+    AppController controller, {
+    bool enabled = true,
+  }) {
     return Tooltip(
       message: 'Refresh library',
       child: ObsidianHudIconButton(
         icon: _refreshingLibrary
             ? Icons.hourglass_top_rounded
             : Icons.refresh_rounded,
-        onPressed: _refreshingLibrary
+        onPressed: !enabled || _refreshingLibrary
             ? null
             : () => unawaited(_refreshLibrary(controller)),
       ),
@@ -490,38 +537,8 @@ class _LibraryPageState extends State<LibraryPage> {
     required bool showCollectionList,
     bool showEmpty = true,
   }) {
-    final selectedGroups = _selectedOfflineArtists(groups);
     return [
-      _sectionHeaderSliver(
-        'Downloaded Music',
-        trailing: !_artistSelectionMode
-            ? TechButton(
-                label: 'Edit',
-                icon: Icons.edit_rounded,
-                density: TechButtonDensity.compact,
-                onTap: groups.isNotEmpty ? _startArtistSelection : null,
-              )
-            : null,
-      ),
-      if (_artistSelectionMode && groups.isNotEmpty)
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-          sliver: SliverToBoxAdapter(
-            child: DownloadSelectionToolbar(
-              selectedCount: selectedGroups.length,
-              totalCount: groups.length,
-              onCancel: _clearArtistSelection,
-              onSelectAll: () =>
-                  _selectAllArtists(groups.map(_artistSelectionKey)),
-              onRemove: selectedGroups.isEmpty
-                  ? null
-                  : () => _removeSelectedArtistDownloads(
-                      controller,
-                      selectedGroups,
-                    ),
-            ),
-          ),
-        ),
+      _sectionHeaderSliver('Local Library'),
       if (tracks.isEmpty && showEmpty)
         SliverToBoxAdapter(
           child: EmptyStateText(
@@ -551,7 +568,7 @@ class _LibraryPageState extends State<LibraryPage> {
   }) {
     return [
       _sectionHeaderSliver(
-        'Connected Server Artists',
+        'Server Library',
         subtitle: _serverArtistSubtitle(artists),
       ),
       if (artists.isEmpty && isLoading)
@@ -793,6 +810,13 @@ class _LibraryPageState extends State<LibraryPage> {
       _selectedArtistIds
         ..clear()
         ..addAll(artistIds);
+    });
+  }
+
+  void _deselectAllArtists() {
+    setState(() {
+      _artistSelectionMode = true;
+      _selectedArtistIds.clear();
     });
   }
 

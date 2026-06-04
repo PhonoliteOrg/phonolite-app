@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/library_helpers.dart';
+import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
 import '../../entities/offline_library.dart';
 import '../layouts/app_scope.dart';
@@ -33,6 +34,13 @@ class TrackRowTile extends StatefulWidget {
     this.onSelectionModeRequested,
     this.offlineDownload,
     this.showAlbumArt = false,
+    this.subtitle,
+    this.trailing,
+    this.showDuration = true,
+    this.albumArtUrl,
+    this.albumArtHeaders,
+    this.leading,
+    this.showIndex = true,
   });
 
   final Track track;
@@ -51,6 +59,13 @@ class TrackRowTile extends StatefulWidget {
   final VoidCallback? onSelectionModeRequested;
   final OfflineTrackDownload? offlineDownload;
   final bool showAlbumArt;
+  final String? subtitle;
+  final Widget? trailing;
+  final bool showDuration;
+  final String? albumArtUrl;
+  final Map<String, String>? albumArtHeaders;
+  final Widget? leading;
+  final bool showIndex;
 
   @override
   State<TrackRowTile> createState() => _TrackRowTileState();
@@ -93,23 +108,33 @@ class _TrackRowTileState extends State<TrackRowTile>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final controller = widget.showAlbumArt ? AppScope.of(context) : null;
+    final explicitCoverUrl = widget.albumArtUrl?.trim();
+    final controller =
+        widget.showAlbumArt &&
+            (explicitCoverUrl == null || explicitCoverUrl.isEmpty)
+        ? _maybeAppController(context)
+        : null;
     final albumId = widget.track.albumId?.trim() ?? '';
     final canLoadRemoteArt = controller?.authState.isAuthorized == true;
     final localCoverPath = widget.track.albumArtPath?.trim();
     final hasLocalCover = localCoverPath != null && localCoverPath.isNotEmpty;
-    final coverUrl = widget.showAlbumArt && hasLocalCover
+    final coverUrl =
+        widget.showAlbumArt &&
+            explicitCoverUrl != null &&
+            explicitCoverUrl.isNotEmpty
+        ? explicitCoverUrl
+        : widget.showAlbumArt && hasLocalCover
         ? localCoverPath
         : widget.showAlbumArt && albumId.isNotEmpty && canLoadRemoteArt
         ? controller?.connection.buildAlbumCoverUrl(albumId)
         : null;
     final headers =
-        widget.showAlbumArt &&
-            !hasLocalCover &&
-            controller != null &&
-            canLoadRemoteArt
-        ? authHeaders(controller)
-        : const <String, String>{};
+        widget.albumArtHeaders ??
+        _fallbackAlbumArtHeaders(
+          controller,
+          hasLocalCover: hasLocalCover,
+          canLoadRemoteArt: canLoadRemoteArt,
+        );
 
     final selectionMode = widget.selectionMode;
     final isDeleting =
@@ -150,13 +175,17 @@ class _TrackRowTileState extends State<TrackRowTile>
                     ? _NowPlayingBars(
                         controller: _controller ?? kAlwaysDismissedAnimation,
                       )
-                    : Text(
+                    : widget.leading != null
+                    ? widget.leading!
+                    : widget.showIndex
+                    ? Text(
                         widget.index.toString().padLeft(2, '0'),
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: ObsidianPalette.gold,
                           letterSpacing: 1.2,
                         ),
-                      ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ),
             const SizedBox(width: 8),
@@ -183,7 +212,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _artistAlbumLine(widget.track),
+                    widget.subtitle ?? _artistAlbumLine(widget.track),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -193,45 +222,51 @@ class _TrackRowTileState extends State<TrackRowTile>
                 ],
               ),
             ),
-            Text(
-              _formatDuration(widget.track.durationMs),
-              style: theme.textTheme.labelLarge?.copyWith(
-                letterSpacing: 1.0,
-                color: ObsidianPalette.textMuted,
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (!selectionMode &&
-                (widget.onDownload != null ||
-                    widget.offlineDownload != null)) ...[
-              _DownloadStatusButton(
-                download: widget.offlineDownload,
-                onDownload: widget.onDownload,
-                onRemoveDownload: widget.onRemoveDownload,
-              ),
-              const SizedBox(width: 6),
-            ],
-            if (!selectionMode && widget.onAddToPlaylist != null) ...[
-              ObsidianHudIconButton(
-                icon: Icons.playlist_add_rounded,
-                onPressed: isDeleting ? null : widget.onAddToPlaylist,
-                size: 22,
-              ),
-              const SizedBox(width: 6),
-            ],
-            if (!selectionMode)
-              LikeIconButton(
-                isLiked: widget.track.liked,
-                onPressed: isDeleting ? null : widget.onLike,
-                size: 22,
-              ),
-            if (!selectionMode && widget.onDelete != null) ...[
-              const SizedBox(width: 6),
-              ObsidianHudIconButton(
-                icon: Icons.delete_outline_rounded,
-                onPressed: isDeleting ? null : widget.onDelete,
-                size: 22,
-              ),
+            if (!selectionMode && widget.trailing != null)
+              widget.trailing!
+            else ...[
+              if (widget.showDuration) ...[
+                Text(
+                  _formatDuration(widget.track.durationMs),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    letterSpacing: 1.0,
+                    color: ObsidianPalette.textMuted,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (!selectionMode &&
+                  (widget.onDownload != null ||
+                      widget.offlineDownload != null)) ...[
+                _DownloadStatusButton(
+                  download: widget.offlineDownload,
+                  onDownload: widget.onDownload,
+                  onRemoveDownload: widget.onRemoveDownload,
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (!selectionMode && widget.onAddToPlaylist != null) ...[
+                ObsidianHudIconButton(
+                  icon: Icons.playlist_add_rounded,
+                  onPressed: isDeleting ? null : widget.onAddToPlaylist,
+                  size: 22,
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (!selectionMode)
+                LikeIconButton(
+                  isLiked: widget.track.liked,
+                  onPressed: isDeleting ? null : widget.onLike,
+                  size: 22,
+                ),
+              if (!selectionMode && widget.onDelete != null) ...[
+                const SizedBox(width: 6),
+                ObsidianHudIconButton(
+                  icon: Icons.delete_outline_rounded,
+                  onPressed: isDeleting ? null : widget.onDelete,
+                  size: 22,
+                ),
+              ],
             ],
           ],
         ),
@@ -256,6 +291,28 @@ class _TrackRowTileState extends State<TrackRowTile>
       return artist;
     }
     return '$artist / $album';
+  }
+
+  Map<String, String> _fallbackAlbumArtHeaders(
+    AppController? controller, {
+    required bool hasLocalCover,
+    required bool canLoadRemoteArt,
+  }) {
+    if (!widget.showAlbumArt ||
+        hasLocalCover ||
+        controller == null ||
+        !canLoadRemoteArt) {
+      return const <String, String>{};
+    }
+    return authHeaders(controller);
+  }
+
+  AppController? _maybeAppController(BuildContext context) {
+    try {
+      return AppScope.of(context);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -343,7 +400,7 @@ class _DownloadStatusButton extends StatelessWidget {
                         : removing
                         ? Icons.delete_sweep_rounded
                         : validating
-                        ? Icons.verified_rounded
+                        ? Icons.downloading_rounded
                         : preparing
                         ? Icons.sync_rounded
                         : queued

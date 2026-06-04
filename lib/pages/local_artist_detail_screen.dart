@@ -15,7 +15,7 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/collection_view_toggle_button.dart';
-import '../widgets/ui/tech_button.dart';
+import '../widgets/ui/obsidian_widgets.dart';
 import 'local_album_detail_screen.dart';
 
 class LocalArtistDetailScreen extends StatefulWidget {
@@ -74,21 +74,37 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                                 spacing: 10,
                                 runSpacing: 10,
                                 crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  if (!_albumSelectionMode)
-                                    TechButton(
-                                      label: 'Edit',
-                                      icon: Icons.edit_rounded,
-                                      onTap: removableAlbumIds.isNotEmpty
-                                          ? _startAlbumSelection
-                                          : null,
-                                    ),
-                                  CollectionViewToggleButton(
-                                    isListView: showCollectionList,
-                                    onPressed:
-                                        controller.toggleCollectionListMode,
-                                  ),
-                                ],
+                                children: _albumSelectionMode
+                                    ? [
+                                        DownloadSelectionToolbar(
+                                          selectedCount: selectedAlbums.length,
+                                          totalCount: removableAlbumIds.length,
+                                          onCancel: _clearAlbumSelection,
+                                          onSelectAll: () => _selectAllAlbums(
+                                            removableAlbumIds,
+                                          ),
+                                          onDeselectAll: _deselectAllAlbums,
+                                          onRemove: selectedAlbums.isEmpty
+                                              ? null
+                                              : () =>
+                                                    _removeSelectedAlbumDownloads(
+                                                      controller,
+                                                      selectedAlbums,
+                                                    ),
+                                        ),
+                                      ]
+                                    : [
+                                        _editAlbumSelectionButton(
+                                          removableAlbumIds.isNotEmpty
+                                              ? _startAlbumSelection
+                                              : null,
+                                        ),
+                                        CollectionViewToggleButton(
+                                          isListView: showCollectionList,
+                                          onPressed: controller
+                                              .toggleCollectionListMode,
+                                        ),
+                                      ],
                               ),
                             ],
                           ),
@@ -106,25 +122,6 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                         ),
                       ),
                     ),
-                    if (_albumSelectionMode)
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                        sliver: SliverToBoxAdapter(
-                          child: DownloadSelectionToolbar(
-                            selectedCount: selectedAlbums.length,
-                            totalCount: removableAlbumIds.length,
-                            onCancel: _clearAlbumSelection,
-                            onSelectAll: () =>
-                                _selectAllAlbums(removableAlbumIds),
-                            onRemove: selectedAlbums.isEmpty
-                                ? null
-                                : () => _removeSelectedAlbumDownloads(
-                                    controller,
-                                    selectedAlbums,
-                                  ),
-                          ),
-                        ),
-                      ),
                     if (group.albums.isEmpty)
                       const SliverPadding(
                         padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
@@ -313,6 +310,13 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
     });
   }
 
+  void _deselectAllAlbums() {
+    setState(() {
+      _albumSelectionMode = true;
+      _selectedAlbumIds.clear();
+    });
+  }
+
   void _startAlbumSelection() {
     setState(() {
       _albumSelectionMode = true;
@@ -325,6 +329,16 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
       _albumSelectionMode = false;
       _selectedAlbumIds.clear();
     });
+  }
+
+  Widget _editAlbumSelectionButton(VoidCallback? onPressed) {
+    return Tooltip(
+      message: 'Edit',
+      child: ObsidianHudIconButton(
+        icon: Icons.edit_rounded,
+        onPressed: onPressed,
+      ),
+    );
   }
 
   String _albumSelectionKey(OfflineAlbumGroup album) => album.id;

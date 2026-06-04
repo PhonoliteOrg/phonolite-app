@@ -861,6 +861,7 @@ class AppController {
       tracks,
       label: album.title,
       kind: 'album',
+      sourceId: album.id,
       emptyMessage: 'No tracks found to download for ${album.title}.',
     );
   }
@@ -899,6 +900,7 @@ class AppController {
     required String label,
     required String emptyMessage,
     String kind = 'tracks',
+    String? sourceId,
   }) async {
     if (!_requireServer('downloading $label')) {
       return;
@@ -927,6 +929,7 @@ class AppController {
         pending,
         label: label,
         kind: kind,
+        sourceId: sourceId,
       );
       if (queuedCount == 0) {
         _pushMessage('All tracks are already downloaded or queued for $label.');
@@ -955,6 +958,13 @@ class AppController {
       return true;
     }
     return availableOfflineDownloadForTrack(track.id) != null;
+  }
+
+  bool _offlineDownloadPausable(OfflineDownloadStatus status) {
+    return status == OfflineDownloadStatus.queued ||
+        status == OfflineDownloadStatus.preparing ||
+        status == OfflineDownloadStatus.downloading ||
+        status == OfflineDownloadStatus.validating;
   }
 
   Future<void> removeOfflineTrack(String trackId) async {
@@ -987,6 +997,24 @@ class AppController {
     _pushMessage(
       'Resumed downloads for ${label == null || label.isEmpty ? job.kind : label}.',
     );
+  }
+
+  Future<void> pauseAllOfflineDownloads() async {
+    final serverBaseUrls = <String>{
+      for (final download in _offlineDownloadManager.downloads)
+        if (_offlineDownloadPausable(download.status))
+          download.serverBaseUrl.trim(),
+      for (final job in _offlineDownloadManager.jobs)
+        if (_offlineDownloadPausable(job.status)) job.serverBaseUrl.trim(),
+    }..removeWhere((baseUrl) => baseUrl.isEmpty);
+    if (serverBaseUrls.isEmpty) {
+      _pushMessage('No active downloads to pause.');
+      return;
+    }
+    for (final serverBaseUrl in serverBaseUrls) {
+      await _offlineDownloadManager.pauseDownloadsForServer(serverBaseUrl);
+    }
+    _pushMessage('Paused downloads.');
   }
 
   Future<void> retryOfflineDownload(OfflineTrackDownload download) async {

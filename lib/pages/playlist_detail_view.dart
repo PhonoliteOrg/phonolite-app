@@ -14,6 +14,7 @@ import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/marquee_text.dart';
+import '../widgets/ui/obsidian_widgets.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/tech_button.dart';
 
@@ -103,7 +104,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                       return SliverMainAxisGroup(
                         slivers: [
                           if (!_selectionMode)
-                            _editSelectionSliver(enabled: false),
+                            _trackSelectionActionsSliver(enabled: false),
                           const SliverFillRemaining(
                             hasScrollBody: false,
                             child: Center(child: _EmptyPlaylistText()),
@@ -131,32 +132,20 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                             );
                             return SliverMainAxisGroup(
                               slivers: [
-                                if (!_selectionMode)
-                                  _editSelectionSliver(
-                                    enabled: removableTracks.isNotEmpty,
-                                  ),
-                                if (_selectionMode)
-                                  SliverToBoxAdapter(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 12,
-                                      ),
-                                      child: DownloadSelectionToolbar(
-                                        selectedCount: selectedTracks.length,
-                                        totalCount: removableTracks.length,
-                                        onCancel: _clearSelection,
-                                        onSelectAll: () =>
-                                            _selectAll(removableTracks),
-                                        onRemove: selectedTracks.isEmpty
-                                            ? null
-                                            : () => _removeDownloads(
-                                                controller,
-                                                selectedTracks,
-                                                playlist.name,
-                                              ),
-                                      ),
-                                    ),
-                                  ),
+                                _trackSelectionActionsSliver(
+                                  enabled: removableTracks.isNotEmpty,
+                                  selectedCount: selectedTracks.length,
+                                  totalCount: removableTracks.length,
+                                  onSelectAll: () =>
+                                      _selectAll(removableTracks),
+                                  onRemove: selectedTracks.isEmpty
+                                      ? null
+                                      : () => _removeDownloads(
+                                          controller,
+                                          selectedTracks,
+                                          playlist.name,
+                                        ),
+                                ),
                                 TrackSliverList(
                                   tracks: tracks,
                                   showAlbumArt: true,
@@ -226,17 +215,34 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     );
   }
 
-  Widget _editSelectionSliver({required bool enabled}) {
+  Widget _trackSelectionActionsSliver({
+    required bool enabled,
+    int selectedCount = 0,
+    int totalCount = 0,
+    VoidCallback? onSelectAll,
+    VoidCallback? onRemove,
+  }) {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Align(
           alignment: Alignment.centerRight,
-          child: TechButton(
-            label: 'Edit',
-            icon: Icons.edit_rounded,
-            onTap: enabled ? _startSelection : null,
-          ),
+          child: _selectionMode
+              ? DownloadSelectionToolbar(
+                  selectedCount: selectedCount,
+                  totalCount: totalCount,
+                  onCancel: _clearSelection,
+                  onSelectAll: onSelectAll ?? () {},
+                  onDeselectAll: _deselectAll,
+                  onRemove: onRemove,
+                )
+              : Tooltip(
+                  message: 'Edit',
+                  child: ObsidianHudIconButton(
+                    icon: Icons.edit_rounded,
+                    onPressed: enabled ? _startSelection : null,
+                  ),
+                ),
         ),
       ),
     );
@@ -358,6 +364,13 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
       _selectedTrackIds
         ..clear()
         ..addAll(tracks.map(_selectionKey));
+    });
+  }
+
+  void _deselectAll() {
+    setState(() {
+      _selectionMode = true;
+      _selectedTrackIds.clear();
     });
   }
 

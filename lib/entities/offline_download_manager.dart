@@ -186,14 +186,25 @@ class OfflineDownloadManager {
     Iterable<Track> tracks, {
     String? label,
     String kind = 'tracks',
+    String? sourceId,
   }) {
     final core = _inlineCore;
     if (core != null) {
-      return core.queueTracks(tracks, label: label, kind: kind);
+      return core.queueTracks(
+        tracks,
+        label: label,
+        kind: kind,
+        sourceId: sourceId,
+      );
     }
     return _send<int>(
       'queueTracks',
-      _QueueTracksRequest(tracks.toList(growable: false), label, kind),
+      _QueueTracksRequest(
+        tracks.toList(growable: false),
+        label,
+        kind,
+        sourceId,
+      ),
     );
   }
 
@@ -557,8 +568,12 @@ class OfflineDownloadManager {
       }
       return;
     }
-    if (message is _OfflineActorSnapshot) {
-      _applySnapshot(message);
+    if (message is _OfflineActorDownloadState) {
+      _applyDownloadState(message);
+      return;
+    }
+    if (message is _OfflineActorLibraryState) {
+      _applyLibraryState(message);
       return;
     }
     if (message is _OfflineActorResult) {
@@ -574,68 +589,109 @@ class OfflineDownloadManager {
     }
   }
 
-  void _applySnapshot(_OfflineActorSnapshot snapshot) {
-    developer.Timeline.startSync('offline.actor.snapshot');
+  void _applyDownloadState(_OfflineActorDownloadState state) {
+    developer.Timeline.startSync('offline.actor.downloadState');
     try {
-      final previousLibrary = _librarySnapshot;
-      _downloads = List.unmodifiable(snapshot.downloads);
-      _batches = List.unmodifiable(snapshot.batches);
-      _jobs = List.unmodifiable(snapshot.jobs);
-      _localLiked = List.unmodifiable(snapshot.localLiked);
-      _localPlaylists = List.unmodifiable(snapshot.localPlaylists);
-      _localPlaylistTracks = List.unmodifiable(snapshot.localPlaylistTracks);
-      final localDownloadedTracks = List<Track>.unmodifiable(
-        snapshot.localDownloadedTracks,
+      final nextDownloads = List<OfflineTrackDownload>.unmodifiable(
+        state.downloads,
       );
-      final libraryChanged =
-          !_sameTrackSnapshots(previousLibrary.tracks, localDownloadedTracks) ||
-          !_sameTrackSnapshots(previousLibrary.liked, _localLiked) ||
-          !_samePlaylistSnapshots(previousLibrary.playlists, _localPlaylists) ||
-          !_sameTrackSnapshots(
-            previousLibrary.playlistTracks,
-            _localPlaylistTracks,
-          );
+      final nextBatches = List<OfflineDownloadBatch>.unmodifiable(
+        state.batches,
+      );
+      final nextJobs = List<OfflineDownloadJob>.unmodifiable(state.jobs);
+      final downloadsChanged = !_sameDownloadSnapshots(
+        _downloads,
+        nextDownloads,
+      );
+      final batchesChanged = !_sameBatchSnapshots(_batches, nextBatches);
+      final jobsChanged = !_sameJobSnapshots(_jobs, nextJobs);
+      if (!downloadsChanged && !batchesChanged && !jobsChanged) {
+        return;
+      }
+
+      _downloads = nextDownloads;
+      _batches = nextBatches;
+      _jobs = nextJobs;
       _downloadSnapshot = OfflineDownloadSnapshot(
         downloads: _downloads,
         batches: _batches,
         jobs: _jobs,
-        revision: snapshot.revision,
+        revision: state.revision,
       );
-      if (libraryChanged) {
-        _librarySnapshot = OfflineLibrarySnapshot(
-          tracks: localDownloadedTracks,
-          artistGroups: List<offline_views.OfflineArtistGroup>.unmodifiable(
-            snapshot.offlineArtistGroups,
-          ),
-          liked: _localLiked,
-          playlists: _localPlaylists,
-          playlistTracks: _localPlaylistTracks,
-          revision: snapshot.revision,
-        );
+      if (downloadsChanged) {
+        _rebuildLookups();
+        if (!_controller.isClosed) {
+          _controller.add(_downloads);
+        }
       }
-      _rebuildLookups();
-      if (!_controller.isClosed) {
-        _controller.add(_downloads);
-      }
-      if (!_batchController.isClosed) {
+      if (batchesChanged && !_batchController.isClosed) {
         _batchController.add(_batches);
       }
-      if (!_jobController.isClosed) {
+      if (jobsChanged && !_jobController.isClosed) {
         _jobController.add(_jobs);
-      }
-      if (!_localLikedController.isClosed) {
-        _localLikedController.add(_localLiked);
-      }
-      if (!_localPlaylistsController.isClosed) {
-        _localPlaylistsController.add(_localPlaylists);
-      }
-      if (!_localPlaylistTracksController.isClosed) {
-        _localPlaylistTracksController.add(_localPlaylistTracks);
       }
       if (!_downloadSnapshotController.isClosed) {
         _downloadSnapshotController.add(_downloadSnapshot);
       }
-      if (libraryChanged && !_librarySnapshotController.isClosed) {
+    } finally {
+      developer.Timeline.finishSync();
+    }
+  }
+
+  void _applyLibraryState(_OfflineActorLibraryState state) {
+    developer.Timeline.startSync('offline.actor.libraryState');
+    try {
+      final nextLiked = List<Track>.unmodifiable(state.localLiked);
+      final nextPlaylists = List<Playlist>.unmodifiable(state.localPlaylists);
+      final nextPlaylistTracks = List<Track>.unmodifiable(
+        state.localPlaylistTracks,
+      );
+      final nextDownloadedTracks = List<Track>.unmodifiable(
+        state.localDownloadedTracks,
+      );
+      final likedChanged = !_sameTrackSnapshots(_localLiked, nextLiked);
+      final playlistsChanged = !_samePlaylistSnapshots(
+        _localPlaylists,
+        nextPlaylists,
+      );
+      final playlistTracksChanged = !_sameTrackSnapshots(
+        _localPlaylistTracks,
+        nextPlaylistTracks,
+      );
+      final tracksChanged = !_sameTrackSnapshots(
+        _librarySnapshot.tracks,
+        nextDownloadedTracks,
+      );
+      if (!likedChanged &&
+          !playlistsChanged &&
+          !playlistTracksChanged &&
+          !tracksChanged) {
+        return;
+      }
+
+      _localLiked = nextLiked;
+      _localPlaylists = nextPlaylists;
+      _localPlaylistTracks = nextPlaylistTracks;
+      _librarySnapshot = OfflineLibrarySnapshot(
+        tracks: nextDownloadedTracks,
+        artistGroups: List<offline_views.OfflineArtistGroup>.unmodifiable(
+          state.offlineArtistGroups,
+        ),
+        liked: _localLiked,
+        playlists: _localPlaylists,
+        playlistTracks: _localPlaylistTracks,
+        revision: state.revision,
+      );
+      if (likedChanged && !_localLikedController.isClosed) {
+        _localLikedController.add(_localLiked);
+      }
+      if (playlistsChanged && !_localPlaylistsController.isClosed) {
+        _localPlaylistsController.add(_localPlaylists);
+      }
+      if (playlistTracksChanged && !_localPlaylistTracksController.isClosed) {
+        _localPlaylistTracksController.add(_localPlaylistTracks);
+      }
+      if (!_librarySnapshotController.isClosed) {
         _librarySnapshotController.add(_librarySnapshot);
       }
     } finally {
@@ -643,28 +699,123 @@ class OfflineDownloadManager {
     }
   }
 
-  bool _sameTrackSnapshots(List<Track> left, List<Track> right) {
+  bool _sameDownloadSnapshots(
+    List<OfflineTrackDownload> left,
+    List<OfflineTrackDownload> right,
+  ) {
     if (left.length != right.length) {
       return false;
     }
     for (var i = 0; i < left.length; i += 1) {
       final a = left[i];
       final b = right[i];
-      if (a.id != b.id ||
-          a.localId != b.localId ||
-          a.serverTrackId != b.serverTrackId ||
-          a.title != b.title ||
-          a.artist != b.artist ||
-          a.album != b.album ||
-          a.liked != b.liked ||
-          a.inPlaylists != b.inPlaylists ||
-          a.albumArtPath != b.albumArtPath ||
-          a.artistArtPath != b.artistArtPath ||
-          a.artistBannerPath != b.artistBannerPath) {
+      if (a.serverBaseUrl != b.serverBaseUrl ||
+          a.localTrackId != b.localTrackId ||
+          a.status != b.status ||
+          a.createdAt != b.createdAt ||
+          a.updatedAt != b.updatedAt ||
+          a.filePath != b.filePath ||
+          a.partialPath != b.partialPath ||
+          a.bytesDownloaded != b.bytesDownloaded ||
+          a.bytesTotal != b.bytesTotal ||
+          a.error != b.error ||
+          a.priority != b.priority ||
+          a.batchId != b.batchId ||
+          a.downloadUrl != b.downloadUrl ||
+          a.etag != b.etag ||
+          a.expectedSha256 != b.expectedSha256 ||
+          a.contentType != b.contentType ||
+          !_sameTrackSnapshot(a.track, b.track)) {
         return false;
       }
     }
     return true;
+  }
+
+  bool _sameBatchSnapshots(
+    List<OfflineDownloadBatch> left,
+    List<OfflineDownloadBatch> right,
+  ) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var i = 0; i < left.length; i += 1) {
+      final a = left[i];
+      final b = right[i];
+      if (a.batchId != b.batchId ||
+          a.serverBaseUrl != b.serverBaseUrl ||
+          a.status != b.status ||
+          a.createdAt != b.createdAt ||
+          a.updatedAt != b.updatedAt ||
+          a.totalCount != b.totalCount ||
+          a.completedCount != b.completedCount ||
+          a.failedCount != b.failedCount ||
+          a.label != b.label) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameJobSnapshots(
+    List<OfflineDownloadJob> left,
+    List<OfflineDownloadJob> right,
+  ) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var i = 0; i < left.length; i += 1) {
+      final a = left[i];
+      final b = right[i];
+      if (a.jobId != b.jobId ||
+          a.kind != b.kind ||
+          a.serverBaseUrl != b.serverBaseUrl ||
+          a.status != b.status ||
+          a.createdAt != b.createdAt ||
+          a.updatedAt != b.updatedAt ||
+          a.totalCount != b.totalCount ||
+          a.discoveredCount != b.discoveredCount ||
+          a.completedCount != b.completedCount ||
+          a.failedCount != b.failedCount ||
+          a.materializedCount != b.materializedCount ||
+          a.sourceCursor != b.sourceCursor ||
+          a.label != b.label ||
+          a.sourceId != b.sourceId ||
+          a.error != b.error) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameTrackSnapshots(List<Track> left, List<Track> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var i = 0; i < left.length; i += 1) {
+      if (!_sameTrackSnapshot(left[i], right[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameTrackSnapshot(Track a, Track b) {
+    return a.id == b.id &&
+        a.localId == b.localId &&
+        a.serverBaseUrl == b.serverBaseUrl &&
+        a.serverTrackId == b.serverTrackId &&
+        a.title == b.title &&
+        a.artist == b.artist &&
+        a.artistId == b.artistId &&
+        a.album == b.album &&
+        a.albumId == b.albumId &&
+        a.durationMs == b.durationMs &&
+        a.liked == b.liked &&
+        a.inPlaylists == b.inPlaylists &&
+        a.albumArtPath == b.albumArtPath &&
+        a.artistArtPath == b.artistArtPath &&
+        a.artistBannerPath == b.artistBannerPath;
   }
 
   bool _samePlaylistSnapshots(List<Playlist> left, List<Playlist> right) {
@@ -837,22 +988,30 @@ class _OfflineActorResult {
   final String? error;
 }
 
-class _OfflineActorSnapshot {
-  _OfflineActorSnapshot.fromCore(_OfflineDownloadActorCore core, this.revision)
-    : downloads = core.downloads,
+class _OfflineActorDownloadState {
+  _OfflineActorDownloadState.fromCore(
+    _OfflineDownloadActorCore core,
+    this.revision,
+  ) : downloads = core.downloads,
       batches = core.batches,
-      jobs = core.jobs,
-      localLiked = core.localLiked,
-      localPlaylists = core.localPlaylists,
-      localPlaylistTracks = core.localPlaylistTracks,
-      localDownloadedTracks = core.localDownloadedTracks(),
-      offlineArtistGroups = offline_views.offlineArtistGroups(
-        core.localDownloadedTracks(),
-      );
+      jobs = core.jobs;
 
   final List<OfflineTrackDownload> downloads;
   final List<OfflineDownloadBatch> batches;
   final List<OfflineDownloadJob> jobs;
+  final int revision;
+}
+
+class _OfflineActorLibraryState {
+  const _OfflineActorLibraryState({
+    required this.localLiked,
+    required this.localPlaylists,
+    required this.localPlaylistTracks,
+    required this.localDownloadedTracks,
+    required this.offlineArtistGroups,
+    required this.revision,
+  });
+
   final List<Track> localLiked;
   final List<Playlist> localPlaylists;
   final List<Track> localPlaylistTracks;
@@ -862,11 +1021,12 @@ class _OfflineActorSnapshot {
 }
 
 class _QueueTracksRequest {
-  const _QueueTracksRequest(this.tracks, this.label, this.kind);
+  const _QueueTracksRequest(this.tracks, this.label, this.kind, this.sourceId);
 
   final List<Track> tracks;
   final String? label;
   final String kind;
+  final String? sourceId;
 }
 
 class _QueueBatchRequest {
@@ -921,24 +1081,123 @@ void _offlineDownloadActorMain(_OfflineActorInit init) {
     storage: init.storageConfig.createStorage(),
   );
   var revision = 0;
+  Timer? downloadStateTimer;
+  Timer? libraryStateTimer;
+  List<Track> lastLocalLiked = const <Track>[];
+  List<Playlist> lastLocalPlaylists = const <Playlist>[];
+  List<Track> lastLocalPlaylistTracks = const <Track>[];
+  List<Track> lastLocalDownloadedTracks = const <Track>[];
   final subscriptions = <StreamSubscription<dynamic>>[];
 
-  void sendSnapshot() {
-    developer.Timeline.startSync('offline.actor.snapshot');
+  void sendDownloadState() {
+    developer.Timeline.startSync('offline.actor.downloadState');
     try {
-      init.replyPort.send(_OfflineActorSnapshot.fromCore(core, ++revision));
+      init.replyPort.send(
+        _OfflineActorDownloadState.fromCore(core, ++revision),
+      );
     } finally {
       developer.Timeline.finishSync();
     }
   }
 
-  subscriptions.add(core.stream.listen((_) => sendSnapshot()));
-  subscriptions.add(core.batchStream.listen((_) => sendSnapshot()));
-  subscriptions.add(core.jobStream.listen((_) => sendSnapshot()));
-  subscriptions.add(core.localLikedStream.listen((_) => sendSnapshot()));
-  subscriptions.add(core.localPlaylistsStream.listen((_) => sendSnapshot()));
+  void sendLibraryState() {
+    developer.Timeline.startSync('offline.actor.libraryState');
+    try {
+      final localLiked = List<Track>.unmodifiable(core.localLiked);
+      final localPlaylists = List<Playlist>.unmodifiable(core.localPlaylists);
+      final localPlaylistTracks = List<Track>.unmodifiable(
+        core.localPlaylistTracks,
+      );
+      final localDownloadedTracks = List<Track>.unmodifiable(
+        core.localDownloadedTracks(),
+      );
+      if (_actorSameTrackSnapshots(lastLocalLiked, localLiked) &&
+          _actorSamePlaylistSnapshots(lastLocalPlaylists, localPlaylists) &&
+          _actorSameTrackSnapshots(
+            lastLocalPlaylistTracks,
+            localPlaylistTracks,
+          ) &&
+          _actorSameTrackSnapshots(
+            lastLocalDownloadedTracks,
+            localDownloadedTracks,
+          )) {
+        return;
+      }
+      lastLocalLiked = localLiked;
+      lastLocalPlaylists = localPlaylists;
+      lastLocalPlaylistTracks = localPlaylistTracks;
+      lastLocalDownloadedTracks = localDownloadedTracks;
+      init.replyPort.send(
+        _OfflineActorLibraryState(
+          localLiked: localLiked,
+          localPlaylists: localPlaylists,
+          localPlaylistTracks: localPlaylistTracks,
+          localDownloadedTracks: localDownloadedTracks,
+          offlineArtistGroups: offline_views.offlineArtistGroups(
+            localDownloadedTracks,
+          ),
+          revision: ++revision,
+        ),
+      );
+    } finally {
+      developer.Timeline.finishSync();
+    }
+  }
+
+  void scheduleDownloadState() {
+    if (downloadStateTimer != null) {
+      return;
+    }
+    downloadStateTimer = Timer(
+      _OfflineDownloadActorCore._stateEmitCoalesceDelay,
+      () {
+        downloadStateTimer = null;
+        sendDownloadState();
+      },
+    );
+  }
+
+  void scheduleLibraryState() {
+    if (libraryStateTimer != null) {
+      return;
+    }
+    libraryStateTimer = Timer(
+      _OfflineDownloadActorCore._stateEmitCoalesceDelay,
+      () {
+        libraryStateTimer = null;
+        sendLibraryState();
+      },
+    );
+  }
+
+  void sendDownloadStateNow() {
+    downloadStateTimer?.cancel();
+    downloadStateTimer = null;
+    sendDownloadState();
+  }
+
+  void sendLibraryStateNow() {
+    libraryStateTimer?.cancel();
+    libraryStateTimer = null;
+    sendLibraryState();
+  }
+
   subscriptions.add(
-    core.localPlaylistTracksStream.listen((_) => sendSnapshot()),
+    core.stream.listen((_) {
+      scheduleDownloadState();
+      scheduleLibraryState();
+    }),
+  );
+  subscriptions.add(core.batchStream.listen((_) => scheduleDownloadState()));
+  subscriptions.add(core.jobStream.listen((_) => scheduleDownloadState()));
+  subscriptions.add(
+    core.localLikedStream.listen((_) => scheduleLibraryState()),
+  );
+  subscriptions.add(
+    core.localPlaylistsStream.listen((_) => scheduleLibraryState()),
+  );
+  subscriptions.add(
+    core.localPlaylistTracksStream.listen((_) => scheduleLibraryState()),
   );
 
   init.replyPort.send(_OfflineActorReady(commandPort.sendPort));
@@ -950,11 +1209,16 @@ void _offlineDownloadActorMain(_OfflineActorInit init) {
       connection.setBaseUrl(message.baseUrl);
       connection.setToken(message.token);
       final result = await _handleOfflineActorCommand(core, message);
-      if (_offlineActorCommandNeedsSnapshot(message.name)) {
-        sendSnapshot();
+      if (_offlineActorCommandNeedsDownloadState(message.name)) {
+        sendDownloadStateNow();
+      }
+      if (_offlineActorCommandMayChangeLibraryState(message.name)) {
+        sendLibraryStateNow();
       }
       init.replyPort.send(_OfflineActorResult(id: message.id, result: result));
       if (message.name == 'dispose') {
+        downloadStateTimer?.cancel();
+        libraryStateTimer?.cancel();
         for (final subscription in subscriptions) {
           await subscription.cancel();
         }
@@ -978,13 +1242,99 @@ void _offlineDownloadActorMain(_OfflineActorInit init) {
   });
 }
 
-bool _offlineActorCommandNeedsSnapshot(String name) {
+bool _offlineActorCommandNeedsDownloadState(String name) {
   return switch (name) {
     'readLocalLikeStates' ||
     'readServerLikeSyncs' ||
-    'upsertServerLikeSyncs' => false,
+    'upsertServerLikeSyncs' ||
+    'loadLocalPlaylists' ||
+    'loadLocalPlaylistTracks' ||
+    'loadLocalLikedTracks' ||
+    'setLocalLike' ||
+    'applySyncedLocalLikeState' ||
+    'createLocalPlaylist' ||
+    'renameLocalPlaylist' ||
+    'deleteLocalPlaylist' ||
+    'addLocalTrackToPlaylist' ||
+    'removeLocalTrackFromPlaylist' ||
+    'dispose' => false,
     _ => true,
   };
+}
+
+bool _offlineActorCommandMayChangeLibraryState(String name) {
+  return switch (name) {
+    'load' ||
+    'repairOfflineMetadataFragments' ||
+    'refreshOfflineMetadataForAlbum' ||
+    'refreshOfflineMetadataForArtist' ||
+    'removeTrack' ||
+    'removeDownloads' ||
+    'clearFailedAndCorrupt' ||
+    'resetLocalData' ||
+    'loadLocalPlaylists' ||
+    'loadLocalPlaylistTracks' ||
+    'loadLocalLikedTracks' ||
+    'setLocalLike' ||
+    'applySyncedLocalLikeState' ||
+    'createLocalPlaylist' ||
+    'renameLocalPlaylist' ||
+    'deleteLocalPlaylist' ||
+    'addLocalTrackToPlaylist' ||
+    'removeLocalTrackFromPlaylist' => true,
+    _ => false,
+  };
+}
+
+bool _actorSameTrackSnapshots(List<Track> left, List<Track> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (var i = 0; i < left.length; i += 1) {
+    if (!_actorSameTrackSnapshot(left[i], right[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _actorSameTrackSnapshot(Track a, Track b) {
+  return a.id == b.id &&
+      a.localId == b.localId &&
+      a.serverBaseUrl == b.serverBaseUrl &&
+      a.serverTrackId == b.serverTrackId &&
+      a.title == b.title &&
+      a.artist == b.artist &&
+      a.artistId == b.artistId &&
+      a.album == b.album &&
+      a.albumId == b.albumId &&
+      a.durationMs == b.durationMs &&
+      a.liked == b.liked &&
+      a.inPlaylists == b.inPlaylists &&
+      a.albumArtPath == b.albumArtPath &&
+      a.artistArtPath == b.artistArtPath &&
+      a.artistBannerPath == b.artistBannerPath;
+}
+
+bool _actorSamePlaylistSnapshots(List<Playlist> left, List<Playlist> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (var i = 0; i < left.length; i += 1) {
+    final a = left[i];
+    final b = right[i];
+    if (a.id != b.id ||
+        a.name != b.name ||
+        a.trackIds.length != b.trackIds.length) {
+      return false;
+    }
+    for (var j = 0; j < a.trackIds.length; j += 1) {
+      if (a.trackIds[j] != b.trackIds[j]) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 Future<Object?> _handleOfflineActorCommand(
@@ -1003,6 +1353,7 @@ Future<Object?> _handleOfflineActorCommand(
         request.tracks,
         label: request.label,
         kind: request.kind,
+        sourceId: request.sourceId,
       );
     case 'queueBatch':
       final request = command.payload! as _QueueBatchRequest;
@@ -1386,6 +1737,7 @@ class _OfflineDownloadActorCore {
     Iterable<Track> tracks, {
     String? label,
     String kind = 'tracks',
+    String? sourceId,
   }) async {
     await _ensureLoaded();
     final baseUrl = connection.baseUrl;
@@ -1440,6 +1792,7 @@ class _OfflineDownloadActorCore {
       clientRequestId: jobId,
       kind: kind,
       label: label,
+      sourceId: sourceId,
     );
     if (v2Queued != null) {
       return v2Queued;
@@ -1465,6 +1818,7 @@ class _OfflineDownloadActorCore {
       totalCount: pending.length,
       discoveredCount: pending.length,
       label: label,
+      sourceId: sourceId,
     );
     final items = <OfflineDownloadJobItem>[
       for (var index = 0; index < pending.length; index += 1)
@@ -1578,6 +1932,7 @@ class _OfflineDownloadActorCore {
     required String clientRequestId,
     required String kind,
     String? label,
+    String? sourceId,
   }) async {
     try {
       final capabilities = await connection.fetchCapabilities();
@@ -1590,7 +1945,12 @@ class _OfflineDownloadActorCore {
         clientRequestId: _queueAttemptRequestId(clientRequestId),
         scope: scope,
       );
-      return _ingestV2DownloadJob(serverJob, kind: kind, label: label);
+      return _ingestV2DownloadJob(
+        serverJob,
+        kind: kind,
+        label: label,
+        sourceId: sourceId,
+      );
     } catch (err, stackTrace) {
       AppLogger.warning(
         'Falling back to legacy offline queue after v2 job failure: $err',
@@ -1609,6 +1969,7 @@ class _OfflineDownloadActorCore {
     DownloadJobV2 serverJob, {
     required String kind,
     String? label,
+    String? sourceId,
   }) async {
     final jobId = serverJob.jobId.trim();
     if (jobId.isEmpty) {
@@ -1634,6 +1995,7 @@ class _OfflineDownloadActorCore {
       discoveredCount: serverJob.items.length,
       failedCount: serverJob.failedCount,
       label: label,
+      sourceId: sourceId ?? _v2ScopeSourceId(serverJob.scope, kind),
     );
     final jobItems = <OfflineDownloadJobItem>[
       for (final item in serverJob.items)
@@ -1658,6 +2020,9 @@ class _OfflineDownloadActorCore {
 
     final downloads = <OfflineTrackDownload>[];
     for (final item in serverJob.items) {
+      if (downloads.length >= _rollingWindowSize) {
+        break;
+      }
       final freshPausedItem =
           item.status == 'paused' && item.offlineMetadata != null;
       if (!item.readyToDownload && !freshPausedItem) {
@@ -1745,6 +2110,14 @@ class _OfflineDownloadActorCore {
     }
   }
 
+  String? _v2ScopeSourceId(DownloadJobScopeV2 scope, String kind) {
+    if (kind != 'artist' && kind != 'album') {
+      return null;
+    }
+    final id = scope.id?.trim();
+    return id == null || id.isEmpty ? null : id;
+  }
+
   OfflineDownloadStatus _statusFromV2JobItem(
     DownloadJobItemV2 item, {
     bool freshQueue = false,
@@ -1800,6 +2173,7 @@ class _OfflineDownloadActorCore {
       clientRequestId: jobId,
       kind: 'artist',
       label: artist.name,
+      sourceId: artist.id,
     );
     if (v2Queued != null) {
       return v2Queued;
@@ -1824,6 +2198,7 @@ class _OfflineDownloadActorCore {
       updatedAt: now,
       totalCount: sources.fold<int>(0, (sum, album) => sum + album.trackCount),
       label: artist.name,
+      sourceId: artist.id,
     );
     final jobSources = <OfflineDownloadJobSource>[
       for (var index = 0; index < sources.length; index += 1)
@@ -1932,6 +2307,25 @@ class _OfflineDownloadActorCore {
     _pausedServerUrls.add(normalized);
     final now = DateTime.now();
     var changed = false;
+    final pausedJobs = <OfflineDownloadJob>[];
+    _jobs = _jobs
+        .map((job) {
+          if (job.serverBaseUrl != normalized || !_canPause(job.status)) {
+            return job;
+          }
+          final updated = job.copyWith(
+            status: OfflineDownloadStatus.paused,
+            updatedAt: now,
+          );
+          pausedJobs.add(updated);
+          return updated;
+        })
+        .toList(growable: false);
+    if (pausedJobs.isNotEmpty) {
+      await _storage.upsertDownloadJobs(pausedJobs);
+      _emitJobs();
+      changed = true;
+    }
     for (final download in _downloads) {
       if (download.serverBaseUrl != normalized || !_canPause(download.status)) {
         continue;
@@ -1975,6 +2369,26 @@ class _OfflineDownloadActorCore {
         ),
         persist: true,
       );
+      changed = true;
+    }
+    final resumedJobs = <OfflineDownloadJob>[];
+    _jobs = _jobs
+        .map((job) {
+          if (job.serverBaseUrl != baseUrl ||
+              job.status != OfflineDownloadStatus.paused) {
+            return job;
+          }
+          final updated = job.copyWith(
+            status: OfflineDownloadStatus.queued,
+            updatedAt: now,
+          );
+          resumedJobs.add(updated);
+          return updated;
+        })
+        .toList(growable: false);
+    if (resumedJobs.isNotEmpty) {
+      await _storage.upsertDownloadJobs(resumedJobs);
+      _emitJobs();
       changed = true;
     }
     if (changed) {
@@ -2833,6 +3247,9 @@ class _OfflineDownloadActorCore {
     _topUpRunning = true;
     try {
       final baseUrl = connection.baseUrl;
+      if (_pausedServerUrls.contains(baseUrl)) {
+        return;
+      }
       final runnable = _jobs
           .where(
             (job) =>
@@ -2853,6 +3270,14 @@ class _OfflineDownloadActorCore {
   Future<void> _topUpRollingJob(OfflineDownloadJob job) async {
     developer.Timeline.startSync('offline.job.topUp');
     try {
+      final latestJob = _jobById(job.jobId);
+      if (latestJob == null ||
+          latestJob.status == OfflineDownloadStatus.paused ||
+          latestJob.status == OfflineDownloadStatus.canceled ||
+          _pausedServerUrls.contains(latestJob.serverBaseUrl)) {
+        return;
+      }
+      job = latestJob;
       final activeWindow = _downloads
           .where(
             (download) =>
@@ -4691,7 +5116,8 @@ class _OfflineDownloadActorCore {
           a.status != b.status ||
           a.completedCount != b.completedCount ||
           a.failedCount != b.failedCount ||
-          a.materializedCount != b.materializedCount) {
+          a.materializedCount != b.materializedCount ||
+          a.sourceId != b.sourceId) {
         return false;
       }
     }

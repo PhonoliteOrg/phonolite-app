@@ -144,35 +144,56 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                         runSpacing: 10,
                                         crossAxisAlignment:
                                             WrapCrossAlignment.center,
-                                        children: [
-                                          TechButton(
-                                            label: downloadSummary.label,
-                                            icon: downloadSummary.icon,
-                                            onTap:
-                                                !isLoading &&
-                                                    downloadSummary.canStart
-                                                ? () => _confirmDownloadArtist(
-                                                    controller,
-                                                    albums,
-                                                    downloadSummary,
-                                                  )
-                                                : null,
-                                          ),
-                                          if (!_albumSelectionMode)
-                                            TechButton(
-                                              label: 'Edit',
-                                              icon: Icons.edit_rounded,
-                                              onTap:
-                                                  removableAlbumIds.isNotEmpty
-                                                  ? _startAlbumSelection
-                                                  : null,
-                                            ),
-                                          CollectionViewToggleButton(
-                                            isListView: showCollectionList,
-                                            onPressed: controller
-                                                .toggleCollectionListMode,
-                                          ),
-                                        ],
+                                        children: _albumSelectionMode
+                                            ? [
+                                                DownloadSelectionToolbar(
+                                                  selectedCount:
+                                                      selectedAlbums.length,
+                                                  totalCount:
+                                                      removableAlbumIds.length,
+                                                  onCancel:
+                                                      _clearAlbumSelection,
+                                                  onSelectAll: () =>
+                                                      _selectAllAlbums(
+                                                        removableAlbumIds,
+                                                      ),
+                                                  onDeselectAll:
+                                                      _deselectAllAlbums,
+                                                  onRemove:
+                                                      selectedAlbums.isEmpty
+                                                      ? null
+                                                      : () =>
+                                                            _removeSelectedAlbumDownloads(
+                                                              controller,
+                                                              selectedAlbums,
+                                                            ),
+                                                ),
+                                              ]
+                                            : [
+                                                TechButton(
+                                                  label: downloadSummary.label,
+                                                  icon: downloadSummary.icon,
+                                                  chrome: TechButtonChrome
+                                                      .borderless,
+                                                  onTap:
+                                                      !isLoading &&
+                                                          downloadSummary
+                                                              .canStart
+                                                      ? () =>
+                                                            _confirmDownloadArtist(
+                                                              controller,
+                                                              albums,
+                                                              downloadSummary,
+                                                            )
+                                                      : null,
+                                                ),
+                                                CollectionViewToggleButton(
+                                                  isListView:
+                                                      showCollectionList,
+                                                  onPressed: controller
+                                                      .toggleCollectionListMode,
+                                                ),
+                                              ],
                                       ),
                                     ],
                                   ),
@@ -190,30 +211,6 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                 ),
                               ),
                             ),
-                            if (_albumSelectionMode)
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  0,
-                                  20,
-                                  12,
-                                ),
-                                sliver: SliverToBoxAdapter(
-                                  child: DownloadSelectionToolbar(
-                                    selectedCount: selectedAlbums.length,
-                                    totalCount: removableAlbumIds.length,
-                                    onCancel: _clearAlbumSelection,
-                                    onSelectAll: () =>
-                                        _selectAllAlbums(removableAlbumIds),
-                                    onRemove: selectedAlbums.isEmpty
-                                        ? null
-                                        : () => _removeSelectedAlbumDownloads(
-                                            controller,
-                                            selectedAlbums,
-                                          ),
-                                  ),
-                                ),
-                              ),
                             if (isLoading && albums.isEmpty)
                               loadingSliver()
                             else if (albums.isEmpty)
@@ -363,6 +360,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
           : 'Queue downloads for every album by ${_artist.name}? This may use significant storage.',
       confirmLabel: 'Download',
       confirmVariant: TechButtonVariant.standard,
+      actionChrome: TechButtonChrome.borderless,
     );
     if (!confirmed || !mounted) {
       return;
@@ -510,7 +508,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
     });
   }
 
-  void _startAlbumSelection() {
+  void _deselectAllAlbums() {
     setState(() {
       _albumSelectionMode = true;
       _selectedAlbumIds.clear();

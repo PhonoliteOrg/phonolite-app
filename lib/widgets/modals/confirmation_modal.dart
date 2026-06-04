@@ -11,6 +11,7 @@ class ConfirmationModal extends StatelessWidget {
     this.confirmLabel = 'Yes',
     this.cancelLabel = 'Cancel',
     this.confirmVariant = TechButtonVariant.danger,
+    this.actionChrome = TechButtonChrome.framed,
   });
 
   final String title;
@@ -18,6 +19,7 @@ class ConfirmationModal extends StatelessWidget {
   final String confirmLabel;
   final String cancelLabel;
   final TechButtonVariant confirmVariant;
+  final TechButtonChrome actionChrome;
 
   static Future<bool> show(
     BuildContext context, {
@@ -26,6 +28,7 @@ class ConfirmationModal extends StatelessWidget {
     String confirmLabel = 'Yes',
     String cancelLabel = 'Cancel',
     TechButtonVariant confirmVariant = TechButtonVariant.danger,
+    TechButtonChrome actionChrome = TechButtonChrome.framed,
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -35,6 +38,7 @@ class ConfirmationModal extends StatelessWidget {
         confirmLabel: confirmLabel,
         cancelLabel: cancelLabel,
         confirmVariant: confirmVariant,
+        actionChrome: actionChrome,
       ),
     );
     return result ?? false;
@@ -62,14 +66,23 @@ class ConfirmationModal extends StatelessWidget {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(cancelLabel),
-        ),
+        if (actionChrome == TechButtonChrome.borderless)
+          TechButton(
+            label: cancelLabel,
+            density: TechButtonDensity.compact,
+            chrome: actionChrome,
+            onTap: () => Navigator.of(context).pop(false),
+          )
+        else
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(cancelLabel),
+          ),
         TechButton(
           label: confirmLabel,
           density: TechButtonDensity.compact,
           variant: confirmVariant,
+          chrome: actionChrome,
           onTap: () => Navigator.of(context).pop(true),
         ),
       ],
