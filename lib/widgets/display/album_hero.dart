@@ -10,6 +10,7 @@ import '../ui/backdrop_color.dart';
 import '../ui/expandable_summary_text.dart';
 import 'album_art.dart';
 import 'album_labels.dart';
+import 'genre_text.dart';
 
 class AlbumHero extends StatelessWidget {
   const AlbumHero({
@@ -27,7 +28,10 @@ class AlbumHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = ObsidianScale.of(context);
     double s(double value) => value * scale;
-    final detailsLine = albumDetailLabel(album, genreLimit: 4);
+    final genreLine = genreBulletLine(album.genres);
+    final detailsLine = genreLine.isEmpty
+        ? albumDetailLabel(album, genreLimit: 0)
+        : '${albumDetailLabel(album, genreLimit: 0)} / $genreLine';
     final summary = album.summary?.trim();
     final imagePath = coverUrl.trim();
     final provider = imagePath.isEmpty

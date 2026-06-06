@@ -397,22 +397,47 @@ class OfflineDownloadManager {
     );
   }
 
-  Future<Playlist> createLocalPlaylist(String name) {
+  Future<Playlist> createLocalPlaylist(String name, {String? description}) {
     final core = _inlineCore;
     if (core != null) {
-      return core.createLocalPlaylist(name);
+      return core.createLocalPlaylist(name, description: description);
     }
-    return _send<Playlist>('createLocalPlaylist', name);
+    return _send<Playlist>(
+      'createLocalPlaylist',
+      _PlaylistDetailsRequest('', name, description),
+    );
   }
 
-  Future<Playlist?> renameLocalPlaylist(String playlistId, String name) {
+  Future<Playlist?> renameLocalPlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+  }) {
     final core = _inlineCore;
     if (core != null) {
-      return core.renameLocalPlaylist(playlistId, name);
+      return core.renameLocalPlaylist(
+        playlistId,
+        name,
+        description: description,
+      );
     }
     return _send<Playlist?>(
       'renameLocalPlaylist',
-      _PlaylistNameRequest(playlistId, name),
+      _PlaylistDetailsRequest(playlistId, name, description),
+    );
+  }
+
+  Future<Playlist?> updateLocalPlaylistImage(
+    String playlistId,
+    PlaylistImageEdit imageEdit,
+  ) {
+    final core = _inlineCore;
+    if (core != null) {
+      return core.updateLocalPlaylistImage(playlistId, imageEdit);
+    }
+    return _send<Playlist?>(
+      'updateLocalPlaylistImage',
+      _PlaylistImageRequest(playlistId, imageEdit),
     );
   }
 
@@ -827,6 +852,9 @@ class OfflineDownloadManager {
       final b = right[i];
       if (a.id != b.id ||
           a.name != b.name ||
+          a.description != b.description ||
+          a.imageRef != b.imageRef ||
+          a.imagePath != b.imagePath ||
           a.trackIds.length != b.trackIds.length) {
         return false;
       }
@@ -1058,11 +1086,19 @@ class _SyncedLocalLikeRequest {
   final int updatedAt;
 }
 
-class _PlaylistNameRequest {
-  const _PlaylistNameRequest(this.playlistId, this.name);
+class _PlaylistDetailsRequest {
+  const _PlaylistDetailsRequest(this.playlistId, this.name, this.description);
 
   final String playlistId;
   final String name;
+  final String? description;
+}
+
+class _PlaylistImageRequest {
+  const _PlaylistImageRequest(this.playlistId, this.imageEdit);
+
+  final String playlistId;
+  final PlaylistImageEdit imageEdit;
 }
 
 class _PlaylistTrackRequest {
@@ -1254,6 +1290,7 @@ bool _offlineActorCommandNeedsDownloadState(String name) {
     'applySyncedLocalLikeState' ||
     'createLocalPlaylist' ||
     'renameLocalPlaylist' ||
+    'updateLocalPlaylistImage' ||
     'deleteLocalPlaylist' ||
     'addLocalTrackToPlaylist' ||
     'removeLocalTrackFromPlaylist' ||
@@ -1279,6 +1316,7 @@ bool _offlineActorCommandMayChangeLibraryState(String name) {
     'applySyncedLocalLikeState' ||
     'createLocalPlaylist' ||
     'renameLocalPlaylist' ||
+    'updateLocalPlaylistImage' ||
     'deleteLocalPlaylist' ||
     'addLocalTrackToPlaylist' ||
     'removeLocalTrackFromPlaylist' => true,
@@ -1325,6 +1363,9 @@ bool _actorSamePlaylistSnapshots(List<Playlist> left, List<Playlist> right) {
     final b = right[i];
     if (a.id != b.id ||
         a.name != b.name ||
+        a.description != b.description ||
+        a.imageRef != b.imageRef ||
+        a.imagePath != b.imagePath ||
         a.trackIds.length != b.trackIds.length) {
       return false;
     }
@@ -1447,10 +1488,24 @@ Future<Object?> _handleOfflineActorCommand(
       );
       return null;
     case 'createLocalPlaylist':
-      return core.createLocalPlaylist(command.payload! as String);
+      final request = command.payload! as _PlaylistDetailsRequest;
+      return core.createLocalPlaylist(
+        request.name,
+        description: request.description,
+      );
     case 'renameLocalPlaylist':
-      final request = command.payload! as _PlaylistNameRequest;
-      return core.renameLocalPlaylist(request.playlistId, request.name);
+      final request = command.payload! as _PlaylistDetailsRequest;
+      return core.renameLocalPlaylist(
+        request.playlistId,
+        request.name,
+        description: request.description,
+      );
+    case 'updateLocalPlaylistImage':
+      final request = command.payload! as _PlaylistImageRequest;
+      return core.updateLocalPlaylistImage(
+        request.playlistId,
+        request.imageEdit,
+      );
     case 'deleteLocalPlaylist':
       await core.deleteLocalPlaylist(command.payload! as String);
       return null;
@@ -2735,14 +2790,40 @@ class _OfflineDownloadActorCore {
     await _loadLocalUserData();
   }
 
-  Future<Playlist> createLocalPlaylist(String name) async {
-    final playlist = await _storage.createLocalPlaylist(name);
+  Future<Playlist> createLocalPlaylist(
+    String name, {
+    String? description,
+  }) async {
+    final playlist = await _storage.createLocalPlaylist(
+      name,
+      description: description,
+    );
     await loadLocalPlaylists();
     return playlist;
   }
 
-  Future<Playlist?> renameLocalPlaylist(String playlistId, String name) async {
-    final playlist = await _storage.renameLocalPlaylist(playlistId, name);
+  Future<Playlist?> renameLocalPlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+  }) async {
+    final playlist = await _storage.renameLocalPlaylist(
+      playlistId,
+      name,
+      description: description,
+    );
+    await loadLocalPlaylists();
+    return playlist;
+  }
+
+  Future<Playlist?> updateLocalPlaylistImage(
+    String playlistId,
+    PlaylistImageEdit imageEdit,
+  ) async {
+    final playlist = await _storage.updateLocalPlaylistImage(
+      playlistId,
+      imageEdit,
+    );
     await loadLocalPlaylists();
     return playlist;
   }
@@ -3874,10 +3955,12 @@ class _OfflineDownloadActorCore {
         request: _DownloadWorkerRequest(
           serverBaseUrl: download.serverBaseUrl,
           trackId: _serverTrackId(download),
-          url: connection.buildDownloadUrl(
-            _serverTrackId(download),
-            downloadUrl: download.downloadUrl,
-          ),
+          url: download.downloadUrl?.trim().isEmpty ?? true
+              ? connection.buildTrackDownloadUrl(_serverTrackId(download))
+              : connection.buildDownloadUrl(
+                  _serverTrackId(download),
+                  downloadUrl: download.downloadUrl,
+                ),
           token: connection.token!,
           partialPath: partialFile.path,
           startByte: bytesDownloaded > 0 ? bytesDownloaded : null,

@@ -44,7 +44,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final VoidCallback onStop;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekPreview;
-  final ValueChanged<ShuffleMode> onShuffleChanged;
+  final ShuffleModeChanged onShuffleChanged;
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;

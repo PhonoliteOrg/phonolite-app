@@ -38,11 +38,11 @@ void main() {
     ]);
   });
 
-  test('offline schema has v8 migration tables', () {
+  test('offline schema has v10 migration tables', () {
     final source = readProjectFile('lib/entities/offline_library.dart');
 
     expectContainsAll(source, [
-      'static const int _schemaVersion = 8',
+      'static const int _schemaVersion = 10',
       'CREATE TABLE IF NOT EXISTS client_identity',
       'CREATE TABLE IF NOT EXISTS metadata_snapshots',
       'CREATE TABLE IF NOT EXISTS file_artifacts',

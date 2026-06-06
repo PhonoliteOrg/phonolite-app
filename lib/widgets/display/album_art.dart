@@ -12,39 +12,43 @@ class AlbumArt extends StatelessWidget {
     required this.size,
     this.imageUrl,
     this.headers,
+    this.placeholder,
   });
 
   final String title;
   final double size;
   final String? imageUrl;
   final Map<String, String>? headers;
+  final Widget? placeholder;
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFFFE581), accentGold],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        title.isNotEmpty ? title.substring(0, 1).toUpperCase() : '?',
-        style: GoogleFonts.rajdhani(
-          color: Colors.black,
-          fontSize: size / 3,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
+    final fallback =
+        placeholder ??
+        Container(
+          width: size,
+          height: size,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFFFE581), accentGold],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            title.isNotEmpty ? title.substring(0, 1).toUpperCase() : '?',
+            style: GoogleFonts.rajdhani(
+              color: Colors.black,
+              fontSize: size / 3,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        );
 
     final imagePath = imageUrl?.trim();
     final image = imagePath == null || imagePath.isEmpty
-        ? placeholder
+        ? fallback
         : _isRemoteImage(imagePath)
         ? Image.network(
             imagePath,
@@ -52,14 +56,14 @@ class AlbumArt extends StatelessWidget {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder,
+            errorBuilder: (_, __, ___) => fallback,
           )
         : Image.file(
             File(imagePath),
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder,
+            errorBuilder: (_, __, ___) => fallback,
           );
 
     return image;

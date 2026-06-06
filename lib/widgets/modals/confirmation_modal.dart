@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../ui/obsidian_theme.dart';
 import '../ui/tech_button.dart';
+import 'modal_action_button.dart';
 
 class ConfirmationModal extends StatelessWidget {
   const ConfirmationModal({
@@ -66,25 +67,29 @@ class ConfirmationModal extends StatelessWidget {
         ),
       ),
       actions: [
-        if (actionChrome == TechButtonChrome.borderless)
-          TechButton(
+        if (actionChrome == TechButtonChrome.borderless) ...[
+          ModalActionButton(
             label: cancelLabel,
-            density: TechButtonDensity.compact,
-            chrome: actionChrome,
-            onTap: () => Navigator.of(context).pop(false),
-          )
-        else
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          ModalActionButton(
+            label: confirmLabel,
+            variant: confirmVariant,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ] else ...[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(cancelLabel),
           ),
-        TechButton(
-          label: confirmLabel,
-          density: TechButtonDensity.compact,
-          variant: confirmVariant,
-          chrome: actionChrome,
-          onTap: () => Navigator.of(context).pop(true),
-        ),
+          TechButton(
+            label: confirmLabel,
+            density: TechButtonDensity.compact,
+            variant: confirmVariant,
+            chrome: actionChrome,
+            onTap: () => Navigator.of(context).pop(true),
+          ),
+        ],
       ],
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/models.dart';
 import 'package:phonolite_app/entities/offline_library.dart';
 import 'package:phonolite_app/widgets/display/download_selection_toolbar.dart';
@@ -13,6 +14,7 @@ import 'package:phonolite_app/widgets/inputs/search_hud.dart';
 import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
 import 'package:phonolite_app/widgets/modals/confirmation_modal.dart';
 import 'package:phonolite_app/widgets/modals/download_manager_panel.dart';
+import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
 import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/collection_view_toggle_button.dart';
 import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
@@ -51,6 +53,69 @@ void main() {
       ]);
       expect(source, isNot(contains(mojibakeBullet)));
       expect(source, isNot(contains(latin1Bullet)));
+    });
+
+    test('now playing scrubbers hold local drag state during seeks', () {
+      final source = readProjectFile(
+        'lib/widgets/display/now_playing_bar.dart',
+      );
+
+      expectContainsAll(source, const [
+        'class _CompactFooterRowState extends State<_CompactFooterRow>',
+        'class _ProgressBarState extends State<_ProgressBar>',
+        'Duration? _dragPosition;',
+        'bool _isDragging = false;',
+        'const int _scrubberAuthoritativeDiscontinuityMs = 1500;',
+        'const int _scrubberMaxInterpolationLeadMs = 1500;',
+        'Duration _boundedScrubberDisplayPosition({',
+        'final leadCeilingMs = authoritativeMs + _scrubberMaxInterpolationLeadMs;',
+        'final authoritativeDeltaMs =',
+        'widget.position.inMilliseconds - oldWidget.position.inMilliseconds;',
+        'authoritativeDeltaMs.abs() >=',
+        '_scrubberAuthoritativeDiscontinuityMs',
+        '_boundedScrubberDisplayPosition(',
+        'authoritativePosition: widget.position,',
+        'if (_isDragging) {',
+        'void _beginDrag(double value)',
+        'void _updateDrag(double value)',
+        'void _endDrag(double value)',
+        'widget.onSeekPreview(position);',
+        'widget.onSeek(position);',
+        'onChangeStart: widget.enabled ? _beginDrag : null,',
+        'onChanged: widget.enabled ? _updateDrag : null,',
+        'onChangeEnd: widget.enabled ? _endDrag : null,',
+      ]);
+      expect(
+        RegExp(r'Duration\? _dragPosition;').allMatches(source),
+        hasLength(2),
+      );
+      expect(
+        RegExp(r'bool _isDragging = false;').allMatches(source),
+        hasLength(2),
+      );
+      expect(
+        RegExp(
+          r'onChangeStart: widget\.enabled \? _beginDrag : null,',
+        ).allMatches(source),
+        hasLength(2),
+      );
+      expect(
+        RegExp(r'final authoritativeDeltaMs =').allMatches(source),
+        hasLength(2),
+      );
+      expect(
+        RegExp(r'authoritativePosition: widget\.position,').allMatches(source),
+        hasLength(4),
+      );
+      expect(source, isNot(contains('deltaMs >= 600')));
+      expect(
+        source,
+        isNot(
+          contains(
+            'widget.position.inMilliseconds - _displayPosition.inMilliseconds',
+          ),
+        ),
+      );
     });
 
     testWidgets('search hud clears input and routes submit actions', (
@@ -204,6 +269,13 @@ void main() {
 
       expect(find.text('DOWNLOAD'), findsOneWidget);
       expect(find.text('CANCEL'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(ModalActionButton),
+        ),
+        findsNWidgets(2),
+      );
       expect(
         find.descendant(
           of: find.byType(AlertDialog),
@@ -414,18 +486,27 @@ void main() {
           PlaylistEditorModal(
             title: 'Rename playlist',
             initialValue: '',
-            onSubmit: (value) => savedName = value,
+            onSubmit: (value, _, _, _) => savedName = value,
           ),
         ),
       );
 
       await tester.enterText(
-        find.byType(TextField),
+        find.byType(TextField).first,
         '  A very long playlist name that should be clamped  ',
       );
       await tester.pumpAndSettle();
 
       expect(find.text('24/24'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(PlaylistEditorModal),
+          matching: find.byType(ModalActionButton),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('LOCAL'), findsNothing);
+      expect(find.text('SERVER'), findsNothing);
 
       await tester.tap(find.text('SAVE'));
       await tester.pumpAndSettle();
@@ -433,6 +514,34 @@ void main() {
       expect(savedName, isNotNull);
       expect(savedName!.length, lessThanOrEqualTo(24));
       expect(savedName, savedName!.trim());
+    });
+
+    testWidgets('playlist creation editor can choose local or server target', (
+      tester,
+    ) async {
+      PlaylistEditorTarget? savedTarget;
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          PlaylistEditorModal(
+            title: 'Create playlist',
+            initialValue: '',
+            showTargetSelector: true,
+            onSubmit: (_, _, _, target) => savedTarget = target,
+          ),
+        ),
+      );
+
+      expect(find.text('LOCAL'), findsOneWidget);
+      expect(find.text('SERVER'), findsOneWidget);
+
+      await tester.tap(find.text('SERVER'));
+      await tester.enterText(find.byType(TextField).first, 'Server Mix');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SAVE'));
+      await tester.pumpAndSettle();
+
+      expect(savedTarget, PlaylistEditorTarget.server);
     });
 
     testWidgets('add to playlist modal filters, adds, and removes tracks', (
@@ -452,14 +561,12 @@ void main() {
       await tester.pumpWidget(
         wrapInTestApp(
           AddToPlaylistModal(
-            localPlaylists: playlists,
-            serverPlaylists: const <Playlist>[],
+            scope: ActionScope.local,
+            playlists: playlists,
             trackId: 't1',
-            localTrackId: 't1',
-            canUseLocalPlaylists: true,
-            onLocalSelected: (playlist) => selectedIds.add(playlist.id),
-            onServerSelected: (playlist) => selectedIds.add(playlist.id),
-            onLocalRemoved: (playlist) => removedIds.add(playlist.id),
+            canUsePlaylists: true,
+            onSelected: (playlist) => selectedIds.add(playlist.id),
+            onRemoved: (playlist) => removedIds.add(playlist.id),
           ),
         ),
       );

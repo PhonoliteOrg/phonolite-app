@@ -6,6 +6,7 @@ import '../entities/auth_state.dart';
 import '../entities/custom_shuffle_settings.dart';
 import '../entities/offline_storage_settings.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
+import '../widgets/layout/library_header.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/ui/obsidian_theme.dart';
@@ -37,231 +38,207 @@ class SettingsPage extends StatelessWidget {
             final logLabel = messages.isEmpty
                 ? 'No events yet'
                 : '${messages.length} log entries';
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const ObsidianSectionHeader(
-                  title: 'Settings',
-                  subtitle: 'Preferences, diagnostics, and session controls',
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Session',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: ObsidianPalette.textMuted,
-                    letterSpacing: 1.1,
+            return CustomScrollView(
+              slivers: [
+                const SliverPadding(
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  sliver: SliverToBoxAdapter(
+                    child: LibraryHeader(title: 'SETTINGS', moduleCount: 0),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _settingsRow(
-                  context,
-                  leading: Icon(
-                    authState.isAuthorized
-                        ? Icons.cloud_done_rounded
-                        : Icons.cloud_off_rounded,
-                  ),
-                  title: 'Server',
-                  subtitle: serverLabel,
-                  trailing: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      TechButton(
-                        label: _loginActionLabel(authState.status),
-                        icon: authState.isAuthorized
-                            ? Icons.swap_horiz_rounded
-                            : Icons.login_rounded,
-                        density: TechButtonDensity.compact,
-                        onTap: authState.status == SessionStatus.checking
-                            ? null
-                            : () => _openLogin(context, controller),
-                      ),
-                      if (authState.isAuthorized)
-                        TechButton(
-                          label: 'Disconnect',
-                          icon: Icons.logout_rounded,
-                          variant: TechButtonVariant.danger,
-                          density: TechButtonDensity.compact,
-                          onTap: () async => controller.logout(),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Playback',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: ObsidianPalette.textMuted,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                StreamBuilder<CustomShuffleSettings>(
-                  stream: controller.customShuffleSettingsStream,
-                  initialData: controller.customShuffleSettings,
-                  builder: (context, snapshot) {
-                    final settings =
-                        snapshot.data ?? controller.customShuffleSettings;
-                    final artistCount = settings.artistIds.length;
-                    final genreCount = settings.genres.length;
-                    final summary = authState.isAuthorized
-                        ? 'Artists: $artistCount, Genres: $genreCount'
-                        : 'Connect to edit server shuffle filters';
-                    return _settingsRow(
-                      context,
-                      leading: const Icon(Icons.shuffle_rounded),
-                      title: 'Custom Shuffle',
-                      subtitle: summary,
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CustomShuffleSettingsPage(),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Offline Storage',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: ObsidianPalette.textMuted,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                StreamBuilder<OfflineStorageLocations>(
-                  stream: controller.offlineStorageLocationsStream,
-                  initialData: controller.offlineStorageLocations,
-                  builder: (context, snapshot) {
-                    final locations =
-                        snapshot.data ?? controller.offlineStorageLocations;
-                    return Column(
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _settingsRow(
-                          context,
-                          leading: const Icon(Icons.storage_rounded),
-                          title: 'Metadata database',
-                          subtitle: _storageSubtitle(locations, metadata: true),
-                          trailing: _StorageActions(
-                            onChange: locations == null
-                                ? null
-                                : () => _openStoragePathDialog(
-                                    context,
-                                    title: 'Metadata database folder',
-                                    initialPath: locations.metadataDirectory,
-                                    isDefault:
-                                        locations.metadataDirectoryIsDefault,
-                                    onSave: controller
-                                        .updateOfflineMetadataDirectory,
-                                  ),
-                            onReset: locations == null
-                                ? null
-                                : () => controller
-                                      .resetOfflineMetadataDirectory(),
-                          ),
-                        ),
-                        Divider(
-                          height: 1,
-                          color: ObsidianPalette.border.withValues(alpha: 0.6),
-                        ),
-                        _settingsRow(
-                          context,
-                          leading: const Icon(Icons.folder_rounded),
-                          title: 'Downloaded audio',
-                          subtitle: _storageSubtitle(
-                            locations,
-                            metadata: false,
-                          ),
-                          trailing: _StorageActions(
-                            onChange: locations == null
-                                ? null
-                                : () => _openStoragePathDialog(
-                                    context,
-                                    title: 'Downloaded audio folder',
-                                    initialPath: locations.downloadsDirectory,
-                                    isDefault:
-                                        locations.downloadsDirectoryIsDefault,
-                                    onSave: controller
-                                        .updateOfflineDownloadsDirectory,
-                                  ),
-                            onReset: locations == null
-                                ? null
-                                : () => controller
-                                      .resetOfflineDownloadsDirectory(),
-                          ),
-                        ),
-                        Divider(
-                          height: 1,
-                          color: ObsidianPalette.border.withValues(alpha: 0.6),
-                        ),
+                        const ObsidianSectionHeader(title: 'Session'),
+                        const SizedBox(height: 12),
                         _settingsRow(
                           context,
                           leading: Icon(
-                            Icons.delete_forever_rounded,
-                            color: theme.colorScheme.error,
+                            authState.isAuthorized
+                                ? Icons.cloud_done_rounded
+                                : Icons.cloud_off_rounded,
                           ),
-                          title: 'Reset offline data',
-                          subtitle:
-                              'Delete local tracks, artwork, metadata, and offline databases',
-                          titleColor: theme.colorScheme.error,
-                          trailing: TechButton(
-                            label: 'Full reset',
-                            icon: Icons.delete_forever_rounded,
-                            variant: TechButtonVariant.danger,
-                            density: TechButtonDensity.compact,
-                            onTap: locations == null
-                                ? null
-                                : () => _confirmResetOfflineData(
-                                    context,
-                                    controller,
-                                  ),
+                          title: 'Server',
+                          subtitle: serverLabel,
+                          trailing: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              TechButton(
+                                label: _loginActionLabel(authState.status),
+                                icon: authState.isAuthorized
+                                    ? Icons.swap_horiz_rounded
+                                    : Icons.login_rounded,
+                                density: TechButtonDensity.compact,
+                                chrome: TechButtonChrome.borderless,
+                                onTap:
+                                    authState.status == SessionStatus.checking
+                                    ? null
+                                    : () => _openLogin(context, controller),
+                              ),
+                              if (authState.isAuthorized)
+                                TechButton(
+                                  label: 'Disconnect',
+                                  icon: Icons.logout_rounded,
+                                  variant: TechButtonVariant.danger,
+                                  density: TechButtonDensity.compact,
+                                  chrome: TechButtonChrome.borderless,
+                                  onTap: () async => controller.logout(),
+                                ),
+                            ],
                           ),
                         ),
+                        const SizedBox(height: 24),
+                        const ObsidianSectionHeader(title: 'Playback'),
+                        const SizedBox(height: 12),
+                        StreamBuilder<CustomShuffleSettings>(
+                          stream: controller.customShuffleSettingsStream,
+                          initialData: controller.customShuffleSettings,
+                          builder: (context, snapshot) {
+                            final settings =
+                                snapshot.data ??
+                                controller.customShuffleSettings;
+                            final artistCount = settings.artistIds.length;
+                            final genreCount = settings.genres.length;
+                            final summary = authState.isAuthorized
+                                ? 'Artists: $artistCount, Genres: $genreCount'
+                                : 'Connect to edit server shuffle filters';
+                            return _settingsRow(
+                              context,
+                              leading: const Icon(Icons.shuffle_rounded),
+                              title: 'Custom Shuffle',
+                              subtitle: summary,
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const CustomShuffleSettingsPage(),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        const ObsidianSectionHeader(title: 'Offline Storage'),
+                        const SizedBox(height: 12),
+                        StreamBuilder<OfflineStorageLocations>(
+                          stream: controller.offlineStorageLocationsStream,
+                          initialData: controller.offlineStorageLocations,
+                          builder: (context, snapshot) {
+                            final locations =
+                                snapshot.data ??
+                                controller.offlineStorageLocations;
+                            return Column(
+                              children: [
+                                _settingsRow(
+                                  context,
+                                  leading: const Icon(Icons.storage_rounded),
+                                  title: 'Metadata database',
+                                  subtitle: _storageSubtitle(
+                                    locations,
+                                    metadata: true,
+                                  ),
+                                  trailing: _StorageActions(
+                                    onChange: locations == null
+                                        ? null
+                                        : () => _openStoragePathDialog(
+                                            context,
+                                            title: 'Metadata database folder',
+                                            initialPath:
+                                                locations.metadataDirectory,
+                                            isDefault: locations
+                                                .metadataDirectoryIsDefault,
+                                            onSave: controller
+                                                .updateOfflineMetadataDirectory,
+                                          ),
+                                    onReset: locations == null
+                                        ? null
+                                        : () => controller
+                                              .resetOfflineMetadataDirectory(),
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                _settingsRow(
+                                  context,
+                                  leading: const Icon(Icons.folder_rounded),
+                                  title: 'Downloaded audio',
+                                  subtitle: _storageSubtitle(
+                                    locations,
+                                    metadata: false,
+                                  ),
+                                  trailing: _StorageActions(
+                                    onChange: locations == null
+                                        ? null
+                                        : () => _openStoragePathDialog(
+                                            context,
+                                            title: 'Downloaded audio folder',
+                                            initialPath:
+                                                locations.downloadsDirectory,
+                                            isDefault: locations
+                                                .downloadsDirectoryIsDefault,
+                                            onSave: controller
+                                                .updateOfflineDownloadsDirectory,
+                                          ),
+                                    onReset: locations == null
+                                        ? null
+                                        : () => controller
+                                              .resetOfflineDownloadsDirectory(),
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                _settingsRow(
+                                  context,
+                                  leading: Icon(
+                                    Icons.delete_forever_rounded,
+                                    color: theme.colorScheme.error,
+                                  ),
+                                  title: 'Reset offline data',
+                                  subtitle:
+                                      'Delete local tracks, artwork, metadata, and offline databases',
+                                  titleColor: theme.colorScheme.error,
+                                  trailing: TechButton(
+                                    label: 'Full reset',
+                                    icon: Icons.delete_forever_rounded,
+                                    variant: TechButtonVariant.danger,
+                                    density: TechButtonDensity.compact,
+                                    chrome: TechButtonChrome.borderless,
+                                    onTap: locations == null
+                                        ? null
+                                        : () => _confirmResetOfflineData(
+                                            context,
+                                            controller,
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        const ObsidianSectionHeader(title: 'Miscellaneous'),
+                        const SizedBox(height: 12),
+                        Column(
+                          children: [
+                            _settingsRow(
+                              context,
+                              leading: const Icon(Icons.receipt_long_rounded),
+                              title: 'Logs',
+                              subtitle: logLabel,
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const LogsPage(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Actions',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: ObsidianPalette.textMuted,
-                    letterSpacing: 1.1,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Column(
-                  children: [
-                    _settingsRow(
-                      context,
-                      leading: const Icon(Icons.receipt_long_rounded),
-                      title: 'Logs',
-                      subtitle: logLabel,
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const LogsPage()),
-                      ),
-                    ),
-                    Divider(
-                      height: 1,
-                      color: ObsidianPalette.border.withValues(alpha: 0.6),
-                    ),
-                    _settingsRow(
-                      context,
-                      leading: Icon(
-                        Icons.logout_rounded,
-                        color: theme.colorScheme.error,
-                      ),
-                      title: 'Log out',
-                      subtitle:
-                          'Disconnect from this server and clear saved login',
-                      titleColor: theme.colorScheme.error,
-                      onTap: () async {
-                        await controller.logout();
-                      },
-                    ),
-                  ],
                 ),
               ],
             );
@@ -427,12 +404,14 @@ class _StorageActions extends StatelessWidget {
           label: 'Change',
           icon: Icons.edit_rounded,
           density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
           onTap: onChange,
         ),
         TechButton(
           label: 'Reset',
           icon: Icons.restore_rounded,
           density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
           onTap: onReset,
         ),
       ],

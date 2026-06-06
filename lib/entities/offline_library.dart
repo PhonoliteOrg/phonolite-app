@@ -621,10 +621,11 @@ class OfflineLibraryStorage {
   static const String _artDirName = 'art';
   static const String _albumArtDirName = 'albums';
   static const String _artistArtDirName = 'artists';
+  static const String _playlistArtDirName = 'playlists';
   static const String _indexFileName = 'offline_library.json';
   static const String _databaseFileName = 'phonolite_offline.sqlite';
   static const String _partialExtension = 'part';
-  static const int _schemaVersion = 8;
+  static const int _schemaVersion = 10;
   static const Object _storageUnset = Object();
 
   Future<OfflineStorageLocations> resolveStorageLocations() async {
@@ -1805,11 +1806,15 @@ class OfflineLibraryStorage {
     }
   }
 
-  Future<Playlist> createLocalPlaylist(String name) async {
+  Future<Playlist> createLocalPlaylist(
+    String name, {
+    String? description,
+  }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
       throw ArgumentError('name is required');
     }
+    final trimmedDescription = _normalizeOptionalText(description);
     Database? db;
     try {
       db = await _openDatabase();
@@ -1817,29 +1822,39 @@ class OfflineLibraryStorage {
       final id = _stableId('playlist|$trimmed|$now');
       _transaction(db, () {
         db!.execute(
-          'INSERT INTO local_playlists (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
-          [id, trimmed, now, now],
+          'INSERT INTO local_playlists (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          [id, trimmed, trimmedDescription, now, now],
         );
       });
-      return Playlist(id: id, name: trimmed, trackIds: const []);
+      return Playlist(
+        id: id,
+        name: trimmed,
+        trackIds: const [],
+        description: trimmedDescription,
+      );
     } finally {
       db?.dispose();
     }
   }
 
-  Future<Playlist?> renameLocalPlaylist(String playlistId, String name) async {
+  Future<Playlist?> renameLocalPlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+  }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
       throw ArgumentError('name is required');
     }
+    final trimmedDescription = _normalizeOptionalText(description);
     Database? db;
     try {
       db = await _openDatabase();
       final now = DateTime.now().millisecondsSinceEpoch;
       _transaction(db, () {
         db!.execute(
-          'UPDATE local_playlists SET name = ?, updated_at = ? WHERE id = ?',
-          [trimmed, now, playlistId],
+          'UPDATE local_playlists SET name = ?, description = ?, updated_at = ? WHERE id = ?',
+          [trimmed, trimmedDescription, now, playlistId],
         );
       });
       final playlists = _readLocalPlaylists(db);
@@ -1854,16 +1869,95 @@ class OfflineLibraryStorage {
     }
   }
 
-  Future<void> deleteLocalPlaylist(String playlistId) async {
+  Future<Playlist?> updateLocalPlaylistImage(
+    String playlistId,
+    PlaylistImageEdit imageEdit,
+  ) async {
+    if (imageEdit.kind == PlaylistImageEditKind.keep) {
+      Database? db;
+      try {
+        db = await _openDatabase();
+        return _readLocalPlaylists(
+          db,
+        ).where((item) => item.id == playlistId).firstOrNull;
+      } finally {
+        db?.dispose();
+      }
+    }
+
+    String? nextPath;
+    if (imageEdit.kind == PlaylistImageEditKind.replace) {
+      final bytes = imageEdit.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw ArgumentError('image bytes are required');
+      }
+      final extension = extensionFromImageContentType(imageEdit.contentType);
+      final file = await playlistArtFile(
+        playlistId: playlistId,
+        extension: extension,
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      nextPath = file.absolute.path;
+    }
+
     Database? db;
+    String? oldPath;
+    var playlistExists = false;
     try {
       db = await _openDatabase();
+      _transaction(db, () {
+        final rows = db!.select(
+          'SELECT image_path FROM local_playlists WHERE id = ?',
+          [playlistId],
+        );
+        if (rows.isEmpty) {
+          return;
+        }
+        playlistExists = true;
+        oldPath = _readNullableString(rows.first, 'image_path');
+        db.execute(
+          'UPDATE local_playlists SET image_path = ?, updated_at = ? WHERE id = ?',
+          [nextPath, DateTime.now().millisecondsSinceEpoch, playlistId],
+        );
+      });
+      if (!playlistExists) {
+        if (nextPath != null) {
+          await _deleteFileIfExists(File(nextPath));
+        }
+        return null;
+      }
+      if (oldPath != null && oldPath != nextPath) {
+        await _deleteFileIfExists(File(oldPath!));
+      }
+      return _readLocalPlaylists(
+        db,
+      ).where((item) => item.id == playlistId).firstOrNull;
+    } finally {
+      db?.dispose();
+    }
+  }
+
+  Future<void> deleteLocalPlaylist(String playlistId) async {
+    Database? db;
+    String? imagePath;
+    try {
+      db = await _openDatabase();
+      final rows = db.select(
+        'SELECT image_path FROM local_playlists WHERE id = ?',
+        [playlistId],
+      );
+      if (rows.isNotEmpty) {
+        imagePath = _readNullableString(rows.first, 'image_path');
+      }
       _transaction(db, () {
         db!.execute('DELETE FROM local_playlist_tracks WHERE playlist_id = ?', [
           playlistId,
         ]);
         db.execute('DELETE FROM local_playlists WHERE id = ?', [playlistId]);
       });
+      if (imagePath != null) {
+        await _deleteFileIfExists(File(imagePath!));
+      }
     } finally {
       db?.dispose();
     }
@@ -1995,6 +2089,17 @@ class OfflineLibraryStorage {
     final safeExtension = _safePathToken(extension).replaceAll('.', '');
     final safeName = '${_safePathToken(artistId)}_${_safePathToken(kind)}';
     return File(_join(dir.path, '$safeName.$safeExtension'));
+  }
+
+  Future<File> playlistArtFile({
+    required String playlistId,
+    required String extension,
+  }) async {
+    final dir = await _artDirectory(_playlistArtDirName, createDir: true);
+    final safeExtension = _safePathToken(extension).replaceAll('.', '');
+    return File(
+      _join(dir.path, '${_safePathToken(playlistId)}.$safeExtension'),
+    );
   }
 
   Future<Directory> offlineRoot({bool createDir = false}) async {
@@ -2527,10 +2632,14 @@ class OfflineLibraryStorage {
       CREATE TABLE IF NOT EXISTS local_playlists (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        description TEXT,
+        image_path TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
     ''');
+    _ensureColumn(db, 'local_playlists', 'description', 'TEXT');
+    _ensureColumn(db, 'local_playlists', 'image_path', 'TEXT');
     db.execute('''
       CREATE TABLE IF NOT EXISTS local_playlist_tracks (
         playlist_id TEXT NOT NULL,
@@ -2809,7 +2918,7 @@ class OfflineLibraryStorage {
 
   List<Playlist> _readLocalPlaylists(Database db) {
     final playlistRows = db.select(
-      'SELECT id, name FROM local_playlists ORDER BY updated_at DESC, name',
+      'SELECT id, name, description, image_path FROM local_playlists ORDER BY updated_at DESC, name',
     );
     final playlists = <Playlist>[];
     for (final row in playlistRows) {
@@ -2825,6 +2934,8 @@ class OfflineLibraryStorage {
           trackIds: trackRows
               .map((item) => _readString(item, 'local_track_id'))
               .toList(growable: false),
+          description: _readNullableString(row, 'description'),
+          imagePath: _readNullableString(row, 'image_path'),
         ),
       );
     }
@@ -3947,7 +4058,7 @@ class OfflineLibraryStorage {
   }
 
   bool _artworkPathHasSourceBackedReference(Database db, String path) {
-    return db
+    final trackBacked = db
         .select(
           '''
           SELECT 1
@@ -3959,6 +4070,20 @@ class OfflineLibraryStorage {
           LIMIT 1
         ''',
           [path, path, path],
+        )
+        .isNotEmpty;
+    if (trackBacked) {
+      return true;
+    }
+    return db
+        .select(
+          '''
+          SELECT 1
+          FROM local_playlists
+          WHERE image_path = ?
+          LIMIT 1
+        ''',
+          [path],
         )
         .isNotEmpty;
   }
@@ -4109,6 +4234,14 @@ class OfflineLibraryStorage {
   static String? _readNullableString(Row row, String key) {
     final value = row[key];
     final text = value?.toString().trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    return text;
+  }
+
+  static String? _normalizeOptionalText(String? value) {
+    final text = value?.trim();
     if (text == null || text.isEmpty) {
       return null;
     }

@@ -222,6 +222,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                       showAddToPlaylistModalForTrack(
                                         context,
                                         track,
+                                        scope: ActionScope.server,
                                       ),
                                   onTrackDownload: controller.downloadTrack,
                                   onTrackLike: controller.toggleLike,

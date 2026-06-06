@@ -9,6 +9,7 @@ void main() {
 
       expectContainsAll(source, const [
         'enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }',
+        'enum ActionScope { local, server }',
         'enum RepeatMode { off, one }',
         'enum StreamMode { auto, high, medium, low }',
         'enum LocalNetworkPermissionState { unknown, granted, denied }',
@@ -24,9 +25,41 @@ void main() {
         'static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);',
         'static const Duration _offlineRefreshTimeout = Duration(seconds: 5);',
         'const Duration(seconds: 12)',
-        'static const Duration _displayPositionHeartbeat = Duration(seconds: 1);',
-        "'playback.position.tick'",
       ]);
+      expect(source, isNot(contains('_displayPositionTimer')));
+      expect(source, isNot(contains('_lastDisplayTickAt')));
+      expect(source, isNot(contains('_displayPositionHeartbeat')));
+      expect(source, isNot(contains('_startDisplayPositionTicker')));
+      expect(source, isNot(contains('_tickDisplayPosition')));
+      expect(source, isNot(contains('playback.position.tick')));
+    });
+
+    test('controller keeps stream seek and buffer display state stable', () {
+      final source = readProjectFile('lib/entities/app_controller.dart');
+
+      expectContainsAll(source, const [
+        'enum _SeekDirection { none, forward, backward }',
+        'int _seekOriginMs = 0;',
+        '_SeekDirection _seekDirection = _SeekDirection.none;',
+        'static const int _seekCompletionToleranceMs = 400;',
+        'int _bufferedEndHighWaterMs = 0;',
+        '_seekDirection = _seekDirectionFor(_seekOriginMs, _seekTargetMs);',
+        'if (!_seeking || _isScrubbing) {',
+        '_SeekDirection.forward =>',
+        'positionMs >= targetMs - _seekCompletionToleranceMs',
+        '_SeekDirection.backward =>',
+        'positionMs <= targetMs + _seekCompletionToleranceMs',
+        '_resetPlaybackPositionTracking(position: position);',
+        '_displayPositionMs = _seekTargetMs;',
+        'void _resetBufferedEndHighWater({Duration position = Duration.zero})',
+        'void _updateBufferedEndHighWater({',
+        '_bufferedEndHighWaterMs = next.clamp(0, durationMs).toInt();',
+      ]);
+      expect(
+        source,
+        isNot(contains('_displayPositionMs = max(actualMs, _seekTargetMs);')),
+      );
+      expect(source, isNot(contains('rawBufferRatio')));
     });
 
     test('controller preserves login restore and custom shuffle update hooks', () {
@@ -72,9 +105,14 @@ void main() {
         'Future<void> playOfflineTrack(',
         'Future<void> playLocalLikedTrack(String trackId) async {',
         'Future<void> queueLocalPlaylist(',
+        'Future<void> queueLocalShuffle(',
+        'Future<void> queueServerShuffle(',
         'Future<void> toggleLocalLike(Track track) async {',
         'Future<void> addTrackToLocalPlaylist(Playlist playlist, Track track) async {',
         'bool _shouldUseLocalUserData(Track track)',
+        'shuffleScope: ActionScope.server',
+        'if (_playbackState.shuffleScope == ActionScope.local)',
+        '_playbackState.shuffleScope != ActionScope.server',
         '_playbackState.queueSource == PlaybackQueueSource.offline',
         'await _startLocalPlayback(',
         'contentType: download.contentType,',
@@ -135,6 +173,11 @@ void main() {
         'Future<void> playOfflineTrack(',
         'Future<void> playLocalLikedTrack(String trackId) async {',
         'Future<void> queueLocalPlaylist(',
+        'queueSourcePlaylistId: playlistId',
+        'Future<void> queueLocalShuffle(',
+        "contextScope = 'localPlaylist'",
+        "contextScope = 'localLiked'",
+        "contextScope = 'localLibrary'",
         'queueSource: PlaybackQueueSource.offline',
         'enum _OfflineQueueSource { none, tracks, localLiked, localPlaylist }',
         'localLikedQueue: true',

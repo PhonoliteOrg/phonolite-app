@@ -126,8 +126,8 @@
 - FEAT-024: Local liked downloads and connected server liked songs shall be separate copies and shall be allowed to differ.
 - FEAT-025: Server library, server playlist, server liked-song, streamed now-playing, and connected playback actions shall update server likes only.
 - FEAT-026: Offline library, local playlist, local liked-song, and downloaded playback actions shall update local likes only.
-- FEAT-027: The add-to-playlist modal shall present local playlist choices separately from server playlist choices.
-- FEAT-028: Local playlist choices shall accept only tracks with a completed local download, while server playlist choices shall continue to use server playlist APIs.
+- FEAT-027: Add-to-playlist actions shall be scoped to the current source: local contexts shall show only local playlists, and server contexts shall show only connected server playlists.
+- FEAT-028: Local playlist actions shall accept only tracks with a completed local download, while server playlist actions shall continue to use server playlist APIs and server track IDs.
 - FEAT-029: The Settings page shall expose separate editable storage locations for the offline metadata database and downloaded audio files.
 
 ## Custom Shuffle
@@ -156,30 +156,33 @@
 - PLAY-010: `custom` shuffle shall only be startable when at least one artist or genre is selected in custom shuffle settings.
 - PLAY-011: `liked` shuffle shall only be startable when liked tracks are available.
 - PLAY-012: Resuming playback with no current track while a startable shuffle mode is active shall attempt to seed and play the appropriate shuffle queue.
-- PLAY-013: Repeat mode shall support `off` and `one`.
-- PLAY-014: Repeat mode shall be persisted to the server through playback settings.
-- PLAY-015: Volume shall be clamped into the range `0.0..1.0`.
-- PLAY-016: Volume changes shall take effect immediately in the active audio engine and persist asynchronously with debounce.
-- PLAY-017: Volume persistence debounce shall be approximately `350ms`.
-- PLAY-018: Selecting an output device shall restart or rebind playback so that the current track continues on the new output path when possible.
-- PLAY-019: The output-device list shall always include `System Default` as a stable fallback option.
-- PLAY-020: The player shall support seek preview while scrubbing and a debounced seek commit after user input settles.
-- PLAY-021: Seek commit debounce shall be approximately `180ms`.
-- PLAY-022: Seek completion shall guard against indefinite pending state using an `8s` completion guard.
-- PLAY-023: If inline native seek is not available or not accepted, the controller shall restart the current stream from the target playback position.
-- PLAY-024: If playback has been manually paused for more than `45s`, resume shall restart the stream instead of assuming the old stream is still valid.
-- PLAY-025: Playback position display shall continue to tick locally at approximately `250ms` intervals while playback is active.
-- PLAY-026: Auto-advance shall be guarded so scrubbing and track transitions do not trigger duplicate next-track behavior.
-- PLAY-027: Stopping playback shall clear active queue state, clear now playing, stop stream monitoring, and shut down the active audio session.
-- PLAY-028: The now-playing UI shall expose play/pause, previous, next, stop, shuffle, repeat, stream quality, output device, add-to-playlist, like/unlike, progress, and volume controls.
-- PLAY-029: The now-playing UI shall show technical tags for active shuffle mode, repeat-one, bitrate, ping, and queue source when those data are available.
-- PLAY-030: The now-playing UI shall expose stream-quality choices `HQ`, `MQ`, and `LQ`, while `AUTO` remains a state label for current mode display.
-- PLAY-031: The progress bar shall visualize both current playback position and buffered position.
-- PLAY-032: The compact mobile now-playing surface shall still allow expansion into the full transport experience.
-- PLAY-033: Adding the currently playing track to a playlist shall be possible directly from now-playing controls.
-- PLAY-034: The controller shall push OS-level now-playing updates so native transport surfaces stay synchronized with Flutter state.
-- PLAY-035: The controller shall queue and play local playlists and local liked downloads using downloaded files rather than server streams.
-- PLAY-036: Downloaded-file playback shall load audio through a platform-aware local source that reads seekable byte ranges in bounded chunks before falling back to direct file access.
+- PLAY-013: Server shuffle modes shall use server library, playlist, liked, and custom-shuffle data only.
+- PLAY-014: Local shuffle modes shall use downloaded-file queues only and shall support downloaded-all, local playlist, and local liked shuffles.
+- PLAY-015: Server-only shuffle modes `artist`, `album`, and `custom` shall not be offered for local playback in v1.
+- PLAY-016: Repeat mode shall support `off` and `one`.
+- PLAY-017: Repeat mode shall be persisted to the server through playback settings.
+- PLAY-018: Volume shall be clamped into the range `0.0..1.0`.
+- PLAY-019: Volume changes shall take effect immediately in the active audio engine and persist asynchronously with debounce.
+- PLAY-020: Volume persistence debounce shall be approximately `350ms`.
+- PLAY-021: Selecting an output device shall restart or rebind playback so that the current track continues on the new output path when possible.
+- PLAY-022: The output-device list shall always include `System Default` as a stable fallback option.
+- PLAY-023: The player shall support seek preview while scrubbing and a debounced seek commit after user input settles.
+- PLAY-024: Seek commit debounce shall be approximately `180ms`.
+- PLAY-025: Seek completion shall guard against indefinite pending state using an `8s` completion guard.
+- PLAY-026: If inline native seek is not available or not accepted, the controller shall restart the current stream from the target playback position.
+- PLAY-027: If playback has been manually paused for more than `45s`, resume shall restart the stream instead of assuming the old stream is still valid.
+- PLAY-028: Playback position display shall continue to tick locally at approximately `250ms` intervals while playback is active.
+- PLAY-029: Auto-advance shall be guarded so scrubbing and track transitions do not trigger duplicate next-track behavior.
+- PLAY-030: Stopping playback shall clear active queue state, clear now playing, stop stream monitoring, and shut down the active audio session.
+- PLAY-031: The now-playing UI shall expose play/pause, previous, next, stop, shuffle, repeat, stream quality, output device, add-to-playlist, like/unlike, progress, and volume controls.
+- PLAY-032: The now-playing UI shall show technical tags for active shuffle mode, repeat-one, bitrate, ping, and queue source when those data are available.
+- PLAY-033: The now-playing UI shall expose stream-quality choices `HQ`, `MQ`, and `LQ`, while `AUTO` remains a state label for current mode display.
+- PLAY-034: The progress bar shall visualize both current playback position and buffered position.
+- PLAY-035: The compact mobile now-playing surface shall still allow expansion into the full transport experience.
+- PLAY-036: Adding the currently playing track to a playlist shall be possible directly from now-playing controls.
+- PLAY-037: The controller shall push OS-level now-playing updates so native transport surfaces stay synchronized with Flutter state.
+- PLAY-038: The controller shall queue and play local playlists and local liked downloads using downloaded files rather than server streams.
+- PLAY-039: Downloaded-file playback shall load audio through a platform-aware local source that reads seekable byte ranges in bounded chunks before falling back to direct file access.
 
 ## Network and Server Contract
 - NET-001: The client shall treat the canonical API base as a URL ending in `/api/v1`.

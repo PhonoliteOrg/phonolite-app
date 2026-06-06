@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -147,6 +148,71 @@ void main() {
         expect(playlists.single.trackIds, <String>[localTrackId]);
       },
     );
+
+    test('stores local playlist images as managed artwork', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_playlist_image_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: temp);
+      final playlist = await storage.createLocalPlaylist(
+        'Cover Mix',
+        description: 'Initial playlist summary.',
+      );
+
+      expect(playlist.description, 'Initial playlist summary.');
+
+      final updated = await storage.updateLocalPlaylistImage(
+        playlist.id,
+        PlaylistImageEdit.replace(
+          bytes: Uint8List.fromList(<int>[1, 2, 3]),
+          contentType: 'image/png',
+        ),
+      );
+
+      expect(updated?.imagePath, isNotNull);
+      final imageFile = File(updated!.imagePath!);
+      expect(await imageFile.exists(), isTrue);
+      expect(await imageFile.readAsBytes(), <int>[1, 2, 3]);
+      expect(
+        (await storage.readLocalPlaylists()).single.imagePath,
+        imageFile.path,
+      );
+      expect(
+        (await storage.readLocalPlaylists()).single.description,
+        'Initial playlist summary.',
+      );
+
+      final renamed = await storage.renameLocalPlaylist(
+        playlist.id,
+        'Renamed Mix',
+        description: 'Updated playlist summary.',
+      );
+      expect(renamed?.description, 'Updated playlist summary.');
+
+      final cleared = await storage.updateLocalPlaylistImage(
+        playlist.id,
+        const PlaylistImageEdit.clear(),
+      );
+
+      expect(cleared?.imagePath, isNull);
+      expect(await imageFile.exists(), isFalse);
+
+      final replaced = await storage.updateLocalPlaylistImage(
+        playlist.id,
+        PlaylistImageEdit.replace(
+          bytes: Uint8List.fromList(<int>[4, 5, 6]),
+          contentType: 'image/jpeg',
+        ),
+      );
+      final replacementFile = File(replaced!.imagePath!);
+      expect(await replacementFile.exists(), isTrue);
+
+      await storage.deleteLocalPlaylist(playlist.id);
+
+      expect(await replacementFile.exists(), isFalse);
+      expect(await storage.readLocalPlaylists(), isEmpty);
+    });
 
     test('records local like and unlike history', () async {
       final temp = await Directory.systemTemp.createTemp(
