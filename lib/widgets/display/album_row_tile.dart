@@ -13,6 +13,7 @@ class AlbumRowTile extends StatelessWidget {
     required this.coverUrl,
     required this.headers,
     this.onTap,
+    this.onLongPress,
     this.subtitle,
     this.trailing,
     this.selectionMode = false,
@@ -26,6 +27,7 @@ class AlbumRowTile extends StatelessWidget {
   final String coverUrl;
   final Map<String, String> headers;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final String? subtitle;
   final Widget? trailing;
   final bool selectionMode;
@@ -48,6 +50,7 @@ class AlbumRowTile extends StatelessWidget {
         : onTap;
     return ObsidianHoverRow(
       onTap: effectiveOnTap,
+      onLongPress: selectionMode || isDeleting ? null : onLongPress,
       isActive: selectionMode && selected,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),

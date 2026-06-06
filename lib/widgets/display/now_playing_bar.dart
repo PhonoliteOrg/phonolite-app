@@ -24,6 +24,32 @@ double _scaled(BuildContext context, double value) =>
     value * ObsidianScale.of(context);
 
 const Color _queueSourceGreen = Color(0xFF2ED573);
+const int _scrubberAuthoritativeDiscontinuityMs = 1500;
+const int _scrubberMaxInterpolationLeadMs = 1500;
+
+typedef ShuffleModeChanged =
+    void Function(ShuffleMode mode, {ActionScope? scope});
+
+Duration _boundedScrubberDisplayPosition({
+  required Duration displayPosition,
+  required Duration authoritativePosition,
+  required Duration duration,
+}) {
+  final durationMs = duration.inMilliseconds;
+  final authoritativeMs = math.max(0, authoritativePosition.inMilliseconds);
+  var nextMs = math.max(0, displayPosition.inMilliseconds);
+  if (nextMs < authoritativeMs) {
+    nextMs = authoritativeMs;
+  }
+  final leadCeilingMs = authoritativeMs + _scrubberMaxInterpolationLeadMs;
+  if (nextMs > leadCeilingMs) {
+    nextMs = leadCeilingMs;
+  }
+  if (durationMs > 0 && nextMs > durationMs) {
+    nextMs = durationMs;
+  }
+  return Duration(milliseconds: nextMs);
+}
 
 String _streamLabel(StreamMode mode) {
   switch (mode) {
@@ -99,26 +125,47 @@ String _formatTime(Duration value) {
   return '$minutes:$ss';
 }
 
-String _shuffleLabel(ShuffleMode mode) {
+ActionScope _actionScopeForPlayback(PlaybackState state) {
+  if (state.isLocalPlayback ||
+      state.queueSource == PlaybackQueueSource.offline ||
+      state.shuffleScope == ActionScope.local) {
+    return ActionScope.local;
+  }
+  return ActionScope.server;
+}
+
+String _shuffleLabel(
+  ShuffleMode mode, {
+  ActionScope scope = ActionScope.server,
+}) {
   switch (mode) {
     case ShuffleMode.off:
       return 'Shuffle: Off';
     case ShuffleMode.all:
-      return 'Shuffle: All';
+      return scope == ActionScope.local
+          ? 'Shuffle: Downloaded All'
+          : 'Shuffle: All';
     case ShuffleMode.artist:
       return 'Shuffle: Current Artist';
     case ShuffleMode.album:
       return 'Shuffle: Current Album';
     case ShuffleMode.currentPlaylist:
-      return 'Shuffle: Current Playlist';
+      return scope == ActionScope.local
+          ? 'Shuffle: Local Playlist'
+          : 'Shuffle: Current Playlist';
     case ShuffleMode.custom:
       return 'Shuffle: Custom';
     case ShuffleMode.liked:
-      return 'Shuffle: Liked';
+      return scope == ActionScope.local
+          ? 'Shuffle: Local Liked'
+          : 'Shuffle: Liked';
   }
 }
 
-bool _shuffleCanStartWithoutTrack(ShuffleMode mode) {
+bool _shuffleCanStartWithoutTrack(ShuffleMode mode, ActionScope scope) {
+  if (scope == ActionScope.local) {
+    return mode == ShuffleMode.all || mode == ShuffleMode.liked;
+  }
   return mode == ShuffleMode.all ||
       mode == ShuffleMode.custom ||
       mode == ShuffleMode.liked;
@@ -129,10 +176,14 @@ bool _transportControlsEnabled(PlaybackState state) {
     return true;
   }
   if (state.shuffleMode == ShuffleMode.currentPlaylist) {
+    if (state.shuffleScope == ActionScope.local) {
+      return state.queueSource == PlaybackQueueSource.offline &&
+          (state.queueSourcePlaylistId?.isNotEmpty ?? false);
+    }
     return state.queueSource == PlaybackQueueSource.playlist &&
         (state.queueSourcePlaylistId?.isNotEmpty ?? false);
   }
-  return _shuffleCanStartWithoutTrack(state.shuffleMode);
+  return _shuffleCanStartWithoutTrack(state.shuffleMode, state.shuffleScope);
 }
 
 String? _bitrateLabel(PlaybackState state) {
@@ -158,7 +209,7 @@ List<Widget> _buildTechTags(PlaybackState state) {
     tags.add(
       _TechTag(
         label:
-            'SHUFF: ${_shuffleLabel(state.shuffleMode).replaceFirst('Shuffle: ', '')}',
+            'SHUFF: ${_shuffleLabel(state.shuffleMode, scope: state.shuffleScope).replaceFirst('Shuffle: ', '')}',
         highlight: true,
       ),
     );
@@ -265,49 +316,75 @@ Widget _techTagRow(
 Future<void> _showShuffleModal(
   BuildContext context, {
   required ShuffleMode current,
-  required ValueChanged<ShuffleMode> onSelected,
+  required ShuffleModeChanged onSelected,
 }) async {
   final controller = AppScope.of(context);
-  final serverAvailable = controller.authState.isAuthorized;
+  final playback = controller.playbackState;
+  final scope = _actionScopeForPlayback(playback);
+  final serverScope = scope == ActionScope.server;
+  final serverAvailable = serverScope && controller.authState.isAuthorized;
   if (serverAvailable && controller.liked.isEmpty) {
     await controller.loadLikedTracks();
+  }
+  if (!serverScope && controller.localLiked.isEmpty) {
+    await controller.loadLocalLikedTracks();
+  }
+  if (!context.mounted) {
+    return;
   }
   final customSettings = controller.customShuffleSettings;
   final customEnabled =
       customSettings.artistIds.isNotEmpty || customSettings.genres.isNotEmpty;
-  final likedEnabled = controller.liked.isNotEmpty;
-  final currentPlaylistEnabled =
-      controller.playbackState.queueSource == PlaybackQueueSource.playlist &&
-      (controller.playbackState.queueSourcePlaylistId?.isNotEmpty ?? false);
+  final likedEnabled = serverScope
+      ? controller.liked.isNotEmpty
+      : controller.localLiked.isNotEmpty;
+  final downloadedEnabled = controller.offlineTracks.isNotEmpty;
+  final currentPlaylistEnabled = serverScope
+      ? playback.queueSource == PlaybackQueueSource.playlist &&
+            (playback.queueSourcePlaylistId?.isNotEmpty ?? false)
+      : playback.queueSource == PlaybackQueueSource.offline &&
+            (playback.queueSourcePlaylistId?.isNotEmpty ?? false);
   final result = await showDialog<ShuffleMode>(
     context: context,
     builder: (dialogContext) {
-      final items = const [
-        ShuffleMode.off,
-        ShuffleMode.all,
-        ShuffleMode.artist,
-        ShuffleMode.album,
-        ShuffleMode.currentPlaylist,
-        ShuffleMode.custom,
-        ShuffleMode.liked,
-      ];
+      final items = serverScope
+          ? const [
+              ShuffleMode.off,
+              ShuffleMode.all,
+              ShuffleMode.artist,
+              ShuffleMode.album,
+              ShuffleMode.currentPlaylist,
+              ShuffleMode.custom,
+              ShuffleMode.liked,
+            ]
+          : const [
+              ShuffleMode.off,
+              ShuffleMode.all,
+              ShuffleMode.currentPlaylist,
+              ShuffleMode.liked,
+            ];
       return AlertDialog(
-        title: const Text('Shuffle Mode'),
+        title: Text(serverScope ? 'Server Shuffle Mode' : 'Local Shuffle Mode'),
         content: SizedBox(
           width: _scaled(dialogContext, 320),
           child: ListView(
             shrinkWrap: true,
             children: items.map((mode) {
               final enabled = switch (mode) {
-                _ when !serverAvailable && mode != ShuffleMode.off => false,
-                ShuffleMode.custom => customEnabled,
+                _
+                    when serverScope &&
+                        !serverAvailable &&
+                        mode != ShuffleMode.off =>
+                  false,
+                ShuffleMode.all when !serverScope => downloadedEnabled,
+                ShuffleMode.custom => serverScope && customEnabled,
                 ShuffleMode.liked => likedEnabled,
                 ShuffleMode.currentPlaylist => currentPlaylistEnabled,
                 _ => true,
               };
               return ListTile(
                 enabled: enabled,
-                title: Text(_shuffleLabel(mode)),
+                title: Text(_shuffleLabel(mode, scope: scope)),
                 trailing: mode == current
                     ? const Icon(Icons.check_rounded)
                     : null,
@@ -321,8 +398,9 @@ Future<void> _showShuffleModal(
       );
     },
   );
-  if (result != null && result != current) {
-    onSelected(result);
+  if (result != null &&
+      (result != current || scope != controller.playbackState.shuffleScope)) {
+    onSelected(result, scope: scope);
   }
 }
 
@@ -390,7 +468,12 @@ Future<void> showNowPlayingExpandedSheet(
               onToggleLike: () {
                 final track = playback.track;
                 if (track != null) {
-                  controller.toggleLike(track);
+                  if (playback.isLocalPlayback ||
+                      playback.queueSource == PlaybackQueueSource.offline) {
+                    controller.toggleLocalLike(track);
+                  } else {
+                    controller.toggleLike(track);
+                  }
                 }
               },
             );
@@ -435,7 +518,7 @@ class NowPlayingBar extends StatelessWidget {
   final VoidCallback onStop;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekPreview;
-  final ValueChanged<ShuffleMode> onShuffleChanged;
+  final ShuffleModeChanged onShuffleChanged;
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
@@ -482,7 +565,7 @@ class NowPlayingBar extends StatelessWidget {
       techTags.add(
         _TechTag(
           label:
-              'SHUFF: ${_shuffleLabel(state.shuffleMode).replaceFirst('Shuffle: ', '')}',
+              'SHUFF: ${_shuffleLabel(state.shuffleMode, scope: state.shuffleScope).replaceFirst('Shuffle: ', '')}',
           highlight: true,
         ),
       );
@@ -552,6 +635,7 @@ class NowPlayingBar extends StatelessWidget {
                           onAddToPlaylist: () => showAddToPlaylistModalForTrack(
                             context,
                             state.track,
+                            scope: _actionScopeForPlayback(state),
                           ),
                           onToggleLike: onToggleLike,
                           onShowDevicePicker: () => _showDevicePicker(context),
@@ -628,6 +712,7 @@ class NowPlayingBar extends StatelessWidget {
                                 showAddToPlaylistModalForTrack(
                                   context,
                                   state.track,
+                                  scope: _actionScopeForPlayback(state),
                                 ),
                             onShowDevicePicker: () =>
                                 _showDevicePicker(context),
@@ -879,7 +964,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   final VoidCallback onStop;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekPreview;
-  final ValueChanged<ShuffleMode> onShuffleChanged;
+  final ShuffleModeChanged onShuffleChanged;
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
@@ -1120,6 +1205,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                 showAddToPlaylistModalForTrack(
                                   context,
                                   state.track,
+                                  scope: _actionScopeForPlayback(state),
                                 ),
                             onShowDevicePicker: () =>
                                 _showDevicePicker(context),
@@ -1754,7 +1840,9 @@ class _CompactFooterRow extends StatefulWidget {
 class _CompactFooterRowState extends State<_CompactFooterRow> {
   Timer? _timer;
   Duration _displayPosition = Duration.zero;
+  Duration? _dragPosition;
   DateTime? _lastTickAt;
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -1767,16 +1855,25 @@ class _CompactFooterRowState extends State<_CompactFooterRow> {
   @override
   void didUpdateWidget(covariant _CompactFooterRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final deltaMs =
-        (widget.position.inMilliseconds - _displayPosition.inMilliseconds)
-            .abs();
+    if (_isDragging) {
+      _lastTickAt = DateTime.now();
+      return;
+    }
+    final authoritativeDeltaMs =
+        widget.position.inMilliseconds - oldWidget.position.inMilliseconds;
     if (!widget.animate ||
         !oldWidget.animate ||
         widget.duration != oldWidget.duration ||
-        deltaMs >= 600) {
+        authoritativeDeltaMs.abs() >= _scrubberAuthoritativeDiscontinuityMs) {
       _displayPosition = widget.position;
+      _lastTickAt = DateTime.now();
+      return;
     }
-    _lastTickAt = DateTime.now();
+    _displayPosition = _boundedScrubberDisplayPosition(
+      displayPosition: _displayPosition,
+      authoritativePosition: widget.position,
+      duration: widget.duration,
+    );
   }
 
   @override
@@ -1792,6 +1889,9 @@ class _CompactFooterRowState extends State<_CompactFooterRow> {
       final lastTickAt = _lastTickAt;
       _lastTickAt = now;
       if (!mounted || lastTickAt == null || !TickerMode.of(context)) {
+        return;
+      }
+      if (_isDragging) {
         return;
       }
       if (!widget.animate) {
@@ -1811,30 +1911,63 @@ class _CompactFooterRowState extends State<_CompactFooterRow> {
         elapsedMs = 250;
       }
 
-      final durationMs = widget.duration.inMilliseconds;
-      var nextMs = _displayPosition.inMilliseconds + elapsedMs;
-      if (durationMs > 0 && nextMs > durationMs) {
-        nextMs = durationMs;
-      }
-      final floorMs = widget.position.inMilliseconds;
-      if (nextMs < floorMs) {
-        nextMs = floorMs;
-      }
-      if (nextMs == _displayPosition.inMilliseconds) {
+      final displayMs = _displayPosition.inMilliseconds + elapsedMs;
+      final nextPosition = _boundedScrubberDisplayPosition(
+        displayPosition: Duration(milliseconds: displayMs),
+        authoritativePosition: widget.position,
+        duration: widget.duration,
+      );
+      if (nextPosition == _displayPosition) {
         return;
       }
       setState(() {
-        _displayPosition = Duration(milliseconds: nextMs);
+        _displayPosition = nextPosition;
       });
     } finally {
       developer.Timeline.finishSync();
     }
   }
 
+  Duration _sliderPosition(double value) {
+    return Duration(milliseconds: (value * 1000).round());
+  }
+
+  void _beginDrag(double value) {
+    final position = _sliderPosition(value);
+    setState(() {
+      _isDragging = true;
+      _dragPosition = position;
+      _displayPosition = position;
+    });
+  }
+
+  void _updateDrag(double value) {
+    final position = _sliderPosition(value);
+    setState(() {
+      _dragPosition = position;
+      _displayPosition = position;
+    });
+    widget.onSeekPreview(position);
+  }
+
+  void _endDrag(double value) {
+    final position = _sliderPosition(value);
+    setState(() {
+      _isDragging = false;
+      _dragPosition = null;
+      _displayPosition = position;
+      _lastTickAt = DateTime.now();
+    });
+    widget.onSeek(position);
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final positionSeconds = (_displayPosition.inMilliseconds / 1000.0).clamp(
+    final effectivePosition = _isDragging && _dragPosition != null
+        ? _dragPosition!
+        : _displayPosition;
+    final positionSeconds = (effectivePosition.inMilliseconds / 1000.0).clamp(
       0.0,
       widget.maxSeconds,
     );
@@ -1871,16 +2004,9 @@ class _CompactFooterRowState extends State<_CompactFooterRow> {
                     value: positionSeconds,
                     max: widget.maxSeconds,
                     secondaryTrackValue: bufferedPositionSeconds,
-                    onChanged: widget.enabled
-                        ? (value) => widget.onSeekPreview(
-                            Duration(milliseconds: (value * 1000).round()),
-                          )
-                        : null,
-                    onChangeEnd: widget.enabled
-                        ? (value) => widget.onSeek(
-                            Duration(milliseconds: (value * 1000).round()),
-                          )
-                        : null,
+                    onChangeStart: widget.enabled ? _beginDrag : null,
+                    onChanged: widget.enabled ? _updateDrag : null,
+                    onChangeEnd: widget.enabled ? _endDrag : null,
                   ),
                 ),
               ),
@@ -2323,7 +2449,9 @@ class _ProgressBar extends StatefulWidget {
 class _ProgressBarState extends State<_ProgressBar> {
   Timer? _timer;
   Duration _displayPosition = Duration.zero;
+  Duration? _dragPosition;
   DateTime? _lastTickAt;
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -2336,16 +2464,25 @@ class _ProgressBarState extends State<_ProgressBar> {
   @override
   void didUpdateWidget(covariant _ProgressBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final deltaMs =
-        (widget.position.inMilliseconds - _displayPosition.inMilliseconds)
-            .abs();
+    if (_isDragging) {
+      _lastTickAt = DateTime.now();
+      return;
+    }
+    final authoritativeDeltaMs =
+        widget.position.inMilliseconds - oldWidget.position.inMilliseconds;
     if (!widget.animate ||
         !oldWidget.animate ||
         widget.duration != oldWidget.duration ||
-        deltaMs >= 600) {
+        authoritativeDeltaMs.abs() >= _scrubberAuthoritativeDiscontinuityMs) {
       _displayPosition = widget.position;
+      _lastTickAt = DateTime.now();
+      return;
     }
-    _lastTickAt = DateTime.now();
+    _displayPosition = _boundedScrubberDisplayPosition(
+      displayPosition: _displayPosition,
+      authoritativePosition: widget.position,
+      duration: widget.duration,
+    );
   }
 
   @override
@@ -2359,6 +2496,9 @@ class _ProgressBarState extends State<_ProgressBar> {
     final lastTickAt = _lastTickAt;
     _lastTickAt = now;
     if (!mounted || lastTickAt == null) {
+      return;
+    }
+    if (_isDragging) {
       return;
     }
     if (!widget.animate) {
@@ -2378,27 +2518,60 @@ class _ProgressBarState extends State<_ProgressBar> {
       elapsedMs = 250;
     }
 
-    final durationMs = widget.duration.inMilliseconds;
-    var nextMs = _displayPosition.inMilliseconds + elapsedMs;
-    if (durationMs > 0 && nextMs > durationMs) {
-      nextMs = durationMs;
-    }
-    final floorMs = widget.position.inMilliseconds;
-    if (nextMs < floorMs) {
-      nextMs = floorMs;
-    }
-    if (nextMs == _displayPosition.inMilliseconds) {
+    final displayMs = _displayPosition.inMilliseconds + elapsedMs;
+    final nextPosition = _boundedScrubberDisplayPosition(
+      displayPosition: Duration(milliseconds: displayMs),
+      authoritativePosition: widget.position,
+      duration: widget.duration,
+    );
+    if (nextPosition == _displayPosition) {
       return;
     }
     setState(() {
-      _displayPosition = Duration(milliseconds: nextMs);
+      _displayPosition = nextPosition;
     });
+  }
+
+  Duration _sliderPosition(double value) {
+    return Duration(milliseconds: (value * 1000).round());
+  }
+
+  void _beginDrag(double value) {
+    final position = _sliderPosition(value);
+    setState(() {
+      _isDragging = true;
+      _dragPosition = position;
+      _displayPosition = position;
+    });
+  }
+
+  void _updateDrag(double value) {
+    final position = _sliderPosition(value);
+    setState(() {
+      _dragPosition = position;
+      _displayPosition = position;
+    });
+    widget.onSeekPreview(position);
+  }
+
+  void _endDrag(double value) {
+    final position = _sliderPosition(value);
+    setState(() {
+      _isDragging = false;
+      _dragPosition = null;
+      _displayPosition = position;
+      _lastTickAt = DateTime.now();
+    });
+    widget.onSeek(position);
   }
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final positionSeconds = (_displayPosition.inMilliseconds / 1000.0).clamp(
+    final effectivePosition = _isDragging && _dragPosition != null
+        ? _dragPosition!
+        : _displayPosition;
+    final positionSeconds = (effectivePosition.inMilliseconds / 1000.0).clamp(
       0.0,
       widget.maxSeconds,
     );
@@ -2440,16 +2613,9 @@ class _ProgressBarState extends State<_ProgressBar> {
                   value: positionSeconds,
                   max: widget.maxSeconds,
                   secondaryTrackValue: bufferedPositionSeconds,
-                  onChanged: widget.enabled
-                      ? (value) => widget.onSeekPreview(
-                          Duration(milliseconds: (value * 1000).round()),
-                        )
-                      : null,
-                  onChangeEnd: widget.enabled
-                      ? (value) => widget.onSeek(
-                          Duration(milliseconds: (value * 1000).round()),
-                        )
-                      : null,
+                  onChangeStart: widget.enabled ? _beginDrag : null,
+                  onChanged: widget.enabled ? _updateDrag : null,
+                  onChangeEnd: widget.enabled ? _endDrag : null,
                 ),
               ),
             ),

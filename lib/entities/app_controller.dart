@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -25,6 +24,8 @@ import 'audio_engine.dart';
 
 enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }
 
+enum ActionScope { local, server }
+
 enum RepeatMode { off, one }
 
 enum StreamMode { auto, high, medium, low }
@@ -32,6 +33,8 @@ enum StreamMode { auto, high, medium, low }
 enum LocalNetworkPermissionState { unknown, granted, denied }
 
 enum PlaybackQueueSource { none, liked, playlist, offline }
+
+enum _SeekDirection { none, forward, backward }
 
 enum _OfflineQueueSource { none, tracks, localLiked, localPlaylist }
 
@@ -61,6 +64,7 @@ class PlaybackState {
     required this.bufferRatio,
     required this.volume,
     required this.shuffleMode,
+    required this.shuffleScope,
     required this.repeatMode,
     required this.streamMode,
     required this.bitrateKbps,
@@ -79,6 +83,7 @@ class PlaybackState {
   final double bufferRatio;
   final double volume;
   final ShuffleMode shuffleMode;
+  final ActionScope shuffleScope;
   final RepeatMode repeatMode;
   final StreamMode streamMode;
   final double? bitrateKbps;
@@ -97,6 +102,7 @@ class PlaybackState {
     double? bufferRatio,
     double? volume,
     ShuffleMode? shuffleMode,
+    ActionScope? shuffleScope,
     RepeatMode? repeatMode,
     StreamMode? streamMode,
     double? bitrateKbps,
@@ -115,6 +121,7 @@ class PlaybackState {
       bufferRatio: bufferRatio ?? this.bufferRatio,
       volume: volume ?? this.volume,
       shuffleMode: shuffleMode ?? this.shuffleMode,
+      shuffleScope: shuffleScope ?? this.shuffleScope,
       repeatMode: repeatMode ?? this.repeatMode,
       streamMode: streamMode ?? this.streamMode,
       bitrateKbps: bitrateKbps ?? this.bitrateKbps,
@@ -147,6 +154,7 @@ class AppController {
       bufferRatio: 0.0,
       volume: 1.0,
       shuffleMode: ShuffleMode.off,
+      shuffleScope: ActionScope.server,
       repeatMode: RepeatMode.off,
       streamMode: StreamMode.high,
       bitrateKbps: null,
@@ -184,18 +192,13 @@ class AppController {
         final clamped = Duration(milliseconds: correctedPositionMs);
         _actualPositionMs = correctedPositionMs;
         _updateDisplayPosition(_actualPositionMs, bufferedAhead.inMilliseconds);
-        final bufferedTotal = clamped + bufferedAhead;
-        final bufferRatio = duration == Duration.zero
-            ? 0.0
-            : (bufferedTotal.inMilliseconds / duration.inMilliseconds).clamp(
-                0.0,
-                1.0,
-              );
-        final displayBufferRatio = _displayBufferRatio(
-          duration: duration,
-          rawBufferRatio: bufferRatio,
-        );
         _maybeClearSeekHold(clamped, bufferedAhead);
+        _updateBufferedEndHighWater(
+          duration: duration,
+          position: Duration(milliseconds: _actualPositionMs),
+          bufferedAhead: bufferedAhead,
+        );
+        final displayBufferRatio = _displayBufferRatio(duration: duration);
         final nextRtt = rttMs ?? _playbackState.streamRttMs;
         _updatePlayback(
           position: Duration(milliseconds: _displayPositionMs),
@@ -227,7 +230,6 @@ class AppController {
     _configureNowPlaying();
     _configureCarPlay();
     _startHealthMonitor();
-    _startDisplayPositionTicker();
     _customShuffleLoadFuture = _loadCustomShuffleSettings();
     unawaited(_loadPlaybackPreferences());
   }
@@ -274,20 +276,22 @@ class AppController {
   bool _nowPlayingReady = false;
   String? _lastSeekTrackId;
   bool _seeking = false;
+  int _seekOriginMs = 0;
   int _seekTargetMs = 0;
+  _SeekDirection _seekDirection = _SeekDirection.none;
   bool _isScrubbing = false;
   bool _scrubWasPlaying = false;
   bool _resumeAfterSeek = false;
   Timer? _seekDebounceTimer;
-  Timer? _displayPositionTimer;
   int? _pendingSeekCommitMs;
   String? _pendingSeekCommitTrackId;
   static const Duration _seekDebounceDelay = Duration(milliseconds: 180);
   static const Duration _seekCompletionGuard = Duration(seconds: 8);
+  static const int _seekCompletionToleranceMs = 400;
   bool _audioOutputStarted = false;
   int _displayPositionMs = 0;
   int _actualPositionMs = 0;
-  DateTime? _lastDisplayTickAt;
+  int _bufferedEndHighWaterMs = 0;
   int _nowPlayingEpoch = 0;
   Uint8List? _nowPlayingArtworkBytes;
   String? _nowPlayingArtworkUrl;
@@ -301,7 +305,6 @@ class AppController {
   bool _healthPingInFlight = false;
   int? _quicPort;
   static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);
-  static const Duration _displayPositionHeartbeat = Duration(seconds: 1);
 
   final _artistsController = StreamController<List<Artist>>.broadcast();
   final _albumsController = StreamController<List<Album>>.broadcast();
@@ -333,6 +336,7 @@ class AppController {
   List<Track> _tracks = <Track>[];
   List<Playlist> _playlists = <Playlist>[];
   List<Track> _playlistTracks = <Track>[];
+  int _playlistTracksRequestId = 0;
   List<Track> _liked = <Track>[];
   List<SearchResult> _search = <SearchResult>[];
   List<LogEntry> _messages = <LogEntry>[];
@@ -745,8 +749,6 @@ class AppController {
     _clearNowPlaying();
     _healthTimer?.cancel();
     _healthTimer = null;
-    _displayPositionTimer?.cancel();
-    _displayPositionTimer = null;
     _isScrubbing = false;
     _scrubWasPlaying = false;
     _resumeAfterSeek = false;
@@ -1535,7 +1537,7 @@ class AppController {
           }
           break;
         case 'startLibraryShuffle':
-          updateShuffleMode(ShuffleMode.all);
+          updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
           await pause(false);
           break;
         case 'seek':
@@ -1579,7 +1581,7 @@ class AppController {
           if (albumId.isEmpty) {
             return _carPlayError('missing_album');
           }
-          updateShuffleMode(ShuffleMode.off);
+          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
           await queueAlbum(albumId);
           return _carPlayOk();
         case 'playPlaylist':
@@ -1588,19 +1590,19 @@ class AppController {
           if (playlistId.isEmpty) {
             return _carPlayError('missing_playlist');
           }
-          updateShuffleMode(ShuffleMode.off);
+          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
           await queuePlaylist(playlistId);
           return _carPlayOk();
         case 'playLiked':
-          updateShuffleMode(ShuffleMode.off);
+          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
           await queueLiked();
           return _carPlayOk();
         case 'startLibraryShuffle':
-          updateShuffleMode(ShuffleMode.all);
+          updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
           await pause(false);
           return _carPlayOk();
         case 'startLikedShuffle':
-          updateShuffleMode(ShuffleMode.liked);
+          updateShuffleMode(ShuffleMode.liked, scope: ActionScope.server);
           await queueShuffle(scope: 'liked', play: true);
           return _carPlayOk();
         case 'startCustomShuffle':
@@ -1609,7 +1611,7 @@ class AppController {
               _customShuffleSettings.genres.isEmpty) {
             return _carPlayError('custom_empty');
           }
-          updateShuffleMode(ShuffleMode.custom);
+          updateShuffleMode(ShuffleMode.custom, scope: ActionScope.server);
           await queueShuffle(scope: 'library', play: true);
           return _carPlayOk();
         default:
@@ -2077,16 +2079,35 @@ class AppController {
     if (!_requireServer('loading playlist tracks')) {
       return;
     }
+    final requestId = ++_playlistTracksRequestId;
+    final changedPlaylist = _currentPlaylistId != playlistId;
+    _currentPlaylistId = playlistId;
+    if (changedPlaylist && _playlistTracks.isNotEmpty) {
+      _playlistTracks = <Track>[];
+      _playlistTracksController.add(_playlistTracks);
+    }
     try {
-      _currentPlaylistId = playlistId;
-      _playlistTracks = await connection.fetchPlaylistTracks(playlistId);
+      final tracks = await connection.fetchPlaylistTracks(playlistId);
+      if (requestId != _playlistTracksRequestId ||
+          _currentPlaylistId != playlistId) {
+        return;
+      }
+      _playlistTracks = tracks;
       for (final track in _playlistTracks) {
         _cacheTrackAlbumId(track);
       }
       _playlistTracksController.add(_playlistTracks);
     } on ApiException catch (err) {
+      if (requestId != _playlistTracksRequestId ||
+          _currentPlaylistId != playlistId) {
+        return;
+      }
       _handleApiError(err, context: 'playlist tracks');
     } catch (err) {
+      if (requestId != _playlistTracksRequestId ||
+          _currentPlaylistId != playlistId) {
+        return;
+      }
       _pushMessage(
         'Failed to load playlist tracks: $err',
         level: LogLevel.warning,
@@ -2138,11 +2159,20 @@ class AppController {
     String playlistId, {
     String? startTrackId,
   }) async {
-    var tracks = localPlaylistTracks;
-    if (tracks.isEmpty) {
-      await loadLocalPlaylistTracks(playlistId);
-      tracks = localPlaylistTracks;
+    if (_playbackState.shuffleMode != ShuffleMode.off) {
+      if (_playbackState.shuffleScope == ActionScope.local) {
+        await queueLocalShuffle(
+          playlistId: _playbackState.shuffleMode == ShuffleMode.currentPlaylist
+              ? playlistId
+              : null,
+          startTrackId: startTrackId,
+        );
+        return;
+      }
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
     }
+    await loadLocalPlaylistTracks(playlistId);
+    final tracks = localPlaylistTracks;
     if (tracks.isEmpty) {
       _pushMessage('No downloaded tracks found for local playlist');
       return;
@@ -2151,6 +2181,7 @@ class AppController {
       tracks,
       startTrackId: startTrackId,
       queueSource: PlaybackQueueSource.offline,
+      queueSourcePlaylistId: playlistId,
       offlineQueueSource: _OfflineQueueSource.localPlaylist,
     );
     _queueShuffleMode = ShuffleMode.off;
@@ -2159,11 +2190,29 @@ class AppController {
     await _playCurrent();
   }
 
+  Future<void> playLocalPlaylistFromTop(String playlistId) async {
+    if (_playbackState.shuffleMode != ShuffleMode.off) {
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
+    }
+    await queueLocalPlaylist(playlistId);
+  }
+
   Future<void> playOfflineTrack(
     String trackId, {
     List<Track>? tracks,
     bool localLikedQueue = false,
   }) async {
+    if (_playbackState.shuffleMode != ShuffleMode.off) {
+      if (_playbackState.shuffleScope == ActionScope.local) {
+        final mode = _playbackState.shuffleMode;
+        if (mode == ShuffleMode.all ||
+            (mode == ShuffleMode.liked && _localTrackIsLiked(trackId))) {
+          await queueLocalShuffle(startTrackId: trackId);
+          return;
+        }
+      }
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
+    }
     final available = <String, Track>{
       for (final track in offlineTracks) track.id: track,
       for (final download in availableOfflineDownloads) ...{
@@ -2659,14 +2708,23 @@ class AppController {
     );
   }
 
-  Future<void> createPlaylist(String name) async {
+  Future<void> createPlaylist(
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) async {
     if (!_requireServer('creating playlists')) {
       return;
     }
     try {
-      final playlist = await connection.createPlaylist(name);
+      var playlist = await connection.createPlaylist(
+        name,
+        description: description,
+      );
       _playlists = [..._playlists, playlist];
       _playlistsController.add(_playlists);
+      playlist = await _applyServerPlaylistImageEdit(playlist, imageEdit);
+      _replaceServerPlaylist(playlist);
     } on ApiException catch (err) {
       _handleApiError(err, context: 'create playlist');
     } catch (err) {
@@ -2674,24 +2732,45 @@ class AppController {
     }
   }
 
-  Future<void> createLocalPlaylist(String name) async {
+  Future<void> createLocalPlaylist(
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) async {
     try {
-      await _offlineDownloadManager.createLocalPlaylist(name);
+      final playlist = await _offlineDownloadManager.createLocalPlaylist(
+        name,
+        description: description,
+      );
+      if (imageEdit.kind != PlaylistImageEditKind.keep) {
+        await _offlineDownloadManager.updateLocalPlaylistImage(
+          playlist.id,
+          imageEdit,
+        );
+      }
     } catch (err) {
       _pushMessage('Failed to create local playlist: $err');
     }
   }
 
-  Future<void> renamePlaylist(String playlistId, String name) async {
+  Future<void> renamePlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) async {
     if (!_requireServer('renaming playlists')) {
       return;
     }
     try {
-      final updated = await connection.renamePlaylist(playlistId, name);
-      _playlists = _playlists
-          .map((playlist) => playlist.id == updated.id ? updated : playlist)
-          .toList();
-      _playlistsController.add(_playlists);
+      var updated = await connection.renamePlaylist(
+        playlistId,
+        name,
+        description: description,
+      );
+      _replaceServerPlaylist(updated);
+      updated = await _applyServerPlaylistImageEdit(updated, imageEdit);
+      _replaceServerPlaylist(updated);
     } on ApiException catch (err) {
       _handleApiError(err, context: 'rename playlist');
     } catch (err) {
@@ -2699,12 +2778,52 @@ class AppController {
     }
   }
 
-  Future<void> renameLocalPlaylist(String playlistId, String name) async {
+  Future<void> renameLocalPlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) async {
     try {
-      await _offlineDownloadManager.renameLocalPlaylist(playlistId, name);
+      await _offlineDownloadManager.renameLocalPlaylist(
+        playlistId,
+        name,
+        description: description,
+      );
+      if (imageEdit.kind != PlaylistImageEditKind.keep) {
+        await _offlineDownloadManager.updateLocalPlaylistImage(
+          playlistId,
+          imageEdit,
+        );
+      }
     } catch (err) {
       _pushMessage('Failed to rename local playlist: $err');
     }
+  }
+
+  Future<Playlist> _applyServerPlaylistImageEdit(
+    Playlist playlist,
+    PlaylistImageEdit imageEdit,
+  ) {
+    return switch (imageEdit.kind) {
+      PlaylistImageEditKind.keep => Future.value(playlist),
+      PlaylistImageEditKind.clear =>
+        playlist.imageRef == null
+            ? Future.value(playlist)
+            : connection.deletePlaylistCover(playlist.id),
+      PlaylistImageEditKind.replace => connection.uploadPlaylistCover(
+        playlist.id,
+        imageEdit.bytes ?? const <int>[],
+        imageEdit.contentType ?? 'application/octet-stream',
+      ),
+    };
+  }
+
+  void _replaceServerPlaylist(Playlist updated) {
+    _playlists = _playlists
+        .map((playlist) => playlist.id == updated.id ? updated : playlist)
+        .toList();
+    _playlistsController.add(_playlists);
   }
 
   Future<void> deletePlaylist(String playlistId) async {
@@ -2876,11 +2995,15 @@ class AppController {
       return;
     }
     try {
+      if (_playbackState.shuffleMode != ShuffleMode.off &&
+          _playbackState.shuffleScope != ActionScope.server) {
+        updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+      }
       if (startTrackId != null) {
         await _maybeDisableShuffleForTrackSelection(startTrackId);
         if (_playbackState.shuffleMode != ShuffleMode.off &&
             _playbackState.shuffleMode != ShuffleMode.liked) {
-          updateShuffleMode(ShuffleMode.off);
+          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
         }
       }
       if (_playbackState.shuffleMode != ShuffleMode.off) {
@@ -2945,16 +3068,16 @@ class AppController {
       return;
     }
     try {
+      if (_playbackState.shuffleMode != ShuffleMode.off &&
+          _playbackState.shuffleScope != ActionScope.server) {
+        updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+      }
       if (startTrackId != null) {
         await _maybeDisableShuffleForTrackSelection(startTrackId);
       }
       if (_playbackState.shuffleMode != ShuffleMode.off) {
         if (_playbackState.shuffleMode == ShuffleMode.all) {
-          await queueShuffle(
-            scope: 'library',
-            startTrackId: startTrackId,
-            queueSourceOverride: PlaybackQueueSource.liked,
-          );
+          await queueShuffle(scope: 'library', startTrackId: startTrackId);
           return;
         }
         if ((_playbackState.shuffleMode == ShuffleMode.album ||
@@ -3024,14 +3147,25 @@ class AppController {
     }
   }
 
+  Future<void> playPlaylistFromTop(String playlistId) async {
+    if (_playbackState.shuffleMode != ShuffleMode.off) {
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+    }
+    await queuePlaylist(playlistId);
+  }
+
   Future<void> queueLiked({String? startTrackId}) async {
     if (!_requireServer('playing liked songs from the server')) {
       return;
     }
     try {
       if (_playbackState.shuffleMode != ShuffleMode.off &&
+          _playbackState.shuffleScope != ActionScope.server) {
+        updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+      }
+      if (_playbackState.shuffleMode != ShuffleMode.off &&
           _playbackState.shuffleMode != ShuffleMode.liked) {
-        updateShuffleMode(ShuffleMode.off);
+        updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
       }
       if (_playbackState.shuffleMode != ShuffleMode.liked) {
         _queueShuffleMode = ShuffleMode.off;
@@ -3101,6 +3235,28 @@ class AppController {
     String? startTrackId,
     PlaybackQueueSource? queueSourceOverride,
     String? queueSourcePlaylistIdOverride,
+  }) {
+    return queueServerShuffle(
+      scope: scope,
+      playlistId: playlistId,
+      artistId: artistId,
+      albumId: albumId,
+      play: play,
+      startTrackId: startTrackId,
+      queueSourceOverride: queueSourceOverride,
+      queueSourcePlaylistIdOverride: queueSourcePlaylistIdOverride,
+    );
+  }
+
+  Future<void> queueServerShuffle({
+    required String scope,
+    String? playlistId,
+    String? artistId,
+    String? albumId,
+    bool play = true,
+    String? startTrackId,
+    PlaybackQueueSource? queueSourceOverride,
+    String? queueSourcePlaylistIdOverride,
   }) async {
     if (!_requireServer('starting server shuffle')) {
       return;
@@ -3108,6 +3264,10 @@ class AppController {
     try {
       if (_playbackState.shuffleMode == ShuffleMode.off) {
         _pushMessage('Shuffle is off');
+        return;
+      }
+      if (_playbackState.shuffleScope != ActionScope.server) {
+        _pushMessage('Server shuffle requires a server playback scope');
         return;
       }
 
@@ -3241,6 +3401,87 @@ class AppController {
       _handleApiError(err, context: 'queue shuffle');
     } catch (err) {
       _pushMessage('Failed to queue shuffle: $err');
+    }
+  }
+
+  Future<void> queueLocalShuffle({
+    String? playlistId,
+    bool play = true,
+    String? startTrackId,
+  }) async {
+    try {
+      final mode = _playbackState.shuffleMode;
+      if (mode == ShuffleMode.off) {
+        _pushMessage('Shuffle is off');
+        return;
+      }
+      if (_playbackState.shuffleScope != ActionScope.local) {
+        _pushMessage('Local shuffle requires a local playback scope');
+        return;
+      }
+      if (mode == ShuffleMode.artist ||
+          mode == ShuffleMode.album ||
+          mode == ShuffleMode.custom) {
+        _pushMessage(
+          'This shuffle mode is only available for server playback.',
+        );
+        return;
+      }
+
+      List<Track> tracks;
+      _OfflineQueueSource offlineSource;
+      String? sourcePlaylistId;
+      String contextScope;
+
+      if (mode == ShuffleMode.currentPlaylist) {
+        sourcePlaylistId =
+            playlistId ??
+            (_playbackState.queueSource == PlaybackQueueSource.offline
+                ? _playbackState.queueSourcePlaylistId
+                : null);
+        if (sourcePlaylistId == null || sourcePlaylistId.isEmpty) {
+          _pushMessage('Select a local playlist to shuffle');
+          return;
+        }
+        await loadLocalPlaylistTracks(sourcePlaylistId);
+        tracks = localPlaylistTracks;
+        offlineSource = _OfflineQueueSource.localPlaylist;
+        contextScope = 'localPlaylist';
+      } else if (mode == ShuffleMode.liked) {
+        if (localLiked.isEmpty) {
+          await loadLocalLikedTracks();
+        }
+        tracks = localLiked;
+        offlineSource = _OfflineQueueSource.localLiked;
+        contextScope = 'localLiked';
+      } else {
+        tracks = offlineTracks;
+        offlineSource = _OfflineQueueSource.tracks;
+        contextScope = 'localLibrary';
+      }
+
+      if (tracks.isEmpty) {
+        _pushMessage('No downloaded tracks found for shuffle');
+        return;
+      }
+
+      _rememberShuffleContext(
+        scope: contextScope,
+        playlistId: sourcePlaylistId,
+      );
+      _setQueue(
+        _shuffleTracks(tracks),
+        startTrackId: startTrackId,
+        queueSource: PlaybackQueueSource.offline,
+        queueSourcePlaylistId: sourcePlaylistId,
+        offlineQueueSource: offlineSource,
+      );
+      _armAutoAdvanceGuard();
+      if (play) {
+        await _playCurrent();
+      }
+    } catch (err) {
+      _pushMessage('Failed to queue local shuffle: $err');
     }
   }
 
@@ -3415,9 +3656,10 @@ class AppController {
     }
   }
 
-  void updateShuffleMode(ShuffleMode mode) {
-    _updatePlayback(shuffleMode: mode);
-    _pushMessage('Shuffle: ${mode.name}');
+  void updateShuffleMode(ShuffleMode mode, {ActionScope? scope}) {
+    final nextScope = scope ?? _playbackState.shuffleScope;
+    _updatePlayback(shuffleMode: mode, shuffleScope: nextScope);
+    _pushMessage('Shuffle: ${nextScope.name} ${mode.name}');
     if (mode != ShuffleMode.off) {
       _queueShuffleMode = ShuffleMode.off;
       _queueShuffleScope = null;
@@ -3535,7 +3777,9 @@ class AppController {
     _beginScrub();
     _seeking = true;
     _seekTargetMs = clamped.inMilliseconds;
+    _seekDirection = _seekDirectionFor(_seekOriginMs, _seekTargetMs);
     _resetPlaybackPositionTracking(position: clamped);
+    _resetBufferedEndHighWater(position: clamped);
     _updatePlayback(
       position: clamped,
       isPlaying: _playbackState.isPlaying,
@@ -3556,9 +3800,14 @@ class AppController {
     _lastSeekTrackId = track.id;
     _seeking = true;
     _seekTargetMs = clamped.inMilliseconds;
+    if (!_isScrubbing) {
+      _seekOriginMs = _displayPositionMs;
+    }
+    _seekDirection = _seekDirectionFor(_seekOriginMs, _seekTargetMs);
     _audioOutputStarted = false;
     _bumpNowPlayingEpoch();
     _resetPlaybackPositionTracking(position: clamped);
+    _resetBufferedEndHighWater(position: clamped);
     _updatePlayback(position: clamped, isPlaying: wasPlaying, bufferRatio: 0.0);
     _scheduleSeekCommit(clamped);
     await _pushNowPlayingUpdate(force: true);
@@ -3622,6 +3871,8 @@ class AppController {
     _isScrubbing = true;
     _resumeAfterSeek = false;
     _scrubWasPlaying = _playbackState.isPlaying;
+    _seekOriginMs = _displayPositionMs;
+    _seekDirection = _SeekDirection.none;
   }
 
   void _finishScrub() {
@@ -3633,7 +3884,10 @@ class AppController {
     final positionMs = max(0, position.inMilliseconds);
     _displayPositionMs = positionMs;
     _actualPositionMs = positionMs;
-    _lastDisplayTickAt = DateTime.now();
+  }
+
+  void _resetBufferedEndHighWater({Duration position = Duration.zero}) {
+    _bufferedEndHighWaterMs = max(0, position.inMilliseconds);
   }
 
   void _resetTrackTransitionState({Duration position = Duration.zero}) {
@@ -3642,7 +3896,9 @@ class AppController {
     _scrubWasPlaying = false;
     _resumeAfterSeek = false;
     _seeking = false;
+    _seekOriginMs = positionMs;
     _seekTargetMs = positionMs;
+    _seekDirection = _SeekDirection.none;
     _pendingSeekCommitMs = null;
     _pendingSeekCommitTrackId = null;
     _lastSeekTrackId = null;
@@ -3652,6 +3908,7 @@ class AppController {
     _resetPlaybackPositionTracking(
       position: Duration(milliseconds: positionMs),
     );
+    _resetBufferedEndHighWater(position: Duration(milliseconds: positionMs));
   }
 
   void _restartPlaybackForSeek({
@@ -3674,19 +3931,40 @@ class AppController {
   }
 
   void _maybeClearSeekHold(Duration position, Duration bufferedAhead) {
-    if (!_seeking) {
+    if (!_seeking || _isScrubbing) {
       return;
     }
     final positionMs = position.inMilliseconds;
     final targetMs = _seekTargetMs;
-    final reached = positionMs >= targetMs - 400;
+    final reached = switch (_seekDirection) {
+      _SeekDirection.forward =>
+        positionMs >= targetMs - _seekCompletionToleranceMs,
+      _SeekDirection.backward =>
+        positionMs <= targetMs + _seekCompletionToleranceMs,
+      _SeekDirection.none =>
+        (positionMs - targetMs).abs() <= _seekCompletionToleranceMs,
+    };
     if (reached) {
       _seeking = false;
+      _seekOriginMs = positionMs;
+      _seekTargetMs = positionMs;
+      _seekDirection = _SeekDirection.none;
       _lastSeekTrackId = null;
       _ignoreCompleteUntil = null;
       _suppressAutoAdvanceUntil = null;
+      _resetPlaybackPositionTracking(position: position);
       _pushNowPlayingUpdate(force: true);
     }
+  }
+
+  _SeekDirection _seekDirectionFor(int originMs, int targetMs) {
+    if (targetMs > originMs + _seekCompletionToleranceMs) {
+      return _SeekDirection.forward;
+    }
+    if (targetMs < originMs - _seekCompletionToleranceMs) {
+      return _SeekDirection.backward;
+    }
+    return _SeekDirection.none;
   }
 
   Duration _clampSeekTarget(Duration position) {
@@ -3728,7 +4006,7 @@ class AppController {
     if (_isScrubbing) {
       _displayPositionMs = _seekTargetMs;
     } else if (_seeking) {
-      _displayPositionMs = max(actualMs, _seekTargetMs);
+      _displayPositionMs = _seekTargetMs;
     } else if (!_playbackState.isPlaying ||
         _audioEngine.isPaused ||
         !_audioOutputStarted) {
@@ -3761,10 +4039,7 @@ class AppController {
     return reportedMs;
   }
 
-  double _displayBufferRatio({
-    required Duration duration,
-    required double rawBufferRatio,
-  }) {
+  double _displayBufferRatio({required Duration duration}) {
     final durationMs = duration.inMilliseconds;
     if (durationMs <= 0) {
       return 0.0;
@@ -3773,7 +4048,34 @@ class AppController {
     if (_isScrubbing || _seeking) {
       return positionRatio.toDouble();
     }
-    return rawBufferRatio.clamp(positionRatio, 1.0).toDouble();
+    final bufferedRatio = (_bufferedEndHighWaterMs / durationMs).clamp(
+      positionRatio,
+      1.0,
+    );
+    return bufferedRatio.toDouble();
+  }
+
+  void _updateBufferedEndHighWater({
+    required Duration duration,
+    required Duration position,
+    required Duration bufferedAhead,
+  }) {
+    final durationMs = duration.inMilliseconds;
+    if (durationMs <= 0) {
+      _bufferedEndHighWaterMs = 0;
+      return;
+    }
+    if (_isScrubbing || _seeking) {
+      return;
+    }
+    final positionMs = max(0, position.inMilliseconds);
+    final bufferedAheadMs = max(0, bufferedAhead.inMilliseconds);
+    final bufferedEndMs = positionMs + bufferedAheadMs;
+    final next = max(
+      _bufferedEndHighWaterMs,
+      max(bufferedEndMs, _displayPositionMs),
+    );
+    _bufferedEndHighWaterMs = next.clamp(0, durationMs).toInt();
   }
 
   void _bumpNowPlayingEpoch() {
@@ -3932,6 +4234,15 @@ class AppController {
     return track.id == localTrackId || track.localId == localTrackId;
   }
 
+  bool _localTrackIsLiked(String trackId) {
+    return localLiked.any(
+      (track) =>
+          track.id == trackId ||
+          track.localId == trackId ||
+          track.serverTrackId == trackId,
+    );
+  }
+
   bool _shouldUseLocalUserData(Track track) {
     if (_playbackState.isLocalPlayback &&
         _playbackState.track != null &&
@@ -3975,7 +4286,10 @@ class AppController {
     _autoAdvanceInFlight = false;
     _updatePlayback(
       queueSource: queueSource,
-      queueSourcePlaylistId: queueSource == PlaybackQueueSource.playlist
+      queueSourcePlaylistId:
+          queueSource == PlaybackQueueSource.playlist ||
+              (queueSource == PlaybackQueueSource.offline &&
+                  offlineQueueSource == _OfflineQueueSource.localPlaylist)
           ? queueSourcePlaylistId
           : null,
       nowPlaying: false,
@@ -4089,6 +4403,13 @@ class AppController {
   }
 
   Future<bool> _ensureShuffleQueue({bool play = true}) async {
+    if (_playbackState.shuffleScope == ActionScope.local) {
+      return _ensureLocalShuffleQueue(play: play);
+    }
+    return _ensureServerShuffleQueue(play: play);
+  }
+
+  Future<bool> _ensureServerShuffleQueue({bool play = true}) async {
     if (_playbackState.shuffleMode == ShuffleMode.off) {
       return false;
     }
@@ -4111,6 +4432,35 @@ class AppController {
       playlistId: context.playlistId,
       artistId: context.artistId,
       albumId: context.albumId,
+      play: play,
+      startTrackId: startTrackId,
+    );
+    return _playQueue.isNotEmpty;
+  }
+
+  Future<bool> _ensureLocalShuffleQueue({bool play = true}) async {
+    if (_playbackState.shuffleMode == ShuffleMode.off) {
+      return false;
+    }
+    if (_playQueue.isNotEmpty &&
+        _queueShuffleMode == _playbackState.shuffleMode &&
+        _queueShuffleScope != null &&
+        _queueShuffleScope!.startsWith('local')) {
+      if (play && _playbackState.track == null) {
+        _playIndex = _playIndex.clamp(0, _playQueue.length - 1);
+        await _playCurrent();
+      }
+      return true;
+    }
+    final startTrackId = play ? null : _playbackState.track?.id;
+    final playlistId = _playbackState.shuffleMode == ShuffleMode.currentPlaylist
+        ? (_queueShufflePlaylistId ??
+              (_playbackState.queueSource == PlaybackQueueSource.offline
+                  ? _playbackState.queueSourcePlaylistId
+                  : null))
+        : null;
+    await queueLocalShuffle(
+      playlistId: playlistId,
       play: play,
       startTrackId: startTrackId,
     );
@@ -4169,6 +4519,9 @@ class AppController {
   }
 
   Future<void> _maybeDisableShuffleForTrackSelection(String trackId) async {
+    if (_playbackState.shuffleScope != ActionScope.server) {
+      return;
+    }
     final mode = _playbackState.shuffleMode;
     if (mode != ShuffleMode.liked && mode != ShuffleMode.custom) {
       return;
@@ -4178,7 +4531,7 @@ class AppController {
       mode,
     );
     if (shouldDisable) {
-      updateShuffleMode(ShuffleMode.off);
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
     }
   }
 
@@ -4547,6 +4900,7 @@ class AppController {
     double? bufferRatio,
     double? volume,
     ShuffleMode? shuffleMode,
+    ActionScope? shuffleScope,
     RepeatMode? repeatMode,
     StreamMode? streamMode,
     double? bitrateKbps,
@@ -4566,6 +4920,7 @@ class AppController {
       bufferRatio: bufferRatio,
       volume: volume,
       shuffleMode: shuffleMode,
+      shuffleScope: shuffleScope,
       repeatMode: repeatMode,
       streamMode: streamMode,
       bitrateKbps: bitrateKbps,
@@ -5013,7 +5368,8 @@ class AppController {
   }
 
   Future<void> _refreshCustomShuffleQueueIfNeeded() async {
-    if (_playbackState.shuffleMode != ShuffleMode.custom) {
+    if (_playbackState.shuffleMode != ShuffleMode.custom ||
+        _playbackState.shuffleScope != ActionScope.server) {
       return;
     }
     final hasActiveShuffle =
@@ -5116,6 +5472,7 @@ class AppController {
     _lastStartPlaybackTrackId = track.id;
     _lastStartPlaybackOffsetMs = offsetMs;
     _resetPlaybackPositionTracking(position: startOffset);
+    _resetBufferedEndHighWater(position: startOffset);
     () async {
       if (shouldUseLocal) {
         if (offlineDownload == null) {
@@ -5274,61 +5631,6 @@ class AppController {
       (_) => _pollHealth(),
     );
     _pollHealth();
-  }
-
-  void _startDisplayPositionTicker() {
-    _displayPositionTimer?.cancel();
-    _lastDisplayTickAt = DateTime.now();
-    _displayPositionTimer = Timer.periodic(
-      _displayPositionHeartbeat,
-      (_) => _tickDisplayPosition(),
-    );
-  }
-
-  void _tickDisplayPosition() {
-    developer.Timeline.startSync('playback.position.tick');
-    final now = DateTime.now();
-    try {
-      final lastTickAt = _lastDisplayTickAt;
-      _lastDisplayTickAt = now;
-      if (lastTickAt == null) {
-        return;
-      }
-      if (_isScrubbing || _seeking) {
-        return;
-      }
-      if (!_playbackState.isPlaying ||
-          _playbackState.isLoading ||
-          _audioEngine.isPaused ||
-          !_audioOutputStarted) {
-        return;
-      }
-
-      var elapsedMs = now.difference(lastTickAt).inMilliseconds;
-      if (elapsedMs <= 0) {
-        return;
-      }
-      if (elapsedMs > _displayPositionHeartbeat.inMilliseconds * 2) {
-        elapsedMs = _displayPositionHeartbeat.inMilliseconds;
-      }
-
-      final durationMs = _playbackState.duration.inMilliseconds;
-      var nextPositionMs = _displayPositionMs + elapsedMs;
-      if (durationMs > 0 && nextPositionMs > durationMs) {
-        nextPositionMs = durationMs;
-      }
-      if (nextPositionMs <= _displayPositionMs) {
-        return;
-      }
-
-      _displayPositionMs = nextPositionMs;
-      if (_actualPositionMs < nextPositionMs) {
-        _actualPositionMs = nextPositionMs;
-      }
-      _updatePlayback(position: Duration(milliseconds: nextPositionMs));
-    } finally {
-      developer.Timeline.finishSync();
-    }
   }
 
   Future<void> _pollHealth() async {

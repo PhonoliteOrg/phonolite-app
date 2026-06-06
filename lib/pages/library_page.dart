@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
@@ -107,8 +106,8 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     final authHeadersMap = authHeaders(controller);
 
-    return Container(
-      color: bgDark,
+    return ColoredBox(
+      color: Colors.transparent,
       child: StreamBuilder<List<SearchResult>>(
         stream: controller.searchStream,
         initialData: controller.searchResults,
@@ -284,8 +283,8 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _buildOfflineLibrary(AppController controller) {
-    return Container(
-      color: bgDark,
+    return ColoredBox(
+      color: Colors.transparent,
       child: StreamBuilder<OfflineLibrarySnapshot>(
         stream: controller.offlineLibrarySnapshotStream,
         initialData: controller.offlineLibrarySnapshot,
@@ -538,7 +537,7 @@ class _LibraryPageState extends State<LibraryPage> {
     bool showEmpty = true,
   }) {
     return [
-      _sectionHeaderSliver('Local Library'),
+      _sectionHeaderSliver('Downloaded Music'),
       if (tracks.isEmpty && showEmpty)
         SliverToBoxAdapter(
           child: EmptyStateText(
@@ -567,10 +566,7 @@ class _LibraryPageState extends State<LibraryPage> {
     required bool isLoading,
   }) {
     return [
-      _sectionHeaderSliver(
-        'Server Library',
-        subtitle: _serverArtistSubtitle(artists),
-      ),
+      _sectionHeaderSliver('Connected Server Artists'),
       if (artists.isEmpty && isLoading)
         loadingSliver()
       else if (artists.isEmpty)
@@ -933,11 +929,6 @@ class _LibraryPageState extends State<LibraryPage> {
           return target.contains(normalized);
         })
         .toList(growable: false);
-  }
-
-  String _serverArtistSubtitle(List<Artist> artists) {
-    final label = artists.length == 1 ? 'artist' : 'artists';
-    return '${artists.length} server $label loaded';
   }
 
   void _handleArtistScroll() {

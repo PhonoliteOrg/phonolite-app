@@ -53,6 +53,10 @@ void main() {
         'artist/id with spaces',
         kind: 'banner art',
       );
+      final playlistUrl = connection.buildPlaylistCoverUrl(
+        'playlist/id with spaces',
+        imageRef: 'rev 1',
+      );
 
       expect(
         albumUrl,
@@ -62,6 +66,53 @@ void main() {
         artistUrl,
         'http://example.test/api/v1/library/artists/artist%2Fid%20with%20spaces/cover?kind=banner%20art',
       );
+      expect(
+        playlistUrl,
+        'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces/cover?v=rev%201',
+      );
+    });
+
+    test('uploads and deletes protected playlist artwork bytes', () async {
+      final requested = <String>[];
+      final methods = <String>[];
+      final contentTypes = <String?>[];
+      final bodies = <List<int>>[];
+      final authHeaders = <String?>[];
+      final connection = ServerConnection(
+        baseUrl: 'http://example.test/api/v1',
+        client: MockClient((request) async {
+          requested.add(request.url.toString());
+          methods.add(request.method);
+          contentTypes.add(
+            request.headers['content-type'] ?? request.headers['Content-Type'],
+          );
+          bodies.add(request.bodyBytes);
+          authHeaders.add(request.headers['authorization']);
+          return http.Response(
+            '{"id":"playlist/id","name":"Mix","track_ids":[],"image_ref":"rev-1"}',
+            200,
+          );
+        }),
+      );
+      connection.setToken('token-1');
+
+      final uploaded = await connection.uploadPlaylistCover(
+        'playlist/id',
+        <int>[1, 2, 3],
+        'image/png',
+      );
+      final deleted = await connection.deletePlaylistCover('playlist/id');
+
+      expect(requested, <String>[
+        'http://example.test/api/v1/library/playlists/playlist%2Fid/cover',
+        'http://example.test/api/v1/library/playlists/playlist%2Fid/cover',
+      ]);
+      expect(methods, <String>['PUT', 'DELETE']);
+      expect(contentTypes.first, 'image/png');
+      expect(bodies.first, <int>[1, 2, 3]);
+      expect(authHeaders, <String?>['Bearer token-1', 'Bearer token-1']);
+      expect(uploaded.imageRef, 'rev-1');
+      expect(deleted.id, 'playlist/id');
     });
 
     test('fetches protected album and artist artwork bytes', () async {
@@ -151,11 +202,20 @@ void main() {
 
     test('encodes identifiers used as URL path segments', () async {
       final requested = <String>[];
+      final playlistBodies = <Map<String, dynamic>>[];
       final connection = ServerConnection(
         baseUrl: 'http://example.test/api/v1',
         client: MockClient((request) async {
           requested.add(request.url.toString());
           final path = request.url.path;
+          if (path.contains('/library/playlists/') &&
+              request.method == 'POST' &&
+              request.body.isNotEmpty) {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            if (body.containsKey('name')) {
+              playlistBodies.add(body);
+            }
+          }
           if (path.endsWith('/albums')) {
             return http.Response(
               '[{"id":"album/id","title":"Album","artist":"Artist","artist_id":"artist/id","track_count":1}]',
@@ -204,7 +264,11 @@ void main() {
       await connection.fetchPlaylistTracks('playlist/id with spaces');
       await connection.likeTrack('track/id with spaces');
       await connection.unlikeTrack('track/id with spaces');
-      await connection.renamePlaylist('playlist/id with spaces', 'New name');
+      await connection.renamePlaylist(
+        'playlist/id with spaces',
+        'New name',
+        description: 'New description',
+      );
       await connection.deletePlaylist('playlist/id with spaces');
       await connection.updatePlaylistTracks('playlist/id with spaces', []);
 
@@ -221,6 +285,10 @@ void main() {
         'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces',
         'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces',
       ]);
+      expect(playlistBodies.single, <String, dynamic>{
+        'name': 'New name',
+        'description': 'New description',
+      });
     });
 
     test('fetchArtists paginates until the last page is short', () async {

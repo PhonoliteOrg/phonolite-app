@@ -10,6 +10,7 @@ import '../ui/dismissible_selection_area.dart';
 import '../ui/expandable_summary_text.dart';
 import 'album_labels.dart';
 import 'artist_avatar.dart';
+import 'genre_text.dart';
 
 class ArtistHero extends StatelessWidget {
   const ArtistHero({
@@ -34,7 +35,10 @@ class ArtistHero extends StatelessWidget {
     final summary = artist.summary?.trim().isNotEmpty == true
         ? artist.summary!
         : 'Bio unavailable. Curate this artist profile with metadata or notes.';
-    final detailsLine = artistDetailLabel(artist, genreLimit: 4);
+    final genreLine = genreBulletLine(artist.genres);
+    final detailsLine = genreLine.isEmpty
+        ? artistDetailLabel(artist, genreLimit: 0)
+        : '${artistDetailLabel(artist, genreLimit: 0)} / $genreLine';
 
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: s(220)),

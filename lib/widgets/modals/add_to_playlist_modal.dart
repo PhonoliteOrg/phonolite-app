@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
 import '../layouts/app_scope.dart';
 import '../inputs/obsidian_text_field.dart';
@@ -10,45 +11,57 @@ import 'confirmation_modal.dart';
 
 Future<void> showAddToPlaylistModalForTrack(
   BuildContext context,
-  Track? track,
-) async {
+  Track? track, {
+  required ActionScope scope,
+}) async {
   if (track == null) {
     return;
   }
   final controller = AppScope.of(context);
-  if (controller.localPlaylists.isEmpty) {
-    await controller.loadLocalPlaylists();
-  }
-  if (controller.authState.isAuthorized && controller.playlists.isEmpty) {
+  final isLocal = scope == ActionScope.local;
+  if (isLocal) {
+    if (controller.localPlaylists.isEmpty) {
+      await controller.loadLocalPlaylists();
+    }
+  } else if (controller.authState.isAuthorized &&
+      controller.playlists.isEmpty) {
     await controller.loadPlaylists();
   }
   if (!context.mounted) {
     return;
   }
-  final localDownload = controller.availableOfflineDownloadForTrack(track.id);
-  final canUseLocal = localDownload?.localTrackId != null;
-  final serverTrack = controller.serverTrackForCurrentServer(track);
+  final localDownload = isLocal
+      ? controller.availableOfflineDownloadForTrack(track.id)
+      : null;
+  final localTrackId = track.localId ?? localDownload?.localTrackId;
+  final serverTrack = isLocal
+      ? null
+      : controller.serverTrackForCurrentServer(track);
+  final canUsePlaylists = isLocal
+      ? localTrackId != null
+      : serverTrack != null && controller.authState.isAuthorized;
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => AddToPlaylistModal(
-      localPlaylists: controller.localPlaylists,
-      serverPlaylists: serverTrack != null && controller.authState.isAuthorized
-          ? controller.playlists
-          : const <Playlist>[],
-      trackId: serverTrack?.id ?? track.id,
-      localTrackId: track.localId ?? localDownload?.localTrackId,
-      canUseLocalPlaylists: canUseLocal,
-      onLocalSelected: (playlist) =>
-          controller.addTrackToLocalPlaylist(playlist, track),
-      onLocalRemoved: (playlist) =>
-          controller.removeTrackFromLocalPlaylist(playlist, track),
-      onServerSelected: (playlist) {
+      scope: scope,
+      playlists: isLocal ? controller.localPlaylists : controller.playlists,
+      trackId: isLocal ? localTrackId ?? track.id : serverTrack?.id ?? track.id,
+      canUsePlaylists: canUsePlaylists,
+      onSelected: (playlist) {
+        if (isLocal) {
+          controller.addTrackToLocalPlaylist(playlist, track);
+          return;
+        }
         final scopedTrack = serverTrack;
         if (scopedTrack != null) {
           controller.addTrackToPlaylist(playlist, scopedTrack);
         }
       },
-      onServerRemoved: (playlist) {
+      onRemoved: (playlist) {
+        if (isLocal) {
+          controller.removeTrackFromLocalPlaylist(playlist, track);
+          return;
+        }
         final scopedTrack = serverTrack;
         if (scopedTrack != null) {
           controller.removeTrackFromPlaylist(playlist, scopedTrack);
@@ -61,26 +74,20 @@ Future<void> showAddToPlaylistModalForTrack(
 class AddToPlaylistModal extends StatefulWidget {
   const AddToPlaylistModal({
     super.key,
-    required this.localPlaylists,
-    required this.serverPlaylists,
+    required this.scope,
+    required this.playlists,
     required this.trackId,
-    this.localTrackId,
-    required this.canUseLocalPlaylists,
-    required this.onLocalSelected,
-    required this.onServerSelected,
-    this.onLocalRemoved,
-    this.onServerRemoved,
+    required this.canUsePlaylists,
+    required this.onSelected,
+    this.onRemoved,
   });
 
-  final List<Playlist> localPlaylists;
-  final List<Playlist> serverPlaylists;
+  final ActionScope scope;
+  final List<Playlist> playlists;
   final String trackId;
-  final String? localTrackId;
-  final bool canUseLocalPlaylists;
-  final ValueChanged<Playlist> onLocalSelected;
-  final ValueChanged<Playlist> onServerSelected;
-  final ValueChanged<Playlist>? onLocalRemoved;
-  final ValueChanged<Playlist>? onServerRemoved;
+  final bool canUsePlaylists;
+  final ValueChanged<Playlist> onSelected;
+  final ValueChanged<Playlist>? onRemoved;
 
   @override
   State<AddToPlaylistModal> createState() => _AddToPlaylistModalState();
@@ -109,14 +116,13 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
 
   @override
   Widget build(BuildContext context) {
-    final hasPlaylists =
-        widget.localPlaylists.isNotEmpty || widget.serverPlaylists.isNotEmpty;
+    final hasPlaylists = widget.playlists.isNotEmpty;
     final normalized = _query.trim().toLowerCase();
-    final filteredLocal = _filterPlaylists(widget.localPlaylists, normalized);
-    final filteredServer = _filterPlaylists(widget.serverPlaylists, normalized);
+    final filteredPlaylists = _filterPlaylists(widget.playlists, normalized);
+    final scopeLabel = widget.scope == ActionScope.local ? 'local' : 'server';
 
     return AlertDialog(
-      title: const Text('Add to playlist'),
+      title: Text('Add to $scopeLabel playlist'),
       content: SizedBox(
         width: 360,
         height: 420,
@@ -140,7 +146,7 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                         shrinkWrap: true,
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-                        itemCount: _rowCount(filteredLocal, filteredServer),
+                        itemCount: filteredPlaylists.length,
                         separatorBuilder: (context, index) => Divider(
                           height: 1,
                           color: ObsidianPalette.textMuted.withValues(
@@ -148,28 +154,9 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                           ),
                         ),
                         itemBuilder: (context, index) {
-                          final row = _rowAt(
-                            index,
-                            filteredLocal,
-                            filteredServer,
-                          );
-                          if (row.header != null) {
-                            return Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-                              child: Text(
-                                row.header!,
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(
-                                      color: ObsidianPalette.gold,
-                                      letterSpacing: 1.2,
-                                    ),
-                              ),
-                            );
-                          }
                           return _buildPlaylistRow(
                             context,
-                            row.playlist!,
-                            isLocal: row.isLocal,
+                            filteredPlaylists[index],
                           );
                         },
                       ),
@@ -180,7 +167,7 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
             : Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Text(
-                  'No playlists available.',
+                  'No $scopeLabel playlists available.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: ObsidianPalette.textMuted,
                   ),
@@ -205,46 +192,8 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
     }).toList();
   }
 
-  int _rowCount(List<Playlist> local, List<Playlist> server) {
-    return (local.isEmpty ? 0 : local.length + 1) +
-        (server.isEmpty ? 0 : server.length + 1);
-  }
-
-  _PlaylistModalRow _rowAt(
-    int index,
-    List<Playlist> local,
-    List<Playlist> server,
-  ) {
-    var cursor = index;
-    if (local.isNotEmpty) {
-      if (cursor == 0) {
-        return const _PlaylistModalRow.header('Local Playlists');
-      }
-      cursor -= 1;
-      if (cursor < local.length) {
-        return _PlaylistModalRow.playlist(local[cursor], isLocal: true);
-      }
-      cursor -= local.length;
-    }
-    if (server.isNotEmpty) {
-      if (cursor == 0) {
-        return const _PlaylistModalRow.header('Server Playlists');
-      }
-      cursor -= 1;
-      return _PlaylistModalRow.playlist(server[cursor], isLocal: false);
-    }
-    return const _PlaylistModalRow.header('');
-  }
-
-  Widget _buildPlaylistRow(
-    BuildContext context,
-    Playlist playlist, {
-    required bool isLocal,
-  }) {
-    final membershipId = isLocal
-        ? widget.localTrackId ?? widget.trackId
-        : widget.trackId;
-    final wasInPlaylist = playlist.trackIds.contains(membershipId);
+  Widget _buildPlaylistRow(BuildContext context, Playlist playlist) {
+    final wasInPlaylist = playlist.trackIds.contains(widget.trackId);
     final addedLocally = _addedPlaylistIds.contains(playlist.id);
     final removedLocally = _removedPlaylistIds.contains(playlist.id);
     final isInPlaylist = (wasInPlaylist || addedLocally) && !removedLocally;
@@ -254,25 +203,24 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
     } else if (!wasInPlaylist && addedLocally) {
       count += 1;
     }
-    final localDisabled = isLocal && !widget.canUseLocalPlaylists;
-    final removable = isLocal ? widget.onLocalRemoved : widget.onServerRemoved;
-    final select = isLocal ? widget.onLocalSelected : widget.onServerSelected;
+    final disabled = !widget.canUsePlaylists;
+    final scopeLabel = widget.scope == ActionScope.local ? 'Local' : 'Server';
 
     return _ModalListRow(
       title: playlist.name,
-      subtitle: localDisabled
-          ? 'Download this song first'
-          : '${isLocal ? 'Local' : 'Server'} - $count tracks',
+      subtitle: disabled
+          ? widget.scope == ActionScope.local
+                ? 'Download this song first'
+                : 'Unavailable on this server'
+          : '$scopeLabel - $count tracks',
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             isInPlaylist ? Icons.check_rounded : Icons.add_rounded,
-            color: localDisabled
-                ? ObsidianPalette.textMuted
-                : ObsidianPalette.gold,
+            color: disabled ? ObsidianPalette.textMuted : ObsidianPalette.gold,
           ),
-          if (isInPlaylist && removable != null) ...[
+          if (isInPlaylist && widget.onRemoved != null) ...[
             const SizedBox(width: 8),
             ObsidianHudIconButton(
               icon: Icons.delete_outline_rounded,
@@ -286,7 +234,7 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                 if (!confirmed || !mounted) {
                   return;
                 }
-                removable.call(playlist);
+                widget.onRemoved!.call(playlist);
                 setState(() {
                   _removedPlaylistIds.add(playlist.id);
                   _addedPlaylistIds.remove(playlist.id);
@@ -297,12 +245,12 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
           ],
         ],
       ),
-      enabled: !isInPlaylist && !localDisabled,
+      enabled: !isInPlaylist && !disabled,
       isSelected: isInPlaylist,
-      onTap: isInPlaylist || localDisabled
+      onTap: isInPlaylist || disabled
           ? null
           : () {
-              select(playlist);
+              widget.onSelected(playlist);
               setState(() {
                 _addedPlaylistIds.add(playlist.id);
                 _removedPlaylistIds.remove(playlist.id);
@@ -310,19 +258,6 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
             },
     );
   }
-}
-
-class _PlaylistModalRow {
-  const _PlaylistModalRow.header(this.header)
-    : playlist = null,
-      isLocal = false;
-
-  const _PlaylistModalRow.playlist(this.playlist, {required this.isLocal})
-    : header = null;
-
-  final String? header;
-  final Playlist? playlist;
-  final bool isLocal;
 }
 
 class _ModalListRow extends StatelessWidget {

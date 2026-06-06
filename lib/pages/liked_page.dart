@@ -5,11 +5,12 @@ import '../entities/auth_state.dart';
 import '../entities/models.dart';
 import '../entities/offline_library.dart';
 import '../widgets/display/download_selection_toolbar.dart';
-import '../widgets/display/empty_state.dart';
 import '../widgets/display/track_row_tile.dart';
+import '../widgets/layout/library_header.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
+import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/obsidian_widgets.dart';
 
 class LikedPage extends StatefulWidget {
@@ -22,8 +23,7 @@ class LikedPage extends StatefulWidget {
 class _LikedPageState extends State<LikedPage> {
   bool _requestedLocalLoad = false;
   bool _requestedServerLoad = false;
-  bool _localSelectionMode = false;
-  bool _serverSelectionMode = false;
+  bool _selectionMode = false;
   final Set<String> _selectedLocalTrackIds = <String>{};
   final Set<String> _selectedServerTrackIds = <String>{};
 
@@ -99,14 +99,60 @@ class _LikedPageState extends State<LikedPage> {
                           serverRemovableTracks,
                           _selectedServerTrackIds,
                         );
+                        final selectedTracks = <Track>[
+                          ...selectedLocalTracks,
+                          ...selectedServerTracks,
+                        ];
+                        final removableCount =
+                            localRemovableTracks.length +
+                            serverRemovableTracks.length;
                         return CustomScrollView(
                           slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                16,
+                                20,
+                                12,
+                              ),
+                              sliver: SliverToBoxAdapter(
+                                child: LibraryHeader(
+                                  title: 'LIKED TRACKS',
+                                  moduleCount: 0,
+                                  trailing: _selectionMode
+                                      ? DownloadSelectionToolbar(
+                                          selectedCount: selectedTracks.length,
+                                          totalCount: removableCount,
+                                          onCancel: _clearSelection,
+                                          onSelectAll: () => _selectAll(
+                                            localTracks: localRemovableTracks,
+                                            serverTracks: serverRemovableTracks,
+                                          ),
+                                          onDeselectAll: _deselectAll,
+                                          onRemove: selectedTracks.isEmpty
+                                              ? null
+                                              : () => _removeDownloads(
+                                                  controller,
+                                                  selectedTracks,
+                                                  'liked tracks',
+                                                ),
+                                        )
+                                      : Tooltip(
+                                          message: 'Edit',
+                                          child: ObsidianHudIconButton(
+                                            icon: Icons.edit_rounded,
+                                            onPressed: removableCount > 0
+                                                ? _startSelection
+                                                : null,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
                             _LikedSection(
-                              title: 'Local Liked Downloads',
+                              title: 'Local Liked Tracks',
                               tracks: localTracks,
-                              emptyTitle: 'No local liked downloads',
-                              emptyMessage:
-                                  'Downloaded tracks you like locally will appear here.',
+                              emptyTitle: 'No local liked tracks',
                               playback: playback,
                               onTap: (track) =>
                                   controller.playLocalLikedTrack(track.id),
@@ -115,29 +161,11 @@ class _LikedPageState extends State<LikedPage> {
                                   showAddToPlaylistModalForTrack(
                                     context,
                                     track,
+                                    scope: ActionScope.local,
                                   ),
                               offlineDownloadForTrack: (track) =>
                                   controller.offlineDownloadForTrack(track.id),
-                              selectionMode: _localSelectionMode,
-                              selectedCount: selectedLocalTracks.length,
-                              removableCount: localRemovableTracks.length,
-                              onStartSelection: () =>
-                                  _startSelection(local: true),
-                              onCancelSelection: () =>
-                                  _clearSelection(local: true),
-                              onSelectAll: () => _selectAll(
-                                local: true,
-                                tracks: localRemovableTracks,
-                              ),
-                              onDeselectAll: () => _deselectAll(local: true),
-                              onRemoveSelected: selectedLocalTracks.isEmpty
-                                  ? null
-                                  : () => _removeDownloads(
-                                      controller,
-                                      selectedLocalTracks,
-                                      'local liked downloads',
-                                      local: true,
-                                    ),
+                              selectionMode: _selectionMode,
                               canSelectTrack: (track) =>
                                   _canRemoveTrack(controller, track),
                               isTrackSelected: (track) => _selectedLocalTrackIds
@@ -156,11 +184,9 @@ class _LikedPageState extends State<LikedPage> {
                             ),
                             if (authState.isAuthorized)
                               _LikedSection(
-                                title: 'Connected Server Liked Songs',
+                                title: 'Server Liked Tracks',
                                 tracks: serverTracks,
                                 emptyTitle: 'No server liked tracks',
-                                emptyMessage:
-                                    'Tap the heart icon on a server track to like it on this server.',
                                 playback: playback,
                                 onTap: (track) =>
                                     controller.playLikedTrack(track.id),
@@ -169,30 +195,12 @@ class _LikedPageState extends State<LikedPage> {
                                     showAddToPlaylistModalForTrack(
                                       context,
                                       track,
+                                      scope: ActionScope.server,
                                     ),
                                 onDownload: controller.downloadTrack,
                                 offlineDownloadForTrack: (track) => controller
                                     .offlineDownloadForTrack(track.id),
-                                selectionMode: _serverSelectionMode,
-                                selectedCount: selectedServerTracks.length,
-                                removableCount: serverRemovableTracks.length,
-                                onStartSelection: () =>
-                                    _startSelection(local: false),
-                                onCancelSelection: () =>
-                                    _clearSelection(local: false),
-                                onSelectAll: () => _selectAll(
-                                  local: false,
-                                  tracks: serverRemovableTracks,
-                                ),
-                                onDeselectAll: () => _deselectAll(local: false),
-                                onRemoveSelected: selectedServerTracks.isEmpty
-                                    ? null
-                                    : () => _removeDownloads(
-                                        controller,
-                                        selectedServerTracks,
-                                        'connected liked songs',
-                                        local: false,
-                                      ),
+                                selectionMode: _selectionMode,
                                 canSelectTrack: (track) =>
                                     _canRemoveTrack(controller, track),
                                 isTrackSelected: (track) =>
@@ -228,9 +236,8 @@ class _LikedPageState extends State<LikedPage> {
   Future<void> _removeDownloads(
     AppController controller,
     List<Track> tracks,
-    String label, {
-    required bool local,
-  }) async {
+    String label,
+  ) async {
     if (tracks.isEmpty) {
       return;
     }
@@ -244,7 +251,7 @@ class _LikedPageState extends State<LikedPage> {
     }
     await controller.removeDownloadedTracks(tracks, label: label);
     if (mounted) {
-      _clearSelection(local: local);
+      _clearSelection();
     }
   }
 
@@ -264,15 +271,11 @@ class _LikedPageState extends State<LikedPage> {
     return controller.availableOfflineDownloadForTrack(track.id) != null;
   }
 
-  void _startSelection({required bool local}) {
+  void _startSelection() {
     setState(() {
-      if (local) {
-        _localSelectionMode = true;
-        _selectedLocalTrackIds.clear();
-      } else {
-        _serverSelectionMode = true;
-        _selectedServerTrackIds.clear();
-      }
+      _selectionMode = true;
+      _selectedLocalTrackIds.clear();
+      _selectedServerTrackIds.clear();
     });
   }
 
@@ -288,11 +291,7 @@ class _LikedPageState extends State<LikedPage> {
         ? _selectedLocalTrackIds
         : _selectedServerTrackIds;
     setState(() {
-      if (local) {
-        _localSelectionMode = true;
-      } else {
-        _serverSelectionMode = true;
-      }
+      _selectionMode = true;
       selectedIds.add(_selectionKey(track));
     });
   }
@@ -310,54 +309,41 @@ class _LikedPageState extends State<LikedPage> {
         ? _selectedLocalTrackIds
         : _selectedServerTrackIds;
     setState(() {
-      if (local) {
-        _localSelectionMode = true;
-      } else {
-        _serverSelectionMode = true;
-      }
+      _selectionMode = true;
       if (!selectedIds.remove(key)) {
         selectedIds.add(key);
       }
     });
   }
 
-  void _selectAll({required bool local, required List<Track> tracks}) {
-    final selectedIds = local
-        ? _selectedLocalTrackIds
-        : _selectedServerTrackIds;
+  void _selectAll({
+    required List<Track> localTracks,
+    required List<Track> serverTracks,
+  }) {
     setState(() {
-      if (local) {
-        _localSelectionMode = true;
-      } else {
-        _serverSelectionMode = true;
-      }
-      selectedIds
+      _selectionMode = true;
+      _selectedLocalTrackIds
         ..clear()
-        ..addAll(tracks.map(_selectionKey));
+        ..addAll(localTracks.map(_selectionKey));
+      _selectedServerTrackIds
+        ..clear()
+        ..addAll(serverTracks.map(_selectionKey));
     });
   }
 
-  void _deselectAll({required bool local}) {
+  void _deselectAll() {
     setState(() {
-      if (local) {
-        _localSelectionMode = true;
-        _selectedLocalTrackIds.clear();
-      } else {
-        _serverSelectionMode = true;
-        _selectedServerTrackIds.clear();
-      }
+      _selectionMode = true;
+      _selectedLocalTrackIds.clear();
+      _selectedServerTrackIds.clear();
     });
   }
 
-  void _clearSelection({required bool local}) {
+  void _clearSelection() {
     setState(() {
-      if (local) {
-        _localSelectionMode = false;
-        _selectedLocalTrackIds.clear();
-      } else {
-        _serverSelectionMode = false;
-        _selectedServerTrackIds.clear();
-      }
+      _selectionMode = false;
+      _selectedLocalTrackIds.clear();
+      _selectedServerTrackIds.clear();
     });
   }
 
@@ -371,20 +357,12 @@ class _LikedSection extends StatelessWidget {
     required this.title,
     required this.tracks,
     required this.emptyTitle,
-    required this.emptyMessage,
     required this.playback,
     required this.onTap,
     required this.onLike,
     required this.onAddToPlaylist,
     required this.offlineDownloadForTrack,
     required this.selectionMode,
-    required this.selectedCount,
-    required this.removableCount,
-    required this.onStartSelection,
-    required this.onCancelSelection,
-    required this.onSelectAll,
-    required this.onDeselectAll,
-    required this.onRemoveSelected,
     required this.canSelectTrack,
     required this.isTrackSelected,
     required this.onSelectionToggle,
@@ -395,7 +373,6 @@ class _LikedSection extends StatelessWidget {
   final String title;
   final List<Track> tracks;
   final String emptyTitle;
-  final String emptyMessage;
   final PlaybackState playback;
   final ValueChanged<Track> onTap;
   final ValueChanged<Track> onLike;
@@ -403,13 +380,6 @@ class _LikedSection extends StatelessWidget {
   final ValueChanged<Track>? onDownload;
   final OfflineTrackDownload? Function(Track track) offlineDownloadForTrack;
   final bool selectionMode;
-  final int selectedCount;
-  final int removableCount;
-  final VoidCallback onStartSelection;
-  final VoidCallback onCancelSelection;
-  final VoidCallback onSelectAll;
-  final VoidCallback onDeselectAll;
-  final VoidCallback? onRemoveSelected;
   final bool Function(Track track) canSelectTrack;
   final bool Function(Track track) isTrackSelected;
   final ValueChanged<Track> onSelectionToggle;
@@ -423,14 +393,14 @@ class _LikedSection extends StatelessWidget {
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
           sliver: SliverToBoxAdapter(
-            child: _buildHeader(context, tracks.length),
+            child: ObsidianSectionHeader(title: title),
           ),
         ),
         if (tracks.isEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             sliver: SliverToBoxAdapter(
-              child: EmptyStateText(title: emptyTitle, message: emptyMessage),
+              child: _LikedEmptyText(title: emptyTitle),
             ),
           )
         else
@@ -468,34 +438,27 @@ class _LikedSection extends StatelessWidget {
       ],
     );
   }
+}
 
-  Widget _buildHeader(BuildContext context, int count) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(Icons.favorite_rounded, size: 42),
-        const SizedBox(width: 20),
-        Expanded(
-          child: ObsidianSectionHeader(title: title, subtitle: '$count tracks'),
-        ),
-        if (selectionMode)
-          DownloadSelectionToolbar(
-            selectedCount: selectedCount,
-            totalCount: removableCount,
-            onCancel: onCancelSelection,
-            onSelectAll: onSelectAll,
-            onDeselectAll: onDeselectAll,
-            onRemove: onRemoveSelected,
-          )
-        else
-          Tooltip(
-            message: 'Edit',
-            child: ObsidianHudIconButton(
-              icon: Icons.edit_rounded,
-              onPressed: removableCount > 0 ? onStartSelection : null,
-            ),
+class _LikedEmptyText extends StatelessWidget {
+  const _LikedEmptyText({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Text(
+          title,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: ObsidianPalette.textMuted,
+            letterSpacing: 0.6,
           ),
-      ],
+          textAlign: TextAlign.center,
+        ),
+      ),
     );
   }
 }

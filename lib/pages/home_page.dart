@@ -113,7 +113,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             onToggleLike: () {
               final track = playback.track;
               if (track != null) {
-                controller.toggleLike(track);
+                if (playback.isLocalPlayback ||
+                    playback.queueSource == PlaybackQueueSource.offline) {
+                  controller.toggleLocalLike(track);
+                } else {
+                  controller.toggleLike(track);
+                }
               }
             },
           );

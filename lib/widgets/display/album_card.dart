@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
 import '../ui/obsidian_hover_card.dart';
+import '../ui/obsidian_widgets.dart';
 import 'album_art.dart';
 import 'album_labels.dart';
 import 'card_image_frame.dart';
@@ -18,6 +19,8 @@ class AlbumCard extends StatelessWidget {
     required this.coverUrl,
     required this.headers,
     required this.onTap,
+    this.onPlay,
+    this.onLongPress,
     this.selectionMode = false,
     this.selected = false,
     this.selectable = true,
@@ -29,6 +32,8 @@ class AlbumCard extends StatelessWidget {
   final String coverUrl;
   final Map<String, String> headers;
   final VoidCallback onTap;
+  final VoidCallback? onPlay;
+  final VoidCallback? onLongPress;
   final bool selectionMode;
   final bool selected;
   final bool selectable;
@@ -54,6 +59,7 @@ class AlbumCard extends StatelessWidget {
       cut: s(20),
       padding: EdgeInsets.all(s(14)),
       onTap: effectiveOnTap,
+      onLongPress: selectionMode || isDeleting ? null : onLongPress,
       splashColor: accentGold.withValues(alpha: 0.2),
       childBuilder: (context, hovered) => LayoutBuilder(
         builder: (context, constraints) {
@@ -113,25 +119,41 @@ class AlbumCard extends StatelessWidget {
             opacity: isDeleting ? 0.45 : 1,
             child: content,
           );
+          final showPlayButton =
+              !selectionMode && !isDeleting && onPlay != null;
 
-          if (!selectionMode && !isDeleting) {
+          if (!selectionMode && !isDeleting && !showPlayButton) {
             return effectiveContent;
           }
 
           return Stack(
             children: [
-              Positioned.fill(
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 160),
-                  opacity: selected ? 1 : 0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: accentGold, width: 1.5),
+              if (selectionMode)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 160),
+                    opacity: selected ? 1 : 0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: accentGold, width: 1.5),
+                      ),
                     ),
                   ),
                 ),
-              ),
               effectiveContent,
+              if (showPlayButton)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Tooltip(
+                    message: 'Play',
+                    child: ObsidianHudIconButton(
+                      icon: Icons.play_arrow_rounded,
+                      onPressed: onPlay,
+                      size: 24,
+                    ),
+                  ),
+                ),
               if (isDeleting)
                 Positioned(
                   right: s(4),

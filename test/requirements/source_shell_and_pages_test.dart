@@ -171,6 +171,7 @@ void main() {
           'DownloadSelectionToolbar',
           'downloadAlbum(',
           'confirmRemoveDownloadedTracks',
+          'scope: ActionScope.server',
           "title: 'No tracks'",
           "'Pick another album to see tracks.'",
         ]);
@@ -202,6 +203,7 @@ void main() {
           'TrackSliverList(',
           'controller.playOfflineTrack(',
           'controller.toggleLocalLike',
+          'scope: ActionScope.local',
           'availableOfflineDownloadForTrack(track.id)',
           'controller.removeDownloadedTracks(',
           'OfflineDeletionScope.album(id: album.id, label: label)',
@@ -217,32 +219,68 @@ void main() {
           "'Server Playlists'",
           "'No local playlists'",
           "'No server playlists'",
-          "label: 'Create New'",
-          "title: 'Create local playlist'",
-          "title: 'Create server playlist'",
-          "'Connect to a server to show server playlists.'",
-          'controller.queueLocalPlaylist(playlist.id)',
+          'CollectionViewToggleButton(',
+          'AlbumRowTile(',
+          'AlbumCard(',
+          'buildPlaylistCoverUrl(',
+          "message: 'Create playlist'",
+          "message: 'Edit playlists'",
+          'DownloadSelectionToolbar',
+          "title: 'Create playlist'",
+          'showTargetSelector: canCreateServer',
+          'PlaylistEditorTarget.server',
+          "title: selected.length == 1 ? 'Delete playlist' : 'Delete playlists'",
+          'controller.deleteLocalPlaylist(',
+          'controller.deletePlaylist(',
+          "message: 'Play playlist'",
+          'controller.playLocalPlaylistFromTop(playlist.id)',
+          'controller.playPlaylistFromTop(playlist.id)',
         ]);
+        expect(playlistsSource, isNot(contains('PlaylistModuleCard(')));
+        expect(playlistsSource, isNot(contains(" lists',")));
+        expect(
+          playlistsSource,
+          isNot(contains('Connect to a server to show server playlists.')),
+        );
         expectContainsAll(playlistDetailSource, const [
           "label: 'Back to playlists'",
           "'No tracks yet.'",
           'this.isLocal = false',
+          '_loadTracksIfNeeded(AppScope.of(context))',
+          'loadingSliver()',
+          '_tracksLoading',
           'controller.queueLocalPlaylist(',
+          'scope: widget.isLocal',
+          'ActionScope.local',
+          'ActionScope.server',
           "title: 'Rename playlist'",
-          "title: 'Delete playlist'",
-          "message: 'Edit'",
+          'AlbumHero(',
+          'initialDescription: playlist.description',
+          'description: description',
+          'buildPlaylistCoverUrl(',
+          "message: 'Edit details'",
+          "message: 'Edit tracks'",
           'DownloadSelectionToolbar',
           'controller.removeDownloadedTracks(tracks, label: label)',
         ]);
+        expect(playlistDetailSource, isNot(contains("'Edit Details'")));
+        expect(
+          playlistDetailSource,
+          isNot(contains("title: 'Delete playlist'")),
+        );
         expect(playlistDetailSource, isNot(contains('onTrackRemoveDownload')));
+        expectContainsAll(likedSource, const [
+          'scope: ActionScope.local',
+          'scope: ActionScope.server',
+        ]);
         expect(
           playlistDetailSource,
           isNot(contains('controller.removeDownloadedTrack(track)')),
         );
         expectContainsAll(likedSource, const [
-          "'Local Liked Downloads'",
-          "'Connected Server Liked Songs'",
-          "'No local liked downloads'",
+          "'Local Liked Tracks'",
+          "'Server Liked Tracks'",
+          "'No local liked tracks'",
           "'No server liked tracks'",
           'controller.playLocalLikedTrack(track.id)',
           'controller.toggleLocalLike',
@@ -263,7 +301,7 @@ void main() {
           "label: 'Connect / Log in'",
         ]);
         expectContainsAll(settingsSource, const [
-          "title: 'Settings'",
+          "title: 'SETTINGS'",
           "title: 'Custom Shuffle'",
           "'Offline Storage'",
           "'Metadata database'",
@@ -274,7 +312,6 @@ void main() {
           '.updateOfflineDownloadsDirectory',
           '.resetOfflineData',
           "title: 'Logs'",
-          "title: 'Log out'",
           "'Session'",
           "'Connect / Log in'",
           "'Change server'",

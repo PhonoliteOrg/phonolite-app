@@ -35,7 +35,7 @@ class ObsidianHoverRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final actionable = enabled && onTap != null;
+    final actionable = enabled && (onTap != null || onLongPress != null);
     final cursor = actionable
         ? SystemMouseCursors.click
         : SystemMouseCursors.basic;

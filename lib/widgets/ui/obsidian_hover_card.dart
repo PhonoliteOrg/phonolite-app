@@ -10,6 +10,7 @@ class ObsidianHoverCard extends StatelessWidget {
     super.key,
     required this.childBuilder,
     this.onTap,
+    this.onLongPress,
     this.padding = const EdgeInsets.all(16),
     this.cut = 20,
     this.blurSigma = cardBackdropBlurSigma,
@@ -18,6 +19,7 @@ class ObsidianHoverCard extends StatelessWidget {
 
   final Widget Function(BuildContext context, bool hovered) childBuilder;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final EdgeInsets padding;
   final double cut;
   final double blurSigma;
@@ -26,10 +28,9 @@ class ObsidianHoverCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enableHover = obsidianSupportsHover();
+    final actionable = onTap != null || onLongPress != null;
     return ObsidianHoverBuilder(
-      cursor: onTap == null
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: actionable ? SystemMouseCursors.click : SystemMouseCursors.basic,
       enableHover: enableHover,
       builder: (context, hovered) {
         final card = ClipPath(
@@ -85,13 +86,14 @@ class ObsidianHoverCard extends StatelessWidget {
           ),
         );
 
-        if (onTap == null) {
+        if (!actionable) {
           return card;
         }
 
         if (enableHover) {
           return GestureDetector(
             onTap: onTap,
+            onLongPress: onLongPress,
             behavior: HitTestBehavior.opaque,
             child: card,
           );
@@ -99,7 +101,12 @@ class ObsidianHoverCard extends StatelessWidget {
 
         return Material(
           color: Colors.transparent,
-          child: InkWell(onTap: onTap, splashColor: splashColor, child: card),
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            splashColor: splashColor,
+            child: card,
+          ),
         );
       },
     );

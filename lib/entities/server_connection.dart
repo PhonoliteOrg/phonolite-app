@@ -389,20 +389,69 @@ class ServerConnection {
     return states.isEmpty ? null : states.first;
   }
 
-  Future<Playlist> createPlaylist(String name) async {
-    final response = await _post('/library/playlists', {'name': name});
+  Future<Playlist> createPlaylist(String name, {String? description}) async {
+    final response = await _post('/library/playlists', {
+      'name': name,
+      'description': description?.trim() ?? '',
+    });
     return Playlist.fromJson(response);
   }
 
-  Future<Playlist> renamePlaylist(String playlistId, String name) async {
+  Future<Playlist> renamePlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+  }) async {
     final encoded = _encodePathSegment(playlistId);
-    final response = await _post('/library/playlists/$encoded', {'name': name});
+    final response = await _post('/library/playlists/$encoded', {
+      'name': name,
+      'description': description?.trim() ?? '',
+    });
     return Playlist.fromJson(response);
   }
 
   Future<void> deletePlaylist(String playlistId) async {
     final encoded = _encodePathSegment(playlistId);
     await _delete('/library/playlists/$encoded');
+  }
+
+  String buildPlaylistCoverUrl(String playlistId, {String? imageRef}) {
+    final encoded = _encodePathSegment(playlistId);
+    var url = '$_baseUrl/library/playlists/$encoded/cover';
+    final ref = imageRef?.trim();
+    if (ref != null && ref.isNotEmpty) {
+      url = '$url?v=${Uri.encodeComponent(ref)}';
+    }
+    return url;
+  }
+
+  Future<Playlist> uploadPlaylistCover(
+    String playlistId,
+    List<int> bytes,
+    String contentType,
+  ) async {
+    final encoded = _encodePathSegment(playlistId);
+    final response = await _executeRequest(
+      () => _client.put(
+        Uri.parse('$_baseUrl/library/playlists/$encoded/cover'),
+        headers: _headers(contentTypeValue: contentType),
+        body: bytes,
+      ),
+      label: 'PUT playlist cover',
+    );
+    return Playlist.fromJson(await _decode(response));
+  }
+
+  Future<Playlist> deletePlaylistCover(String playlistId) async {
+    final encoded = _encodePathSegment(playlistId);
+    final response = await _executeRequest(
+      () => _client.delete(
+        Uri.parse('$_baseUrl/library/playlists/$encoded/cover'),
+        headers: _headers(),
+      ),
+      label: 'DELETE playlist cover',
+    );
+    return Playlist.fromJson(await _decode(response));
   }
 
   Future<Playlist> updatePlaylistTracks(
@@ -771,9 +820,14 @@ class ServerConnection {
     }
   }
 
-  Map<String, String> _headers({bool contentType = false}) {
+  Map<String, String> _headers({
+    bool contentType = false,
+    String? contentTypeValue,
+  }) {
     final headers = <String, String>{};
-    if (contentType) {
+    if (contentTypeValue != null && contentTypeValue.isNotEmpty) {
+      headers['Content-Type'] = contentTypeValue;
+    } else if (contentType) {
       headers['Content-Type'] = 'application/json';
     }
     if (_token != null && _token!.isNotEmpty) {

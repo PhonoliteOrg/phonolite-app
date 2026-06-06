@@ -130,7 +130,11 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                             tracks: album.tracks,
                           ),
                           onTrackAddToPlaylist: (track) =>
-                              showAddToPlaylistModalForTrack(context, track),
+                              showAddToPlaylistModalForTrack(
+                                context,
+                                track,
+                                scope: ActionScope.local,
+                              ),
                           onTrackLike: controller.toggleLocalLike,
                           selectionMode: _selectionMode,
                           isTrackSelected: (track) =>

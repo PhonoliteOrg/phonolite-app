@@ -75,6 +75,32 @@ void main() {
     });
 
     test(
+      'playlist parsing accepts optional description and artwork metadata',
+      () {
+        final legacy = Playlist.fromJson(<String, dynamic>{
+          'id': 'playlist-1',
+          'name': 'Legacy Mix',
+          'track_ids': <String>['track-1'],
+        });
+        final updated = Playlist.fromJson(<String, dynamic>{
+          'id': 'playlist-2',
+          'name': 'Cover Mix',
+          'track_ids': <String>[],
+          'description': 'A focused playlist summary.',
+          'image_ref': 'cover-rev-1',
+          'image_path': '/tmp/cover.png',
+        });
+
+        expect(legacy.description, isNull);
+        expect(legacy.imageRef, isNull);
+        expect(legacy.imagePath, isNull);
+        expect(updated.description, 'A focused playlist summary.');
+        expect(updated.imageRef, 'cover-rev-1');
+        expect(updated.imagePath, '/tmp/cover.png');
+      },
+    );
+
+    test(
       'stats parsing accepts both structured and fallback item payloads',
       () {
         final stats = StatsResponse.fromJson(<String, dynamic>{
