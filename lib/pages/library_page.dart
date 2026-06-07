@@ -35,6 +35,10 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  static const double _compactHeaderActionsWidth = 640;
+  static const double _compactHeaderActionIconSize = 22;
+  static const double _regularHeaderActionIconSize = 26;
+
   late final TextEditingController _searchController;
   late final ScrollController _scrollController;
   Timer? _searchDebounce;
@@ -160,6 +164,13 @@ class _LibraryPageState extends State<LibraryPage> {
                               final selectedGroups = _selectedOfflineArtists(
                                 offlineGroups,
                               );
+                              final useCompactHeaderActions =
+                                  _useCompactHeaderActions(context);
+                              final headerActionIconSize =
+                                  _headerActionIconSize(context);
+                              final headerActionSpacing = _headerActionSpacing(
+                                context,
+                              );
                               final slivers = query.isEmpty
                                   ? <Widget>[
                                       ..._downloadedMusicSlivers(
@@ -221,26 +232,39 @@ class _LibraryPageState extends State<LibraryPage> {
                                                 groups: offlineGroups,
                                                 selectedGroups: selectedGroups,
                                               )
-                                            : Row(
-                                                mainAxisSize: MainAxisSize.min,
+                                            : Wrap(
+                                                alignment: WrapAlignment.end,
+                                                spacing: headerActionSpacing,
+                                                runSpacing:
+                                                    useCompactHeaderActions
+                                                    ? 4
+                                                    : 8,
+                                                crossAxisAlignment:
+                                                    WrapCrossAlignment.center,
                                                 children: [
                                                   _refreshLibraryButton(
                                                     controller,
+                                                    iconSize:
+                                                        headerActionIconSize,
                                                   ),
-                                                  const SizedBox(width: 10),
-                                                  _downloadManagerButton(),
-                                                  const SizedBox(width: 10),
+                                                  _downloadManagerButton(
+                                                    iconSize:
+                                                        headerActionIconSize,
+                                                  ),
                                                   _editLibraryButton(
                                                     offlineGroups.isNotEmpty
                                                         ? _startArtistSelection
                                                         : null,
+                                                    iconSize:
+                                                        headerActionIconSize,
                                                   ),
-                                                  const SizedBox(width: 10),
                                                   _collectionViewButton(
                                                     isListView:
                                                         showCollectionList,
                                                     onPressed: controller
                                                         .toggleCollectionListMode,
+                                                    iconSize:
+                                                        headerActionIconSize,
                                                   ),
                                                 ],
                                               ),
@@ -311,6 +335,9 @@ class _LibraryPageState extends State<LibraryPage> {
                   ? offlineSnapshot.artistGroups
                   : offlineArtistGroups(filteredTracks);
               final selectedGroups = _selectedOfflineArtists(filteredGroups);
+              final useCompactHeaderActions = _useCompactHeaderActions(context);
+              final headerActionIconSize = _headerActionIconSize(context);
+              final headerActionSpacing = _headerActionSpacing(context);
 
               return CustomScrollView(
                 controller: _scrollController,
@@ -326,23 +353,30 @@ class _LibraryPageState extends State<LibraryPage> {
                                 groups: filteredGroups,
                                 selectedGroups: selectedGroups,
                               )
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
+                            : Wrap(
+                                alignment: WrapAlignment.end,
+                                spacing: headerActionSpacing,
+                                runSpacing: useCompactHeaderActions ? 4 : 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  _refreshLibraryButton(controller),
-                                  const SizedBox(width: 10),
-                                  _downloadManagerButton(),
-                                  const SizedBox(width: 10),
+                                  _refreshLibraryButton(
+                                    controller,
+                                    iconSize: headerActionIconSize,
+                                  ),
+                                  _downloadManagerButton(
+                                    iconSize: headerActionIconSize,
+                                  ),
                                   _editLibraryButton(
                                     filteredGroups.isNotEmpty
                                         ? _startArtistSelection
                                         : null,
+                                    iconSize: headerActionIconSize,
                                   ),
-                                  const SizedBox(width: 10),
                                   _collectionViewButton(
                                     isListView: showCollectionList,
                                     onPressed:
                                         controller.toggleCollectionListMode,
+                                    iconSize: headerActionIconSize,
                                   ),
                                 ],
                               ),
@@ -398,11 +432,29 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  Widget _downloadManagerButton({bool enabled = true}) {
+  bool _useCompactHeaderActions(BuildContext context) {
+    return MediaQuery.sizeOf(context).width < _compactHeaderActionsWidth;
+  }
+
+  double _headerActionIconSize(BuildContext context) {
+    return _useCompactHeaderActions(context)
+        ? _compactHeaderActionIconSize
+        : _regularHeaderActionIconSize;
+  }
+
+  double _headerActionSpacing(BuildContext context) {
+    return _useCompactHeaderActions(context) ? 4 : 10;
+  }
+
+  Widget _downloadManagerButton({
+    bool enabled = true,
+    double iconSize = _regularHeaderActionIconSize,
+  }) {
     return Tooltip(
       message: 'Download Manager',
       child: ObsidianHudIconButton(
         icon: Icons.download_for_offline_rounded,
+        size: iconSize,
         onPressed: enabled
             ? () => unawaited(showDownloadManagerPanel(context))
             : null,
@@ -410,11 +462,15 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  Widget _editLibraryButton(VoidCallback? onPressed) {
+  Widget _editLibraryButton(
+    VoidCallback? onPressed, {
+    double iconSize = _regularHeaderActionIconSize,
+  }) {
     return Tooltip(
       message: 'Edit',
       child: ObsidianHudIconButton(
         icon: Icons.edit_rounded,
+        size: iconSize,
         onPressed: onPressed,
       ),
     );
@@ -423,6 +479,7 @@ class _LibraryPageState extends State<LibraryPage> {
   Widget _collectionViewButton({
     required bool isListView,
     required VoidCallback? onPressed,
+    double iconSize = _regularHeaderActionIconSize,
   }) {
     return Tooltip(
       message: isListView ? 'Show cards' : 'Show list',
@@ -432,6 +489,7 @@ class _LibraryPageState extends State<LibraryPage> {
         label: 'Library collection view',
         child: ObsidianHudIconButton(
           icon: Icons.view_agenda_rounded,
+          size: iconSize,
           isActive: isListView,
           onPressed: onPressed,
         ),
@@ -459,6 +517,7 @@ class _LibraryPageState extends State<LibraryPage> {
   Widget _refreshLibraryButton(
     AppController controller, {
     bool enabled = true,
+    double iconSize = _regularHeaderActionIconSize,
   }) {
     return Tooltip(
       message: 'Refresh library',
@@ -466,6 +525,7 @@ class _LibraryPageState extends State<LibraryPage> {
         icon: _refreshingLibrary
             ? Icons.hourglass_top_rounded
             : Icons.refresh_rounded,
+        size: iconSize,
         onPressed: !enabled || _refreshingLibrary
             ? null
             : () => unawaited(_refreshLibrary(controller)),
@@ -537,7 +597,7 @@ class _LibraryPageState extends State<LibraryPage> {
     bool showEmpty = true,
   }) {
     return [
-      _sectionHeaderSliver('Downloaded Music'),
+      _sectionHeaderSliver('Local Library'),
       if (tracks.isEmpty && showEmpty)
         SliverToBoxAdapter(
           child: EmptyStateText(
@@ -566,7 +626,7 @@ class _LibraryPageState extends State<LibraryPage> {
     required bool isLoading,
   }) {
     return [
-      _sectionHeaderSliver('Connected Server Artists'),
+      _sectionHeaderSliver('Server Library'),
       if (artists.isEmpty && isLoading)
         loadingSliver()
       else if (artists.isEmpty)

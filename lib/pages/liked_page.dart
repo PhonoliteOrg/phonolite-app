@@ -21,6 +21,10 @@ class LikedPage extends StatefulWidget {
 }
 
 class _LikedPageState extends State<LikedPage> {
+  static const double _compactHeaderActionsWidth = 640;
+  static const double _compactHeaderActionIconSize = 22;
+  static const double _regularHeaderActionIconSize = 26;
+
   bool _requestedLocalLoad = false;
   bool _requestedServerLoad = false;
   bool _selectionMode = false;
@@ -141,6 +145,9 @@ class _LikedPageState extends State<LikedPage> {
                                           message: 'Edit',
                                           child: ObsidianHudIconButton(
                                             icon: Icons.edit_rounded,
+                                            size: _headerActionIconSize(
+                                              context,
+                                            ),
                                             onPressed: removableCount > 0
                                                 ? _startSelection
                                                 : null,
@@ -253,6 +260,12 @@ class _LikedPageState extends State<LikedPage> {
     if (mounted) {
       _clearSelection();
     }
+  }
+
+  double _headerActionIconSize(BuildContext context) {
+    return MediaQuery.sizeOf(context).width < _compactHeaderActionsWidth
+        ? _compactHeaderActionIconSize
+        : _regularHeaderActionIconSize;
   }
 
   List<Track> _removableTracks(AppController controller, List<Track> tracks) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../entities/models.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/responsive_breakpoints.dart';
 import 'album_art.dart';
 import 'album_labels.dart';
 
@@ -39,6 +40,7 @@ class AlbumRowTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = isCompactListWidth(context);
     final detailText = subtitle ?? albumDetailLabel(album);
     final canInteract = selectable && !isDeleting;
     final effectiveOnTap = selectionMode
@@ -52,6 +54,9 @@ class AlbumRowTile extends StatelessWidget {
       onTap: effectiveOnTap,
       onLongPress: selectionMode || isDeleting ? null : onLongPress,
       isActive: selectionMode && selected,
+      padding: isCompact
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),
         opacity: isDeleting ? 0.45 : 1,
@@ -68,15 +73,15 @@ class AlbumRowTile extends StatelessWidget {
                 side: const BorderSide(color: ObsidianPalette.border),
                 activeColor: ObsidianPalette.gold,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: isCompact ? 8 : 10),
             ],
             AlbumArt(
               title: album.title,
-              size: 52,
+              size: isCompact ? 44 : 52,
               imageUrl: coverUrl,
               headers: headers,
             ),
-            const SizedBox(width: 14),
+            SizedBox(width: isCompact ? 10 : 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -86,7 +91,8 @@ class AlbumRowTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      letterSpacing: 0.6,
+                      fontSize: isCompact ? 14.5 : null,
+                      letterSpacing: isCompact ? 0.2 : 0.6,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -96,13 +102,15 @@ class AlbumRowTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: isCompact ? 12 : null,
+                        letterSpacing: isCompact ? 0 : null,
                         color: ObsidianPalette.textMuted,
                       ),
                     ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: isCompact ? 8 : 12),
             if (isDeleting)
               const SizedBox(
                 width: 22,
@@ -112,7 +120,11 @@ class AlbumRowTile extends StatelessWidget {
             else if (trailing != null)
               trailing!
             else if (!selectionMode)
-              const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: isCompact ? 22 : 24,
+                color: Colors.white38,
+              ),
           ],
         ),
       ),

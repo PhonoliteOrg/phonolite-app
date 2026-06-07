@@ -12,7 +12,7 @@ import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
-import '../widgets/navigation/command_link_button.dart';
+import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/obsidian_widgets.dart';
 
 class LocalAlbumDetailScreen extends StatefulWidget {
@@ -52,47 +52,40 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                       sliver: SliverToBoxAdapter(
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: Row(
-                            children: [
-                              CommandLinkButton(
-                                label: 'Back to artist',
-                                onTap: () => Navigator.of(context).pop(),
-                              ),
-                              const Spacer(),
-                              Wrap(
-                                alignment: WrapAlignment.end,
-                                spacing: 10,
-                                runSpacing: 10,
-                                children: _selectionMode
-                                    ? [
-                                        DownloadSelectionToolbar(
-                                          selectedCount: selectedTracks.length,
-                                          totalCount: album.tracks.length,
-                                          onCancel: _clearSelection,
-                                          onSelectAll: () =>
-                                              _selectAll(album.tracks),
-                                          onDeselectAll: _deselectAll,
-                                          onRemove: selectedTracks.isEmpty
-                                              ? null
-                                              : () => _removeDownloads(
-                                                  context,
-                                                  controller,
-                                                  selectedTracks,
-                                                  album.title,
-                                                ),
-                                        ),
-                                      ]
-                                    : [
-                                        _editTrackSelectionButton(
-                                          album.tracks.isNotEmpty
-                                              ? _startSelection
-                                              : null,
-                                        ),
-                                      ],
-                              ),
-                            ],
+                        child: DetailActionHeader(
+                          backLabel: 'Back to artist',
+                          onBack: () => Navigator.of(context).pop(),
+                          actions: Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 10,
+                            runSpacing: 10,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: _selectionMode
+                                ? [
+                                    DownloadSelectionToolbar(
+                                      selectedCount: selectedTracks.length,
+                                      totalCount: album.tracks.length,
+                                      onCancel: _clearSelection,
+                                      onSelectAll: () =>
+                                          _selectAll(album.tracks),
+                                      onDeselectAll: _deselectAll,
+                                      onRemove: selectedTracks.isEmpty
+                                          ? null
+                                          : () => _removeDownloads(
+                                              context,
+                                              controller,
+                                              selectedTracks,
+                                              album.title,
+                                            ),
+                                    ),
+                                  ]
+                                : [
+                                    _editTrackSelectionButton(
+                                      album.tracks.isNotEmpty
+                                          ? _startSelection
+                                          : null,
+                                    ),
+                                  ],
                           ),
                         ),
                       ),

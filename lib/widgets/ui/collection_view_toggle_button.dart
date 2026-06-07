@@ -10,6 +10,7 @@ class CollectionViewToggleButton extends StatelessWidget {
     this.semanticLabel = 'Collection view',
     this.showListTooltip = 'Show list',
     this.showCardTooltip = 'Show cards',
+    this.iconSize = 26,
   });
 
   final bool isListView;
@@ -17,6 +18,7 @@ class CollectionViewToggleButton extends StatelessWidget {
   final String semanticLabel;
   final String showListTooltip;
   final String showCardTooltip;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,7 @@ class CollectionViewToggleButton extends StatelessWidget {
         label: semanticLabel,
         child: ObsidianHudIconButton(
           icon: Icons.view_agenda_rounded,
+          size: iconSize,
           isActive: isListView,
           onPressed: onPressed,
         ),

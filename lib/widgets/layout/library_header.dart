@@ -16,26 +16,41 @@ class LibraryHeader extends StatelessWidget {
   final Widget? trailing;
   final String title;
 
+  static const double _compactWidth = 560;
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: GradientText(
-            title,
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFF2A8), accentGold],
-            ),
-            style: GoogleFonts.rajdhani(
-              fontSize: 56,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2.2,
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < _compactWidth;
+        final titleText = GradientText(
+          title,
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFF2A8), accentGold],
           ),
-        ),
-        if (trailing != null) ...[const SizedBox(width: 16), trailing!],
-      ],
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.rajdhani(
+            fontSize: isCompact ? 36 : 56,
+            fontWeight: FontWeight.w700,
+            letterSpacing: isCompact ? 0.9 : 2.2,
+            height: 1.0,
+          ),
+        );
+
+        return Row(
+          crossAxisAlignment: isCompact
+              ? CrossAxisAlignment.center
+              : CrossAxisAlignment.start,
+          children: [
+            Expanded(child: titleText),
+            if (trailing != null) ...[
+              SizedBox(width: isCompact ? 10 : 16),
+              trailing!,
+            ],
+          ],
+        );
+      },
     );
   }
 }

@@ -15,7 +15,7 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
-import '../widgets/navigation/command_link_button.dart';
+import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/tech_button.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
@@ -115,65 +115,53 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                 16,
                               ),
                               sliver: SliverToBoxAdapter(
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: Row(
-                                    children: [
-                                      CommandLinkButton(
-                                        label: 'Back to artist',
-                                        onTap: () =>
-                                            Navigator.of(context).pop(),
-                                      ),
-                                      const Spacer(),
-                                      Wrap(
-                                        alignment: WrapAlignment.end,
-                                        spacing: 10,
-                                        runSpacing: 10,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: _selectionMode
-                                            ? [
-                                                DownloadSelectionToolbar(
-                                                  selectedCount:
-                                                      selectedTracks.length,
-                                                  totalCount:
-                                                      removableTracks.length,
-                                                  onCancel: _clearSelection,
-                                                  onSelectAll: () => _selectAll(
-                                                    removableTracks,
-                                                  ),
-                                                  onDeselectAll: _deselectAll,
-                                                  onRemove:
-                                                      selectedTracks.isEmpty
-                                                      ? null
-                                                      : () =>
-                                                            _removeSelectedDownloads(
-                                                              controller,
-                                                              selectedTracks,
-                                                              _album.title,
-                                                            ),
-                                                ),
-                                              ]
-                                            : [
-                                                TechButton(
-                                                  label: downloadSummary.label,
-                                                  icon: downloadSummary.icon,
-                                                  chrome: TechButtonChrome
-                                                      .borderless,
-                                                  onTap:
-                                                      !isLoading &&
-                                                          downloadSummary
-                                                              .canStart
-                                                      ? () => controller
-                                                            .downloadAlbum(
-                                                              _album,
-                                                              tracks,
-                                                            )
-                                                      : null,
-                                                ),
-                                              ],
-                                      ),
-                                    ],
+                                child: DetailActionHeader(
+                                  backLabel: 'Back to artist',
+                                  onBack: () => Navigator.of(context).pop(),
+                                  actions: Wrap(
+                                    alignment: WrapAlignment.end,
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: _selectionMode
+                                        ? [
+                                            DownloadSelectionToolbar(
+                                              selectedCount:
+                                                  selectedTracks.length,
+                                              totalCount:
+                                                  removableTracks.length,
+                                              onCancel: _clearSelection,
+                                              onSelectAll: () =>
+                                                  _selectAll(removableTracks),
+                                              onDeselectAll: _deselectAll,
+                                              onRemove: selectedTracks.isEmpty
+                                                  ? null
+                                                  : () =>
+                                                        _removeSelectedDownloads(
+                                                          controller,
+                                                          selectedTracks,
+                                                          _album.title,
+                                                        ),
+                                            ),
+                                          ]
+                                        : [
+                                            TechButton(
+                                              label: downloadSummary.label,
+                                              icon: downloadSummary.icon,
+                                              chrome:
+                                                  TechButtonChrome.borderless,
+                                              onTap:
+                                                  !isLoading &&
+                                                      downloadSummary.canStart
+                                                  ? () => controller
+                                                        .downloadAlbum(
+                                                          _album,
+                                                          tracks,
+                                                        )
+                                                  : null,
+                                            ),
+                                          ],
                                   ),
                                 ),
                               ),

@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/models.dart';
 import 'package:phonolite_app/entities/offline_library.dart';
+import 'package:phonolite_app/widgets/display/album_row_tile.dart';
+import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
 import 'package:phonolite_app/widgets/display/download_selection_toolbar.dart';
 import 'package:phonolite_app/widgets/display/empty_state.dart';
+import 'package:phonolite_app/widgets/display/search_result_tile.dart';
 import 'package:phonolite_app/widgets/display/stats_cards.dart';
 import 'package:phonolite_app/widgets/display/track_row_tile.dart';
 import 'package:phonolite_app/widgets/inputs/search_filter_chips.dart';
@@ -19,6 +22,7 @@ import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/collection_view_toggle_button.dart';
 import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
 import 'package:phonolite_app/widgets/ui/expandable_summary_text.dart';
+import 'package:phonolite_app/widgets/ui/obsidian_overflow_action_button.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
 import 'package:phonolite_app/widgets/ui/tech_button.dart';
 
@@ -297,6 +301,69 @@ void main() {
         ),
         findsNothing,
       );
+    });
+
+    testWidgets('overflow action menu shows disabled actions', (tester) async {
+      var selected = 0;
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          ObsidianOverflowActionButton(
+            tooltip: 'More actions',
+            actions: [
+              ObsidianMenuAction(
+                label: 'Enabled action',
+                icon: Icons.check_rounded,
+                onTap: () => selected += 1,
+              ),
+              const ObsidianMenuAction(
+                label: 'Disabled action',
+                icon: Icons.block_rounded,
+                onTap: null,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final menuButton = tester.widget<PopupMenuButton<int>>(
+        find.byType(PopupMenuButton<int>),
+      );
+      expect(menuButton.popUpAnimationStyle, AnimationStyle.noAnimation);
+
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enabled action'), findsOneWidget);
+      expect(find.text('Disabled action'), findsOneWidget);
+
+      await tester.tap(find.text('Disabled action'));
+      await tester.pumpAndSettle();
+
+      expect(selected, 0);
+
+      await tester.tap(find.text('Enabled action'));
+      await tester.pumpAndSettle();
+
+      expect(selected, 1);
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          const ObsidianOverflowActionButton(
+            tooltip: 'No actions',
+            actions: [
+              ObsidianMenuAction(
+                label: 'Unavailable',
+                icon: Icons.block_rounded,
+                onTap: null,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.byTooltip('No actions'), findsOneWidget);
+      expect(find.byType(PopupMenuButton<int>), findsNothing);
     });
 
     testWidgets(
@@ -626,6 +693,123 @@ void main() {
       expect(find.byIcon(Icons.playlist_add_rounded), findsOneWidget);
       expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
       expect(find.byIcon(Icons.delete_outline_rounded), findsOneWidget);
+    });
+
+    testWidgets('compact track row keeps priority actions and menus the rest', (
+      tester,
+    ) async {
+      _setViewport(tester, const Size(390, 800));
+      final track = Track(
+        id: 'track-1',
+        title: 'A very long track title that should remain readable',
+        artist: 'Boards of Canada',
+        album: 'The Campfire Headphase',
+        durationMs: 321000,
+        liked: false,
+        inPlaylists: false,
+      );
+      var downloaded = 0;
+      var added = 0;
+      var liked = 0;
+      var deleted = 0;
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          TrackRowTile(
+            track: track,
+            index: 2,
+            onTap: () {},
+            onDownload: () => downloaded += 1,
+            onAddToPlaylist: () => added += 1,
+            onLike: () => liked += 1,
+            onDelete: () => deleted += 1,
+          ),
+        ),
+      );
+
+      expect(find.text('05:21'), findsNothing);
+      expect(find.byIcon(Icons.download_for_offline_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.playlist_add_rounded), findsNothing);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
+      expect(find.byTooltip('Track actions'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.download_for_offline_outlined));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+      await tester.pump();
+
+      expect(downloaded, 1);
+      expect(liked, 1);
+
+      await tester.tap(find.byTooltip('Track actions'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add to playlist'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+
+      await tester.tap(find.text('Add to playlist'));
+      await tester.pumpAndSettle();
+
+      expect(added, 1);
+      expect(deleted, 0);
+    });
+
+    testWidgets('compact collection rows use ellipsizing mobile text', (
+      tester,
+    ) async {
+      _setViewport(tester, const Size(390, 800));
+      const longAlbumTitle =
+          'An album title long enough to require ellipsis on mobile';
+      const longArtistName =
+          'An artist name long enough to require ellipsis on mobile';
+      const longSearchTitle =
+          'A search result long enough to require ellipsis on mobile';
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          Column(
+            children: [
+              AlbumRowTile(
+                album: Album(
+                  id: 'album-1',
+                  title: longAlbumTitle,
+                  artist: 'Artist',
+                  artistId: 'artist-1',
+                  trackCount: 10,
+                ),
+                coverUrl: '',
+                headers: const <String, String>{},
+              ),
+              ArtistRowTile(
+                artist: Artist(
+                  id: 'artist-1',
+                  name: longArtistName,
+                  albumCount: 4,
+                ),
+                coverUrl: null,
+                headers: const <String, String>{},
+              ),
+              SearchResultTile(
+                result: SearchResult(
+                  kind: 'track',
+                  id: 'track-1',
+                  title: longSearchTitle,
+                  subtitle: 'Subtitle long enough to ellipsize on mobile',
+                ),
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+
+      for (final label in [longAlbumTitle, longArtistName, longSearchTitle]) {
+        final text = tester.widget<Text>(find.text(label));
+        expect(text.maxLines, 1);
+        expect(text.overflow, TextOverflow.ellipsis);
+        expect(text.style?.fontSize, 14.5);
+      }
     });
 
     testWidgets('downloaded track row exposes remove download action', (
@@ -1127,6 +1311,15 @@ void main() {
       expect(find.text('No tracks'), findsOneWidget);
       expect(find.text('Pick another album to see tracks.'), findsOneWidget);
     });
+  });
+}
+
+void _setViewport(WidgetTester tester, Size size) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
   });
 }
 

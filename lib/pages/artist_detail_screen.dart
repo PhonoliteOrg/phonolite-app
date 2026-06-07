@@ -18,7 +18,7 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
-import '../widgets/navigation/command_link_button.dart';
+import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/collection_view_toggle_button.dart';
 import '../widgets/ui/tech_button.dart';
 import 'album_detail_screen.dart';
@@ -128,74 +128,60 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                 16,
                               ),
                               sliver: SliverToBoxAdapter(
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: Row(
-                                    children: [
-                                      CommandLinkButton(
-                                        label: 'Back to library',
-                                        onTap: () =>
-                                            Navigator.of(context).pop(),
-                                      ),
-                                      const Spacer(),
-                                      Wrap(
-                                        alignment: WrapAlignment.end,
-                                        spacing: 10,
-                                        runSpacing: 10,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: _albumSelectionMode
-                                            ? [
-                                                DownloadSelectionToolbar(
-                                                  selectedCount:
-                                                      selectedAlbums.length,
-                                                  totalCount:
-                                                      removableAlbumIds.length,
-                                                  onCancel:
-                                                      _clearAlbumSelection,
-                                                  onSelectAll: () =>
-                                                      _selectAllAlbums(
-                                                        removableAlbumIds,
-                                                      ),
-                                                  onDeselectAll:
-                                                      _deselectAllAlbums,
-                                                  onRemove:
-                                                      selectedAlbums.isEmpty
-                                                      ? null
-                                                      : () =>
-                                                            _removeSelectedAlbumDownloads(
-                                                              controller,
-                                                              selectedAlbums,
-                                                            ),
-                                                ),
-                                              ]
-                                            : [
-                                                TechButton(
-                                                  label: downloadSummary.label,
-                                                  icon: downloadSummary.icon,
-                                                  chrome: TechButtonChrome
-                                                      .borderless,
-                                                  onTap:
-                                                      !isLoading &&
-                                                          downloadSummary
-                                                              .canStart
-                                                      ? () =>
-                                                            _confirmDownloadArtist(
-                                                              controller,
-                                                              albums,
-                                                              downloadSummary,
-                                                            )
-                                                      : null,
-                                                ),
-                                                CollectionViewToggleButton(
-                                                  isListView:
-                                                      showCollectionList,
-                                                  onPressed: controller
-                                                      .toggleCollectionListMode,
-                                                ),
-                                              ],
-                                      ),
-                                    ],
+                                child: DetailActionHeader(
+                                  backLabel: 'Back to library',
+                                  onBack: () => Navigator.of(context).pop(),
+                                  actions: Wrap(
+                                    alignment: WrapAlignment.end,
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: _albumSelectionMode
+                                        ? [
+                                            DownloadSelectionToolbar(
+                                              selectedCount:
+                                                  selectedAlbums.length,
+                                              totalCount:
+                                                  removableAlbumIds.length,
+                                              onCancel: _clearAlbumSelection,
+                                              onSelectAll: () =>
+                                                  _selectAllAlbums(
+                                                    removableAlbumIds,
+                                                  ),
+                                              onDeselectAll: _deselectAllAlbums,
+                                              onRemove: selectedAlbums.isEmpty
+                                                  ? null
+                                                  : () =>
+                                                        _removeSelectedAlbumDownloads(
+                                                          controller,
+                                                          selectedAlbums,
+                                                        ),
+                                            ),
+                                          ]
+                                        : [
+                                            TechButton(
+                                              label: downloadSummary.label,
+                                              icon: downloadSummary.icon,
+                                              chrome:
+                                                  TechButtonChrome.borderless,
+                                              onTap:
+                                                  !isLoading &&
+                                                      downloadSummary.canStart
+                                                  ? () =>
+                                                        _confirmDownloadArtist(
+                                                          controller,
+                                                          albums,
+                                                          downloadSummary,
+                                                        )
+                                                  : null,
+                                            ),
+                                            CollectionViewToggleButton(
+                                              isListView: showCollectionList,
+                                              onPressed: controller
+                                                  .toggleCollectionListMode,
+                                            ),
+                                          ],
                                   ),
                                 ),
                               ),
