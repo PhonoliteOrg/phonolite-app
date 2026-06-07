@@ -22,15 +22,18 @@ class DownloadSelectionToolbar extends StatelessWidget {
   final VoidCallback onDeselectAll;
   final VoidCallback? onRemove;
 
+  static const double _compactWidth = 640;
+
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < _compactWidth;
     final allSelected = totalCount > 0 && selectedCount == totalCount;
     final toggleLabel = allSelected ? 'Deselect all' : 'Select all';
     final toggleEnabled = totalCount > 0;
     final buttonTextStyle = GoogleFonts.rajdhani(
-      fontSize: 14,
+      fontSize: isCompact ? 12 : 14,
       fontWeight: FontWeight.w700,
-      letterSpacing: 1.2,
+      letterSpacing: isCompact ? 0.8 : 1.2,
     );
     final actions = <Widget>[
       Tooltip(
@@ -44,12 +47,17 @@ class DownloadSelectionToolbar extends StatelessWidget {
               ? onDeselectAll
               : onSelectAll,
           textStyle: buttonTextStyle,
+          padding: EdgeInsets.symmetric(
+            horizontal: isCompact ? 6 : 8,
+            vertical: isCompact ? 4 : 6,
+          ),
         ),
       ),
       Tooltip(
         message: 'Remove selected',
         child: ObsidianHudIconButton(
           icon: Icons.delete_outline_rounded,
+          size: isCompact ? 22 : 26,
           onPressed: selectedCount > 0 ? onRemove : null,
         ),
       ),
@@ -57,6 +65,7 @@ class DownloadSelectionToolbar extends StatelessWidget {
         message: 'Cancel',
         child: ObsidianHudIconButton(
           icon: Icons.close_rounded,
+          size: isCompact ? 22 : 26,
           onPressed: onCancel,
         ),
       ),
@@ -64,8 +73,8 @@ class DownloadSelectionToolbar extends StatelessWidget {
 
     return Wrap(
       alignment: WrapAlignment.end,
-      spacing: 10,
-      runSpacing: 8,
+      spacing: isCompact ? 4 : 10,
+      runSpacing: isCompact ? 4 : 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: actions,
     );
@@ -78,12 +87,14 @@ class _HudTextButton extends StatelessWidget {
     required this.isActive,
     required this.onPressed,
     required this.textStyle,
+    required this.padding,
   });
 
   final String label;
   final bool isActive;
   final VoidCallback? onPressed;
   final TextStyle? textStyle;
+  final EdgeInsets padding;
 
   static const _transition = Duration(milliseconds: 200);
 
@@ -130,9 +141,7 @@ class _HudTextButton extends StatelessWidget {
         animationDuration: _transition,
         foregroundColor: WidgetStateProperty.resolveWith(_colorFor),
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        ),
+        padding: WidgetStatePropertyAll(padding),
         minimumSize: const WidgetStatePropertyAll(Size.zero),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         textStyle: WidgetStateProperty.resolveWith(_textStyleFor),

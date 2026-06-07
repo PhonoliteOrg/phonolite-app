@@ -11,7 +11,9 @@ import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/hover_row.dart';
+import '../widgets/ui/obsidian_overflow_action_button.dart';
 import '../widgets/ui/obsidian_widgets.dart';
+import '../widgets/ui/responsive_breakpoints.dart';
 import '../widgets/ui/tech_button.dart';
 import 'custom_shuffle_settings_page.dart';
 import 'login_page.dart';
@@ -63,32 +65,10 @@ class SettingsPage extends StatelessWidget {
                           ),
                           title: 'Server',
                           subtitle: serverLabel,
-                          trailing: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              TechButton(
-                                label: _loginActionLabel(authState.status),
-                                icon: authState.isAuthorized
-                                    ? Icons.swap_horiz_rounded
-                                    : Icons.login_rounded,
-                                density: TechButtonDensity.compact,
-                                chrome: TechButtonChrome.borderless,
-                                onTap:
-                                    authState.status == SessionStatus.checking
-                                    ? null
-                                    : () => _openLogin(context, controller),
-                              ),
-                              if (authState.isAuthorized)
-                                TechButton(
-                                  label: 'Disconnect',
-                                  icon: Icons.logout_rounded,
-                                  variant: TechButtonVariant.danger,
-                                  density: TechButtonDensity.compact,
-                                  chrome: TechButtonChrome.borderless,
-                                  onTap: () async => controller.logout(),
-                                ),
-                            ],
+                          trailing: _serverActions(
+                            context,
+                            controller: controller,
+                            authState: authState,
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -199,12 +179,8 @@ class SettingsPage extends StatelessWidget {
                                   subtitle:
                                       'Delete local tracks, artwork, metadata, and offline databases',
                                   titleColor: theme.colorScheme.error,
-                                  trailing: TechButton(
-                                    label: 'Full reset',
-                                    icon: Icons.delete_forever_rounded,
-                                    variant: TechButtonVariant.danger,
-                                    density: TechButtonDensity.compact,
-                                    chrome: TechButtonChrome.borderless,
+                                  trailing: _resetOfflineDataAction(
+                                    context,
                                     onTap: locations == null
                                         ? null
                                         : () => _confirmResetOfflineData(
@@ -332,6 +308,93 @@ class SettingsPage extends StatelessWidget {
     await controller.resetOfflineData();
   }
 
+  Widget _serverActions(
+    BuildContext context, {
+    required AppController controller,
+    required AuthState authState,
+  }) {
+    final enabled = authState.status != SessionStatus.checking;
+    final loginAction = enabled ? () => _openLogin(context, controller) : null;
+    final loginIcon = authState.status == SessionStatus.checking
+        ? Icons.hourglass_top_rounded
+        : authState.isAuthorized
+        ? Icons.swap_horiz_rounded
+        : Icons.login_rounded;
+
+    if (isCompactListWidth(context)) {
+      if (authState.isAuthorized) {
+        return ObsidianOverflowActionButton(
+          tooltip: 'Server actions',
+          actions: [
+            ObsidianMenuAction(
+              label: 'Change server',
+              icon: Icons.swap_horiz_rounded,
+              onTap: loginAction,
+            ),
+            ObsidianMenuAction(
+              label: 'Disconnect',
+              icon: Icons.logout_rounded,
+              variant: TechButtonVariant.danger,
+              onTap: () async => controller.logout(),
+            ),
+          ],
+        );
+      }
+
+      return _SettingsIconAction(
+        tooltip: _loginActionLabel(authState.status),
+        icon: loginIcon,
+        onPressed: loginAction,
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        TechButton(
+          label: _loginActionLabel(authState.status),
+          icon: loginIcon,
+          density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
+          onTap: loginAction,
+        ),
+        if (authState.isAuthorized)
+          TechButton(
+            label: 'Disconnect',
+            icon: Icons.logout_rounded,
+            variant: TechButtonVariant.danger,
+            density: TechButtonDensity.compact,
+            chrome: TechButtonChrome.borderless,
+            onTap: () async => controller.logout(),
+          ),
+      ],
+    );
+  }
+
+  Widget _resetOfflineDataAction(
+    BuildContext context, {
+    required VoidCallback? onTap,
+  }) {
+    if (isCompactListWidth(context)) {
+      return _SettingsIconAction(
+        tooltip: 'Full reset',
+        icon: Icons.delete_forever_rounded,
+        variant: TechButtonVariant.danger,
+        onPressed: onTap,
+      );
+    }
+
+    return TechButton(
+      label: 'Full reset',
+      icon: Icons.delete_forever_rounded,
+      variant: TechButtonVariant.danger,
+      density: TechButtonDensity.compact,
+      chrome: TechButtonChrome.borderless,
+      onTap: onTap,
+    );
+  }
+
   Widget _settingsRow(
     BuildContext context, {
     required Widget leading,
@@ -342,9 +405,27 @@ class SettingsPage extends StatelessWidget {
     Color? titleColor,
   }) {
     final showHover = onTap != null;
+    final isCompact = isCompactListWidth(context);
+    final leadingWidth = isCompact ? 28.0 : 32.0;
+    final contentGap = isCompact ? 8.0 : 12.0;
+    final trailingGap = isCompact ? 6.0 : 8.0;
+    final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+      fontSize: isCompact ? 14.5 : null,
+      letterSpacing: isCompact ? 0.2 : 0.6,
+      color: titleColor,
+    );
+    final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      fontSize: isCompact ? 12 : null,
+      letterSpacing: isCompact ? 0 : null,
+      color: ObsidianPalette.textMuted,
+    );
+
     return ObsidianHoverRow(
       onTap: onTap,
       enabled: showHover,
+      padding: isCompact
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       borderColor: showHover ? ObsidianPalette.gold : Colors.transparent,
       hoverGradient: showHover
           ? null
@@ -354,18 +435,25 @@ class SettingsPage extends StatelessWidget {
       hoverColor: showHover ? null : Colors.transparent,
       child: Row(
         children: [
-          SizedBox(width: 32, child: Center(child: leading)),
-          const SizedBox(width: 12),
+          SizedBox(
+            width: leadingWidth,
+            child: Center(
+              child: IconTheme.merge(
+                data: IconThemeData(size: isCompact ? 20 : 24),
+                child: leading,
+              ),
+            ),
+          ),
+          SizedBox(width: contentGap),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    letterSpacing: 0.6,
-                    color: titleColor,
-                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle,
                 ),
                 if (subtitle != null && subtitle.trim().isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -373,15 +461,19 @@ class SettingsPage extends StatelessWidget {
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                    ),
+                    style: subtitleStyle,
                   ),
                 ],
               ],
             ),
           ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+          if (trailing != null) ...[
+            SizedBox(width: trailingGap),
+            IconTheme.merge(
+              data: IconThemeData(size: isCompact ? 22 : 24),
+              child: trailing,
+            ),
+          ],
         ],
       ),
     );
@@ -396,6 +488,24 @@ class _StorageActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isCompactListWidth(context)) {
+      return ObsidianOverflowActionButton(
+        tooltip: 'Storage actions',
+        actions: [
+          ObsidianMenuAction(
+            label: 'Change',
+            icon: Icons.edit_rounded,
+            onTap: onChange,
+          ),
+          ObsidianMenuAction(
+            label: 'Reset',
+            icon: Icons.restore_rounded,
+            onTap: onReset,
+          ),
+        ],
+      );
+    }
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -415,6 +525,61 @@ class _StorageActions extends StatelessWidget {
           onTap: onReset,
         ),
       ],
+    );
+  }
+}
+
+class _SettingsIconAction extends StatelessWidget {
+  const _SettingsIconAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.variant = TechButtonVariant.standard,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final TechButtonVariant variant;
+
+  @override
+  Widget build(BuildContext context) {
+    if (variant != TechButtonVariant.danger) {
+      return Tooltip(
+        message: tooltip,
+        child: Semantics(
+          button: true,
+          enabled: onPressed != null,
+          label: tooltip,
+          child: ObsidianHudIconButton(
+            icon: icon,
+            size: 22,
+            onPressed: onPressed,
+          ),
+        ),
+      );
+    }
+
+    final enabled = onPressed != null;
+    final color = enabled
+        ? Theme.of(context).colorScheme.error
+        : ObsidianPalette.textMuted.withValues(alpha: 0.55);
+
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: GestureDetector(
+          onTap: onPressed,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(icon, size: 22, color: color),
+          ),
+        ),
+      ),
     );
   }
 }

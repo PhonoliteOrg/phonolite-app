@@ -9,8 +9,11 @@ import '../../entities/offline_library.dart';
 import '../layouts/app_scope.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
+import '../ui/obsidian_overflow_action_button.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import '../ui/responsive_breakpoints.dart';
+import '../ui/tech_button.dart';
 import 'album_art.dart';
 
 const double _trackActionButtonExtent = 38;
@@ -108,6 +111,7 @@ class _TrackRowTileState extends State<TrackRowTile>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = isCompactListWidth(context);
     final explicitCoverUrl = widget.albumArtUrl?.trim();
     final controller =
         widget.showAlbumArt &&
@@ -139,6 +143,37 @@ class _TrackRowTileState extends State<TrackRowTile>
     final selectionMode = widget.selectionMode;
     final isDeleting =
         widget.offlineDownload?.status == OfflineDownloadStatus.removing;
+    final overflowActions = isCompact && !selectionMode
+        ? <ObsidianMenuAction>[
+            if (widget.onAddToPlaylist != null)
+              ObsidianMenuAction(
+                label: 'Add to playlist',
+                icon: Icons.playlist_add_rounded,
+                onTap: isDeleting ? null : widget.onAddToPlaylist,
+              ),
+            if (widget.onDelete != null)
+              ObsidianMenuAction(
+                label: 'Delete',
+                icon: Icons.delete_outline_rounded,
+                variant: TechButtonVariant.danger,
+                onTap: isDeleting ? null : widget.onDelete,
+              ),
+          ]
+        : const <ObsidianMenuAction>[];
+    final leadingWidth = isCompact ? 28.0 : 32.0;
+    final leadingGap = isCompact ? 6.0 : 8.0;
+    final artSize = isCompact ? 36.0 : 42.0;
+    final artGap = isCompact ? 10.0 : 12.0;
+    final actionGap = isCompact ? 2.0 : 6.0;
+    final titleStyle = theme.textTheme.titleMedium?.copyWith(
+      fontSize: isCompact ? 14.5 : null,
+      letterSpacing: isCompact ? 0.2 : 0.6,
+    );
+    final subtitleStyle = theme.textTheme.bodySmall?.copyWith(
+      fontSize: isCompact ? 12 : null,
+      letterSpacing: isCompact ? 0 : null,
+      color: ObsidianPalette.textMuted,
+    );
 
     return ObsidianHoverRow(
       onTap: isDeleting
@@ -151,13 +186,16 @@ class _TrackRowTileState extends State<TrackRowTile>
           : selectionMode
           ? widget.onSelectionToggle
           : widget.onSelectionModeRequested ?? widget.onLongPress,
+      padding: isCompact
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),
         opacity: isDeleting ? 0.45 : 1,
         child: Row(
           children: [
             SizedBox(
-              width: 32,
+              width: leadingWidth,
               child: Center(
                 child: selectionMode
                     ? Checkbox(
@@ -181,22 +219,23 @@ class _TrackRowTileState extends State<TrackRowTile>
                     ? Text(
                         widget.index.toString().padLeft(2, '0'),
                         style: theme.textTheme.titleMedium?.copyWith(
+                          fontSize: isCompact ? 14 : null,
                           color: ObsidianPalette.gold,
-                          letterSpacing: 1.2,
+                          letterSpacing: isCompact ? 0.8 : 1.2,
                         ),
                       )
                     : const SizedBox.shrink(),
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: leadingGap),
             if (widget.showAlbumArt) ...[
               AlbumArt(
                 title: widget.track.album,
-                size: 42,
+                size: artSize,
                 imageUrl: coverUrl,
                 headers: headers,
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: artGap),
             ],
             Expanded(
               child: Column(
@@ -206,18 +245,14 @@ class _TrackRowTileState extends State<TrackRowTile>
                     widget.track.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      letterSpacing: 0.6,
-                    ),
+                    style: titleStyle,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     widget.subtitle ?? _artistAlbumLine(widget.track),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                    ),
+                    style: subtitleStyle,
                   ),
                 ],
               ),
@@ -225,7 +260,7 @@ class _TrackRowTileState extends State<TrackRowTile>
             if (!selectionMode && widget.trailing != null)
               widget.trailing!
             else ...[
-              if (widget.showDuration) ...[
+              if (widget.showDuration && !isCompact) ...[
                 Text(
                   _formatDuration(widget.track.durationMs),
                   style: theme.textTheme.labelLarge?.copyWith(
@@ -243,15 +278,17 @@ class _TrackRowTileState extends State<TrackRowTile>
                   onDownload: widget.onDownload,
                   onRemoveDownload: widget.onRemoveDownload,
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: actionGap),
               ],
-              if (!selectionMode && widget.onAddToPlaylist != null) ...[
+              if (!selectionMode &&
+                  !isCompact &&
+                  widget.onAddToPlaylist != null) ...[
                 ObsidianHudIconButton(
                   icon: Icons.playlist_add_rounded,
                   onPressed: isDeleting ? null : widget.onAddToPlaylist,
                   size: 22,
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: actionGap),
               ],
               if (!selectionMode)
                 LikeIconButton(
@@ -259,12 +296,19 @@ class _TrackRowTileState extends State<TrackRowTile>
                   onPressed: isDeleting ? null : widget.onLike,
                   size: 22,
                 ),
-              if (!selectionMode && widget.onDelete != null) ...[
-                const SizedBox(width: 6),
+              if (!selectionMode && !isCompact && widget.onDelete != null) ...[
+                SizedBox(width: actionGap),
                 ObsidianHudIconButton(
                   icon: Icons.delete_outline_rounded,
                   onPressed: isDeleting ? null : widget.onDelete,
                   size: 22,
+                ),
+              ],
+              if (overflowActions.isNotEmpty) ...[
+                SizedBox(width: actionGap),
+                ObsidianOverflowActionButton(
+                  tooltip: 'Track actions',
+                  actions: overflowActions,
                 ),
               ],
             ],

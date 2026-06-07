@@ -288,9 +288,12 @@ class ObsidianSectionHeader extends StatelessWidget {
   final String? subtitle;
   final Widget? trailing;
 
+  static const double _compactWidth = 640;
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final isCompact = MediaQuery.sizeOf(context).width < _compactWidth;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -308,7 +311,8 @@ class ObsidianSectionHeader extends StatelessWidget {
                 child: Text(
                   title,
                   style: textTheme.headlineLarge?.copyWith(
-                    letterSpacing: 1.2,
+                    fontSize: isCompact ? 18 : null,
+                    letterSpacing: isCompact ? 0.8 : 1.2,
                     height: 1.05,
                   ),
                 ),

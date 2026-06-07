@@ -15,7 +15,7 @@ import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/modal/loading_widgets.dart';
-import '../widgets/navigation/command_link_button.dart';
+import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/obsidian_widgets.dart';
 import '../widgets/ui/obsidian_theme.dart';
 
@@ -107,77 +107,70 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                         sliver: SliverToBoxAdapter(
-                          child: Row(
-                            children: [
-                              CommandLinkButton(
-                                label: 'Back to playlists',
-                                onTap: () => Navigator.of(context).pop(),
-                              ),
-                              const Spacer(),
-                              _selectionMode
-                                  ? DownloadSelectionToolbar(
-                                      selectedCount: selectedTracks.length,
-                                      totalCount: removableTracks.length,
-                                      onCancel: _clearSelection,
-                                      onSelectAll: () =>
-                                          _selectAll(removableTracks),
-                                      onDeselectAll: _deselectAll,
-                                      onRemove: selectedTracks.isEmpty
-                                          ? null
-                                          : () => _removeDownloads(
-                                              controller,
-                                              selectedTracks,
-                                              playlist.name,
-                                            ),
-                                    )
-                                  : Wrap(
-                                      alignment: WrapAlignment.end,
-                                      spacing: 10,
-                                      runSpacing: 10,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
-                                      children: [
-                                        Tooltip(
-                                          message: 'Play playlist',
-                                          child: ObsidianHudIconButton(
-                                            icon: Icons.play_arrow_rounded,
-                                            onPressed:
-                                                _tracksLoading ||
-                                                    displayedTracks.isEmpty
-                                                ? null
-                                                : () => widget.isLocal
-                                                      ? controller
-                                                            .playLocalPlaylistFromTop(
-                                                              widget.playlistId,
-                                                            )
-                                                      : controller
-                                                            .playPlaylistFromTop(
-                                                              widget.playlistId,
-                                                            ),
+                          child: DetailActionHeader(
+                            backLabel: 'Back to playlists',
+                            onBack: () => Navigator.of(context).pop(),
+                            actions: _selectionMode
+                                ? DownloadSelectionToolbar(
+                                    selectedCount: selectedTracks.length,
+                                    totalCount: removableTracks.length,
+                                    onCancel: _clearSelection,
+                                    onSelectAll: () =>
+                                        _selectAll(removableTracks),
+                                    onDeselectAll: _deselectAll,
+                                    onRemove: selectedTracks.isEmpty
+                                        ? null
+                                        : () => _removeDownloads(
+                                            controller,
+                                            selectedTracks,
+                                            playlist.name,
                                           ),
+                                  )
+                                : Wrap(
+                                    alignment: WrapAlignment.end,
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Tooltip(
+                                        message: 'Play playlist',
+                                        child: ObsidianHudIconButton(
+                                          icon: Icons.play_arrow_rounded,
+                                          onPressed:
+                                              _tracksLoading ||
+                                                  displayedTracks.isEmpty
+                                              ? null
+                                              : () => widget.isLocal
+                                                    ? controller
+                                                          .playLocalPlaylistFromTop(
+                                                            widget.playlistId,
+                                                          )
+                                                    : controller
+                                                          .playPlaylistFromTop(
+                                                            widget.playlistId,
+                                                          ),
                                         ),
-                                        Tooltip(
-                                          message: 'Edit details',
-                                          child: ObsidianHudIconButton(
-                                            icon: Icons.edit_note_rounded,
-                                            onPressed: () => _openRename(
-                                              controller,
-                                              playlist,
-                                            ),
-                                          ),
+                                      ),
+                                      Tooltip(
+                                        message: 'Edit details',
+                                        child: ObsidianHudIconButton(
+                                          icon: Icons.edit_note_rounded,
+                                          onPressed: () =>
+                                              _openRename(controller, playlist),
                                         ),
-                                        Tooltip(
-                                          message: 'Edit tracks',
-                                          child: ObsidianHudIconButton(
-                                            icon: Icons.playlist_remove_rounded,
-                                            onPressed: removableTracks.isEmpty
-                                                ? null
-                                                : _startSelection,
-                                          ),
+                                      ),
+                                      Tooltip(
+                                        message: 'Edit tracks',
+                                        child: ObsidianHudIconButton(
+                                          icon: Icons.playlist_remove_rounded,
+                                          onPressed: removableTracks.isEmpty
+                                              ? null
+                                              : _startSelection,
                                         ),
-                                      ],
-                                    ),
-                            ],
+                                      ),
+                                    ],
+                                  ),
                           ),
                         ),
                       ),

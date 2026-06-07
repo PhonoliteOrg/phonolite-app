@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../entities/models.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/responsive_breakpoints.dart';
 
 IconData searchResultIconForKind(String kind) {
   switch (kind) {
@@ -30,20 +31,25 @@ class SearchResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = isCompactListWidth(context);
     return ObsidianHoverRow(
       onTap: onTap,
+      padding: isCompact
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
           SizedBox(
-            width: 32,
+            width: isCompact ? 28 : 32,
             child: Center(
               child: Icon(
                 searchResultIconForKind(result.kind),
+                size: isCompact ? 20 : 24,
                 color: ObsidianPalette.gold,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: isCompact ? 6 : 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,7 +59,8 @@ class SearchResultTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleMedium?.copyWith(
-                    letterSpacing: 0.6,
+                    fontSize: isCompact ? 14.5 : null,
+                    letterSpacing: isCompact ? 0.2 : 0.6,
                   ),
                 ),
                 if (result.subtitle != null) ...[
@@ -63,6 +70,8 @@ class SearchResultTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: isCompact ? 12 : null,
+                      letterSpacing: isCompact ? 0 : null,
                       color: Colors.white60,
                     ),
                   ),
@@ -70,7 +79,11 @@ class SearchResultTile extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: Colors.white38),
+          Icon(
+            Icons.chevron_right,
+            size: isCompact ? 22 : 24,
+            color: Colors.white38,
+          ),
         ],
       ),
     );

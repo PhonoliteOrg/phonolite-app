@@ -13,7 +13,7 @@ import '../widgets/display/empty_state.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/modals/remove_download_modal.dart';
-import '../widgets/navigation/command_link_button.dart';
+import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/collection_view_toggle_button.dart';
 import '../widgets/ui/obsidian_widgets.dart';
 import 'local_album_detail_screen.dart';
@@ -60,53 +60,43 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                       sliver: SliverToBoxAdapter(
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: Row(
-                            children: [
-                              CommandLinkButton(
-                                label: 'Back to library',
-                                onTap: () => Navigator.of(context).pop(),
-                              ),
-                              const Spacer(),
-                              Wrap(
-                                alignment: WrapAlignment.end,
-                                spacing: 10,
-                                runSpacing: 10,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: _albumSelectionMode
-                                    ? [
-                                        DownloadSelectionToolbar(
-                                          selectedCount: selectedAlbums.length,
-                                          totalCount: removableAlbumIds.length,
-                                          onCancel: _clearAlbumSelection,
-                                          onSelectAll: () => _selectAllAlbums(
-                                            removableAlbumIds,
-                                          ),
-                                          onDeselectAll: _deselectAllAlbums,
-                                          onRemove: selectedAlbums.isEmpty
-                                              ? null
-                                              : () =>
-                                                    _removeSelectedAlbumDownloads(
-                                                      controller,
-                                                      selectedAlbums,
-                                                    ),
-                                        ),
-                                      ]
-                                    : [
-                                        _editAlbumSelectionButton(
-                                          removableAlbumIds.isNotEmpty
-                                              ? _startAlbumSelection
-                                              : null,
-                                        ),
-                                        CollectionViewToggleButton(
-                                          isListView: showCollectionList,
-                                          onPressed: controller
-                                              .toggleCollectionListMode,
-                                        ),
-                                      ],
-                              ),
-                            ],
+                        child: DetailActionHeader(
+                          backLabel: 'Back to library',
+                          onBack: () => Navigator.of(context).pop(),
+                          actions: Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 10,
+                            runSpacing: 10,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: _albumSelectionMode
+                                ? [
+                                    DownloadSelectionToolbar(
+                                      selectedCount: selectedAlbums.length,
+                                      totalCount: removableAlbumIds.length,
+                                      onCancel: _clearAlbumSelection,
+                                      onSelectAll: () =>
+                                          _selectAllAlbums(removableAlbumIds),
+                                      onDeselectAll: _deselectAllAlbums,
+                                      onRemove: selectedAlbums.isEmpty
+                                          ? null
+                                          : () => _removeSelectedAlbumDownloads(
+                                              controller,
+                                              selectedAlbums,
+                                            ),
+                                    ),
+                                  ]
+                                : [
+                                    _editAlbumSelectionButton(
+                                      removableAlbumIds.isNotEmpty
+                                          ? _startAlbumSelection
+                                          : null,
+                                    ),
+                                    CollectionViewToggleButton(
+                                      isListView: showCollectionList,
+                                      onPressed:
+                                          controller.toggleCollectionListMode,
+                                    ),
+                                  ],
                           ),
                         ),
                       ),

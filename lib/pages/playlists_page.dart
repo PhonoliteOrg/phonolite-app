@@ -26,6 +26,10 @@ class PlaylistsPage extends StatefulWidget {
 }
 
 class _PlaylistsPageState extends State<PlaylistsPage> {
+  static const double _compactHeaderActionsWidth = 640;
+  static const double _compactHeaderActionIconSize = 22;
+  static const double _regularHeaderActionIconSize = 26;
+
   bool _requestedLocalLoad = false;
   bool _requestedServerLoad = false;
   bool _selectionMode = false;
@@ -91,6 +95,11 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                       localPlaylists: localPlaylists,
                       serverPlaylists: serverPlaylists,
                     );
+                    final useCompactHeaderActions = _useCompactHeaderActions(
+                      context,
+                    );
+                    final headerActionIconSize = _headerActionIconSize(context);
+                    final headerActionSpacing = _headerActionSpacing(context);
                     return CustomScrollView(
                       slivers: [
                         SliverPadding(
@@ -117,13 +126,20 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                                               serverPlaylists: serverPlaylists,
                                             ),
                                     )
-                                  : Row(
-                                      mainAxisSize: MainAxisSize.min,
+                                  : Wrap(
+                                      alignment: WrapAlignment.end,
+                                      spacing: headerActionSpacing,
+                                      runSpacing: useCompactHeaderActions
+                                          ? 4
+                                          : 8,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
                                         Tooltip(
                                           message: 'Create playlist',
                                           child: ObsidianHudIconButton(
                                             icon: Icons.add_rounded,
+                                            size: headerActionIconSize,
                                             onPressed: () => _openCreate(
                                               controller,
                                               canCreateServer:
@@ -131,21 +147,21 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
                                         Tooltip(
                                           message: 'Edit playlists',
                                           child: ObsidianHudIconButton(
                                             icon: Icons.edit_rounded,
+                                            size: headerActionIconSize,
                                             onPressed: totalPlaylistCount == 0
                                                 ? null
                                                 : _startSelection,
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
                                         CollectionViewToggleButton(
                                           isListView: showListView,
                                           semanticLabel:
                                               'Playlist collection view',
+                                          iconSize: headerActionIconSize,
                                           onPressed: controller
                                               .toggleCollectionListMode,
                                         ),
@@ -261,6 +277,20 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
         },
       ),
     );
+  }
+
+  bool _useCompactHeaderActions(BuildContext context) {
+    return MediaQuery.sizeOf(context).width < _compactHeaderActionsWidth;
+  }
+
+  double _headerActionIconSize(BuildContext context) {
+    return _useCompactHeaderActions(context)
+        ? _compactHeaderActionIconSize
+        : _regularHeaderActionIconSize;
+  }
+
+  double _headerActionSpacing(BuildContext context) {
+    return _useCompactHeaderActions(context) ? 4 : 10;
   }
 
   List<_SelectedPlaylist> _selectedPlaylists({

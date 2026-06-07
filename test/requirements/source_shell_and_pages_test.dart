@@ -74,10 +74,10 @@ void main() {
           'isActive: isListView',
           'SearchHud(',
           "'No Results'",
-          "'Downloaded Music'",
-          "_sectionHeaderSliver('Downloaded Music'),",
+          "'Local Library'",
+          "_sectionHeaderSliver('Local Library'),",
           "'Download Manager'",
-          "'Connected Server Artists'",
+          "'Server Library'",
           "'Connected Server Results'",
           "title: 'No server artists'",
           "'No connected server results'",
@@ -146,7 +146,7 @@ void main() {
         final splashSource = readProjectFile('lib/pages/splash_page.dart');
 
         expectContainsAll(artistSource, const [
-          "label: 'Back to library'",
+          "backLabel: 'Back to library'",
           "'Download Artist'",
           'TechButtonChrome',
           '.borderless',
@@ -164,7 +164,7 @@ void main() {
         expect(artistSource, isNot(contains('_editAlbumSelectionButton(')));
         expect(artistSource, isNot(contains("message: 'Edit'")));
         expectContainsAll(albumSource, const [
-          "label: 'Back to artist'",
+          "backLabel: 'Back to artist'",
           "'Download Album'",
           'TechButtonChrome',
           '.borderless',
@@ -181,7 +181,7 @@ void main() {
         expect(albumSource, isNot(contains('onTrackSelectionModeRequested:')));
         expectContainsAll(localArtistSource, const [
           'class LocalArtistDetailScreen',
-          "label: 'Back to library'",
+          "backLabel: 'Back to library'",
           'CollectionViewToggleButton(',
           'AlbumRowTile(',
           'AlbumCard(',
@@ -196,7 +196,7 @@ void main() {
         expect(localArtistSource, isNot(contains("'Remove Downloads'")));
         expectContainsAll(localAlbumSource, const [
           'class LocalAlbumDetailScreen',
-          "label: 'Back to artist'",
+          "backLabel: 'Back to artist'",
           'AlbumHero(',
           '_editTrackSelectionButton(',
           'DownloadSelectionToolbar',
@@ -243,7 +243,7 @@ void main() {
           isNot(contains('Connect to a server to show server playlists.')),
         );
         expectContainsAll(playlistDetailSource, const [
-          "label: 'Back to playlists'",
+          "backLabel: 'Back to playlists'",
           "'No tracks yet.'",
           'this.isLocal = false',
           '_loadTracksIfNeeded(AppScope.of(context))',
@@ -316,6 +316,9 @@ void main() {
           "'Connect / Log in'",
           "'Change server'",
           "'Disconnect'",
+          'ObsidianOverflowActionButton',
+          '_SettingsIconAction',
+          'isCompactListWidth(context)',
           'LoginPage(controller: controller)',
         ]);
         expectContainsAll(customShuffleSource, const [
