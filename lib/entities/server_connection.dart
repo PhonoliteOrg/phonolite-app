@@ -72,6 +72,7 @@ class ServerConnection {
   final http.Client _client;
   final Random _retryJitter = Random();
   String? _token;
+  void Function(Object error)? onTransportFailure;
 
   String get baseUrl => _baseUrl;
   String? get token => _token;
@@ -692,7 +693,7 @@ class ServerConnection {
   }
 
   Future<bool> _checkHealth(String url) async {
-    final healthUrl = Uri.parse('$url/health');
+    final healthUrl = _buildHealthUrl(url);
     try {
       final response = await _client
           .get(healthUrl)
@@ -706,16 +707,36 @@ class ServerConnection {
   Future<int?> pingHealthMs({
     Duration timeout = const Duration(seconds: 3),
   }) async {
-    final rootUrl = _ensureRoot(_baseUrl);
-    final healthUrl = Uri.parse('$rootUrl/health');
-    final start = DateTime.now();
-    try {
-      final response = await _client.get(healthUrl).timeout(timeout);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return DateTime.now().difference(start).inMilliseconds;
+    for (final url in _healthProbeBaseUrls(_baseUrl)) {
+      final healthUrl = _buildHealthUrl(url);
+      final start = DateTime.now();
+      try {
+        final response = await _client.get(healthUrl).timeout(timeout);
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return DateTime.now().difference(start).inMilliseconds;
+        }
+      } catch (_) {
+        // Try the next health endpoint candidate.
       }
-    } catch (_) {}
+    }
     return null;
+  }
+
+  Iterable<String> _healthProbeBaseUrls(String baseUrl) sync* {
+    final rootUrl = _ensureRoot(baseUrl);
+    yield rootUrl;
+    if (rootUrl != baseUrl) {
+      yield baseUrl;
+    }
+  }
+
+  Uri _buildHealthUrl(String url) {
+    final uri = Uri.parse(url);
+    final path = uri.path.replaceAll(RegExp(r'/+$'), '');
+    return uri.replace(
+      path: path.isEmpty ? '/health' : '$path/health',
+      query: null,
+    );
   }
 
   Future<Map<String, dynamic>> _get(
@@ -904,6 +925,9 @@ class ServerConnection {
     }
 
     if (lastError != null && lastStackTrace != null) {
+      try {
+        onTransportFailure?.call(lastError);
+      } catch (_) {}
       developer.log(
         '$label failed after ${stopwatch.elapsedMilliseconds}ms',
         name: 'ServerConnection',

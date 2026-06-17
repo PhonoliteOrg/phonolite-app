@@ -4,16 +4,28 @@ import UIKit
 
 @available(iOS 13.0, *)
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+  private struct CarPlaySourceState: Equatable {
+    var serverAvailable: Bool
+    var localAvailable: Bool
+    var hasAnySource: Bool
+
+    static let empty = CarPlaySourceState(
+      serverAvailable: false,
+      localAvailable: false,
+      hasAnySource: false
+    )
+  }
+
   private weak var interfaceController: CPInterfaceController?
   private var rootTemplate: CPTemplate?
-  private var homeTemplate: CPListTemplate?
-  private var libraryTemplate: CPListTemplate?
-  private var loggedOutTemplate: CPListTemplate?
+  private var serverTemplate: CPListTemplate?
+  private var localTemplate: CPListTemplate?
+  private var emptyTemplate: CPListTemplate?
   private var tabBarTemplate: CPTabBarTemplate?
   private var nowPlayingItem: CPListItem?
   private let nowPlayingTemplate = CPNowPlayingTemplate.shared
   private var nowPlayingButtonVisible = false
-  private var isAuthorized = false
+  private var sourceState = CarPlaySourceState.empty
 
   private func refreshNowPlayingUI(force: Bool) {
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
@@ -31,169 +43,192 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       }
 
       self.nowPlayingItem = nil
-      self.updateAuthState(authorized: false, force: true)
-      self.requestAuthState()
+      self.requestCarPlayState(force: true)
     }
   }
 
-  private func buildHomeTemplate() -> CPListTemplate {
-    let template = CPListTemplate(
-      title: "Home",
-      sections: [CPListSection(items: [disabledItem(text: "Loading...")])]
-    )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
-    configureTab(template, title: "Home", systemImageName: "house", fallback: .featured)
-    requestCarPlayList(method: "getHomeActions") { [weak self] entries, error in
+  func updateCarPlayState(
+    serverAvailable: Bool,
+    localAvailable: Bool,
+    hasAnySource: Bool,
+    force: Bool = false
+  ) {
+    DispatchQueue.main.async { [weak self] in
       guard let self else {
         return
       }
-      let items = self.buildListItems(
-        entries: entries,
-        emptyText: "No actions available",
-        errorText: "Connect to a server",
-        error: error
-      ) { entry in
-        self.handleHomeAction(entry.id)
+      let next = CarPlaySourceState(
+        serverAvailable: serverAvailable,
+        localAvailable: localAvailable,
+        hasAnySource: hasAnySource || serverAvailable || localAvailable
+      )
+      if !force && self.sourceState == next {
+        self.refreshVisibleTemplates()
+        return
       }
-      items.forEach { item in
-        switch item.text {
-        case "Start Library Shuffle":
-          item.setImage(UIImage(systemName: "shuffle"))
-        case "Start Liked Shuffle":
-          item.setImage(UIImage(systemName: "heart.fill"))
-        case "Start Custom Shuffle":
-          item.setImage(UIImage(systemName: "line.3.horizontal.decrease.circle"))
-        default:
-          break
-        }
-      }
-      self.updateListTemplate(template, items: items)
+      self.sourceState = next
+      self.showRootForCurrentState()
     }
-    return template
   }
 
-  private func buildLibraryTemplate() -> CPListTemplate {
-    let template = CPListTemplate(
-      title: "Library",
-      sections: [CPListSection(items: buildLibraryItems(likedEnabled: false, likedSubtitle: "Loading..."))]
+  func requestCarPlayState(force: Bool = false) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      updateCarPlayState(
+        serverAvailable: false,
+        localAvailable: false,
+        hasAnySource: false,
+        force: force
+      )
+      return
+    }
+    appDelegate.invokeCarPlayMethod("getCarPlayState") { [weak self] result in
+      guard let self else {
+        return
+      }
+      let payload = result as? [String: Any]
+      let serverAvailable = payload?["serverAvailable"] as? Bool ?? false
+      let localAvailable = payload?["localAvailable"] as? Bool ?? false
+      let hasAnySource = payload?["hasAnySource"] as? Bool ?? false
+      self.updateCarPlayState(
+        serverAvailable: serverAvailable,
+        localAvailable: localAvailable,
+        hasAnySource: hasAnySource,
+        force: force
+      )
+    }
+  }
+
+  private func buildServerTemplate() -> CPListTemplate {
+    return buildSourceTemplate(
+      scope: "server",
+      title: "Server",
+      systemImageName: "antenna.radiowaves.left.and.right",
+      fallback: .more
     )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
-    configureTab(
-      template,
-      title: "Library",
-      systemImageName: "music.note.list",
+  }
+
+  private func buildLocalTemplate() -> CPListTemplate {
+    return buildSourceTemplate(
+      scope: "local",
+      title: "Local",
+      systemImageName: "arrow.down.circle",
       fallback: .bookmarks
     )
-    requestCarPlayStatus { [weak self] status in
-      guard let self else {
-        return
-      }
-      let enabled = status.likedAvailable
-      let subtitle: String
-      if let error = status.error, !error.isEmpty {
-        subtitle = "Connect to a server"
-      } else if enabled {
-        subtitle = "Play from the top"
-      } else {
-        subtitle = "No liked songs yet"
-      }
-      let items = self.buildLibraryItems(likedEnabled: enabled, likedSubtitle: subtitle)
-      self.updateListTemplate(template, items: items)
-    }
+  }
+
+  private func buildSourceTemplate(
+    scope: String,
+    title: String,
+    systemImageName: String,
+    fallback: UITabBarItem.SystemItem
+  ) -> CPListTemplate {
+    let template = CPListTemplate(
+      title: title,
+      sections: [CPListSection(items: buildSourceItems(scope: scope))]
+    )
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    configureTab(template, title: title, systemImageName: systemImageName, fallback: fallback)
     return template
   }
 
-  private func buildLoggedOutTemplate() -> CPListTemplate {
+  private func buildEmptyTemplate() -> CPListTemplate {
     let item = disabledItem(
-      text: "Not logged into server",
-      detail: "Open Phonolite to log in"
+      text: "Nothing available in CarPlay",
+      detail: "Connect to a server or download tracks in Phonolite"
     )
     let template = CPListTemplate(
       title: "Phonolite",
       sections: [CPListSection(items: [item])]
     )
-    setNowPlayingButtonVisible(template, visible: false)
+    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     return template
   }
 
-  private func buildLibraryItems(
-    likedEnabled: Bool,
-    likedSubtitle: String
-  ) -> [CPListItem] {
-    let artistsItem = CPListItem(text: "Artists", detailText: "Browse artists")
-    artistsItem.setImage(UIImage(systemName: "music.mic"))
-    artistsItem.handler = { [weak self] _, completion in
-      self?.showArtistsList()
+  private func buildSourceItems(scope: String) -> [CPListItem] {
+    let localScope = scope == "local"
+    let sourceName = localScope ? "Local" : "Server"
+    let libraryItem = CPListItem(
+      text: "\(sourceName) Library",
+      detailText: localScope ? "Browse downloaded artists" : "Browse server artists"
+    )
+    libraryItem.setImage(
+      carPlaySymbol(named: localScope ? "arrow.down.circle" : "music.mic")
+    )
+    libraryItem.handler = { [weak self] _, completion in
+      self?.showArtistsList(scope: scope)
       completion()
     }
 
-    let playlistsItem = CPListItem(text: "Playlists", detailText: "Pick a playlist")
-    playlistsItem.setImage(UIImage(systemName: "music.note.list"))
+    let playlistsItem = CPListItem(
+      text: "\(sourceName) Playlists",
+      detailText: localScope ? "Play downloaded playlists" : "Pick a server playlist"
+    )
+    playlistsItem.setImage(carPlaySymbol(named: "music.note.list"))
     playlistsItem.handler = { [weak self] _, completion in
-      self?.showPlaylistsList()
+      self?.showPlaylistsList(scope: scope)
       completion()
     }
 
-    let likedItem = CPListItem(text: "Liked Songs", detailText: likedSubtitle)
-    likedItem.setImage(UIImage(systemName: "heart.fill"))
-    likedItem.isEnabled = likedEnabled
-    if likedEnabled {
-      likedItem.handler = { [weak self] _, completion in
-        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-          appDelegate.invokeCarPlayMethod("playLiked")
-        }
-        self?.showNowPlaying(animated: true)
-        completion()
+    let likedItem = CPListItem(
+      text: "\(sourceName) Liked Songs",
+      detailText: "Play from the top"
+    )
+    likedItem.setImage(carPlaySymbol(named: "heart.fill"))
+    likedItem.handler = { [weak self] _, completion in
+      if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+        appDelegate.invokeCarPlayMethod("playLiked", arguments: ["scope": scope])
       }
+      self?.showNowPlaying(animated: true)
+      completion()
     }
-    return [artistsItem, playlistsItem, likedItem]
+
+    let shuffleItem = CPListItem(
+      text: "\(sourceName) Shuffle",
+      detailText: localScope ? "Shuffle downloaded tracks" : "Shuffle server library"
+    )
+    shuffleItem.setImage(carPlaySymbol(named: "shuffle"))
+    shuffleItem.handler = { [weak self] _, completion in
+      if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+        appDelegate.invokeCarPlayMethod(
+          "startShuffle",
+          arguments: ["scope": scope, "kind": "library"]
+        )
+      }
+      self?.showNowPlaying(animated: true)
+      completion()
+    }
+
+    return [libraryItem, playlistsItem, likedItem, shuffleItem]
   }
 
-  private func handleHomeAction(_ actionId: String) {
-    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
-      return
-    }
-    switch actionId {
-    case "startLibraryShuffle":
-      appDelegate.invokeCarPlayMethod("startLibraryShuffle")
-    case "startLikedShuffle":
-      appDelegate.invokeCarPlayMethod("startLikedShuffle")
-    case "startCustomShuffle":
-      appDelegate.invokeCarPlayMethod("startCustomShuffle")
-    default:
-      return
-    }
-    showNowPlaying(animated: true)
-  }
-
-  private func showArtistsList() {
+  private func showArtistsList(scope: String) {
     guard interfaceController != nil else {
       return
     }
     let template = CPListTemplate(
-      title: "Artists",
+      title: scope == "local" ? "Downloaded Artists" : "Artists",
       sections: [CPListSection(items: [disabledItem(text: "Loading artists...")])]
     )
     setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     pushTemplate(template, animated: true)
 
-    requestCarPlayList(method: "getArtists") { [weak self] entries, error in
+    requestCarPlayList(method: "getArtists", arguments: ["scope": scope]) { [weak self] entries, error in
       guard let self else {
         return
       }
       let items = self.buildListItems(
         entries: entries,
-        emptyText: "No artists found",
-        errorText: "Connect to a server",
+        emptyText: scope == "local" ? "No downloaded artists" : "No artists found",
+        errorText: scope == "local" ? "No downloaded artists" : "Connect to a server",
         error: error
       ) { entry in
-        self.showAlbumsList(artistId: entry.id, title: entry.title)
+        self.showAlbumsList(scope: scope, artistId: entry.id, title: entry.title)
       }
       self.updateListTemplate(template, items: items)
     }
   }
 
-  private func showAlbumsList(artistId: String, title: String) {
+  private func showAlbumsList(scope: String, artistId: String, title: String) {
     guard interfaceController != nil else {
       return
     }
@@ -204,18 +239,24 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     pushTemplate(template, animated: true)
 
-    requestCarPlayList(method: "getAlbums", arguments: ["artistId": artistId]) { [weak self] entries, error in
+    requestCarPlayList(
+      method: "getAlbums",
+      arguments: ["scope": scope, "artistId": artistId]
+    ) { [weak self] entries, error in
       guard let self else {
         return
       }
       let items = self.buildListItems(
         entries: entries,
         emptyText: "No albums found",
-        errorText: "Connect to a server",
+        errorText: scope == "local" ? "No downloaded albums" : "Connect to a server",
         error: error
       ) { entry in
         if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-          appDelegate.invokeCarPlayMethod("playAlbum", arguments: ["albumId": entry.id])
+          appDelegate.invokeCarPlayMethod(
+            "playAlbum",
+            arguments: ["scope": scope, "albumId": entry.id]
+          )
         }
         self.showNowPlaying(animated: true)
       }
@@ -223,29 +264,32 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
   }
 
-  private func showPlaylistsList() {
+  private func showPlaylistsList(scope: String) {
     guard interfaceController != nil else {
       return
     }
     let template = CPListTemplate(
-      title: "Playlists",
+      title: scope == "local" ? "Local Playlists" : "Playlists",
       sections: [CPListSection(items: [disabledItem(text: "Loading playlists...")])]
     )
     setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     pushTemplate(template, animated: true)
 
-    requestCarPlayList(method: "getPlaylists") { [weak self] entries, error in
+    requestCarPlayList(method: "getPlaylists", arguments: ["scope": scope]) { [weak self] entries, error in
       guard let self else {
         return
       }
       let items = self.buildListItems(
         entries: entries,
-        emptyText: "No playlists found",
-        errorText: "Connect to a server",
+        emptyText: scope == "local" ? "No local playlists" : "No playlists found",
+        errorText: scope == "local" ? "No local playlists" : "Connect to a server",
         error: error
       ) { entry in
         if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-          appDelegate.invokeCarPlayMethod("playPlaylist", arguments: ["playlistId": entry.id])
+          appDelegate.invokeCarPlayMethod(
+            "playPlaylist",
+            arguments: ["scope": scope, "playlistId": entry.id]
+          )
         }
         self.showNowPlaying(animated: true)
       }
@@ -269,28 +313,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       let parsed = self.parseCarPlayList(result)
       DispatchQueue.main.async {
         completion(parsed.items, parsed.error)
-      }
-    }
-  }
-
-  private func requestCarPlayStatus(
-    completion: @escaping ((likedAvailable: Bool, error: String?)) -> Void
-  ) {
-    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
-      completion((likedAvailable: false, error: "unavailable"))
-      return
-    }
-    appDelegate.invokeCarPlayMethod("getLibraryStatus") { result in
-      var likedAvailable = false
-      var error: String?
-      if let payload = result as? [String: Any] {
-        likedAvailable = payload["likedAvailable"] as? Bool ?? false
-        error = payload["error"] as? String
-      } else if let flutterError = result as? FlutterError {
-        error = flutterError.message
-      }
-      DispatchQueue.main.async {
-        completion((likedAvailable: likedAvailable, error: error))
       }
     }
   }
@@ -392,6 +414,20 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   ) {
     guard let url = URL(string: urlString) else {
       completion(nil)
+      return
+    }
+    if url.isFileURL {
+      DispatchQueue.global(qos: .utility).async {
+        let image: UIImage?
+        if let data = try? Data(contentsOf: url) {
+          image = UIImage(data: data)
+        } else {
+          image = nil
+        }
+        DispatchQueue.main.async {
+          completion(image)
+        }
+      }
       return
     }
     var request = URLRequest(url: url)
@@ -503,7 +539,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         return
       }
       let imageName = liked ? "heart.fill" : "heart"
-      guard let image = UIImage(systemName: imageName) else {
+      guard let image = carPlaySymbol(named: imageName) else {
         self.nowPlayingTemplate.updateNowPlayingButtons([])
         return
       }
@@ -516,94 +552,78 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
   }
 
-  func updateAuthState(authorized: Bool, force: Bool = false) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else {
-        return
-      }
-      if !force && self.isAuthorized == authorized {
-        return
-      }
-      self.isAuthorized = authorized
-      if authorized {
-        self.showAuthorizedRoot()
-      } else {
-        self.showLoggedOutRoot()
-      }
-    }
-  }
-
-  private func requestAuthState() {
-    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
-      return
-    }
-    appDelegate.invokeCarPlayMethod("getAuthState") { [weak self] result in
-      guard let self else {
-        return
-      }
-      var authorized = false
-      if let payload = result as? [String: Any] {
-        authorized = payload["authorized"] as? Bool ?? false
-      }
-      self.updateAuthState(authorized: authorized)
-    }
-  }
-
-  private func showAuthorizedRoot() {
-    guard let interfaceController else {
-      return
-    }
-    let homeTemplate = buildHomeTemplate()
-    let libraryTemplate = buildLibraryTemplate()
-    self.homeTemplate = homeTemplate
-    self.libraryTemplate = libraryTemplate
-    self.loggedOutTemplate = nil
-    applyNowPlayingButtonVisibility()
-    if #available(iOS 14.0, *) {
-      let tabBar = CPTabBarTemplate(templates: [homeTemplate, libraryTemplate])
-      tabBarTemplate = tabBar
-      rootTemplate = tabBar
-      interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
-      refreshTabBarTemplates()
-    } else {
-      rootTemplate = homeTemplate
-      interfaceController.setRootTemplate(homeTemplate, animated: false)
-    }
-  }
-
-  private func showLoggedOutRoot() {
-    guard let interfaceController else {
-      return
-    }
-    nowPlayingButtonVisible = false
-    applyNowPlayingButtonVisibility()
-    let template = loggedOutTemplate ?? buildLoggedOutTemplate()
-    loggedOutTemplate = template
-    homeTemplate = nil
-    libraryTemplate = nil
-    tabBarTemplate = nil
-    rootTemplate = template
-    if #available(iOS 14.0, *) {
-      interfaceController.setRootTemplate(template, animated: false, completion: nil)
-    } else {
-      interfaceController.setRootTemplate(template, animated: false)
-    }
-  }
-
   func updateNowPlayingVisibility(hasTrack: Bool) {
     DispatchQueue.main.async { [weak self] in
       guard let self else {
         return
       }
-      self.nowPlayingButtonVisible = self.isAuthorized && hasTrack
+      self.nowPlayingButtonVisible = hasTrack
       self.applyNowPlayingButtonVisibility()
+      self.refreshVisibleTemplates()
     }
   }
 
+  private func showRootForCurrentState() {
+    guard let interfaceController else {
+      return
+    }
+    serverTemplate = nil
+    localTemplate = nil
+    emptyTemplate = nil
+    tabBarTemplate = nil
+
+    if !sourceState.hasAnySource {
+      let template = buildEmptyTemplate()
+      emptyTemplate = template
+      rootTemplate = template
+      if #available(iOS 14.0, *) {
+        interfaceController.setRootTemplate(template, animated: false, completion: nil)
+      } else {
+        interfaceController.setRootTemplate(template, animated: false)
+      }
+      return
+    }
+
+    var templates: [CPTemplate] = []
+    if sourceState.serverAvailable {
+      let server = buildServerTemplate()
+      serverTemplate = server
+      templates.append(server)
+    }
+    if sourceState.localAvailable {
+      let local = buildLocalTemplate()
+      localTemplate = local
+      templates.append(local)
+    }
+
+    applyNowPlayingButtonVisibility()
+    if #available(iOS 14.0, *), templates.count > 1 {
+      let tabBar = CPTabBarTemplate(templates: templates)
+      tabBarTemplate = tabBar
+      rootTemplate = tabBar
+      interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
+      refreshTabBarTemplates()
+    } else {
+      guard let template = templates.first else {
+        return
+      }
+      rootTemplate = template
+      if #available(iOS 14.0, *) {
+        interfaceController.setRootTemplate(template, animated: false, completion: nil)
+      } else {
+        interfaceController.setRootTemplate(template, animated: false)
+      }
+    }
+  }
+
+  private func refreshVisibleTemplates() {
+    applyNowPlayingButtonVisibility()
+  }
+
   private func applyNowPlayingButtonVisibility() {
-    setNowPlayingButtonVisible(homeTemplate, visible: nowPlayingButtonVisible)
-    setNowPlayingButtonVisible(libraryTemplate, visible: nowPlayingButtonVisible)
-    setNowPlayingButtonVisible(loggedOutTemplate, visible: nowPlayingButtonVisible)
+    setNowPlayingButtonVisible(serverTemplate, visible: nowPlayingButtonVisible)
+    setNowPlayingButtonVisible(localTemplate, visible: nowPlayingButtonVisible)
+    setNowPlayingButtonVisible(emptyTemplate, visible: nowPlayingButtonVisible)
     if let topTemplate = interfaceController?.topTemplate {
       setNowPlayingButtonVisible(topTemplate, visible: nowPlayingButtonVisible)
     }
@@ -627,7 +647,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   ) {
     if #available(iOS 14.0, *) {
       template.tabTitle = title
-      if let image = UIImage(systemName: systemImageName) {
+      if let image = carPlaySymbol(named: systemImageName) {
         template.tabImage = image
       } else {
         template.tabSystemItem = fallback
@@ -635,22 +655,30 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
   }
 
+  private func carPlaySymbol(named systemName: String) -> UIImage? {
+    return UIImage(systemName: systemName)?.withRenderingMode(.alwaysTemplate)
+  }
+
   private func refreshTabBarTemplates() {
-    guard #available(iOS 14.0, *),
-          let tabBarTemplate,
-          let homeTemplate,
-          let libraryTemplate else {
+    guard #available(iOS 14.0, *), let tabBarTemplate else {
       return
     }
-    configureTab(homeTemplate, title: "Home", systemImageName: "house", fallback: .featured)
-    configureTab(
-      libraryTemplate,
-      title: "Library",
-      systemImageName: "music.note.list",
-      fallback: .bookmarks
-    )
+    var templates: [CPTemplate] = []
+    if let serverTemplate {
+      configureTab(
+        serverTemplate,
+        title: "Server",
+        systemImageName: "antenna.radiowaves.left.and.right",
+        fallback: .more
+      )
+      templates.append(serverTemplate)
+    }
+    if let localTemplate {
+      configureTab(localTemplate, title: "Local", systemImageName: "arrow.down.circle", fallback: .bookmarks)
+      templates.append(localTemplate)
+    }
     DispatchQueue.main.async { [weak tabBarTemplate] in
-      tabBarTemplate?.updateTemplates([homeTemplate, libraryTemplate])
+      tabBarTemplate?.updateTemplates(templates)
     }
   }
 
@@ -675,19 +703,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     didDisconnect interfaceController: CPInterfaceController,
     from window: CPWindow
   ) {
-    if self.interfaceController === interfaceController {
-      self.interfaceController = nil
-    }
-    rootTemplate = nil
-    homeTemplate = nil
-    libraryTemplate = nil
-    loggedOutTemplate = nil
-    tabBarTemplate = nil
-    nowPlayingItem = nil
-    if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
-       appDelegate.carPlaySceneDelegate === self {
-      appDelegate.carPlaySceneDelegate = nil
-    }
+    handleDisconnect(interfaceController)
   }
 
   @available(iOS 14.0, *)
@@ -695,15 +711,20 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     _ templateApplicationScene: CPTemplateApplicationScene,
     didDisconnect interfaceController: CPInterfaceController
   ) {
+    handleDisconnect(interfaceController)
+  }
+
+  private func handleDisconnect(_ interfaceController: CPInterfaceController) {
     if self.interfaceController === interfaceController {
       self.interfaceController = nil
     }
     rootTemplate = nil
-    homeTemplate = nil
-    libraryTemplate = nil
-    loggedOutTemplate = nil
+    serverTemplate = nil
+    localTemplate = nil
+    emptyTemplate = nil
     tabBarTemplate = nil
     nowPlayingItem = nil
+    sourceState = .empty
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
        appDelegate.carPlaySceneDelegate === self {
       appDelegate.carPlaySceneDelegate = nil

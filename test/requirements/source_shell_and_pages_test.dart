@@ -34,6 +34,10 @@ void main() {
           "label: 'Stats'",
           "label: 'Settings'",
           'Widget _buildTabNavigator(int index, Widget child)',
+          '_TabRouteObserver',
+          'observers: [_routeObservers[index]]',
+          'hidePlaybackChrome:',
+          '_topRouteNames[_selectedIndex] == LoginPage.routeName',
           '_openCurrentAlbum()',
         ]);
       },
@@ -45,8 +49,13 @@ void main() {
       final source = readProjectFile('lib/pages/login_page.dart');
 
       expectContainsAll(source, const [
-        "'CONNECT TO SERVER'",
-        "'LOG IN'",
+        "static const routeName = '/login';",
+        'static Route<void> route(AppController controller)',
+        'settings: const RouteSettings(name: routeName)',
+        'GestureDetector(',
+        'FocusManager.instance.primaryFocus?.unfocus()',
+        'keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag',
+        "'Connect to server'",
         "'Connect'",
         "'Sign in'",
         "'Change server'",
@@ -57,10 +66,11 @@ void main() {
         'widget.controller.probeServer(baseUrl)',
         'widget.controller.loginWithPassword(',
         "label: 'Back to settings'",
-        "const Text('Continue offline')",
         '_initializeServerAddress(saved.baseUrl)',
         'Navigator.of(context).pop()',
       ]);
+      expect(source, isNot(contains("'PHONOLITE'")));
+      expect(source, isNot(contains('Continue offline')));
     });
 
     test(
@@ -148,6 +158,9 @@ void main() {
         expectContainsAll(artistSource, const [
           "backLabel: 'Back to library'",
           "'Download Artist'",
+          'isCompactListWidth(context)',
+          'iconOnly: compactHeaderActions',
+          'tooltip: downloadSummary.label',
           'TechButtonChrome',
           '.borderless',
           'DownloadSelectionToolbar',
@@ -166,6 +179,9 @@ void main() {
         expectContainsAll(albumSource, const [
           "backLabel: 'Back to artist'",
           "'Download Album'",
+          'isCompactListWidth(context)',
+          'iconOnly: compactHeaderActions',
+          'tooltip: downloadSummary.label',
           'TechButtonChrome',
           '.borderless',
           'DownloadSelectionToolbar',
@@ -306,6 +322,8 @@ void main() {
           "'Offline Storage'",
           "'Metadata database'",
           "'Downloaded audio'",
+          "'Managed automatically on this device - \$path'",
+          "'Folder selection and custom paths are not supported on iPhone or iPad.'",
           "'Reset offline data'",
           "'Full reset'",
           '.updateOfflineMetadataDirectory',
@@ -316,12 +334,23 @@ void main() {
           "'Connect / Log in'",
           "'Change server'",
           "'Disconnect'",
+          "state.isReconnecting ? 'Reconnecting...' : 'Server unavailable'",
+          'controller.retryServerConnection()',
+          "authState.isReconnecting ? 'Reconnecting...' : 'Retry'",
+          'Icons.sync_rounded',
           'ObsidianOverflowActionButton',
           '_SettingsIconAction',
           'isCompactListWidth(context)',
-          'LoginPage(controller: controller)',
+          'LoginPage.route(controller)',
+          'CustomShuffleSettingsPage.route()',
+          'LogsPage.route()',
         ]);
         expectContainsAll(customShuffleSource, const [
+          "static const routeName = '/settings/custom-shuffle';",
+          'static Route<void> route()',
+          'settings: const RouteSettings(name: routeName)',
+          'Scaffold(',
+          'backgroundColor: bgDark',
           "label: 'Back to settings'",
           "title: 'Custom Shuffle'",
           "label: 'Select all'",
@@ -334,6 +363,11 @@ void main() {
           'actionChrome: TechButtonChrome.borderless',
         ]);
         expectContainsAll(logsSource, const [
+          "static const routeName = '/settings/logs';",
+          'static Route<void> route()',
+          'settings: const RouteSettings(name: routeName)',
+          'Scaffold(',
+          'backgroundColor: bgDark',
           "label: 'Back to settings'",
           "title: 'Logs'",
         ]);

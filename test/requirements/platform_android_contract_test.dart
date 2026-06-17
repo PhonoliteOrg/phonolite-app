@@ -69,8 +69,18 @@ void main() {
           '"phonolite/audio_output"',
           'PhonoliteMediaService.publishNowPlaying(',
           'PhonoliteMediaService.updateAuthorization(',
+          'PhonoliteMediaService.updateSourceState(',
+          '"carPlayState"',
         ]);
         expectContainsAll(mediaSource, const [
+          'serverAvailable',
+          'localAvailable',
+          'hasAnySource',
+          'localArtistsId',
+          'localAlbumPrefix',
+          'localLikedId',
+          'title = "No available library"',
+          'mapOf("scope" to "local")',
           '"Home"',
           '"Artists"',
           '"Playlists"',

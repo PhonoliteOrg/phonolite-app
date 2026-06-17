@@ -1,4 +1,10 @@
-enum SessionStatus { offline, checking, serverReachable, authenticated }
+enum SessionStatus {
+  offline,
+  checking,
+  serverReachable,
+  serverUnavailable,
+  authenticated,
+}
 
 class AuthState {
   AuthState({
@@ -6,6 +12,7 @@ class AuthState {
     SessionStatus? status,
     required this.baseUrl,
     this.error,
+    this.isReconnecting = false,
   }) : status =
            status ??
            (isAuthorized == true
@@ -15,14 +22,19 @@ class AuthState {
   final SessionStatus status;
   final String baseUrl;
   final String? error;
+  final bool isReconnecting;
 
   bool get isAuthorized => status == SessionStatus.authenticated;
+  bool get hasSession =>
+      status == SessionStatus.authenticated ||
+      status == SessionStatus.serverUnavailable;
 
   AuthState copyWith({
     bool? isAuthorized,
     SessionStatus? status,
     String? baseUrl,
     String? error,
+    bool? isReconnecting,
   }) {
     final nextStatus =
         status ??
@@ -35,6 +47,9 @@ class AuthState {
       status: nextStatus,
       baseUrl: baseUrl ?? this.baseUrl,
       error: error,
+      isReconnecting: nextStatus == SessionStatus.serverUnavailable
+          ? isReconnecting ?? this.isReconnecting
+          : false,
     );
   }
 }

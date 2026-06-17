@@ -23,9 +23,11 @@
 		A1010004A1010004A1010004 /* LocalNetworkPermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1020004A1020004A1020004 /* LocalNetworkPermissionManager.swift */; };
 		A1010005A1010005A1010005 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1020005A1020005A1020005 /* SceneDelegate.swift */; };
 		A1010006A1010006A1010006 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1020006A1020006A1020006 /* CarPlaySceneDelegate.swift */; };
+		A1010007A1010007A1010007 /* AppDelegate+OfflineStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1020007A1020007A1020007 /* AppDelegate+OfflineStorage.swift */; };
 		ADE78D88C81FBEBE4BCC1E8D /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 06813B688B346A543BA94AED /* Pods_Runner.framework */; };
 		B1C2D3E4F5061728394A5B6C /* phonolite_opus_link.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* phonolite_opus_link.m */; };
 		FDCA6FBA26BFD23EE6588684 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73AF8DC5334365A6CDA5C1C3 /* Pods_RunnerTests.framework */; };
+		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -83,11 +85,13 @@
 		A1020004A1020004A1020004 /* LocalNetworkPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkPermissionManager.swift; sourceTree = "<group>"; };
 		A1020005A1020005A1020005 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A1020006A1020006A1020006 /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
+		A1020007A1020007A1020007 /* AppDelegate+OfflineStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+OfflineStorage.swift"; sourceTree = "<group>"; };
 		A19E461740D1465E9679DAFE /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		A1B2C3D4E5F60718293A4B5C /* phonolite_opus_link.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = phonolite_opus_link.m; sourceTree = "<group>"; };
 		AC3768C0222D5952F894F563 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		DC1A703DA9A09789BB144050 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		EA4E39B8FACB4FEE88CB3167 /* phonolite_audio.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = phonolite_audio.m; sourceTree = "<group>"; };
+		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +107,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
 				468FD7837AB34EE38BF1B764 /* AudioToolbox.framework in Frameworks */,
 				6EB47435C4584993857F6E1E /* AVFoundation.framework in Frameworks */,
 				ADE78D88C81FBEBE4BCC1E8D /* Pods_Runner.framework in Frameworks */,
@@ -147,6 +152,7 @@
 		9740EEB11CF90186004384FC /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
+				78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */,
 				3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */,
 				9740EEB21CF90195004384FC /* Debug.xcconfig */,
 				7AFA3C8E1D35360C0083082E /* Release.xcconfig */,
@@ -194,6 +200,7 @@
 				A1020001A1020001A1020001 /* AppDelegate+AudioSession.swift */,
 				A1020002A1020002A1020002 /* AppDelegate+Channels.swift */,
 				A1020003A1020003A1020003 /* AppDelegate+NowPlaying.swift */,
+				A1020007A1020007A1020007 /* AppDelegate+OfflineStorage.swift */,
 				A1020004A1020004A1020004 /* LocalNetworkPermissionManager.swift */,
 				A1020005A1020005A1020005 /* SceneDelegate.swift */,
 				A1020006A1020006A1020006 /* CarPlaySceneDelegate.swift */,
@@ -225,6 +232,9 @@
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		97C146ED1CF9000F007C117D /* Runner */ = {
+			packageProductDependencies = (
+				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
+			);
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
@@ -251,6 +261,9 @@
 
 /* Begin PBXProject section */
 		97C146E61CF9000F007C117D /* Project object */ = {
+			packageReferences = (
+				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
+			);
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
@@ -437,6 +450,7 @@
 				A1010001A1010001A1010001 /* AppDelegate+AudioSession.swift in Sources */,
 				A1010002A1010002A1010002 /* AppDelegate+Channels.swift in Sources */,
 				A1010003A1010003A1010003 /* AppDelegate+NowPlaying.swift in Sources */,
+				A1010007A1010007A1010007 /* AppDelegate+OfflineStorage.swift in Sources */,
 				A1010004A1010004A1010004 /* LocalNetworkPermissionManager.swift in Sources */,
 				A1010005A1010005A1010005 /* SceneDelegate.swift in Sources */,
 				A1010006A1010006A1010006 /* CarPlaySceneDelegate.swift in Sources */,
@@ -564,6 +578,15 @@
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_count",
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_id",
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_name",
+					"-Wl,-exported_symbol,_phonolite_local_audio_open",
+					"-Wl,-exported_symbol,_phonolite_local_audio_read",
+					"-Wl,-exported_symbol,_phonolite_local_audio_seek",
+					"-Wl,-exported_symbol,_phonolite_local_audio_sample_rate",
+					"-Wl,-exported_symbol,_phonolite_local_audio_channels",
+					"-Wl,-exported_symbol,_phonolite_local_audio_duration_ms",
+					"-Wl,-exported_symbol,_phonolite_local_audio_position_ms",
+					"-Wl,-exported_symbol,_phonolite_local_audio_last_error",
+					"-Wl,-exported_symbol,_phonolite_local_audio_close",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -778,6 +801,15 @@
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_count",
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_id",
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_name",
+					"-Wl,-exported_symbol,_phonolite_local_audio_open",
+					"-Wl,-exported_symbol,_phonolite_local_audio_read",
+					"-Wl,-exported_symbol,_phonolite_local_audio_seek",
+					"-Wl,-exported_symbol,_phonolite_local_audio_sample_rate",
+					"-Wl,-exported_symbol,_phonolite_local_audio_channels",
+					"-Wl,-exported_symbol,_phonolite_local_audio_duration_ms",
+					"-Wl,-exported_symbol,_phonolite_local_audio_position_ms",
+					"-Wl,-exported_symbol,_phonolite_local_audio_last_error",
+					"-Wl,-exported_symbol,_phonolite_local_audio_close",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -831,6 +863,15 @@
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_count",
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_id",
 					"-Wl,-exported_symbol,_phonolite_audio_get_output_device_name",
+					"-Wl,-exported_symbol,_phonolite_local_audio_open",
+					"-Wl,-exported_symbol,_phonolite_local_audio_read",
+					"-Wl,-exported_symbol,_phonolite_local_audio_seek",
+					"-Wl,-exported_symbol,_phonolite_local_audio_sample_rate",
+					"-Wl,-exported_symbol,_phonolite_local_audio_channels",
+					"-Wl,-exported_symbol,_phonolite_local_audio_duration_ms",
+					"-Wl,-exported_symbol,_phonolite_local_audio_position_ms",
+					"-Wl,-exported_symbol,_phonolite_local_audio_last_error",
+					"-Wl,-exported_symbol,_phonolite_local_audio_close",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -879,6 +920,18 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+/* Begin XCLocalSwiftPackageReference section */
+		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
+		};
+/* End XCLocalSwiftPackageReference section */
+/* Begin XCSwiftPackageProductDependency section */
+		78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FlutterGeneratedPluginSwiftPackage;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 97C146E61CF9000F007C117D /* Project object */;
 }

@@ -40,10 +40,22 @@ extension AppDelegate {
     if let position = parseDouble(args["position"]) {
       _ = applyPosition(position)
     }
+    let incomingArtworkKey = (args["artworkKey"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedArtworkKey =
+      incomingArtworkKey?.isEmpty == false ? incomingArtworkKey : nil
+    if normalizedArtworkKey != currentArtworkKey {
+      currentArtworkKey = normalizedArtworkKey
+      currentArtworkUrl = nil
+      currentArtworkToken = nil
+      currentArtwork = nil
+    }
+
     var artworkImage: UIImage?
     if let artworkTypedData = args["artworkBytes"] as? FlutterStandardTypedData {
       let data = artworkTypedData.data
       if !data.isEmpty, let image = UIImage(data: data) {
+        currentArtworkKey = normalizedArtworkKey
         currentArtworkUrl = nil
         currentArtworkToken = nil
         currentArtwork = image
@@ -68,17 +80,26 @@ extension AppDelegate {
     let artworkUrl = args["artworkUrl"] as? String
     let token = args["token"] as? String
     if let artworkUrl, !artworkUrl.isEmpty {
-      if artworkUrl != currentArtworkUrl || token != currentArtworkToken {
+      if artworkImage == nil &&
+          (artworkUrl != currentArtworkUrl || token != currentArtworkToken) {
         currentArtworkUrl = artworkUrl
         currentArtworkToken = token
-        fetchArtwork(urlString: artworkUrl, token: token)
+        fetchArtwork(
+          urlString: artworkUrl,
+          token: token,
+          artworkKey: normalizedArtworkKey
+        )
       }
+    } else {
+      currentArtworkUrl = nil
+      currentArtworkToken = nil
     }
   }
 
   func clearNowPlaying() {
     currentArtworkUrl = nil
     currentArtworkToken = nil
+    currentArtworkKey = nil
     currentTrackId = nil
     currentTitle = nil
     currentArtist = nil
@@ -225,7 +246,7 @@ extension AppDelegate {
     return nil
   }
 
-  private func fetchArtwork(urlString: String, token: String?) {
+  private func fetchArtwork(urlString: String, token: String?, artworkKey: String?) {
     guard let url = URL(string: urlString) else {
       return
     }
@@ -237,14 +258,21 @@ extension AppDelegate {
       guard let self, let data, let image = UIImage(data: data) else {
         return
       }
-      self.currentArtwork = image
-      self.applyNowPlayingInfo()
-      self.carPlaySceneDelegate?.updateNowPlayingListItem(
-        title: self.currentTitle,
-        artist: self.currentArtist,
-        album: self.currentAlbum,
-        artwork: image
-      )
+      DispatchQueue.main.async {
+        guard self.currentArtworkUrl == urlString,
+              self.currentArtworkToken == token,
+              self.currentArtworkKey == artworkKey else {
+          return
+        }
+        self.currentArtwork = image
+        self.applyNowPlayingInfo()
+        self.carPlaySceneDelegate?.updateNowPlayingListItem(
+          title: self.currentTitle,
+          artist: self.currentArtist,
+          album: self.currentAlbum,
+          artwork: image
+        )
+      }
     }.resume()
   }
 

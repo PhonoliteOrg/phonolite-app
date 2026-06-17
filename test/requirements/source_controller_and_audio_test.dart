@@ -18,20 +18,71 @@ void main() {
         "'phonolite/now_playing'",
         "'phonolite/carplay'",
         "'phonolite/permissions'",
+        "'artworkKey': artworkKey",
+        '_nowPlayingArtworkSourceKey(',
+        '_maybeLoadNowPlayingArtwork(',
+        '_fetchNowPlayingArtworkFile(',
+        'getCarPlayState',
+        '_carPlayGetArtists(_carPlayScope(args))',
+        '_carPlayPlayAlbum(_carPlayScope(args), albumId)',
+        '_carPlayStartShuffle(_carPlayScope(args), kind)',
+        '_carPlayServerAvailabilityError()',
+        "'server_unavailable'",
+        'playLocalPlaylistFromTop(playlistId)',
+        'playOfflineTrack(album.tracks.first.id, tracks: album.tracks)',
+        'queueLocalShuffle(play: true)',
+        'ConnectivitySignalSource? connectivitySignalSource,',
+        '_configureConnectivitySignals();',
+        'StreamSubscription<bool>? _connectivitySubscription;',
         'static const Duration storedSessionRestoreTimeout = Duration(seconds: 10);',
         'static const Duration _storedSessionRequestTimeout = Duration(seconds: 4);',
         'static const Duration _seekDebounceDelay = Duration(milliseconds: 180);',
         'static const Duration _seekCompletionGuard = Duration(seconds: 8);',
         'static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);',
         'static const Duration _offlineRefreshTimeout = Duration(seconds: 5);',
+        'static const int _serverUnavailableHealthFailureThreshold = 2;',
+        'static const List<Duration> _serverReconnectForegroundBackoff = <Duration>[',
+        'Duration(seconds: 2),',
+        'Duration(seconds: 30),',
+        'static const List<Duration> _serverReconnectBackgroundBackoff = <Duration>[',
+        'Duration(seconds: 120),',
+        'static const Duration _serverReconnectJitterMax = Duration(',
+        'connection.onTransportFailure = _handleServerTransportFailure;',
+        'Future<void> refreshServerAvailability() async',
+        'Future<void> retryServerConnection() async',
+        "_triggerImmediateServerReconnect(reason: 'manual retry')",
+        "_triggerImmediateServerReconnect(reason: 'server action')",
+        "_triggerImmediateServerReconnect(reason: 'vehicle state request')",
+        'await connection.fetchCapabilities();',
+        'Future<void> _handleReconnectUnauthorized() async',
+        'void _recordServerAvailabilityFailure({',
+        'Future<void> _pollHealth() => _refreshServerAvailability(',
         'const Duration(seconds: 12)',
       ]);
+      expect(source, isNot(contains('getListenActions')));
       expect(source, isNot(contains('_displayPositionTimer')));
       expect(source, isNot(contains('_lastDisplayTickAt')));
       expect(source, isNot(contains('_displayPositionHeartbeat')));
       expect(source, isNot(contains('_startDisplayPositionTicker')));
       expect(source, isNot(contains('_tickDisplayPosition')));
       expect(source, isNot(contains('playback.position.tick')));
+    });
+
+    test('connectivity signal source wraps plugin network hints', () {
+      final source = readProjectFile(
+        'lib/entities/connectivity_signal_source.dart',
+      );
+
+      expectContainsAll(source, const [
+        'abstract class ConnectivitySignalSource',
+        'Stream<bool> get availabilityStream;',
+        'Future<bool> hasConnectivity();',
+        'class ConnectivityPlusSignalSource extends ConnectivitySignalSource',
+        '_connectivity.onConnectivityChanged',
+        '.distinct()',
+        '_connectivity.checkConnectivity()',
+        'ConnectivityResult.none',
+      ]);
     });
 
     test('controller keeps stream seek and buffer display state stable', () {
@@ -71,6 +122,7 @@ void main() {
         'if (rememberMe) {',
         'Future<bool> probeServer(String input) async {',
         'SessionStatus.checking',
+        'SessionStatus.serverUnavailable',
         "'Saved server unavailable'",
         'err.statusCode == 401',
         "error: 'Saved login expired'",

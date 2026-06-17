@@ -34,7 +34,6 @@ CFLAGS=(
   -I"$OPUS_ROOT/silk/float"
   -I"$SRC_ROOT"
   -isysroot "$SDK_PATH"
-  -mios-version-min="$MIN_IOS_VERSION"
 )
 
 EXCLUDE_SEGMENTS=(
@@ -106,9 +105,21 @@ OBJ_PER_ARCH=()
 for arch in "${ARCHS_LIST[@]}"; do
   ARCH_OBJ_DIR="$OBJ_DIR/$arch"
   mkdir -p "$ARCH_OBJ_DIR"
+  TARGET_CFLAGS=("${CFLAGS[@]}")
+  if [[ "$SDK_NAME" == "iphonesimulator" ]]; then
+    TARGET_CFLAGS+=(
+      -target "$arch-apple-ios$MIN_IOS_VERSION-simulator"
+      -mios-simulator-version-min="$MIN_IOS_VERSION"
+    )
+  else
+    TARGET_CFLAGS+=(
+      -target "$arch-apple-ios$MIN_IOS_VERSION"
+      -mios-version-min="$MIN_IOS_VERSION"
+    )
+  fi
   for src in "${SOURCES[@]}"; do
     obj="$ARCH_OBJ_DIR/$(basename "$src").o"
-    clang "${CFLAGS[@]}" -arch "$arch" -c "$src" -o "$obj"
+    clang "${TARGET_CFLAGS[@]}" -arch "$arch" -c "$src" -o "$obj"
   done
   ARCH_LIB="$OUT_DIR/libphonolite_opus_$arch.a"
   xcrun libtool -static -o "$ARCH_LIB" "$ARCH_OBJ_DIR"/*.o

@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/models.dart';
 import 'package:phonolite_app/entities/offline_library.dart';
+import 'package:phonolite_app/entities/offline_storage_settings.dart';
+import 'package:phonolite_app/pages/settings_page.dart';
 import 'package:phonolite_app/widgets/display/album_row_tile.dart';
 import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
 import 'package:phonolite_app/widgets/display/download_selection_toolbar.dart';
@@ -251,6 +253,40 @@ void main() {
       expect(hoveredIcon.shadows, isNotEmpty);
 
       await tester.tap(label);
+      await tester.pump();
+
+      expect(tapped, 1);
+    });
+
+    testWidgets('icon-only tech button keeps label semantic-only', (
+      tester,
+    ) async {
+      var tapped = 0;
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          TechButton(
+            label: 'Download Artist',
+            icon: Icons.download_for_offline_outlined,
+            iconOnly: true,
+            tooltip: 'Download Artist',
+            chrome: TechButtonChrome.borderless,
+            onTap: () => tapped += 1,
+          ),
+        ),
+      );
+
+      expect(find.text('DOWNLOAD ARTIST'), findsNothing);
+      expect(find.byIcon(Icons.download_for_offline_outlined), findsOneWidget);
+      expect(find.bySemanticsLabel('Download Artist'), findsOneWidget);
+      expect(
+        tester
+            .widget<Icon>(find.byIcon(Icons.download_for_offline_outlined))
+            .size,
+        24,
+      );
+
+      await tester.tap(find.byIcon(Icons.download_for_offline_outlined));
       await tester.pump();
 
       expect(tapped, 1);
@@ -1311,6 +1347,82 @@ void main() {
       expect(find.text('No tracks'), findsOneWidget);
       expect(find.text('Pick another album to see tracks.'), findsOneWidget);
     });
+
+    testWidgets('settings page uses managed offline storage copy on iOS', (
+      tester,
+    ) async {
+      _setViewport(tester, const Size(900, 900));
+      await tester.pumpWidget(
+        _buildOfflineStorageSectionTestApp(
+          platform: TargetPlatform.iOS,
+          child: const OfflineStorageSection(
+            locations: OfflineStorageLocations(
+              metadataDirectory: '/app/Phonolite/offline',
+              downloadsDirectory: '/app/Phonolite/offline',
+              metadataDirectoryIsDefault: true,
+              downloadsDirectoryIsDefault: true,
+            ),
+            onChangeMetadata: null,
+            onResetMetadata: null,
+            onChangeDownloads: null,
+            onResetDownloads: null,
+            onResetOfflineData: null,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text(
+          'Folder selection and custom paths are not supported on iPhone or iPad.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Managed automatically on this device -'),
+        findsNWidgets(2),
+      );
+      expect(find.text('CHANGE'), findsNothing);
+      expect(find.text('RESET'), findsNothing);
+    });
+
+    testWidgets('settings page keeps storage actions on desktop platforms', (
+      tester,
+    ) async {
+      _setViewport(tester, const Size(1280, 900));
+      await tester.pumpWidget(
+        _buildOfflineStorageSectionTestApp(
+          platform: TargetPlatform.macOS,
+          child: OfflineStorageSection(
+            locations: const OfflineStorageLocations(
+              metadataDirectory: '/app/Phonolite/offline',
+              downloadsDirectory: '/app/Phonolite/offline',
+              metadataDirectoryIsDefault: true,
+              downloadsDirectoryIsDefault: true,
+            ),
+            onChangeMetadata: _noop,
+            onResetMetadata: _noop,
+            onChangeDownloads: _noop,
+            onResetDownloads: _noop,
+            onResetOfflineData: _noop,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text(
+          'Folder selection and custom paths are not supported on iPhone or iPad.',
+        ),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('Managed automatically on this device -'),
+        findsNothing,
+      );
+      expect(find.text('CHANGE'), findsNWidgets(2));
+      expect(find.text('RESET'), findsNWidgets(2));
+    });
   });
 }
 
@@ -1366,3 +1478,15 @@ OfflineDownloadJob _job(String id, String kind, OfflineDownloadStatus status) {
     label: kind == 'artist' ? 'Artist $id' : 'Album $id',
   );
 }
+
+Widget _buildOfflineStorageSectionTestApp({
+  required TargetPlatform platform,
+  required Widget child,
+}) {
+  return MaterialApp(
+    theme: ObsidianTheme.build().copyWith(platform: platform),
+    home: Scaffold(body: child),
+  );
+}
+
+void _noop() {}

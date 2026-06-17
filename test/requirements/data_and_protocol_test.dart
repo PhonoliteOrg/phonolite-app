@@ -2,12 +2,36 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_log.dart';
+import 'package:phonolite_app/entities/auth_state.dart';
 import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
 import 'package:phonolite_app/entities/models.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 
 void main() {
   group('model contracts', () {
+    test('auth state separates retained sessions from reachable servers', () {
+      final unavailable = AuthState(
+        status: SessionStatus.serverUnavailable,
+        baseUrl: 'http://server.test/api/v1',
+      );
+
+      expect(unavailable.hasSession, isTrue);
+      expect(unavailable.isAuthorized, isFalse);
+      expect(unavailable.isReconnecting, isFalse);
+      expect(
+        unavailable.copyWith(status: SessionStatus.authenticated).isAuthorized,
+        isTrue,
+      );
+      final reconnecting = unavailable.copyWith(isReconnecting: true);
+      expect(reconnecting.isReconnecting, isTrue);
+      expect(
+        reconnecting
+            .copyWith(status: SessionStatus.authenticated)
+            .isReconnecting,
+        isFalse,
+      );
+    });
+
     test('artist parsing applies defaults for optional fields', () {
       final artist = Artist.fromJson(<String, dynamic>{
         'id': 'artist-1',

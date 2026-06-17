@@ -9,6 +9,15 @@ import '../widgets/ui/obsidian_widgets.dart';
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.controller});
 
+  static const routeName = '/login';
+
+  static Route<void> route(AppController controller) {
+    return MaterialPageRoute<void>(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => LoginPage(controller: controller),
+    );
+  }
+
   final AppController controller;
 
   @override
@@ -66,98 +75,85 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
-            final minHeight = (constraints.maxHeight - 48 - keyboardInset)
-                .clamp(0.0, double.infinity);
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(0, 24, 0, 24 + keyboardInset),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minHeight),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (Navigator.of(context).canPop()) ...[
-                            CommandLinkButton(
-                              label: 'Back to settings',
-                              onTap: () => Navigator.of(context).pop(),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          ObsidianSectionHeader(
-                            title: 'PHONOLITE',
-                            subtitle: _connected
-                                ? 'LOG IN'
-                                : 'CONNECT TO SERVER',
-                          ),
-                          const SizedBox(height: 24),
-                          _buildLocalNetworkWarning(),
-                          if (!_connected) _buildServerSection(context),
-                          if (_connected) ...[
-                            _buildCredentialsSection(context),
-                          ],
-                          if (_error != null) ...[
-                            const SizedBox(height: 12),
-                            SelectableText(
-                              _error!,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submit,
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text(_connected ? 'Sign in' : 'Connect'),
-                          ),
-                          if (_connected)
-                            TextButton(
-                              onPressed: _isSubmitting
-                                  ? null
-                                  : () => setState(() {
-                                      _connected = false;
-                                      _error = null;
-                                    }),
-                              child: const Text('Change server'),
-                            ),
-                          if (Navigator.of(context).canPop())
-                            TextButton(
-                              onPressed: _isSubmitting
-                                  ? null
-                                  : () => Navigator.of(context).pop(),
-                              child: const Text('Continue offline'),
-                            ),
-                        ],
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: ObsidianPalette.obsidian),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            20,
+            16,
+            20,
+            20 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (Navigator.of(context).canPop()) ...[
+                    CommandLinkButton(
+                      label: 'Back to settings',
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  ObsidianSectionHeader(
+                    title: _connected ? 'Sign in' : 'Connect to server',
+                    subtitle: _connected
+                        ? 'Use your server account to finish connecting.'
+                        : 'Enter the address of the server you want to use.',
+                  ),
+                  const SizedBox(height: 20),
+                  _buildLocalNetworkWarning(),
+                  if (!_connected) _buildServerSection(context),
+                  if (_connected) ...[_buildCredentialsSection(context)],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
                       ),
                     ),
+                  ],
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(_connected ? 'Sign in' : 'Connect'),
                   ),
-                ),
+                  if (_connected)
+                    TextButton(
+                      onPressed: _isSubmitting
+                          ? null
+                          : () => setState(() {
+                              _connected = false;
+                              _error = null;
+                            }),
+                      child: const Text('Change server'),
+                    ),
+                ],
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
   }
 
   Future<void> _submit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
     final portValue = _parsePortInput();
     if (_serverPortController.text.trim().isNotEmpty && portValue == null) {
       _setStateIfMounted(
@@ -248,7 +244,7 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
               ? TextInputAction.next
               : TextInputAction.next,
           enabled: !_connected,
-          onSubmitted: null,
+          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
         ),
         const SizedBox(height: 12),
         ObsidianTextField(
@@ -260,7 +256,12 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
               ? TextInputAction.next
               : TextInputAction.done,
           enabled: !_connected,
-          onSubmitted: _connected ? null : (_) => _submit(),
+          onSubmitted: _connected
+              ? null
+              : (_) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _submit();
+                },
         ),
       ],
     );

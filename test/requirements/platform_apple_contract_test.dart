@@ -10,12 +10,19 @@ void main() {
         'ios/Runner/AppDelegate+AudioSession.swift',
       );
       final channels = readProjectFile('ios/Runner/AppDelegate+Channels.swift');
+      final offlineStorage = readProjectFile(
+        'ios/Runner/AppDelegate+OfflineStorage.swift',
+      );
       final nowPlaying = readProjectFile(
         'ios/Runner/AppDelegate+NowPlaying.swift',
       );
       final permissions = readProjectFile(
         'ios/Runner/LocalNetworkPermissionManager.swift',
       );
+      final localAudioLink = readProjectFile(
+        'packages/phonolite_local_audio/ios/Classes/phonolite_local_audio_link.m',
+      );
+      final project = readProjectFile('ios/Runner.xcodeproj/project.pbxproj');
       final infoPlist = readProjectFile('ios/Runner/Info.plist');
       final sceneDelegate = readProjectFile('ios/Runner/SceneDelegate.swift');
 
@@ -26,6 +33,8 @@ void main() {
         'configureCarPlayChannel()',
         'configurePermissionsChannel()',
         'localNetworkPermissions.requestPermission()',
+        'refreshOfflineStorageBackupExclusions()',
+        'applicationDidEnterBackground',
       ]);
       expectContainsAll(audioSession, const [
         '.allowAirPlay',
@@ -42,6 +51,12 @@ void main() {
       ]);
       expectContainsAll(nowPlaying, const [
         'MPNowPlayingInfoCenter.default().nowPlayingInfo',
+        'currentArtworkKey',
+        'args["artworkKey"]',
+        'currentArtwork = nil',
+        'fetchArtwork(',
+        'artworkKey: normalizedArtworkKey',
+        'self.currentArtworkKey == artworkKey',
         'MPRemoteCommandCenter.shared()',
         '"play"',
         '"pause"',
@@ -57,6 +72,36 @@ void main() {
         '"granted"',
         '"denied"',
       ]);
+      expectContainsAll(offlineStorage, const [
+        'OfflineStorageBackupManager',
+        'appendingPathComponent("offline", isDirectory: true)',
+        'appendingPathComponent("art", isDirectory: true)',
+        'hasPrefix("server_")',
+        'values.isExcludedFromBackup = true',
+      ]);
+      expectContainsAll(localAudioLink, const [
+        'phonolite_local_audio_keep_symbols',
+        'phonolite_local_audio_open',
+        'phonolite_local_audio_read',
+        'phonolite_local_audio_seek',
+        'phonolite_local_audio_sample_rate',
+        'phonolite_local_audio_channels',
+        'phonolite_local_audio_duration_ms',
+        'phonolite_local_audio_position_ms',
+        'phonolite_local_audio_last_error',
+        'phonolite_local_audio_close',
+      ]);
+      expectContainsAll(project, const [
+        '-Wl,-exported_symbol,_phonolite_local_audio_open',
+        '-Wl,-exported_symbol,_phonolite_local_audio_read',
+        '-Wl,-exported_symbol,_phonolite_local_audio_seek',
+        '-Wl,-exported_symbol,_phonolite_local_audio_sample_rate',
+        '-Wl,-exported_symbol,_phonolite_local_audio_channels',
+        '-Wl,-exported_symbol,_phonolite_local_audio_duration_ms',
+        '-Wl,-exported_symbol,_phonolite_local_audio_position_ms',
+        '-Wl,-exported_symbol,_phonolite_local_audio_last_error',
+        '-Wl,-exported_symbol,_phonolite_local_audio_close',
+      ]);
       expectContainsAll(infoPlist, const [
         'NSLocalNetworkUsageDescription',
         '_phonolite._tcp',
@@ -67,6 +112,8 @@ void main() {
       expectContainsAll(sceneDelegate, const [
         'configureNowPlayingChannel()',
         'configurePermissionsChannel()',
+        'sceneDidEnterBackground',
+        'refreshOfflineStorageBackupExclusions()',
       ]);
     });
 
@@ -75,18 +122,27 @@ void main() {
 
       expectContainsAll(source, const [
         'CPNowPlayingTemplate.shared',
-        'title: "Home"',
-        'title: "Library"',
-        'text: "Artists"',
-        'text: "Playlists"',
-        'text: "Liked Songs"',
-        '"startLibraryShuffle"',
-        '"startLikedShuffle"',
-        '"startCustomShuffle"',
+        'title: "Server"',
+        'title: "Local"',
+        'getCarPlayState',
+        'serverAvailable',
+        'showRootForCurrentState()',
+        'scope: "local"',
+        'scope: "server"',
+        r'text: "\(sourceName) Library"',
+        r'text: "\(sourceName) Playlists"',
+        r'text: "\(sourceName) Liked Songs"',
+        r'text: "\(sourceName) Shuffle"',
+        'carPlaySymbol(named:',
+        'withRenderingMode(.alwaysTemplate)',
+        '"startShuffle"',
         'updateNowPlayingButtons(liked: Bool, available: Bool)',
         'updateNowPlayingVisibility(hasTrack: Bool)',
+        'self.nowPlayingButtonVisible = hasTrack',
         'sendRemoteCommandToFlutter("toggleLike")',
       ]);
+      expect(source, isNot(contains('title: "Listen"')));
+      expect(source, isNot(contains('getListenActions')));
     });
 
     test('macos preserves app shell and native output device enumeration', () {

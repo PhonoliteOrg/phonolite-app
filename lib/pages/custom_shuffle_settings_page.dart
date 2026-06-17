@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
@@ -14,6 +15,15 @@ import '../widgets/ui/tech_button.dart';
 
 class CustomShuffleSettingsPage extends StatefulWidget {
   const CustomShuffleSettingsPage({super.key});
+
+  static const routeName = '/settings/custom-shuffle';
+
+  static Route<void> route() {
+    return MaterialPageRoute<void>(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => const CustomShuffleSettingsPage(),
+    );
+  }
 
   @override
   State<CustomShuffleSettingsPage> createState() =>
@@ -233,97 +243,102 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     final controller = AppScope.of(context);
     final canLoadArtists = controller.authState.isAuthorized;
 
-    return StreamBuilder<List<Artist>>(
-      stream: controller.artistsStream,
-      initialData: controller.artists,
-      builder: (context, snapshot) {
-        final artists = snapshot.data ?? <Artist>[];
-        final filteredArtists = _filterArtists(artists);
-        final genreOptions = _buildGenreOptions(artists);
-        final filteredGenres = _filterGenres(genreOptions);
-        return StreamBuilder<bool>(
-          stream: controller.artistsLoadingStream,
-          initialData: controller.artistsLoading,
-          builder: (context, loadingSnapshot) {
-            final isLoading = loadingSnapshot.data ?? false;
-            final showingArtists = _view == _CustomShuffleView.artists;
-            if (showingArtists &&
-                artists.isNotEmpty &&
-                controller.hasMoreArtists &&
-                !isLoading &&
-                _artistSearchController.text.trim().isEmpty) {
-              WidgetsBinding.instance.addPostFrameCallback(
-                (_) => _maybeLoadMoreArtists(),
-              );
-            }
-            return ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(20),
-              children: [
-                CommandLinkButton(
-                  label: 'Back to settings',
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(height: 12),
-                const ObsidianSectionHeader(
-                  title: 'Custom Shuffle',
-                  subtitle:
-                      'Pick artists and genres used for library shuffles.',
-                ),
-                const SizedBox(height: 20),
-                _buildViewToggle(),
-                const SizedBox(height: 16),
-                if (showingArtists) ...[
-                  _buildSelectionSection(
-                    title: 'Artists',
-                    controller: _artistSearchController,
-                    hintText: 'Search artists',
-                    summary: controller.hasMoreArtists
-                        ? 'Selected ${_selectedArtistIds.length} of loaded ${artists.length}'
-                        : 'Selected ${_selectedArtistIds.length} of ${artists.length}',
-                    onSelectAll:
-                        !canLoadArtists ||
-                            (artists.isEmpty && !controller.hasMoreArtists)
-                        ? null
-                        : _selectAllAvailableArtists,
-                    onClear: !canLoadArtists || _selectedArtistIds.isEmpty
-                        ? null
-                        : _clearArtists,
-                    child: _buildArtistList(
-                      canLoadArtists: canLoadArtists,
-                      artists: filteredArtists,
-                      fullCount: artists.length,
-                      isLoading: isLoading,
-                      hasMoreArtists: controller.hasMoreArtists,
+    return Scaffold(
+      backgroundColor: bgDark,
+      body: SafeArea(
+        child: StreamBuilder<List<Artist>>(
+          stream: controller.artistsStream,
+          initialData: controller.artists,
+          builder: (context, snapshot) {
+            final artists = snapshot.data ?? <Artist>[];
+            final filteredArtists = _filterArtists(artists);
+            final genreOptions = _buildGenreOptions(artists);
+            final filteredGenres = _filterGenres(genreOptions);
+            return StreamBuilder<bool>(
+              stream: controller.artistsLoadingStream,
+              initialData: controller.artistsLoading,
+              builder: (context, loadingSnapshot) {
+                final isLoading = loadingSnapshot.data ?? false;
+                final showingArtists = _view == _CustomShuffleView.artists;
+                if (showingArtists &&
+                    artists.isNotEmpty &&
+                    controller.hasMoreArtists &&
+                    !isLoading &&
+                    _artistSearchController.text.trim().isEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _maybeLoadMoreArtists(),
+                  );
+                }
+                return ListView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    CommandLinkButton(
+                      label: 'Back to settings',
+                      onTap: () => Navigator.of(context).pop(),
                     ),
-                  ),
-                ] else ...[
-                  _buildSelectionSection(
-                    title: 'Genres',
-                    controller: _genreSearchController,
-                    hintText: 'Search genres',
-                    summary:
-                        'Selected ${_selectedGenres.length} of ${genreOptions.length}',
-                    onSelectAll: !canLoadArtists || genreOptions.isEmpty
-                        ? null
-                        : () => _selectAllGenres(genreOptions),
-                    onClear: !canLoadArtists || _selectedGenres.isEmpty
-                        ? null
-                        : _clearGenres,
-                    child: _buildGenreList(
-                      canLoadArtists: canLoadArtists,
-                      genres: filteredGenres,
-                      fullCount: genreOptions.length,
-                      isLoading: isLoading,
-                      hasMoreArtists: controller.hasMoreArtists,
+                    const SizedBox(height: 12),
+                    const ObsidianSectionHeader(
+                      title: 'Custom Shuffle',
+                      subtitle:
+                          'Pick artists and genres used for library shuffles.',
                     ),
-                  ),
-                ],
-              ],
+                    const SizedBox(height: 20),
+                    _buildViewToggle(),
+                    const SizedBox(height: 16),
+                    if (showingArtists) ...[
+                      _buildSelectionSection(
+                        title: 'Artists',
+                        controller: _artistSearchController,
+                        hintText: 'Search artists',
+                        summary: controller.hasMoreArtists
+                            ? 'Selected ${_selectedArtistIds.length} of loaded ${artists.length}'
+                            : 'Selected ${_selectedArtistIds.length} of ${artists.length}',
+                        onSelectAll:
+                            !canLoadArtists ||
+                                (artists.isEmpty && !controller.hasMoreArtists)
+                            ? null
+                            : _selectAllAvailableArtists,
+                        onClear: !canLoadArtists || _selectedArtistIds.isEmpty
+                            ? null
+                            : _clearArtists,
+                        child: _buildArtistList(
+                          canLoadArtists: canLoadArtists,
+                          artists: filteredArtists,
+                          fullCount: artists.length,
+                          isLoading: isLoading,
+                          hasMoreArtists: controller.hasMoreArtists,
+                        ),
+                      ),
+                    ] else ...[
+                      _buildSelectionSection(
+                        title: 'Genres',
+                        controller: _genreSearchController,
+                        hintText: 'Search genres',
+                        summary:
+                            'Selected ${_selectedGenres.length} of ${genreOptions.length}',
+                        onSelectAll: !canLoadArtists || genreOptions.isEmpty
+                            ? null
+                            : () => _selectAllGenres(genreOptions),
+                        onClear: !canLoadArtists || _selectedGenres.isEmpty
+                            ? null
+                            : _clearGenres,
+                        child: _buildGenreList(
+                          canLoadArtists: canLoadArtists,
+                          genres: filteredGenres,
+                          fullCount: genreOptions.length,
+                          isLoading: isLoading,
+                          hasMoreArtists: controller.hasMoreArtists,
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             );
           },
-        );
-      },
+        ),
+      ),
     );
   }
 

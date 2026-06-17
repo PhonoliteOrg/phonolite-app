@@ -4,15 +4,19 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:phonolite_app/entities/models.dart';
 import 'package:phonolite_app/entities/offline_download_manager.dart';
 import 'package:phonolite_app/entities/offline_library.dart';
 import 'package:phonolite_app/entities/offline_library_views.dart';
+import 'package:phonolite_app/entities/offline_storage_settings.dart';
 import 'package:phonolite_app/entities/server_connection.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('offline library sqlite behavior', () {
     test('migrates legacy JSON downloads into sqlite on first read', () async {
       final temp = await Directory.systemTemp.createTemp(
@@ -352,6 +356,85 @@ void main() {
       expect(second.single.serverTrackId, 'server-track-2');
       expect(second.single.matchKind, 'metadata_strict');
     });
+
+    test(
+      'managed iOS storage ignores saved custom paths and clears overrides',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_ios_managed_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        _installPathProvider(_join(temp.path, 'app_support'));
+
+        final legacySettings = OfflineStorageSettingsStorage(
+          usesManagedStoragePaths: () => false,
+        );
+        await legacySettings.write(
+          const OfflineStorageSettings(
+            metadataDirectory: '/legacy/metadata',
+            downloadsDirectory: '/legacy/downloads',
+          ),
+        );
+
+        final storage = OfflineLibraryStorage(
+          settingsStorage: OfflineStorageSettingsStorage(
+            usesManagedStoragePaths: () => true,
+          ),
+        );
+
+        final locations = await storage.resolveStorageLocations();
+        final expectedRoot = _join(
+          _join(temp.path, 'app_support'),
+          _join('Phonolite', 'offline'),
+        );
+
+        expect(locations.metadataDirectory, expectedRoot);
+        expect(locations.downloadsDirectory, expectedRoot);
+        expect(locations.metadataDirectoryIsDefault, isTrue);
+        expect(locations.downloadsDirectoryIsDefault, isTrue);
+
+        final normalized = await legacySettings.read();
+        expect(normalized.metadataDirectory, isNull);
+        expect(normalized.downloadsDirectory, isNull);
+      },
+    );
+
+    test(
+      'managed iOS storage resets update requests back to defaults',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_ios_reset_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        _installPathProvider(_join(temp.path, 'app_support'));
+
+        final storage = OfflineLibraryStorage(
+          settingsStorage: OfflineStorageSettingsStorage(
+            usesManagedStoragePaths: () => true,
+          ),
+        );
+
+        await storage.updateStorageLocations(
+          metadataDirectory: '/custom/metadata',
+          downloadsDirectory: '/custom/downloads',
+        );
+
+        final locations = await storage.resolveStorageLocations();
+        final expectedRoot = _join(
+          _join(temp.path, 'app_support'),
+          _join('Phonolite', 'offline'),
+        );
+
+        expect(locations.metadataDirectory, expectedRoot);
+        expect(locations.downloadsDirectory, expectedRoot);
+
+        final persisted = await OfflineStorageSettingsStorage(
+          usesManagedStoragePaths: () => false,
+        ).read();
+        expect(persisted.metadataDirectory, isNull);
+        expect(persisted.downloadsDirectory, isNull);
+      },
+    );
 
     test(
       'keeps metadata and download roots independently configurable',
@@ -965,6 +1048,81 @@ void main() {
       },
     );
 
+    test(
+      'startup repairs stale local artwork paths before garbage collection',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_startup_art_repair_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        final storage = OfflineLibraryStorage(baseDirectory: temp);
+
+        final mediaFile = await _mediaFile(temp, 'completed.mp3');
+        final prepared = await storage.prepareDownload(
+          _download(
+            serverBaseUrl: 'http://server-one.test/api/v1',
+            track: _track(id: 'server-track-1'),
+            filePath: mediaFile.path,
+          ),
+        );
+        await storage.upsertDownload(prepared);
+
+        final albumArt = await storage.albumArtFile(
+          albumId: 'album-1',
+          extension: 'png',
+        );
+        final artistLogo = await storage.artistArtFile(
+          artistId: 'artist-1',
+          kind: 'logo',
+          extension: 'png',
+        );
+        final artistBanner = await storage.artistArtFile(
+          artistId: 'artist-1',
+          kind: 'banner',
+          extension: 'png',
+        );
+        await albumArt.writeAsBytes(<int>[1, 2, 3]);
+        await artistLogo.writeAsBytes(<int>[4, 5, 6]);
+        await artistBanner.writeAsBytes(<int>[7, 8, 9]);
+
+        final oldArtRoot = _join(temp.path, 'old_container_art');
+        await storage.updateTrackArtPaths(
+          prepared.localTrackId!,
+          albumArtPath: _join(oldArtRoot, 'album-1.png'),
+          artistArtPath: _join(oldArtRoot, 'artist-1_logo.png'),
+          artistBannerPath: _join(oldArtRoot, 'artist-1_banner.png'),
+        );
+        final dbPath = _join(
+          _join(temp.path, 'offline'),
+          'phonolite_offline.sqlite',
+        );
+        final db = sqlite3.open(dbPath);
+        db.execute('DELETE FROM metadata WHERE key = ?', ['orphan_gc_v7']);
+        db.execute(
+          'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+          ['schema_version', '6'],
+        );
+        db.dispose();
+
+        final downloads = await storage.readDownloads();
+        final localTracks = await storage.readLocalDownloadedTracks();
+        final pendingDeletes = await storage.readPendingFileDeletes();
+
+        expect(downloads.single.track.albumArtPath, albumArt.path);
+        expect(downloads.single.track.artistArtPath, artistLogo.path);
+        expect(downloads.single.track.artistBannerPath, artistBanner.path);
+        expect(localTracks.single.albumArtPath, albumArt.path);
+        expect(localTracks.single.artistArtPath, artistLogo.path);
+        expect(localTracks.single.artistBannerPath, artistBanner.path);
+        expect(await albumArt.exists(), isTrue);
+        expect(await artistLogo.exists(), isTrue);
+        expect(await artistBanner.exists(), isTrue);
+        expect(pendingDeletes, isNot(contains(albumArt.path)));
+        expect(pendingDeletes, isNot(contains(artistLogo.path)));
+        expect(pendingDeletes, isNot(contains(artistBanner.path)));
+      },
+    );
+
     test('manager waits for initial load before queueing a batch', () async {
       final temp = await Directory.systemTemp.createTemp(
         'phonolite_offline_queue_load_',
@@ -1390,6 +1548,288 @@ void main() {
       expect(manager.jobs.single.sourceId, artist.id);
       expect((await storage.readDownloadJobs()).single.sourceId, artist.id);
     });
+
+    test(
+      'artist queue rematerializes retryable tracks after missing files reload as corrupt',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_artist_retryable_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        final storage = OfflineLibraryStorage(baseDirectory: temp);
+        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final connection = _ArtistRetryTestConnection(
+          baseUrl: serverBaseUrl,
+          tracksByAlbum: <String, List<Track>>{
+            'album-1': <Track>[_track(id: 'server-track-1')],
+          },
+          createBatch: (trackIds, clientBatchId) {
+            return _downloadManifest(
+              batchId: clientBatchId ?? 'batch-artist-retryable',
+              trackId: trackIds.first,
+              byteLength: 4,
+            );
+          },
+        )..setToken('token-1');
+        final missingFile = _join(
+          _join(temp.path, 'legacy'),
+          'server-track-1.mp3',
+        );
+        final prepared = await storage.prepareDownload(
+          _download(
+            serverBaseUrl: serverBaseUrl,
+            track: _track(id: 'server-track-1'),
+            filePath: missingFile,
+          ),
+        );
+        await storage.upsertDownload(prepared);
+
+        final manager = OfflineDownloadManager(
+          connection: connection,
+          storage: storage,
+        );
+        addTearDown(manager.dispose);
+        await manager.load();
+
+        expect(manager.downloads.single.status, OfflineDownloadStatus.corrupt);
+        expect(manager.downloads.single.error, 'Completed file missing');
+
+        final queued = await manager.queueArtist(
+          Artist(id: 'artist-1', name: 'The Artist', albumCount: 1),
+          <Album>[
+            Album(
+              id: 'album-1',
+              title: 'The Album',
+              artist: 'The Artist',
+              artistId: 'artist-1',
+              trackCount: 1,
+            ),
+          ],
+        );
+
+        expect(queued, 1);
+
+        await _waitFor(() async {
+          final download = manager.downloads.singleWhere(
+            (item) => item.track.id == 'server-track-1',
+          );
+          return download.status == OfflineDownloadStatus.queued &&
+              download.batchId != null &&
+              manager.jobs.isNotEmpty &&
+              manager.jobs.single.materializedCount == 1;
+        });
+
+        final download = manager.downloads.singleWhere(
+          (item) => item.track.id == 'server-track-1',
+        );
+        final jobItems = await storage.readDownloadJobItems(download.batchId!);
+
+        expect(download.status, OfflineDownloadStatus.queued);
+        expect(jobItems, hasLength(1));
+        expect(jobItems.single.status, OfflineDownloadStatus.queued);
+        expect(jobItems.single.materialized, isTrue);
+      },
+    );
+
+    test('manager repairs stale downloaded file paths on load', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_repair_stale_path_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: temp);
+      final serverBaseUrl = 'http://server-one.test/api/v1';
+      final canonicalFile = await storage.trackFile(
+        serverBaseUrl: serverBaseUrl,
+        trackId: 'server-track-1',
+        extension: 'mp3',
+      );
+      await canonicalFile.writeAsBytes(<int>[1, 2, 3]);
+      final missingFile = _join(
+        _join(temp.path, 'old_container'),
+        'server-track-1.mp3',
+      );
+      final prepared = await storage.prepareDownload(
+        _download(
+          serverBaseUrl: serverBaseUrl,
+          track: _track(id: 'server-track-1'),
+          filePath: missingFile,
+        ).copyWith(contentType: 'audio/mpeg'),
+      );
+      await storage.upsertDownload(prepared);
+
+      final manager = OfflineDownloadManager(
+        connection: ServerConnection(baseUrl: serverBaseUrl),
+        storage: storage,
+      );
+      addTearDown(manager.dispose);
+      await manager.load();
+
+      final download = manager.downloads.single;
+      expect(download.status, OfflineDownloadStatus.downloaded);
+      expect(download.filePath, canonicalFile.path);
+      expect(download.error, isNull);
+      expect(manager.localDownloadedTracks(), hasLength(1));
+      expect(
+        (await storage.readDownloads()).single.filePath,
+        canonicalFile.path,
+      );
+    });
+
+    test(
+      'manager still marks missing downloaded files corrupt on load',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_missing_still_corrupt_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        final storage = OfflineLibraryStorage(baseDirectory: temp);
+        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final missingFile = _join(
+          _join(temp.path, 'old_container'),
+          'server-track-1.mp3',
+        );
+        final prepared = await storage.prepareDownload(
+          _download(
+            serverBaseUrl: serverBaseUrl,
+            track: _track(id: 'server-track-1'),
+            filePath: missingFile,
+          ).copyWith(contentType: 'audio/mpeg'),
+        );
+        await storage.upsertDownload(prepared);
+
+        final manager = OfflineDownloadManager(
+          connection: ServerConnection(baseUrl: serverBaseUrl),
+          storage: storage,
+        );
+        addTearDown(manager.dispose);
+        await manager.load();
+
+        final download = manager.downloads.single;
+        expect(download.status, OfflineDownloadStatus.corrupt);
+        expect(download.filePath, isNull);
+        expect(download.error, 'Completed file missing');
+        expect(manager.localDownloadedTracks(), isEmpty);
+      },
+    );
+
+    test(
+      'manager repairs prior completed-file-missing corrupt records',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_repair_prior_corrupt_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        final storage = OfflineLibraryStorage(baseDirectory: temp);
+        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final canonicalFile = await storage.trackFile(
+          serverBaseUrl: serverBaseUrl,
+          trackId: 'server-track-1',
+          extension: 'mp3',
+        );
+        await canonicalFile.writeAsBytes(<int>[1, 2, 3]);
+        final prepared = await storage.prepareDownload(
+          _download(
+            serverBaseUrl: serverBaseUrl,
+            track: _track(id: 'server-track-1'),
+            status: OfflineDownloadStatus.corrupt,
+          ).copyWith(
+            contentType: 'audio/mpeg',
+            error: 'Completed file missing',
+          ),
+        );
+        await storage.upsertDownload(prepared);
+
+        final manager = OfflineDownloadManager(
+          connection: ServerConnection(baseUrl: serverBaseUrl),
+          storage: storage,
+        );
+        addTearDown(manager.dispose);
+        await manager.load();
+
+        final download = manager.downloads.single;
+        expect(download.status, OfflineDownloadStatus.downloaded);
+        expect(download.filePath, canonicalFile.path);
+        expect(download.error, isNull);
+        expect(manager.localDownloadedTracks(), hasLength(1));
+      },
+    );
+
+    test(
+      'managed iOS storage migration copies legacy files and repairs paths',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_managed_migration_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        _installPathProvider(_join(temp.path, 'app_support'));
+
+        final legacyMetadata = Directory(_join(temp.path, 'legacy_metadata'));
+        final legacyDownloads = Directory(_join(temp.path, 'legacy_downloads'));
+        final legacySettings = OfflineStorageSettingsStorage(
+          usesManagedStoragePaths: () => false,
+        );
+        await legacySettings.write(
+          OfflineStorageSettings(
+            metadataDirectory: legacyMetadata.path,
+            downloadsDirectory: legacyDownloads.path,
+          ),
+        );
+
+        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final legacyStorage = OfflineLibraryStorage(
+          metadataDirectory: legacyMetadata,
+          downloadsDirectory: legacyDownloads,
+        );
+        final legacyFile = await legacyStorage.trackFile(
+          serverBaseUrl: serverBaseUrl,
+          trackId: 'server-track-1',
+          extension: 'mp3',
+        );
+        await legacyFile.writeAsBytes(<int>[1, 2, 3]);
+        final staleFilePath = _join(
+          _join(temp.path, 'old_container'),
+          'server-track-1.mp3',
+        );
+        final prepared = await legacyStorage.prepareDownload(
+          _download(
+            serverBaseUrl: serverBaseUrl,
+            track: _track(id: 'server-track-1'),
+            filePath: staleFilePath,
+          ).copyWith(contentType: 'audio/mpeg'),
+        );
+        await legacyStorage.upsertDownload(prepared);
+
+        final managedStorage = _ManagedTestStorage(
+          settingsStorage: OfflineStorageSettingsStorage(
+            usesManagedStoragePaths: () => true,
+          ),
+        );
+        final manager = OfflineDownloadManager(
+          connection: ServerConnection(baseUrl: serverBaseUrl),
+          storage: managedStorage,
+        );
+        addTearDown(manager.dispose);
+        await manager.load();
+
+        final managedFile = await managedStorage.trackFile(
+          serverBaseUrl: serverBaseUrl,
+          trackId: 'server-track-1',
+          extension: 'mp3',
+        );
+        final download = manager.downloads.single;
+        expect(await managedFile.exists(), isTrue);
+        expect(download.status, OfflineDownloadStatus.downloaded);
+        expect(download.filePath, managedFile.path);
+        expect(
+          (await managedStorage.readDownloads()).single.filePath,
+          managedFile.path,
+        );
+
+        final normalizedSettings = await legacySettings.read();
+        expect(normalizedSettings.metadataDirectory, isNull);
+        expect(normalizedSettings.downloadsDirectory, isNull);
+      },
+    );
 
     test(
       'artist job pause and resume requeues materialized downloads',
@@ -1982,22 +2422,6 @@ void main() {
         var sawBatchRequest = false;
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         final subscription = server.listen((request) async {
-          if (request.uri.path == '/api/v1/download/batches') {
-            sawBatchRequest = true;
-            await request.cast<List<int>>().drain<void>();
-            request.response.headers.contentType = ContentType.json;
-            request.response.write(
-              jsonEncode(
-                _downloadManifest(
-                  batchId: 'single-batch',
-                  trackId: 'server-track-1',
-                  byteLength: body.length,
-                ).toJson(),
-              ),
-            );
-            await request.response.close();
-            return;
-          }
           if (request.uri.path == '/api/v1/download/tracks/server-track-1') {
             request.response.headers.contentType = ContentType('audio', 'mpeg');
             request.response.contentLength = body.length;
@@ -2011,8 +2435,16 @@ void main() {
         addTearDown(subscription.cancel);
         addTearDown(() => server.close(force: true));
 
-        final connection = ServerConnection(
+        final connection = _SingleBatchTestConnection(
           baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+          manifest: _downloadManifest(
+            batchId: 'single-batch',
+            trackId: 'server-track-1',
+            byteLength: body.length,
+          ),
+          onBatchRequested: () {
+            sawBatchRequest = true;
+          },
         )..setToken('token-1');
         final manager = OfflineDownloadManager(
           connection: connection,
@@ -2049,35 +2481,7 @@ void main() {
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
         var metadataRequestCount = 0;
-        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-        final subscription = server.listen((request) async {
-          if (request.uri.path ==
-              '/api/v1/library/tracks/server-track-1/offline-metadata') {
-            metadataRequestCount += 1;
-            request.response.headers.contentType = ContentType.json;
-            request.response.write(
-              jsonEncode(
-                _offlineMetadata(
-                  trackId: 'server-track-1',
-                  albumTitle: 'Gorillaz',
-                  albumId: 'album-1',
-                  albumYear: null,
-                  albumGenres: const <String>[],
-                  artistGenres: const <String>[],
-                  schemaVersion: OfflineTrackMetadata.currentSchemaVersion,
-                ).toJson(),
-              ),
-            );
-            await request.response.close();
-            return;
-          }
-          request.response.statusCode = HttpStatus.notFound;
-          await request.response.close();
-        });
-        addTearDown(subscription.cancel);
-        addTearDown(() => server.close(force: true));
-
-        final serverBaseUrl = 'http://127.0.0.1:${server.port}/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api/v1';
         final staleMetadata = _offlineMetadata(
           trackId: 'server-track-1',
           albumTitle: 'Gorillaz',
@@ -2095,7 +2499,21 @@ void main() {
         );
         await storage.upsertDownload(prepared);
 
-        final connection = ServerConnection(baseUrl: serverBaseUrl);
+        final connection = _OfflineMetadataTestConnection(
+          baseUrl: serverBaseUrl,
+          metadata: _offlineMetadata(
+            trackId: 'server-track-1',
+            albumTitle: 'Gorillaz',
+            albumId: 'album-1',
+            albumYear: null,
+            albumGenres: const <String>[],
+            artistGenres: const <String>[],
+            schemaVersion: OfflineTrackMetadata.currentSchemaVersion,
+          ),
+          onMetadataRequested: () {
+            metadataRequestCount += 1;
+          },
+        );
         final manager = OfflineDownloadManager(
           connection: connection,
           storage: storage,
@@ -2593,30 +3011,6 @@ DownloadBatchManifest _downloadManifest({
   );
 }
 
-extension _DownloadBatchManifestTestJson on DownloadBatchManifest {
-  Map<String, dynamic> toJson() => {
-    'schema_version': schemaVersion,
-    'batch_id': batchId,
-    'created_at': createdAt.millisecondsSinceEpoch,
-    'items': [
-      for (final item in items)
-        {
-          'track_id': item.trackId,
-          'download_url': item.downloadUrl,
-          'offline_metadata': item.offlineMetadata.toJson(),
-          'byte_length': item.byteLength,
-          'content_type': item.contentType,
-          'etag': item.etag,
-          'sha256': item.sha256,
-        },
-    ],
-    'unavailable': [
-      for (final item in unavailable)
-        {'track_id': item.trackId, 'reason': item.reason},
-    ],
-  };
-}
-
 OfflineTrackMetadata _offlineMetadata({
   required String trackId,
   int schemaVersion = 1,
@@ -2757,6 +3151,12 @@ class _DelayedReadStorage extends OfflineLibraryStorage {
   }
 }
 
+class _ManagedTestStorage extends OfflineLibraryStorage {
+  const _ManagedTestStorage({
+    required OfflineStorageSettingsStorage settingsStorage,
+  }) : super(settingsStorage: settingsStorage);
+}
+
 Future<File> _mediaFile(Directory temp, String name) async {
   final dir = Directory(_join(_join(temp.path, 'offline'), 'test_media'));
   await dir.create(recursive: true);
@@ -2787,4 +3187,115 @@ Future<void> _waitFor(
   if (!await condition()) {
     throw TimeoutException('condition was not met before $timeout');
   }
+}
+
+void _installPathProvider(String appSupportPath) {
+  final previous = PathProviderPlatform.instance;
+  final cachePath = _join(appSupportPath, 'cache');
+  final tempPath = _join(appSupportPath, 'temp');
+  PathProviderPlatform.instance = _FakePathProviderPlatform(
+    appSupportPath: appSupportPath,
+    cachePath: cachePath,
+    temporaryPath: tempPath,
+  );
+  addTearDown(() {
+    PathProviderPlatform.instance = previous;
+  });
+}
+
+class _SingleBatchTestConnection extends ServerConnection {
+  _SingleBatchTestConnection({
+    required super.baseUrl,
+    required this.manifest,
+    this.onBatchRequested,
+  });
+
+  final DownloadBatchManifest manifest;
+  final void Function()? onBatchRequested;
+
+  @override
+  Future<DownloadBatchManifest> createDownloadBatch(
+    List<String> trackIds, {
+    String? clientBatchId,
+  }) async {
+    onBatchRequested?.call();
+    return manifest;
+  }
+}
+
+class _OfflineMetadataTestConnection extends ServerConnection {
+  _OfflineMetadataTestConnection({
+    required super.baseUrl,
+    required this.metadata,
+    this.onMetadataRequested,
+  });
+
+  final OfflineTrackMetadata metadata;
+  final void Function()? onMetadataRequested;
+
+  @override
+  Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) async {
+    onMetadataRequested?.call();
+    return metadata;
+  }
+}
+
+class _ArtistRetryTestConnection extends ServerConnection {
+  _ArtistRetryTestConnection({
+    required super.baseUrl,
+    required this.tracksByAlbum,
+    required this.createBatch,
+  });
+
+  final Map<String, List<Track>> tracksByAlbum;
+  final DownloadBatchManifest Function(
+    List<String> trackIds,
+    String? clientBatchId,
+  )
+  createBatch;
+
+  @override
+  Future<ServerCapabilities> fetchCapabilities() async {
+    return ServerCapabilities(
+      downloadJobsV2: false,
+      metadataSnapshotsV2: false,
+      eventReplayV2: false,
+      trackFileContractV2: false,
+    );
+  }
+
+  @override
+  Future<List<Track>> fetchTracks(String albumId) async {
+    return tracksByAlbum[albumId] ?? const <Track>[];
+  }
+
+  @override
+  Future<DownloadBatchManifest> createDownloadBatch(
+    List<String> trackIds, {
+    String? clientBatchId,
+  }) async {
+    setToken(null);
+    return createBatch(trackIds, clientBatchId);
+  }
+}
+
+class _FakePathProviderPlatform extends PathProviderPlatform {
+  _FakePathProviderPlatform({
+    required this.appSupportPath,
+    required this.cachePath,
+    required this.temporaryPath,
+  });
+
+  final String appSupportPath;
+  final String cachePath;
+  final String temporaryPath;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => appSupportPath;
+
+  @override
+  Future<String?> getApplicationCachePath() async => cachePath;
+
+  @override
+  Future<String?> getTemporaryPath() async => temporaryPath;
 }

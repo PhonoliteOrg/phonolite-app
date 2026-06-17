@@ -67,29 +67,44 @@ class OfflineStorageLocations {
 }
 
 class OfflineStorageSettingsStorage {
-  const OfflineStorageSettingsStorage();
+  const OfflineStorageSettingsStorage({
+    bool Function()? usesManagedStoragePaths,
+  }) : _usesManagedStoragePaths = usesManagedStoragePaths;
 
   static const String _fileName = 'offline_storage.json';
+  final bool Function()? _usesManagedStoragePaths;
+
+  bool get usesManagedStoragePaths =>
+      _usesManagedStoragePaths?.call() ?? (!kIsWeb && Platform.isIOS);
 
   Future<OfflineStorageSettings> read() async {
     if (kIsWeb) {
       return const OfflineStorageSettings();
     }
     try {
-      final file = await _resolveFile();
-      if (!await file.exists()) {
+      final settings = await _readFromDisk();
+      if (usesManagedStoragePaths) {
+        if (settings.metadataDirectory != null ||
+            settings.downloadsDirectory != null) {
+          await write(const OfflineStorageSettings());
+        }
         return const OfflineStorageSettings();
       }
-      final raw = await file.readAsString();
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) {
-        return const OfflineStorageSettings();
-      }
-      return OfflineStorageSettings.fromJson(
-        Map<String, dynamic>.from(decoded),
-      );
+      return settings;
     } catch (err) {
       AppLogger.warning('Failed to read offline storage settings: $err');
+      return const OfflineStorageSettings();
+    }
+  }
+
+  Future<OfflineStorageSettings> readRaw() async {
+    if (kIsWeb) {
+      return const OfflineStorageSettings();
+    }
+    try {
+      return await _readFromDisk();
+    } catch (err) {
+      AppLogger.warning('Failed to read raw offline storage settings: $err');
       return const OfflineStorageSettings();
     }
   }
@@ -99,12 +114,28 @@ class OfflineStorageSettingsStorage {
       return;
     }
     try {
+      final next = usesManagedStoragePaths
+          ? const OfflineStorageSettings()
+          : settings;
       final file = await _resolveFile(createDir: true);
-      await file.writeAsString(jsonEncode(settings.toJson()));
+      await file.writeAsString(jsonEncode(next.toJson()));
     } catch (err) {
       AppLogger.warning('Failed to persist offline storage settings: $err');
       rethrow;
     }
+  }
+
+  Future<OfflineStorageSettings> _readFromDisk() async {
+    final file = await _resolveFile();
+    if (!await file.exists()) {
+      return const OfflineStorageSettings();
+    }
+    final raw = await file.readAsString();
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      return const OfflineStorageSettings();
+    }
+    return OfflineStorageSettings.fromJson(Map<String, dynamic>.from(decoded));
   }
 
   Future<File> _resolveFile({bool createDir = false}) async {

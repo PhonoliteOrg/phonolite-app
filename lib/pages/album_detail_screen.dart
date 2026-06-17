@@ -16,6 +16,7 @@ import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/detail_action_header.dart';
+import '../widgets/ui/responsive_breakpoints.dart';
 import '../widgets/ui/tech_button.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
@@ -70,6 +71,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final controller = AppScope.of(context);
     final authHeadersMap = authHeaders(controller);
     final coverUrl = controller.connection.buildAlbumCoverUrl(_album.id);
+    final compactHeaderActions = isCompactListWidth(context);
 
     return Scaffold(
       backgroundColor: bgDark,
@@ -149,6 +151,8 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                             TechButton(
                                               label: downloadSummary.label,
                                               icon: downloadSummary.icon,
+                                              iconOnly: compactHeaderActions,
+                                              tooltip: downloadSummary.label,
                                               chrome:
                                                   TechButtonChrome.borderless,
                                               onTap:

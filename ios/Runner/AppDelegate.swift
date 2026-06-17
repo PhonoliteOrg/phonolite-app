@@ -10,6 +10,7 @@ import UIKit
   var carPlayChannel: FlutterMethodChannel?
   var currentArtworkUrl: String?
   var currentArtworkToken: String?
+  var currentArtworkKey: String?
   var currentDuration: Double?
   var currentIsPlaying: Bool = false
   var currentLiked: Bool = false
@@ -39,7 +40,13 @@ import UIKit
     configureCarPlayChannel()
     configurePermissionsChannel()
     localNetworkPermissions.requestPermission()
+    refreshOfflineStorageBackupExclusions()
     return result
+  }
+
+  override func applicationDidEnterBackground(_ application: UIApplication) {
+    super.applicationDidEnterBackground(application)
+    refreshOfflineStorageBackupExclusions()
   }
 
   override func application(

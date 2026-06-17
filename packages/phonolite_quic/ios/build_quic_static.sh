@@ -1,7 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "$HOME/.cargo/env" ]]; then
+  source "$HOME/.cargo/env"
+else
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "error: cargo not found. Install Rust from https://rustup.rs/ or ensure cargo is on PATH." >&2
+  exit 127
+fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 RUST_ROOT="$ROOT_DIR/native/quic_client"
 
 OUT_DIR="$ROOT_DIR/ios"
@@ -58,6 +69,11 @@ for target in "${TARGETS[@]}"; do
   export CFLAGS="-isysroot $SDKROOT -target $TARGET_TRIPLE"
   export CXXFLAGS="$CFLAGS"
   export LDFLAGS="-isysroot $SDKROOT"
+  if [[ "$target" == "aarch64-apple-ios-sim" ]]; then
+    export CMAKE_TOOLCHAIN_FILE_aarch64_apple_ios_sim="$OUT_DIR/ios_simulator_arm64_toolchain.cmake"
+  else
+    unset CMAKE_TOOLCHAIN_FILE_aarch64_apple_ios_sim
+  fi
 
   cargo build \
     --manifest-path "$RUST_ROOT/Cargo.toml" \

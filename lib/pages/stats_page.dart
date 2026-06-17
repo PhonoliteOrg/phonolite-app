@@ -40,11 +40,8 @@ class _StatsPageState extends State<StatsPage> {
         if (!authState.isAuthorized) {
           _requestedServerLoad = false;
           return _OfflineStats(
-            onConnect: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => LoginPage(controller: controller),
-              ),
-            ),
+            onConnect: () =>
+                Navigator.of(context).push(LoginPage.route(controller)),
           );
         }
         return _buildServerStats(controller);

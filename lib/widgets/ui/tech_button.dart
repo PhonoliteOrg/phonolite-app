@@ -19,7 +19,9 @@ class TechButton extends StatefulWidget {
     this.variant = TechButtonVariant.standard,
     this.density = TechButtonDensity.standard,
     this.chrome = TechButtonChrome.framed,
-  });
+    this.iconOnly = false,
+    this.tooltip,
+  }) : assert(!iconOnly || icon != null);
 
   final String label;
   final IconData? icon;
@@ -27,6 +29,8 @@ class TechButton extends StatefulWidget {
   final TechButtonVariant variant;
   final TechButtonDensity density;
   final TechButtonChrome chrome;
+  final bool iconOnly;
+  final String? tooltip;
 
   @override
   State<TechButton> createState() => _TechButtonState();
@@ -64,9 +68,16 @@ class _TechButtonState extends State<TechButton> {
     final padding = widget.density == TechButtonDensity.compact
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
         : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
+    final iconOnlySize = widget.density == TechButtonDensity.compact
+        ? 36.0
+        : 42.0;
+    final iconOnlyGlyphSize = widget.density == TechButtonDensity.compact
+        ? 20.0
+        : 24.0;
     final letterSpacing = widget.density == TechButtonDensity.compact
         ? 1.1
         : 1.2;
+    final semanticLabel = widget.tooltip ?? widget.label;
 
     if (widget.chrome == TechButtonChrome.borderless) {
       final highlighted = enabled && (_hovered || _pressed);
@@ -86,8 +97,38 @@ class _TechButtonState extends State<TechButton> {
         color: foreground,
         shadows: shadows,
       );
+      final child = widget.iconOnly
+          ? SizedBox.square(
+              dimension: iconOnlySize,
+              child: Center(
+                child: Icon(
+                  widget.icon,
+                  size: iconOnlyGlyphSize,
+                  color: foreground,
+                  shadows: shadows,
+                ),
+              ),
+            )
+          : Padding(
+              padding: padding,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.icon != null) ...[
+                    Icon(
+                      widget.icon,
+                      size: iconSize,
+                      color: foreground,
+                      shadows: shadows,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(widget.label.toUpperCase(), style: textStyle),
+                ],
+              ),
+            );
 
-      return MouseRegion(
+      final button = MouseRegion(
         onEnter: enabled ? (_) => _setHovered(true) : null,
         onExit: enabled ? (_) => _setHovered(false) : null,
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
@@ -97,24 +138,22 @@ class _TechButtonState extends State<TechButton> {
           onTapUp: enabled ? (_) => _setPressed(false) : null,
           onTapCancel: enabled ? () => _setPressed(false) : null,
           behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: padding,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.icon != null) ...[
-                  Icon(
-                    widget.icon,
-                    size: iconSize,
-                    color: foreground,
-                    shadows: shadows,
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                Text(widget.label.toUpperCase(), style: textStyle),
-              ],
-            ),
-          ),
+          child: child,
+        ),
+      );
+
+      if (!widget.iconOnly) {
+        return button;
+      }
+
+      return Tooltip(
+        message: semanticLabel,
+        excludeFromSemantics: true,
+        child: Semantics(
+          button: true,
+          enabled: enabled,
+          label: semanticLabel,
+          child: button,
         ),
       );
     }
@@ -126,30 +165,58 @@ class _TechButtonState extends State<TechButton> {
       color: enabled ? accent : accent.withValues(alpha: 0.4),
     );
 
-    return ClipPath(
+    final button = ClipPath(
       clipper: const ChamferClipper(cutSize: 10),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: widget.onTap,
           child: Container(
-            padding: padding,
+            padding: widget.iconOnly ? EdgeInsets.zero : padding,
+            width: widget.iconOnly ? iconOnlySize : null,
+            height: widget.iconOnly ? iconOnlySize : null,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: fill,
               border: Border.all(color: borderColor),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.icon != null) ...[
-                  Icon(widget.icon, size: iconSize, color: textStyle.color),
-                  const SizedBox(width: 6),
-                ],
-                Text(widget.label.toUpperCase(), style: textStyle),
-              ],
-            ),
+            child: widget.iconOnly
+                ? Icon(
+                    widget.icon,
+                    size: iconOnlyGlyphSize,
+                    color: textStyle.color,
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.icon != null) ...[
+                        Icon(
+                          widget.icon,
+                          size: iconSize,
+                          color: textStyle.color,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(widget.label.toUpperCase(), style: textStyle),
+                    ],
+                  ),
           ),
         ),
+      ),
+    );
+
+    if (!widget.iconOnly) {
+      return button;
+    }
+
+    return Tooltip(
+      message: semanticLabel,
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: semanticLabel,
+        child: button,
       ),
     );
   }
