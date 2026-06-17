@@ -89,7 +89,7 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
             20 + MediaQuery.of(context).viewInsets.bottom,
           ),
           child: Align(
-            alignment: Alignment.topLeft,
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: Column(
