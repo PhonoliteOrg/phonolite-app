@@ -34,9 +34,15 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
     private const val artistsId = "artists"
     private const val playlistsId = "playlists"
     private const val likedId = "liked"
+    private const val localArtistsId = "local_artists"
+    private const val localPlaylistsId = "local_playlists"
+    private const val localLikedId = "local_liked"
     private const val artistPrefix = "artist:"
+    private const val localArtistPrefix = "local_artist:"
     private const val albumPrefix = "album:"
+    private const val localAlbumPrefix = "local_album:"
     private const val playlistPrefix = "playlist:"
+    private const val localPlaylistPrefix = "local_playlist:"
     private const val actionPrefix = "action:"
     private const val messagePrefix = "message:"
 
@@ -52,6 +58,15 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
 
     @Volatile
     private var authorized: Boolean = false
+
+    @Volatile
+    private var serverAvailable: Boolean = false
+
+    @Volatile
+    private var localAvailable: Boolean = false
+
+    @Volatile
+    private var hasAnySource: Boolean = false
 
     @Volatile
     private var activeService: WeakReference<PhonoliteMediaService>? = null
@@ -71,6 +86,21 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
 
     fun updateAuthorization(_context: Context, isAuthorized: Boolean) {
       authorized = isAuthorized
+      serverAvailable = isAuthorized
+      hasAnySource = isAuthorized || localAvailable
+      activeService?.get()?.onAuthorizationChanged()
+    }
+
+    fun updateSourceState(
+      _context: Context,
+      serverAvailable: Boolean,
+      localAvailable: Boolean,
+      hasAnySource: Boolean,
+    ) {
+      this.authorized = serverAvailable
+      this.serverAvailable = serverAvailable
+      this.localAvailable = localAvailable
+      this.hasAnySource = hasAnySource || serverAvailable || localAvailable
       activeService?.get()?.onAuthorizationChanged()
     }
   }
@@ -215,6 +245,30 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
           playable = true,
         )
       }
+      parentId == localArtistsId -> loadVehicleList(
+        method = "getArtists",
+        arguments = mapOf("scope" to "local"),
+        result = result,
+      ) { entry ->
+        buildItem(
+          mediaId = "${localArtistPrefix}${entry.id}",
+          title = entry.title,
+          subtitle = entry.subtitle,
+          browsable = true,
+        )
+      }
+      parentId == localPlaylistsId -> loadVehicleList(
+        method = "getPlaylists",
+        arguments = mapOf("scope" to "local"),
+        result = result,
+      ) { entry ->
+        buildItem(
+          mediaId = if (entry.enabled) "${localPlaylistPrefix}${entry.id}" else "${messagePrefix}${entry.id}",
+          title = entry.title,
+          subtitle = entry.subtitle,
+          playable = true,
+        )
+      }
       parentId.startsWith(artistPrefix) -> {
         val artistId = parentId.removePrefix(artistPrefix)
         loadVehicleList(
@@ -230,6 +284,21 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
           )
         }
       }
+      parentId.startsWith(localArtistPrefix) -> {
+        val artistId = parentId.removePrefix(localArtistPrefix)
+        loadVehicleList(
+          method = "getAlbums",
+          arguments = mapOf("scope" to "local", "artistId" to artistId),
+          result = result,
+        ) { entry ->
+          buildItem(
+            mediaId = if (entry.enabled) "${localAlbumPrefix}${entry.id}" else "${messagePrefix}${entry.id}",
+            title = entry.title,
+            subtitle = entry.subtitle,
+            playable = true,
+          )
+        }
+      }
       else -> result.sendResult(mutableListOf())
     }
   }
@@ -237,24 +306,72 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
   private fun loadRootChildren(
     result: Result<MutableList<MediaBrowserCompat.MediaItem>>,
   ) {
-    if (!authorized) {
+    if (!hasAnySource && !serverAvailable && !localAvailable) {
       result.sendResult(
         mutableListOf(
           buildItem(
-            mediaId = "${messagePrefix}logged_out",
-            title = "Open Phonolite to log in",
-            subtitle = "Connect to a server to browse your library",
+            mediaId = "${messagePrefix}no_source",
+            title = "No available library",
+            subtitle = "Connect to a server or download tracks in Phonolite",
             playable = true,
           ),
         ),
       )
       return
     }
+
+    val items = mutableListOf<MediaBrowserCompat.MediaItem>()
+    fun addLocalItemsAndSend() {
+      if (!localAvailable) {
+        result.sendResult(items)
+        return
+      }
+      bridge.invokeVehicleMethod(
+        "getLibraryStatus",
+        mapOf("scope" to "local"),
+      ) { response ->
+        val likedAvailable =
+          ((response.value as? Map<*, *>)?.get("likedAvailable") as? Boolean) ?: false
+        items.add(
+          buildItem(
+            mediaId = localArtistsId,
+            title = "Local Artists",
+            subtitle = "Browse downloaded artists",
+            browsable = true,
+          ),
+        )
+        items.add(
+          buildItem(
+            mediaId = localPlaylistsId,
+            title = "Local Playlists",
+            subtitle = "Browse local playlists",
+            browsable = true,
+          ),
+        )
+        if (likedAvailable) {
+          items.add(
+            buildItem(
+              mediaId = localLikedId,
+              title = "Local Liked Songs",
+              subtitle = "Play from the top",
+              playable = true,
+            ),
+          )
+        }
+        result.sendResult(items)
+      }
+    }
+
+    if (!serverAvailable) {
+      addLocalItemsAndSend()
+      return
+    }
+
     bridge.invokeVehicleMethod("getLibraryStatus") { response ->
       val likedAvailable =
         ((response.value as? Map<*, *>)?.get("likedAvailable") as? Boolean) ?: false
-      val items =
-        mutableListOf(
+      items.addAll(
+        listOf(
           buildItem(
             mediaId = homeId,
             title = "Home",
@@ -273,7 +390,8 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
             subtitle = "Browse playlists",
             browsable = true,
           ),
-        )
+        ),
+      )
       if (likedAvailable) {
         items.add(
           buildItem(
@@ -284,7 +402,7 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
           ),
         )
       }
-      result.sendResult(items)
+      addLocalItemsAndSend()
     }
   }
 
@@ -362,6 +480,9 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
       mediaId == likedId -> {
         bridge.invokeVehicleMethod("playLiked") {}
       }
+      mediaId == localLikedId -> {
+        bridge.invokeVehicleMethod("playLiked", mapOf("scope" to "local")) {}
+      }
       mediaId.startsWith(actionPrefix) -> {
         val actionId = mediaId.removePrefix(actionPrefix)
         when (actionId) {
@@ -374,9 +495,17 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
         val albumId = mediaId.removePrefix(albumPrefix)
         bridge.invokeVehicleMethod("playAlbum", mapOf("albumId" to albumId)) {}
       }
+      mediaId.startsWith(localAlbumPrefix) -> {
+        val albumId = mediaId.removePrefix(localAlbumPrefix)
+        bridge.invokeVehicleMethod("playAlbum", mapOf("scope" to "local", "albumId" to albumId)) {}
+      }
       mediaId.startsWith(playlistPrefix) -> {
         val playlistId = mediaId.removePrefix(playlistPrefix)
         bridge.invokeVehicleMethod("playPlaylist", mapOf("playlistId" to playlistId)) {}
+      }
+      mediaId.startsWith(localPlaylistPrefix) -> {
+        val playlistId = mediaId.removePrefix(localPlaylistPrefix)
+        bridge.invokeVehicleMethod("playPlaylist", mapOf("scope" to "local", "playlistId" to playlistId)) {}
       }
     }
   }
@@ -386,6 +515,8 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
     notifyChildrenChanged(homeId)
     notifyChildrenChanged(artistsId)
     notifyChildrenChanged(playlistsId)
+    notifyChildrenChanged(localArtistsId)
+    notifyChildrenChanged(localPlaylistsId)
   }
 
   fun applyState() {

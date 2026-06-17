@@ -43,6 +43,7 @@ void main() {
       );
 
       expectContainsAll(pubspec, const [
+        'connectivity_plus: ^6.1.5',
         'phonolite_local_audio:',
         'path: packages/phonolite_local_audio',
       ]);

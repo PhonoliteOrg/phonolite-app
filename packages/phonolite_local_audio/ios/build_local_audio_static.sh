@@ -1,7 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "$HOME/.cargo/env" ]]; then
+  source "$HOME/.cargo/env"
+else
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "error: cargo not found. Install Rust from https://rustup.rs/ or ensure cargo is on PATH." >&2
+  exit 127
+fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 RUST_ROOT="$ROOT_DIR/native/local_audio"
 
 OUT_DIR="$ROOT_DIR/ios"

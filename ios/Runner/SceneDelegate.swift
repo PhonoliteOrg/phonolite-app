@@ -19,4 +19,11 @@ class SceneDelegate: FlutterSceneDelegate {
     // Disable scene restoration to avoid NSUserActivity with an empty activityType.
     return nil
   }
+
+  override func sceneDidEnterBackground(_ scene: UIScene) {
+    super.sceneDidEnterBackground(scene)
+    if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+      appDelegate.refreshOfflineStorageBackupExclusions()
+    }
+  }
 }

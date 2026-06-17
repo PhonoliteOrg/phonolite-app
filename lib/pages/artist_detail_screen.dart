@@ -20,6 +20,7 @@ import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/collection_view_toggle_button.dart';
+import '../widgets/ui/responsive_breakpoints.dart';
 import '../widgets/ui/tech_button.dart';
 import 'album_detail_screen.dart';
 
@@ -76,6 +77,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
     final bannerUrl = _artist.bannerRef == null || _artist.bannerRef!.isEmpty
         ? null
         : controller.connection.buildArtistCoverUrl(_artist.id, kind: 'banner');
+    final compactHeaderActions = isCompactListWidth(context);
 
     return Scaffold(
       backgroundColor: bgDark,
@@ -163,6 +165,8 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                             TechButton(
                                               label: downloadSummary.label,
                                               icon: downloadSummary.icon,
+                                              iconOnly: compactHeaderActions,
+                                              tooltip: downloadSummary.label,
                                               chrome:
                                                   TechButtonChrome.borderless,
                                               onTap:

@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:ui' show RootIsolateToken;
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 
 import 'app_log.dart';
 import 'models.dart';
@@ -75,6 +77,7 @@ class OfflineDownloadManager {
   Isolate? _isolate;
   SendPort? _actorPort;
   Future<void>? _actorStartFuture;
+  final RootIsolateToken? _rootIsolateToken = RootIsolateToken.instance;
   final Map<int, Completer<Object?>> _pending = <int, Completer<Object?>>{};
   int _nextCommandId = 1;
   bool _disposed = false;
@@ -558,6 +561,7 @@ class OfflineDownloadManager {
             baseUrl: connection.baseUrl,
             token: connection.token,
             storageConfig: _storageConfig,
+            rootIsolateToken: _rootIsolateToken,
           ),
           debugName: 'OfflineDownloadActor',
         )
@@ -978,12 +982,14 @@ class _OfflineActorInit {
     required this.baseUrl,
     required this.token,
     required this.storageConfig,
+    required this.rootIsolateToken,
   });
 
   final SendPort replyPort;
   final String baseUrl;
   final String? token;
   final _OfflineStorageConfig storageConfig;
+  final RootIsolateToken? rootIsolateToken;
 }
 
 class _OfflineActorReady {
@@ -1109,6 +1115,10 @@ class _PlaylistTrackRequest {
 }
 
 void _offlineDownloadActorMain(_OfflineActorInit init) {
+  final token = init.rootIsolateToken;
+  if (token != null) {
+    BackgroundIsolateBinaryMessenger.ensureInitialized(token);
+  }
   final commandPort = ReceivePort();
   final connection = ServerConnection(baseUrl: init.baseUrl)
     ..setToken(init.token);
@@ -1632,6 +1642,7 @@ class _OfflineDownloadActorCore {
   }
 
   Future<void> _load() async {
+    await _storage.migrateManagedStoragePathsIfNeeded();
     _downloads = await _storage.readDownloads();
     _batches = await _storage.readDownloadBatches();
     _jobs = await _storage.readDownloadJobs();
@@ -1659,7 +1670,7 @@ class _OfflineDownloadActorCore {
           }),
         ),
       );
-    final recovered = _recoverInterruptedDownloads(_downloads);
+    final recovered = await _recoverInterruptedDownloads(_downloads);
     if (!_sameDownloadList(_downloads, recovered)) {
       _downloads = recovered;
       await _storage.writeDownloads(_downloads);
@@ -3382,7 +3393,9 @@ class _OfflineDownloadActorCore {
             (item) =>
                 !item.materialized &&
                 item.status == OfflineDownloadStatus.queued &&
-                find(job.serverBaseUrl, item.serverTrackId) == null,
+                !_downloadQueuedOrAvailable(
+                  find(job.serverBaseUrl, item.serverTrackId),
+                ),
           )
           .take(slots)
           .toList(growable: false);
@@ -3461,6 +3474,28 @@ class _OfflineDownloadActorCore {
               nextPosition += 1;
               changed = true;
             }
+            if (_downloadQueuedOrAvailable(existing)) {
+              continue;
+            }
+            items.add(
+              OfflineDownloadJobItem(
+                jobId: job.jobId,
+                position: nextPosition,
+                serverTrackId: id,
+                status: OfflineDownloadStatus.queued,
+                materialized: false,
+                createdAt: now,
+                updatedAt: now,
+                track: rawTrack.copyWith(
+                  id: id,
+                  serverBaseUrl: job.serverBaseUrl,
+                  serverTrackId: id,
+                ),
+                offlineMetadata: existing.offlineMetadata,
+              ),
+            );
+            nextPosition += 1;
+            changed = true;
             continue;
           }
           items.add(
@@ -5109,42 +5144,113 @@ class _OfflineDownloadActorCore {
         status == OfflineDownloadStatus.canceled;
   }
 
-  List<OfflineTrackDownload> _recoverInterruptedDownloads(
+  Future<List<OfflineTrackDownload>> _recoverInterruptedDownloads(
     List<OfflineTrackDownload> downloads,
-  ) {
+  ) async {
     final now = DateTime.now();
-    return downloads
-        .map((download) {
-          if (download.status == OfflineDownloadStatus.preparing ||
-              download.status == OfflineDownloadStatus.downloading ||
-              download.status == OfflineDownloadStatus.validating) {
-            return download.copyWith(
-              status: OfflineDownloadStatus.paused,
-              updatedAt: now,
-              error: 'Paused after app restart',
-            );
-          }
-          if (download.status == OfflineDownloadStatus.downloaded &&
-              !_downloadFileExistsSync(download)) {
-            return download.copyWith(
-              status: OfflineDownloadStatus.corrupt,
-              updatedAt: now,
-              filePath: null,
-              error: 'Completed file missing',
-            );
-          }
-          if (download.status == OfflineDownloadStatus.removing) {
-            return download.copyWith(
-              status: _downloadFileExistsSync(download)
-                  ? OfflineDownloadStatus.downloaded
-                  : OfflineDownloadStatus.canceled,
-              updatedAt: now,
-              error: 'Removal interrupted',
-            );
-          }
-          return download;
-        })
-        .toList(growable: false);
+    final recovered = <OfflineTrackDownload>[];
+    for (final download in downloads) {
+      if (download.status == OfflineDownloadStatus.preparing ||
+          download.status == OfflineDownloadStatus.downloading ||
+          download.status == OfflineDownloadStatus.validating) {
+        recovered.add(
+          download.copyWith(
+            status: OfflineDownloadStatus.paused,
+            updatedAt: now,
+            error: 'Paused after app restart',
+          ),
+        );
+        continue;
+      }
+      if (download.status == OfflineDownloadStatus.downloaded ||
+          _downloadNeedsMissingFileRepair(download)) {
+        recovered.add(await _recoverCompletedDownload(download, now));
+        continue;
+      }
+      if (download.status == OfflineDownloadStatus.removing) {
+        recovered.add(
+          download.copyWith(
+            status: _downloadFileExistsSync(download)
+                ? OfflineDownloadStatus.downloaded
+                : OfflineDownloadStatus.canceled,
+            updatedAt: now,
+            error: 'Removal interrupted',
+          ),
+        );
+        continue;
+      }
+      recovered.add(download);
+    }
+    return recovered;
+  }
+
+  bool _downloadNeedsMissingFileRepair(OfflineTrackDownload download) {
+    return download.status == OfflineDownloadStatus.corrupt &&
+        download.error == 'Completed file missing';
+  }
+
+  Future<OfflineTrackDownload> _recoverCompletedDownload(
+    OfflineTrackDownload download,
+    DateTime now,
+  ) async {
+    if (_downloadFileExistsSync(download)) {
+      if (_downloadNeedsMissingFileRepair(download)) {
+        return download.copyWith(
+          status: OfflineDownloadStatus.downloaded,
+          error: null,
+        );
+      }
+      return download;
+    }
+    final repairedFile = await _storage.findExistingTrackFile(
+      serverBaseUrl: download.serverBaseUrl,
+      trackId: _serverTrackId(download),
+      extensions: _trackFileExtensionCandidates(download),
+    );
+    if (repairedFile != null) {
+      return download.copyWith(
+        status: OfflineDownloadStatus.downloaded,
+        filePath: repairedFile.path,
+        error: null,
+      );
+    }
+    if (_downloadNeedsMissingFileRepair(download)) {
+      return download;
+    }
+    return download.copyWith(
+      status: OfflineDownloadStatus.corrupt,
+      updatedAt: now,
+      filePath: null,
+      error: 'Completed file missing',
+    );
+  }
+
+  Iterable<String> _trackFileExtensionCandidates(
+    OfflineTrackDownload download,
+  ) sync* {
+    final fileExtension = _extensionFromFilePath(download.filePath);
+    if (fileExtension != null) {
+      yield fileExtension;
+    }
+    yield OfflineLibraryStorage.extensionFromContentType(download.contentType);
+    yield 'audio';
+  }
+
+  String? _extensionFromFilePath(String? filePath) {
+    final trimmed = filePath?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    final name = trimmed.split(RegExp(r'[/\\]')).last;
+    final index = name.lastIndexOf('.');
+    if (index < 0 || index == name.length - 1) {
+      return null;
+    }
+    final extension = name.substring(index + 1).trim().toLowerCase();
+    if (extension.isEmpty || extension == 'part') {
+      return null;
+    }
+    return extension;
   }
 
   bool _sameDownloadList(

@@ -136,6 +136,20 @@ class PhonolitePlatformBridge(
         PhonoliteMediaService.updateAuthorization(appContext, authorized)
         result.success(true)
       }
+      "carPlayState" -> {
+        val args = call.arguments as? Map<*, *> ?: emptyMap<String, Any?>()
+        val serverAvailable = args["serverAvailable"] as? Boolean ?: false
+        val localAvailable = args["localAvailable"] as? Boolean ?: false
+        val hasAnySource = args["hasAnySource"] as? Boolean ?: false
+        authorized = serverAvailable
+        PhonoliteMediaService.updateSourceState(
+          appContext,
+          serverAvailable = serverAvailable,
+          localAvailable = localAvailable,
+          hasAnySource = hasAnySource,
+        )
+        result.success(true)
+      }
       else -> result.notImplemented()
     }
   }

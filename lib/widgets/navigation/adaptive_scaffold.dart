@@ -26,6 +26,7 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
     required this.onToggleLike,
+    this.hidePlaybackChrome = false,
   });
 
   static const double _nowPlayingPadding = 22;
@@ -49,6 +50,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleLike;
+  final bool hidePlaybackChrome;
 
   @override
   Widget build(BuildContext context) {
@@ -58,11 +60,12 @@ class AdaptiveScaffold extends StatelessWidget {
     final screenWidth = media.size.width;
     final isWide = screenWidth >= _wideLayoutWidth;
     final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
-    final showMiniBar = !isWide;
+    final showWideBar = isWide && !hidePlaybackChrome;
+    final showMiniBar = !isWide && !hidePlaybackChrome;
     final miniBarHeight = showMiniBar
         ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12)
         : 0.0;
-    final bottomInset = isWide
+    final bottomInset = showWideBar
         ? nowPlayingHeight + s(_nowPlayingPadding)
         : miniBarHeight;
     final navPad = _navBarHeight + media.padding.bottom;
@@ -128,7 +131,8 @@ class AdaptiveScaffold extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Positioned(left: 0, right: 0, bottom: 0, child: nowPlaying),
+                  if (showWideBar)
+                    Positioned(left: 0, right: 0, bottom: 0, child: nowPlaying),
                 ],
               ),
             ),

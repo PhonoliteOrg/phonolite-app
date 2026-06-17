@@ -628,8 +628,20 @@ class OfflineLibraryStorage {
   static const int _schemaVersion = 10;
   static const Object _storageUnset = Object();
 
+  bool get _usesManagedStoragePaths =>
+      baseDirectory == null && settingsStorage.usesManagedStoragePaths;
+
   Future<OfflineStorageLocations> resolveStorageLocations() async {
-    final defaultRoot = await _defaultOfflineRoot();
+    if (_usesManagedStoragePaths) {
+      final defaultRoot = await _defaultOfflineRoot();
+      await settingsStorage.read();
+      return OfflineStorageLocations(
+        metadataDirectory: defaultRoot.path,
+        downloadsDirectory: defaultRoot.path,
+        metadataDirectoryIsDefault: true,
+        downloadsDirectoryIsDefault: true,
+      );
+    }
     final settings =
         baseDirectory == null &&
             metadataDirectory == null &&
@@ -640,8 +652,12 @@ class OfflineLibraryStorage {
         metadataDirectory?.absolute.path ?? settings.metadataDirectory;
     final configuredDownloads =
         downloadsDirectory?.absolute.path ?? settings.downloadsDirectory;
-    final metadataPath = configuredMetadata ?? defaultRoot.path;
-    final downloadsPath = configuredDownloads ?? defaultRoot.path;
+    final defaultRoot =
+        configuredMetadata == null || configuredDownloads == null
+        ? await _defaultOfflineRoot()
+        : null;
+    final metadataPath = configuredMetadata ?? defaultRoot!.path;
+    final downloadsPath = configuredDownloads ?? defaultRoot!.path;
     return OfflineStorageLocations(
       metadataDirectory: metadataPath,
       downloadsDirectory: downloadsPath,
@@ -655,6 +671,10 @@ class OfflineLibraryStorage {
     Object? downloadsDirectory = _storageUnset,
   }) async {
     if (kIsWeb) {
+      return;
+    }
+    if (_usesManagedStoragePaths) {
+      await settingsStorage.write(const OfflineStorageSettings());
       return;
     }
     final current = await settingsStorage.read();
@@ -686,6 +706,50 @@ class OfflineLibraryStorage {
       await Directory(next.downloadsDirectory!).create(recursive: true);
     }
     await settingsStorage.write(next);
+  }
+
+  Future<void> migrateManagedStoragePathsIfNeeded() async {
+    if (kIsWeb || !_usesManagedStoragePaths) {
+      return;
+    }
+    final legacy = await settingsStorage.readRaw();
+    final legacyMetadataPath = legacy.metadataDirectory;
+    final legacyDownloadsPath = legacy.downloadsDirectory;
+    if (legacyMetadataPath == null && legacyDownloadsPath == null) {
+      return;
+    }
+    final defaultRoot = await _defaultOfflineRoot();
+    if (legacyMetadataPath != null) {
+      try {
+        await _copyMetadataFilesIfNeeded(
+          fromDirectory: Directory(legacyMetadataPath),
+          toDirectory: defaultRoot,
+        );
+      } catch (err) {
+        AppLogger.warning(
+          'Failed to migrate managed offline metadata storage: $err',
+        );
+      }
+    }
+    if (legacyDownloadsPath != null) {
+      try {
+        await _copyServerDownloadDirectoriesIfNeeded(
+          fromDirectory: Directory(legacyDownloadsPath),
+          toDirectory: defaultRoot,
+        );
+      } catch (err) {
+        AppLogger.warning(
+          'Failed to migrate managed offline download storage: $err',
+        );
+      }
+    }
+    try {
+      await settingsStorage.write(const OfflineStorageSettings());
+    } catch (err) {
+      AppLogger.warning(
+        'Failed to clear migrated offline storage settings: $err',
+      );
+    }
   }
 
   Future<void> resetLocalData() async {
@@ -1956,7 +2020,7 @@ class OfflineLibraryStorage {
         db.execute('DELETE FROM local_playlists WHERE id = ?', [playlistId]);
       });
       if (imagePath != null) {
-        await _deleteFileIfExists(File(imagePath!));
+        await _deleteFileIfExists(File(imagePath));
       }
     } finally {
       db?.dispose();
@@ -2059,6 +2123,32 @@ class OfflineLibraryStorage {
     final dir = await _trackDirectory(serverBaseUrl, createDir: true);
     final safeExtension = _safePathToken(extension).replaceAll('.', '');
     return File(_join(dir.path, '${_safePathToken(trackId)}.$safeExtension'));
+  }
+
+  Future<File?> findExistingTrackFile({
+    required String serverBaseUrl,
+    required String trackId,
+    required Iterable<String> extensions,
+  }) async {
+    final dir = await _trackDirectory(serverBaseUrl);
+    final seen = <String>{};
+    for (final extension in extensions) {
+      final trimmed = extension.trim().replaceAll('.', '');
+      if (trimmed.isEmpty) {
+        continue;
+      }
+      final safeExtension = _safePathToken(trimmed).replaceAll('.', '');
+      if (safeExtension.isEmpty || !seen.add(safeExtension)) {
+        continue;
+      }
+      final file = File(
+        _join(dir.path, '${_safePathToken(trackId)}.$safeExtension'),
+      );
+      if (await file.exists()) {
+        return file;
+      }
+    }
+    return null;
   }
 
   Future<File> partialTrackFile({
@@ -2178,6 +2268,7 @@ class OfflineLibraryStorage {
     final gcAlreadyRan = hadMetadataTable && _metadataFlag(db, 'orphan_gc_v7');
     _initSchema(db);
     await _migrateJsonIndexIfNeeded(db);
+    await _repairCanonicalArtworkPaths(db);
     if (hadMetadataTable &&
         (previousSchemaVersion < _schemaVersion || !gcAlreadyRan)) {
       await _runStartupGarbageCollection(db);
@@ -2192,6 +2283,157 @@ class OfflineLibraryStorage {
       ]);
     }
     return db;
+  }
+
+  Future<void> _repairCanonicalArtworkPaths(Database db) async {
+    final rows = db.select('''
+      SELECT
+        id,
+        album_id,
+        album_art_path,
+        artist_id,
+        artist_art_path,
+        artist_banner_path
+      FROM tracks
+      WHERE album_id IS NOT NULL
+         OR artist_id IS NOT NULL
+         OR album_art_path IS NOT NULL
+         OR artist_art_path IS NOT NULL
+         OR artist_banner_path IS NOT NULL
+    ''');
+    if (rows.isEmpty) {
+      return;
+    }
+    final albumDir = await _artDirectory(_albumArtDirName);
+    final artistDir = await _artDirectory(_artistArtDirName);
+    _transaction(db, () {
+      for (final row in rows) {
+        final localTrackId = _readString(row, 'id');
+        final albumPath = _readNullableString(row, 'album_art_path');
+        final artistPath = _readNullableString(row, 'artist_art_path');
+        final bannerPath = _readNullableString(row, 'artist_banner_path');
+        final repairedAlbumPath = _repairCanonicalArtworkPathSync(
+          directory: albumDir,
+          id: _readNullableString(row, 'album_id'),
+          savedPath: albumPath,
+        );
+        final repairedArtistPath = _repairCanonicalArtworkPathSync(
+          directory: artistDir,
+          id: _readNullableString(row, 'artist_id'),
+          kind: 'logo',
+          savedPath: artistPath,
+        );
+        final repairedBannerPath = _repairCanonicalArtworkPathSync(
+          directory: artistDir,
+          id: _readNullableString(row, 'artist_id'),
+          kind: 'banner',
+          savedPath: bannerPath,
+        );
+        if (repairedAlbumPath == albumPath &&
+            repairedArtistPath == artistPath &&
+            repairedBannerPath == bannerPath) {
+          continue;
+        }
+        db.execute(
+          '''
+          UPDATE tracks
+          SET album_art_path = ?,
+              artist_art_path = ?,
+              artist_banner_path = ?
+          WHERE id = ?
+        ''',
+          [
+            repairedAlbumPath,
+            repairedArtistPath,
+            repairedBannerPath,
+            localTrackId,
+          ],
+        );
+      }
+    });
+  }
+
+  String? _repairCanonicalArtworkPathSync({
+    required Directory directory,
+    required String? id,
+    required String? savedPath,
+    String? kind,
+  }) {
+    if (_fileExistsSync(savedPath)) {
+      return savedPath;
+    }
+    final trimmedId = id?.trim();
+    if (trimmedId == null || trimmedId.isEmpty) {
+      return savedPath;
+    }
+    final existing = _findExistingArtworkFileSync(
+      directory: directory,
+      id: trimmedId,
+      kind: kind,
+      extensions: _artworkExtensionCandidates(savedPath),
+    );
+    return existing?.path ?? savedPath;
+  }
+
+  File? _findExistingArtworkFileSync({
+    required Directory directory,
+    required String id,
+    required String? kind,
+    required Iterable<String> extensions,
+  }) {
+    final safeId = _safePathToken(id);
+    final safeName = kind == null
+        ? safeId
+        : '${safeId}_${_safePathToken(kind)}';
+    final seen = <String>{};
+    for (final extension in extensions) {
+      final safeExtension = _safePathToken(
+        extension.trim().replaceAll('.', ''),
+      ).replaceAll('.', '');
+      if (safeExtension.isEmpty || !seen.add(safeExtension)) {
+        continue;
+      }
+      final file = File(_join(directory.path, '$safeName.$safeExtension'));
+      if (file.existsSync()) {
+        return file;
+      }
+    }
+    return null;
+  }
+
+  bool _fileExistsSync(String? path) {
+    final trimmed = path?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return false;
+    }
+    return File(trimmed).existsSync();
+  }
+
+  Iterable<String> _artworkExtensionCandidates(String? path) sync* {
+    final pathExtension = _extensionFromPath(path);
+    if (pathExtension != null) {
+      yield pathExtension;
+    }
+    yield 'jpg';
+    yield 'jpeg';
+    yield 'png';
+    yield 'webp';
+    yield 'gif';
+    yield 'img';
+  }
+
+  String? _extensionFromPath(String? path) {
+    final trimmed = path?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    final name = trimmed.split(RegExp(r'[/\\]')).last;
+    final index = name.lastIndexOf('.');
+    if (index < 0 || index == name.length - 1) {
+      return null;
+    }
+    final extension = name.substring(index + 1).trim();
+    return extension.isEmpty ? null : extension;
   }
 
   bool _metadataTableExists(Database db) {
@@ -3898,6 +4140,30 @@ class OfflineLibraryStorage {
       fromDirectory: Directory(_join(fromDirectory.path, _artDirName)),
       toDirectory: Directory(_join(toDirectory.path, _artDirName)),
     );
+  }
+
+  Future<void> _copyServerDownloadDirectoriesIfNeeded({
+    required Directory fromDirectory,
+    required Directory toDirectory,
+  }) async {
+    if (fromDirectory.absolute.path == toDirectory.absolute.path ||
+        !(await fromDirectory.exists())) {
+      return;
+    }
+    await toDirectory.create(recursive: true);
+    await for (final entity in fromDirectory.list(recursive: false)) {
+      if (entity is! Directory) {
+        continue;
+      }
+      final name = entity.path.split(Platform.pathSeparator).last;
+      if (!name.startsWith('server_')) {
+        continue;
+      }
+      await _copyDirectoryIfNeeded(
+        fromDirectory: entity,
+        toDirectory: Directory(_join(toDirectory.path, name)),
+      );
+    }
   }
 
   Future<void> _copyDirectoryIfNeeded({

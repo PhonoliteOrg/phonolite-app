@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../entities/app_controller.dart';
 import '../widgets/layouts/app_scope.dart';
@@ -10,6 +11,7 @@ import 'playlists_page.dart';
 import 'stats_page.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
+import 'login_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -24,10 +26,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     5,
     (_) => GlobalKey<NavigatorState>(),
   );
+  final List<String?> _topRouteNames = List.filled(5, null);
+  late final List<NavigatorObserver> _routeObservers;
 
   @override
   void initState() {
     super.initState();
+    _routeObservers = List.generate(
+      _navigatorKeys.length,
+      (index) => _TabRouteObserver(
+        onRouteChanged: (routeName) => _setTopRouteName(index, routeName),
+      ),
+    );
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -98,6 +108,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             onDestinationSelected: (index) =>
                 setState(() => _selectedIndex = index),
             page: IndexedStack(index: _selectedIndex, children: pages),
+            hidePlaybackChrome:
+                _topRouteNames[_selectedIndex] == LoginPage.routeName,
             playbackState: playback,
             onOpenAlbum: _openCurrentAlbum,
             onPlayPause: () => controller.pause(playback.isPlaying),
@@ -130,8 +142,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _buildTabNavigator(int index, Widget child) {
     return Navigator(
       key: _navigatorKeys[index],
-      onGenerateRoute: (settings) => MaterialPageRoute(builder: (_) => child),
+      observers: [_routeObservers[index]],
+      onGenerateRoute: (settings) =>
+          MaterialPageRoute(settings: settings, builder: (_) => child),
     );
+  }
+
+  void _setTopRouteName(int index, String? routeName) {
+    if (_topRouteNames[index] == routeName) {
+      return;
+    }
+    void updateRouteName() {
+      if (!mounted || _topRouteNames[index] == routeName) {
+        return;
+      }
+      setState(() => _topRouteNames[index] = routeName);
+    }
+
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => updateRouteName());
+      return;
+    }
+    updateRouteName();
   }
 
   void _openCurrentAlbum() {
@@ -200,5 +233,71 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         } catch (_) {}
       }
     }();
+  }
+}
+
+class _TabRouteObserver extends NavigatorObserver {
+  _TabRouteObserver({required this.onRouteChanged});
+
+  final ValueChanged<String?> onRouteChanged;
+
+  void _notify(String? routeName) {
+    onRouteChanged(routeName);
+  }
+
+  void _notifyAfterTransition(
+    Route<dynamic>? transitionRoute,
+    String? routeName,
+    AnimationStatus targetStatus,
+  ) {
+    final animation = transitionRoute is TransitionRoute<dynamic>
+        ? transitionRoute.animation
+        : null;
+    if (animation == null || animation.status == targetStatus) {
+      _notify(routeName);
+      return;
+    }
+
+    late AnimationStatusListener listener;
+    listener = (status) {
+      if (status != targetStatus) {
+        return;
+      }
+      animation.removeStatusListener(listener);
+      _notify(routeName);
+    };
+    animation.addStatusListener(listener);
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _notifyAfterTransition(
+      route,
+      route.settings.name,
+      AnimationStatus.completed,
+    );
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _notifyAfterTransition(
+      route,
+      previousRoute?.settings.name,
+      AnimationStatus.dismissed,
+    );
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    _notifyAfterTransition(
+      newRoute,
+      newRoute?.settings.name,
+      AnimationStatus.completed,
+    );
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _notify(previousRoute?.settings.name);
   }
 }

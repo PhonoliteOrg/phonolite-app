@@ -13,9 +13,11 @@ import 'package:http/http.dart' as http;
 import 'app_log.dart';
 import 'auth_state.dart';
 import 'auth_storage.dart';
+import 'connectivity_signal_source.dart';
 import 'custom_shuffle_settings.dart';
 import 'offline_download_manager.dart';
 import 'offline_library.dart';
+import 'offline_library_views.dart';
 import 'offline_storage_settings.dart';
 import 'playback_preferences.dart';
 import 'models.dart';
@@ -141,7 +143,11 @@ class AppController {
   static const Duration _storedSessionRequestTimeout = Duration(seconds: 4);
   static const Duration _offlineRefreshTimeout = Duration(seconds: 5);
 
-  AppController({required this.connection}) {
+  AppController({
+    required this.connection,
+    ConnectivitySignalSource? connectivitySignalSource,
+  }) : _connectivitySignalSource =
+           connectivitySignalSource ?? ConnectivityPlusSignalSource() {
     _initialBaseUrl = connection.baseUrl;
     _logListener = _addLogEntry;
     AppLogger.instance.attach(_logListener, includeHistory: true);
@@ -165,11 +171,20 @@ class AppController {
       isLocalPlayback: false,
     );
     _authState = AuthState(isAuthorized: false, baseUrl: connection.baseUrl);
+    connection.onTransportFailure = _handleServerTransportFailure;
     _offlineDownloadManager = OfflineDownloadManager(
       connection: connection,
       storage: _offlineStorage,
     );
     unawaited(_offlineDownloadManager.load());
+    _carPlayOfflineLibrarySubscription = _offlineDownloadManager
+        .librarySnapshotStream
+        .listen((_) => _scheduleCarPlayStateUpdate());
+    _carPlayLocalLikedSubscription = _offlineDownloadManager.localLikedStream
+        .listen((_) => _scheduleCarPlayStateUpdate());
+    _carPlayLocalPlaylistsSubscription = _offlineDownloadManager
+        .localPlaylistsStream
+        .listen((_) => _scheduleCarPlayStateUpdate());
     unawaited(loadOfflineStorageLocations());
     _audioEngine = AudioEngine(
       onMessage: _pushMessage,
@@ -229,12 +244,14 @@ class AppController {
     _configureLocalNetworkPermissions();
     _configureNowPlaying();
     _configureCarPlay();
+    _configureConnectivitySignals();
     _startHealthMonitor();
     _customShuffleLoadFuture = _loadCustomShuffleSettings();
     unawaited(_loadPlaybackPreferences());
   }
 
   final ServerConnection connection;
+  final ConnectivitySignalSource _connectivitySignalSource;
   final OfflineLibraryStorage _offlineStorage = const OfflineLibraryStorage();
   late final OfflineDownloadManager _offlineDownloadManager;
   late final AudioEngine _audioEngine;
@@ -294,6 +311,7 @@ class AppController {
   int _bufferedEndHighWaterMs = 0;
   int _nowPlayingEpoch = 0;
   Uint8List? _nowPlayingArtworkBytes;
+  String? _nowPlayingArtworkKey;
   String? _nowPlayingArtworkUrl;
   String? _nowPlayingArtworkToken;
   bool _nowPlayingArtworkFetchInFlight = false;
@@ -302,7 +320,14 @@ class AppController {
   String? _lastStartPlaybackTrackId;
   int? _lastStartPlaybackOffsetMs;
   Timer? _healthTimer;
+  Timer? _serverReconnectTimer;
+  Future<void>? _serverAvailabilityFuture;
   bool _healthPingInFlight = false;
+  bool _disposed = false;
+  bool _appInForeground = true;
+  bool _lastConnectivityAvailable = true;
+  int _serverHealthFailureCount = 0;
+  int _serverReconnectAttempt = 0;
   int? _quicPort;
   static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);
 
@@ -359,6 +384,7 @@ class AppController {
   List<Track> _playQueue = <Track>[];
   int _playIndex = 0;
   final Random _shuffleRandom = Random();
+  final Random _reconnectRandom = Random();
   bool _autoAdvanceInFlight = false;
   DateTime? _suppressAutoAdvanceUntil;
   DateTime? _ignoreCompleteUntil;
@@ -376,6 +402,12 @@ class AppController {
   final Map<String, String> _albumIdByKey = <String, String>{};
   Timer? _likeSyncDebounce;
   Future<void> _likeSyncChain = Future<void>.value();
+  Timer? _carPlayStateDebounce;
+  StreamSubscription<bool>? _connectivitySubscription;
+  StreamSubscription<OfflineLibrarySnapshot>?
+  _carPlayOfflineLibrarySubscription;
+  StreamSubscription<List<Track>>? _carPlayLocalLikedSubscription;
+  StreamSubscription<List<Playlist>>? _carPlayLocalPlaylistsSubscription;
   StreamSubscription<MetadataUpdateEvent>? _metadataEventsSubscription;
   Timer? _metadataEventsReconnectTimer;
   Timer? _metadataEventsDebounce;
@@ -386,6 +418,21 @@ class AppController {
   String? _metadataEventsToken;
 
   static const int _likeSyncBatchSize = 40;
+  static const int _serverUnavailableHealthFailureThreshold = 2;
+  static const List<Duration> _serverReconnectForegroundBackoff = <Duration>[
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+    Duration(seconds: 10),
+    Duration(seconds: 20),
+    Duration(seconds: 30),
+  ];
+  static const List<Duration> _serverReconnectBackgroundBackoff = <Duration>[
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+    Duration(seconds: 120),
+  ];
+  static const Duration _serverReconnectJitterMax = Duration(milliseconds: 750);
   static const Duration _likeSyncDebounceDelay = Duration(seconds: 2);
   static const Duration _metadataEventsDebounceDelay = Duration(
     milliseconds: 250,
@@ -745,10 +792,13 @@ class AppController {
   }
 
   void dispose() {
+    _disposed = true;
+    connection.onTransportFailure = null;
     _stopMetadataEventListener();
     _clearNowPlaying();
     _healthTimer?.cancel();
     _healthTimer = null;
+    _stopServerReconnectLoop(resetAttempts: true);
     _isScrubbing = false;
     _scrubWasPlaying = false;
     _resumeAfterSeek = false;
@@ -760,7 +810,13 @@ class AppController {
     _pendingSeekCommitTrackId = null;
     _volumeSaveDebounce?.cancel();
     _volumeSaveDebounce = null;
+    _carPlayStateDebounce?.cancel();
+    _carPlayStateDebounce = null;
     _flushVolumeSave();
+    unawaited(_connectivitySubscription?.cancel());
+    unawaited(_carPlayOfflineLibrarySubscription?.cancel());
+    unawaited(_carPlayLocalLikedSubscription?.cancel());
+    unawaited(_carPlayLocalPlaylistsSubscription?.cancel());
     AppLogger.instance.detach(_logListener);
     _artistsController.close();
     _albumsController.close();
@@ -789,9 +845,23 @@ class AppController {
   }
 
   void handleAppLifecycleState(AppLifecycleState state) {
+    final wasForeground = _appInForeground;
+    _appInForeground = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.detached) {
       _audioEngine.stop();
       _closeStreamControl();
+    }
+    if (_authState.status != SessionStatus.serverUnavailable) {
+      return;
+    }
+    if (_appInForeground && !wasForeground) {
+      unawaited(_triggerImmediateServerReconnect(reason: 'app resumed'));
+      return;
+    }
+    if (_appInForeground != wasForeground) {
+      _serverReconnectTimer?.cancel();
+      _serverReconnectTimer = null;
+      _scheduleServerReconnect();
     }
   }
 
@@ -809,6 +879,7 @@ class AppController {
         username: username,
         password: password,
       );
+      _serverHealthFailureCount = 0;
       _setAuthorized(true, error: null);
       await _loadPlaybackSettings();
       unawaited(_offlineDownloadManager.resumePausedForCurrentServer());
@@ -1258,6 +1329,7 @@ class AppController {
   void loginWithToken({required String baseUrl, required String token}) {
     connection.setBaseUrl(baseUrl);
     connection.setToken(token);
+    _serverHealthFailureCount = 0;
     _setAuthorized(true, error: null);
     () async {
       await _refreshServerPorts();
@@ -1272,6 +1344,7 @@ class AppController {
     try {
       final resolved = await connection.resolveBaseUrl(input);
       connection.setBaseUrl(resolved);
+      _serverHealthFailureCount = 0;
       await _refreshServerPorts();
       _setSessionStatus(SessionStatus.serverReachable, error: null);
       return true;
@@ -1302,6 +1375,7 @@ class AppController {
       }
     }
     connection.setToken(null);
+    _serverHealthFailureCount = 0;
     _setSessionStatus(SessionStatus.offline, error: null);
     _audioEngine.stop();
     _playQueue = <Track>[];
@@ -1346,9 +1420,8 @@ class AppController {
           'Auto-login timed out after ${storedSessionRestoreTimeout.inSeconds}s.',
           level: LogLevel.warning,
         );
-        connection.setToken(null);
         _setSessionStatus(
-          SessionStatus.offline,
+          SessionStatus.serverUnavailable,
           error: 'Saved server unavailable',
         );
       }
@@ -1398,6 +1471,7 @@ class AppController {
         return;
       }
       _updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
+      _serverHealthFailureCount = 0;
       _setAuthorized(true, error: null);
       unawaited(_offlineDownloadManager.resumePausedForCurrentServer());
       unawaited(_offlineDownloadManager.repairOfflineMetadataFragments());
@@ -1413,13 +1487,13 @@ class AppController {
         return;
       }
       _pushMessage('Auto-login failed: ${_formatApiError(err)}');
-      connection.setToken(null);
       if (err.statusCode == 401) {
+        connection.setToken(null);
         await _clearSavedCredentials();
         _setSessionStatus(SessionStatus.offline, error: 'Saved login expired');
       } else {
         _setSessionStatus(
-          SessionStatus.offline,
+          SessionStatus.serverUnavailable,
           error: 'Saved server unavailable',
         );
       }
@@ -1428,9 +1502,8 @@ class AppController {
         return;
       }
       _pushMessage('Auto-login failed: $err');
-      connection.setToken(null);
       _setSessionStatus(
-        SessionStatus.offline,
+        SessionStatus.serverUnavailable,
         error: 'Saved server unavailable',
       );
     }
@@ -1560,73 +1633,74 @@ class AppController {
       return;
     }
     _carPlayChannel.setMethodCallHandler((call) async {
+      final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
       switch (call.method) {
+        case 'getCarPlayState':
+          return _carPlayGetState();
         case 'getHomeActions':
-          return _carPlayGetHomeActions();
+          return _carPlayGetLegacyHomeActions();
         case 'getAuthState':
-          return {'authorized': _authState.isAuthorized};
+          return {
+            'authorized': _authState.isAuthorized,
+            'hasSession': _authState.hasSession,
+            'status': _authState.status.name,
+          };
         case 'getArtists':
-          return _carPlayGetArtists();
+          return _carPlayGetArtists(_carPlayScope(args));
         case 'getAlbums':
-          final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
           final artistId = args['artistId']?.toString() ?? '';
-          return _carPlayGetAlbums(artistId);
+          return _carPlayGetAlbums(_carPlayScope(args), artistId);
         case 'getPlaylists':
-          return _carPlayGetPlaylists();
+          return _carPlayGetPlaylists(_carPlayScope(args));
         case 'getLibraryStatus':
-          return _carPlayGetLibraryStatus();
+          return _carPlayGetLibraryStatus(_carPlayScope(args));
         case 'playAlbum':
-          final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
           final albumId = args['albumId']?.toString() ?? '';
-          if (albumId.isEmpty) {
-            return _carPlayError('missing_album');
-          }
-          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
-          await queueAlbum(albumId);
-          return _carPlayOk();
+          return _carPlayPlayAlbum(_carPlayScope(args), albumId);
         case 'playPlaylist':
-          final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
           final playlistId = args['playlistId']?.toString() ?? '';
-          if (playlistId.isEmpty) {
-            return _carPlayError('missing_playlist');
-          }
-          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
-          await queuePlaylist(playlistId);
-          return _carPlayOk();
+          return _carPlayPlayPlaylist(_carPlayScope(args), playlistId);
         case 'playLiked':
-          updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
-          await queueLiked();
-          return _carPlayOk();
+          return _carPlayPlayLiked(_carPlayScope(args));
+        case 'startShuffle':
+          final kind = args['kind']?.toString() ?? 'library';
+          return _carPlayStartShuffle(_carPlayScope(args), kind);
         case 'startLibraryShuffle':
-          updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
-          await pause(false);
-          return _carPlayOk();
+          return _carPlayStartShuffle('server', 'library');
         case 'startLikedShuffle':
-          updateShuffleMode(ShuffleMode.liked, scope: ActionScope.server);
-          await queueShuffle(scope: 'liked', play: true);
-          return _carPlayOk();
+          return _carPlayStartShuffle('server', 'liked');
         case 'startCustomShuffle':
-          await _ensureCustomShuffleSettingsLoaded();
-          if (_customShuffleSettings.artistIds.isEmpty &&
-              _customShuffleSettings.genres.isEmpty) {
-            return _carPlayError('custom_empty');
-          }
-          updateShuffleMode(ShuffleMode.custom, scope: ActionScope.server);
-          await queueShuffle(scope: 'library', play: true);
-          return _carPlayOk();
+          return _carPlayStartShuffle('server', 'custom');
         default:
           return null;
       }
     });
-    _notifyCarPlayAuthState(_authState.isAuthorized);
+    _notifyCarPlayState();
   }
 
   void _notifyCarPlayAuthState(bool authorized) {
+    _notifyCarPlayState();
+  }
+
+  void _scheduleCarPlayStateUpdate() {
     if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
+    _carPlayStateDebounce?.cancel();
+    _carPlayStateDebounce = Timer(
+      const Duration(milliseconds: 250),
+      _notifyCarPlayState,
+    );
+  }
+
+  void _notifyCarPlayState() {
+    if (!(Platform.isIOS || Platform.isAndroid)) {
+      return;
+    }
+    final payload = _carPlayStatePayload();
+    _carPlayChannel.invokeMethod('carPlayState', payload).catchError((_) {});
     _carPlayChannel
-        .invokeMethod('authState', {'authorized': authorized})
+        .invokeMethod('authState', {'authorized': payload['serverAvailable']})
         .catchError((_) {});
   }
 
@@ -1637,13 +1711,65 @@ class AppController {
     'items': const [],
   };
 
+  Map<String, dynamic>? _carPlayServerAvailabilityError() {
+    if (_authState.isAuthorized) {
+      return null;
+    }
+    return _carPlayError(
+      _authState.status == SessionStatus.serverUnavailable
+          ? 'server_unavailable'
+          : 'unauthorized',
+    );
+  }
+
   Map<String, dynamic> _carPlayList(List<Map<String, dynamic>> items) => {
     'items': items,
   };
 
-  Future<Map<String, dynamic>> _carPlayGetArtists() async {
-    if (!_authState.isAuthorized) {
-      return _carPlayError('unauthorized');
+  String _carPlayScope(Map<String, dynamic> args) {
+    return args['scope']?.toString() == 'local' ? 'local' : 'server';
+  }
+
+  Future<Map<String, dynamic>> _carPlayGetState() async {
+    if (_authState.status == SessionStatus.serverUnavailable) {
+      unawaited(
+        _triggerImmediateServerReconnect(reason: 'vehicle state request'),
+      );
+    }
+    await _offlineDownloadManager.load();
+    return _carPlayStatePayload();
+  }
+
+  Map<String, dynamic> _carPlayStatePayload() {
+    final serverAvailable = _authState.isAuthorized;
+    final localAvailable = offlineTracks.isNotEmpty;
+    return {
+      'serverAvailable': serverAvailable,
+      'localAvailable': localAvailable,
+      'hasAnySource': serverAvailable || localAvailable,
+    };
+  }
+
+  Future<Map<String, dynamic>> _carPlayGetArtists(String scope) async {
+    if (scope == 'local') {
+      await _offlineDownloadManager.load();
+      final groups = offlineLibrarySnapshot.artistGroups;
+      final items = groups
+          .map(
+            (group) => {
+              'id': group.id,
+              'title': group.name,
+              'subtitle': '${group.albums.length} albums',
+              if (_carPlayFileUrl(group.coverPath) != null)
+                'artworkUrl': _carPlayFileUrl(group.coverPath),
+            },
+          )
+          .toList();
+      return _carPlayList(items);
+    }
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
     }
     if (_artists.isEmpty && !_artistsLoading) {
       await loadArtists();
@@ -1662,25 +1788,32 @@ class AppController {
     return _carPlayList(items);
   }
 
-  Future<Map<String, dynamic>> _carPlayGetHomeActions() async {
+  Future<Map<String, dynamic>> _carPlayGetLegacyHomeActions() async {
     if (!_authState.isAuthorized) {
+      final unavailable = _authState.status == SessionStatus.serverUnavailable;
       return _carPlayList([
         {
           'id': 'startLibraryShuffle',
           'title': 'Start Library Shuffle',
-          'subtitle': 'Connect to a server',
+          'subtitle': unavailable
+              ? 'Server unavailable'
+              : 'Connect to a server',
           'enabled': false,
         },
         {
           'id': 'startLikedShuffle',
           'title': 'Start Liked Shuffle',
-          'subtitle': 'Connect to a server',
+          'subtitle': unavailable
+              ? 'Server unavailable'
+              : 'Connect to a server',
           'enabled': false,
         },
         {
           'id': 'startCustomShuffle',
           'title': 'Start Custom Shuffle',
-          'subtitle': 'Connect to a server',
+          'subtitle': unavailable
+              ? 'Server unavailable'
+              : 'Connect to a server',
           'enabled': false,
         },
       ]);
@@ -1728,9 +1861,34 @@ class AppController {
     return _carPlayList(actions);
   }
 
-  Future<Map<String, dynamic>> _carPlayGetAlbums(String artistId) async {
-    if (!_authState.isAuthorized) {
-      return _carPlayError('unauthorized');
+  Future<Map<String, dynamic>> _carPlayGetAlbums(
+    String scope,
+    String artistId,
+  ) async {
+    if (scope == 'local') {
+      await _offlineDownloadManager.load();
+      final group = _carPlayLocalArtistGroup(artistId);
+      if (group == null) {
+        return _carPlayError('missing_artist');
+      }
+      final items = group.albums
+          .map(
+            (album) => {
+              'id': album.id,
+              'title': album.title,
+              'subtitle': album.metadata?.year != null
+                  ? album.metadata!.year.toString()
+                  : '${album.tracks.length} tracks',
+              if (_carPlayFileUrl(album.coverPath) != null)
+                'artworkUrl': _carPlayFileUrl(album.coverPath),
+            },
+          )
+          .toList();
+      return _carPlayList(items);
+    }
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
     }
     if (artistId.isEmpty) {
       return _carPlayError('missing_artist');
@@ -1753,9 +1911,23 @@ class AppController {
     return _carPlayList(items);
   }
 
-  Future<Map<String, dynamic>> _carPlayGetPlaylists() async {
-    if (!_authState.isAuthorized) {
-      return _carPlayError('unauthorized');
+  Future<Map<String, dynamic>> _carPlayGetPlaylists(String scope) async {
+    if (scope == 'local') {
+      await loadLocalPlaylists();
+      final items = localPlaylists
+          .map(
+            (playlist) => {
+              'id': playlist.id,
+              'title': playlist.name,
+              'subtitle': '${playlist.trackIds.length} tracks',
+            },
+          )
+          .toList();
+      return _carPlayList(items);
+    }
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
     }
     if (_playlists.isEmpty) {
       await loadPlaylists();
@@ -1772,19 +1944,172 @@ class AppController {
     return _carPlayList(items);
   }
 
-  Future<Map<String, dynamic>> _carPlayGetLibraryStatus() async {
-    if (!_authState.isAuthorized) {
-      return {'likedAvailable': false, 'error': 'unauthorized'};
+  Future<Map<String, dynamic>> _carPlayGetLibraryStatus(String scope) async {
+    if (scope == 'local') {
+      if (localLiked.isEmpty) {
+        await loadLocalLikedTracks();
+      }
+      return {'likedAvailable': localLiked.isNotEmpty};
     }
-    var liked = _liked;
-    if (liked.isEmpty) {
-      try {
-        liked = await connection.fetchLikedTracks();
-      } catch (_) {
-        liked = const <Track>[];
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return {'likedAvailable': false, 'error': serverError['error']};
+    }
+    final liked = await _carPlayServerLikedTracks();
+    return {'likedAvailable': liked.isNotEmpty};
+  }
+
+  Future<Map<String, dynamic>> _carPlayPlayAlbum(
+    String scope,
+    String albumId,
+  ) async {
+    if (albumId.isEmpty) {
+      return _carPlayError('missing_album');
+    }
+    if (scope == 'local') {
+      await _offlineDownloadManager.load();
+      final album = _carPlayLocalAlbumGroup(albumId);
+      if (album == null || album.tracks.isEmpty) {
+        return _carPlayError('missing_album');
+      }
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
+      await playOfflineTrack(album.tracks.first.id, tracks: album.tracks);
+      return _carPlayOk();
+    }
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
+    }
+    updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+    await queueAlbum(albumId);
+    return _carPlayOk();
+  }
+
+  Future<Map<String, dynamic>> _carPlayPlayPlaylist(
+    String scope,
+    String playlistId,
+  ) async {
+    if (playlistId.isEmpty) {
+      return _carPlayError('missing_playlist');
+    }
+    if (scope == 'local') {
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
+      await playLocalPlaylistFromTop(playlistId);
+      return _carPlayOk();
+    }
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
+    }
+    updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+    await queuePlaylist(playlistId);
+    return _carPlayOk();
+  }
+
+  Future<Map<String, dynamic>> _carPlayPlayLiked(String scope) async {
+    if (scope == 'local') {
+      if (localLiked.isEmpty) {
+        await loadLocalLikedTracks();
+      }
+      if (localLiked.isEmpty) {
+        return _carPlayError('liked_empty');
+      }
+      updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
+      await playLocalLikedTrack(localLiked.first.id);
+      return _carPlayOk();
+    }
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
+    }
+    updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+    await queueLiked();
+    return _carPlayOk();
+  }
+
+  Future<Map<String, dynamic>> _carPlayStartShuffle(
+    String scope,
+    String kind,
+  ) async {
+    if (scope == 'local') {
+      if (kind == 'custom') {
+        return _carPlayError('custom_unavailable');
+      }
+      updateShuffleMode(
+        kind == 'liked' ? ShuffleMode.liked : ShuffleMode.all,
+        scope: ActionScope.local,
+      );
+      await queueLocalShuffle(play: true);
+      return _carPlayOk();
+    }
+
+    final serverError = _carPlayServerAvailabilityError();
+    if (serverError != null) {
+      return serverError;
+    }
+
+    if (kind == 'custom') {
+      await _ensureCustomShuffleSettingsLoaded();
+      if (_customShuffleSettings.artistIds.isEmpty &&
+          _customShuffleSettings.genres.isEmpty) {
+        return _carPlayError('custom_empty');
+      }
+      updateShuffleMode(ShuffleMode.custom, scope: ActionScope.server);
+      await queueShuffle(scope: 'library', play: true);
+      return _carPlayOk();
+    }
+
+    if (kind == 'liked') {
+      updateShuffleMode(ShuffleMode.liked, scope: ActionScope.server);
+      await queueShuffle(scope: 'liked', play: true);
+      return _carPlayOk();
+    }
+
+    updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await queueShuffle(scope: 'library', play: true);
+    return _carPlayOk();
+  }
+
+  Future<List<Track>> _carPlayServerLikedTracks() async {
+    if (!_authState.isAuthorized) {
+      return const <Track>[];
+    }
+    if (_liked.isNotEmpty) {
+      return _liked;
+    }
+    try {
+      return await connection.fetchLikedTracks();
+    } catch (_) {
+      return const <Track>[];
+    }
+  }
+
+  OfflineArtistGroup? _carPlayLocalArtistGroup(String artistId) {
+    for (final group in offlineLibrarySnapshot.artistGroups) {
+      if (group.id == artistId) {
+        return group;
       }
     }
-    return {'likedAvailable': liked.isNotEmpty};
+    return null;
+  }
+
+  OfflineAlbumGroup? _carPlayLocalAlbumGroup(String albumId) {
+    for (final artist in offlineLibrarySnapshot.artistGroups) {
+      for (final album in artist.albums) {
+        if (album.id == albumId) {
+          return album;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _carPlayFileUrl(String? path) {
+    final trimmed = path?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return Uri.file(trimmed).toString();
   }
 
   Future<void> _clearNowPlaying() async {
@@ -1833,8 +2158,19 @@ class AppController {
     final artworkUrl = albumId.isNotEmpty && !_playbackState.isLocalPlayback
         ? connection.buildAlbumCoverUrl(albumId)
         : null;
+    final localArtworkPath = _playbackState.isLocalPlayback
+        ? track.albumArtPath?.trim()
+        : null;
     final token = connection.token ?? '';
-    _maybeFetchNowPlayingArtwork(artworkUrl, token);
+    final artworkKey = _nowPlayingArtworkSourceKey(
+      artworkUrl: artworkUrl,
+      localPath: localArtworkPath,
+    );
+    _maybeLoadNowPlayingArtwork(
+      artworkUrl: artworkUrl,
+      localPath: localArtworkPath,
+      token: token,
+    );
 
     final payload = <String, dynamic>{
       'epoch': _nowPlayingEpoch,
@@ -1847,6 +2183,7 @@ class AppController {
       'isPlaying': nowPlayingIsPlaying,
       'liked': track.liked,
       'artworkUrl': artworkUrl ?? '',
+      'artworkKey': artworkKey ?? '',
       'token': token,
     };
     if (_nowPlayingArtworkBytes != null) {
@@ -1862,32 +2199,74 @@ class AppController {
     } catch (_) {}
   }
 
-  void _maybeFetchNowPlayingArtwork(String? artworkUrl, String token) {
+  String? _nowPlayingArtworkSourceKey({
+    required String? artworkUrl,
+    required String? localPath,
+  }) {
+    final cleanLocalPath = localPath?.trim();
+    if (cleanLocalPath != null && cleanLocalPath.isNotEmpty) {
+      return 'file:$cleanLocalPath';
+    }
+    final cleanArtworkUrl = artworkUrl?.trim();
+    if (cleanArtworkUrl != null && cleanArtworkUrl.isNotEmpty) {
+      return 'url:$cleanArtworkUrl';
+    }
+    return null;
+  }
+
+  void _maybeLoadNowPlayingArtwork({
+    required String? artworkUrl,
+    required String? localPath,
+    required String token,
+  }) {
     if (!(Platform.isIOS || Platform.isAndroid)) {
       return;
     }
-    if (artworkUrl == null || artworkUrl.isEmpty) {
+    final artworkKey = _nowPlayingArtworkSourceKey(
+      artworkUrl: artworkUrl,
+      localPath: localPath,
+    );
+    if (artworkKey == null) {
       _nowPlayingArtworkBytes = null;
+      _nowPlayingArtworkKey = null;
       _nowPlayingArtworkUrl = null;
       _nowPlayingArtworkToken = null;
       return;
     }
+
     final sameSource =
-        artworkUrl == _nowPlayingArtworkUrl && token == _nowPlayingArtworkToken;
+        artworkKey == _nowPlayingArtworkKey && token == _nowPlayingArtworkToken;
     if (sameSource && _nowPlayingArtworkBytes != null) {
       return;
     }
     if (_nowPlayingArtworkFetchInFlight && sameSource) {
       return;
     }
+
     _nowPlayingArtworkBytes = null;
-    _nowPlayingArtworkUrl = artworkUrl;
+    _nowPlayingArtworkKey = artworkKey;
     _nowPlayingArtworkToken = token;
+    final cleanLocalPath = localPath?.trim();
+    if (cleanLocalPath != null && cleanLocalPath.isNotEmpty) {
+      _nowPlayingArtworkUrl = null;
+      _nowPlayingArtworkFetchInFlight = true;
+      _fetchNowPlayingArtworkFile(cleanLocalPath, artworkKey);
+      return;
+    }
+
+    if (artworkUrl == null || artworkUrl.isEmpty) {
+      return;
+    }
+    _nowPlayingArtworkUrl = artworkUrl;
     _nowPlayingArtworkFetchInFlight = true;
-    _fetchNowPlayingArtwork(artworkUrl, token);
+    _fetchNowPlayingArtwork(artworkUrl, token, artworkKey);
   }
 
-  Future<void> _fetchNowPlayingArtwork(String artworkUrl, String token) async {
+  Future<void> _fetchNowPlayingArtwork(
+    String artworkUrl,
+    String token,
+    String artworkKey,
+  ) async {
     try {
       final uri = Uri.parse(artworkUrl);
       final headers = <String, String>{};
@@ -1902,8 +2281,34 @@ class AppController {
       if (decoded == null) {
         return;
       }
-      if (artworkUrl != _nowPlayingArtworkUrl ||
+      if (artworkKey != _nowPlayingArtworkKey ||
+          artworkUrl != _nowPlayingArtworkUrl ||
           token != _nowPlayingArtworkToken) {
+        return;
+      }
+      _nowPlayingArtworkBytes = decoded;
+      await _pushNowPlayingUpdate(force: true);
+    } catch (_) {
+      // Ignore artwork failures to avoid disrupting playback.
+    } finally {
+      _nowPlayingArtworkFetchInFlight = false;
+    }
+  }
+
+  Future<void> _fetchNowPlayingArtworkFile(
+    String localPath,
+    String artworkKey,
+  ) async {
+    try {
+      final file = File(localPath);
+      if (!await file.exists()) {
+        return;
+      }
+      final decoded = await _decodeArtworkToPng(await file.readAsBytes());
+      if (decoded == null) {
+        return;
+      }
+      if (artworkKey != _nowPlayingArtworkKey) {
         return;
       }
       _nowPlayingArtworkBytes = decoded;
@@ -4993,11 +5398,16 @@ class AppController {
     );
   }
 
-  void _setSessionStatus(SessionStatus status, {String? error}) {
+  void _setSessionStatus(
+    SessionStatus status, {
+    String? error,
+    bool? isReconnecting,
+  }) {
     _authState = _authState.copyWith(
       status: status,
       baseUrl: connection.baseUrl,
       error: error,
+      isReconnecting: isReconnecting,
     );
     _authController.add(_authState);
     _notifyCarPlayAuthState(_authState.isAuthorized);
@@ -5006,6 +5416,125 @@ class AppController {
     } else {
       _stopMetadataEventListener();
     }
+    _syncServerReconnectLoop();
+  }
+
+  bool get _shouldAutoReconnectServer {
+    final token = connection.token;
+    return _authState.status == SessionStatus.serverUnavailable &&
+        token != null &&
+        token.isNotEmpty;
+  }
+
+  void _configureConnectivitySignals() {
+    _connectivitySubscription = _connectivitySignalSource.availabilityStream
+        .listen(
+          _handleConnectivityAvailabilityChanged,
+          onError: (Object error) {
+            _pushMessage(
+              'Network change monitor failed: $error',
+              level: LogLevel.warning,
+            );
+          },
+        );
+    unawaited(
+      _connectivitySignalSource
+          .hasConnectivity()
+          .then((available) {
+            _lastConnectivityAvailable = available;
+            if (available &&
+                _authState.status == SessionStatus.serverUnavailable) {
+              unawaited(
+                _triggerImmediateServerReconnect(reason: 'network available'),
+              );
+            }
+          })
+          .catchError((_) {}),
+    );
+  }
+
+  void _handleConnectivityAvailabilityChanged(bool available) {
+    final wasAvailable = _lastConnectivityAvailable;
+    _lastConnectivityAvailable = available;
+    if (available && !wasAvailable) {
+      unawaited(_triggerImmediateServerReconnect(reason: 'network restored'));
+    }
+  }
+
+  void _syncServerReconnectLoop() {
+    if (_disposed) {
+      _stopServerReconnectLoop(resetAttempts: true);
+      return;
+    }
+    if (_shouldAutoReconnectServer) {
+      _scheduleServerReconnect();
+    } else {
+      _stopServerReconnectLoop(resetAttempts: true);
+    }
+  }
+
+  void _stopServerReconnectLoop({required bool resetAttempts}) {
+    _serverReconnectTimer?.cancel();
+    _serverReconnectTimer = null;
+    if (resetAttempts) {
+      _serverReconnectAttempt = 0;
+    }
+  }
+
+  void _scheduleServerReconnect() {
+    if (!_shouldAutoReconnectServer ||
+        _serverReconnectTimer != null ||
+        _serverAvailabilityFuture != null) {
+      return;
+    }
+    final delay = _serverReconnectDelayForAttempt(_serverReconnectAttempt);
+    _serverReconnectTimer = Timer(delay, () {
+      _serverReconnectTimer = null;
+      unawaited(_refreshServerAvailability(reconnectAttempt: true));
+    });
+  }
+
+  Duration _serverReconnectDelayForAttempt(int attempt) {
+    final backoff = _appInForeground
+        ? _serverReconnectForegroundBackoff
+        : _serverReconnectBackgroundBackoff;
+    final base = backoff[min(attempt, backoff.length - 1)];
+    final jitterMs = _serverReconnectJitterMax.inMilliseconds <= 0
+        ? 0
+        : _reconnectRandom.nextInt(
+            _serverReconnectJitterMax.inMilliseconds + 1,
+          );
+    return base + Duration(milliseconds: jitterMs);
+  }
+
+  Future<void> retryServerConnection() async {
+    _pushMessage('Retrying server connection...');
+    await _triggerImmediateServerReconnect(reason: 'manual retry');
+  }
+
+  Future<void> _triggerImmediateServerReconnect({required String reason}) {
+    assert(reason.isNotEmpty);
+    if (!_shouldAutoReconnectServer) {
+      _syncServerReconnectLoop();
+      return Future<void>.value();
+    }
+    _serverReconnectTimer?.cancel();
+    _serverReconnectTimer = null;
+    return _refreshServerAvailability(reconnectAttempt: true);
+  }
+
+  void _setServerReconnecting(bool value) {
+    if (_authState.status != SessionStatus.serverUnavailable ||
+        _authState.isReconnecting == value) {
+      return;
+    }
+    _authState = _authState.copyWith(
+      baseUrl: connection.baseUrl,
+      error: _authState.error,
+      isReconnecting: value,
+    );
+    _authController.add(_authState);
+    _notifyCarPlayAuthState(_authState.isAuthorized);
   }
 
   void _startMetadataEventListener() {
@@ -5284,6 +5813,14 @@ class AppController {
     if (_authState.isAuthorized) {
       return true;
     }
+    if (_authState.status == SessionStatus.serverUnavailable) {
+      _pushMessage(
+        'Server is unavailable before $action. Reconnecting in the background.',
+        level: LogLevel.warning,
+      );
+      unawaited(_triggerImmediateServerReconnect(reason: 'server action'));
+      return false;
+    }
     _pushMessage(
       'Connect to a server before $action.',
       level: LogLevel.warning,
@@ -5440,12 +5977,73 @@ class AppController {
         _offlineDownloadManager.pauseDownloadsForServer(connection.baseUrl),
       );
       connection.setToken(null);
+      _serverHealthFailureCount = 0;
+      _serverReconnectAttempt = 0;
       _setSessionStatus(SessionStatus.offline, error: 'Unauthorized');
       _pushMessage('Unauthorized. Please log in.');
       return;
     }
     final message = _formatApiError(err);
     _pushMessage('Failed to load $context: $message', level: LogLevel.warning);
+  }
+
+  Future<void> _handleReconnectUnauthorized() async {
+    unawaited(
+      _offlineDownloadManager.pauseDownloadsForServer(connection.baseUrl),
+    );
+    connection.setToken(null);
+    _serverHealthFailureCount = 0;
+    _serverReconnectAttempt = 0;
+    await _clearSavedCredentials();
+    _setSessionStatus(SessionStatus.offline, error: 'Saved login expired');
+    _pushMessage('Saved login expired. Please log in.');
+  }
+
+  void _handleServerTransportFailure(Object error) {
+    if (!_authState.isAuthorized) {
+      return;
+    }
+    _serverHealthFailureCount = _serverUnavailableHealthFailureThreshold;
+    _markServerUnavailable(error: 'Server unavailable: $error');
+  }
+
+  void _markServerUnavailable({required String error}) {
+    if (!_authState.isAuthorized) {
+      return;
+    }
+    _serverHealthFailureCount = max(
+      _serverHealthFailureCount,
+      _serverUnavailableHealthFailureThreshold,
+    );
+    _serverReconnectAttempt = 0;
+    _quicPort = null;
+    unawaited(
+      _offlineDownloadManager.pauseDownloadsForServer(connection.baseUrl),
+    );
+    _setSessionStatus(SessionStatus.serverUnavailable, error: error);
+    _pushMessage(error, level: LogLevel.warning);
+  }
+
+  void _restoreServerAvailability({int? rttMs}) {
+    if (_authState.status != SessionStatus.serverUnavailable) {
+      return;
+    }
+    final token = connection.token;
+    if (token == null || token.isEmpty) {
+      _setSessionStatus(SessionStatus.offline, error: null);
+      return;
+    }
+    _serverHealthFailureCount = 0;
+    _setSessionStatus(SessionStatus.authenticated, error: null);
+    if (!_audioEngine.hasActivePlayer) {
+      _updatePlayback(streamConnected: true, streamRttMs: rttMs);
+    }
+    _pushMessage('Server connection restored.');
+    unawaited(_refreshServerPorts(timeout: const Duration(seconds: 4)));
+    unawaited(_loadPlaybackSettings());
+    unawaited(_offlineDownloadManager.resumePausedForCurrentServer());
+    unawaited(_offlineDownloadManager.repairOfflineMetadataFragments());
+    _scheduleLikeSync(immediate: true);
   }
 
   void _startPlayback(Track track, {Duration startOffset = Duration.zero}) {
@@ -5633,27 +6231,122 @@ class AppController {
     _pollHealth();
   }
 
-  Future<void> _pollHealth() async {
+  Future<void> refreshServerAvailability() async {
+    await _refreshServerAvailability();
+  }
+
+  Future<void> _refreshServerAvailability({
+    bool reconnectAttempt = false,
+  }) async {
+    final active = _serverAvailabilityFuture;
+    if (active != null) {
+      if (reconnectAttempt) {
+        _setServerReconnecting(true);
+      }
+      return active;
+    }
+    final future = _runServerAvailabilityRefresh(
+      reconnectAttempt: reconnectAttempt,
+    );
+    _serverAvailabilityFuture = future.whenComplete(() {
+      _serverAvailabilityFuture = null;
+      if (!_disposed) {
+        _syncServerReconnectLoop();
+      }
+    });
+    return _serverAvailabilityFuture!;
+  }
+
+  Future<void> _runServerAvailabilityRefresh({
+    required bool reconnectAttempt,
+  }) async {
     if (_healthPingInFlight) {
       return;
     }
-    if (_audioEngine.hasActivePlayer) {
-      return;
-    }
     _healthPingInFlight = true;
-    final rttMs = await connection.pingHealthMs(
-      timeout: const Duration(seconds: 4),
-    );
-    _healthPingInFlight = false;
-    if (_audioEngine.hasActivePlayer) {
-      return;
+    if (reconnectAttempt) {
+      _setServerReconnecting(true);
     }
-    if (rttMs != null) {
-      _updatePlayback(streamConnected: true, streamRttMs: rttMs);
-    } else {
-      _updatePlayback(streamConnected: false, streamRttMs: null);
+    try {
+      final rttMs = await connection.pingHealthMs(
+        timeout: const Duration(seconds: 4),
+      );
+      if (_authState.status == SessionStatus.serverUnavailable) {
+        if (rttMs == null) {
+          _recordServerAvailabilityFailure(
+            error: _authState.error ?? 'Server unavailable',
+            reconnectAttempt: reconnectAttempt,
+          );
+          return;
+        }
+        await connection.fetchCapabilities();
+        _serverHealthFailureCount = 0;
+        _serverReconnectAttempt = 0;
+        _restoreServerAvailability(rttMs: rttMs);
+        return;
+      }
+      if (rttMs != null) {
+        _serverHealthFailureCount = 0;
+        if (!_audioEngine.hasActivePlayer) {
+          _updatePlayback(streamConnected: true, streamRttMs: rttMs);
+        }
+        return;
+      }
+      _recordServerAvailabilityFailure(
+        error: 'Server unavailable',
+        reconnectAttempt: false,
+      );
+    } on ApiException catch (err) {
+      if (err.statusCode == 401) {
+        await _handleReconnectUnauthorized();
+      } else {
+        _recordServerAvailabilityFailure(
+          error: 'Server unavailable: ${_formatApiError(err)}',
+          reconnectAttempt: reconnectAttempt,
+        );
+      }
+    } catch (err) {
+      _recordServerAvailabilityFailure(
+        error: 'Server unavailable: $err',
+        reconnectAttempt: reconnectAttempt,
+      );
+    } finally {
+      _healthPingInFlight = false;
+      if (_authState.status == SessionStatus.serverUnavailable &&
+          _authState.isReconnecting) {
+        _setServerReconnecting(false);
+      }
     }
   }
+
+  void _recordServerAvailabilityFailure({
+    required String error,
+    required bool reconnectAttempt,
+  }) {
+    _serverHealthFailureCount++;
+    if (!_audioEngine.hasActivePlayer) {
+      _updatePlayback(streamConnected: false, streamRttMs: null);
+    }
+    if (_authState.status == SessionStatus.serverUnavailable) {
+      if (reconnectAttempt) {
+        _serverReconnectAttempt++;
+      }
+      _setSessionStatus(
+        SessionStatus.serverUnavailable,
+        error: error,
+        isReconnecting: false,
+      );
+      return;
+    }
+    if (_authState.isAuthorized &&
+        _serverHealthFailureCount >= _serverUnavailableHealthFailureThreshold) {
+      _markServerUnavailable(error: 'Server unavailable');
+    }
+  }
+
+  Future<void> _pollHealth() => _refreshServerAvailability(
+    reconnectAttempt: _authState.status == SessionStatus.serverUnavailable,
+  );
 
   List<String> _buildQueueIds(String currentId, int count) {
     if (_playQueue.isEmpty) {

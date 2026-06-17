@@ -1,22 +1,20 @@
 PODS:
   - Flutter (1.0.0)
-  - path_provider_foundation (0.0.1):
-    - Flutter
-    - FlutterMacOS
+  - phonolite_local_audio (0.1.0)
   - phonolite_opus (0.0.1)
   - phonolite_quic (0.1.0)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
-  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+  - phonolite_local_audio (from `.symlinks/plugins/phonolite_local_audio/ios`)
   - phonolite_opus (from `.symlinks/plugins/phonolite_opus/ios`)
   - phonolite_quic (from `.symlinks/plugins/phonolite_quic/ios`)
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
-  path_provider_foundation:
-    :path: ".symlinks/plugins/path_provider_foundation/darwin"
+  phonolite_local_audio:
+    :path: ".symlinks/plugins/phonolite_local_audio/ios"
   phonolite_opus:
     :path: ".symlinks/plugins/phonolite_opus/ios"
   phonolite_quic:
@@ -24,10 +22,10 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  path_provider_foundation: 0b743cbb62d8e47eab856f09262bb8c1ddcfe6ba
+  phonolite_local_audio: ca2bfafb0589597b61a073dd3accc7da66ff5df4
   phonolite_opus: 95aa10019b5f18e9ac9c3f5ce6d13ce606dd0ed5
   phonolite_quic: 6665529edf1f838114fc018476a9536171abe50b
 
 PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
 
-COCOAPODS: 1.15.2
+COCOAPODS: 1.16.2

@@ -10,7 +10,7 @@ class CollectionViewToggleButton extends StatelessWidget {
     this.semanticLabel = 'Collection view',
     this.showListTooltip = 'Show list',
     this.showCardTooltip = 'Show cards',
-    this.iconSize = 26,
+    this.iconSize = 24,
   });
 
   final bool isListView;

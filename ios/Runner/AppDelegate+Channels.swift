@@ -67,10 +67,19 @@ extension AppDelegate {
         return
       }
       switch call.method {
-      case "authState":
+      case "carPlayState":
         let args = call.arguments as? [String: Any]
-        let authorized = args?["authorized"] as? Bool ?? false
-        self.carPlaySceneDelegate?.updateAuthState(authorized: authorized)
+        let serverAvailable = args?["serverAvailable"] as? Bool ?? false
+        let localAvailable = args?["localAvailable"] as? Bool ?? false
+        let hasAnySource = args?["hasAnySource"] as? Bool ?? false
+        self.carPlaySceneDelegate?.updateCarPlayState(
+          serverAvailable: serverAvailable,
+          localAvailable: localAvailable,
+          hasAnySource: hasAnySource
+        )
+        result(true)
+      case "authState":
+        self.carPlaySceneDelegate?.requestCarPlayState()
         result(true)
       default:
         result(FlutterMethodNotImplemented)

@@ -35,7 +35,6 @@ class SettingsPage extends StatelessWidget {
           initialData: controller.messages,
           builder: (context, snapshot) {
             final messages = snapshot.data ?? [];
-            final theme = Theme.of(context);
             final serverLabel = _serverLabel(authState);
             final logLabel = messages.isEmpty
                 ? 'No events yet'
@@ -61,6 +60,8 @@ class SettingsPage extends StatelessWidget {
                           leading: Icon(
                             authState.isAuthorized
                                 ? Icons.cloud_done_rounded
+                                : authState.hasSession
+                                ? Icons.cloud_sync_rounded
                                 : Icons.cloud_off_rounded,
                           ),
                           title: 'Server',
@@ -85,6 +86,8 @@ class SettingsPage extends StatelessWidget {
                             final genreCount = settings.genres.length;
                             final summary = authState.isAuthorized
                                 ? 'Artists: $artistCount, Genres: $genreCount'
+                                : authState.hasSession
+                                ? 'Server unavailable; reconnect to edit filters'
                                 : 'Connect to edit server shuffle filters';
                             return _settingsRow(
                               context,
@@ -92,12 +95,9 @@ class SettingsPage extends StatelessWidget {
                               title: 'Custom Shuffle',
                               subtitle: summary,
                               trailing: const Icon(Icons.chevron_right_rounded),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const CustomShuffleSettingsPage(),
-                                ),
-                              ),
+                              onTap: () => Navigator.of(
+                                context,
+                              ).push(CustomShuffleSettingsPage.route()),
                             );
                           },
                         ),
@@ -111,85 +111,44 @@ class SettingsPage extends StatelessWidget {
                             final locations =
                                 snapshot.data ??
                                 controller.offlineStorageLocations;
-                            return Column(
-                              children: [
-                                _settingsRow(
-                                  context,
-                                  leading: const Icon(Icons.storage_rounded),
-                                  title: 'Metadata database',
-                                  subtitle: _storageSubtitle(
-                                    locations,
-                                    metadata: true,
-                                  ),
-                                  trailing: _StorageActions(
-                                    onChange: locations == null
-                                        ? null
-                                        : () => _openStoragePathDialog(
-                                            context,
-                                            title: 'Metadata database folder',
-                                            initialPath:
-                                                locations.metadataDirectory,
-                                            isDefault: locations
-                                                .metadataDirectoryIsDefault,
-                                            onSave: controller
-                                                .updateOfflineMetadataDirectory,
-                                          ),
-                                    onReset: locations == null
-                                        ? null
-                                        : () => controller
-                                              .resetOfflineMetadataDirectory(),
-                                  ),
-                                ),
-                                const Divider(height: 1),
-                                _settingsRow(
-                                  context,
-                                  leading: const Icon(Icons.folder_rounded),
-                                  title: 'Downloaded audio',
-                                  subtitle: _storageSubtitle(
-                                    locations,
-                                    metadata: false,
-                                  ),
-                                  trailing: _StorageActions(
-                                    onChange: locations == null
-                                        ? null
-                                        : () => _openStoragePathDialog(
-                                            context,
-                                            title: 'Downloaded audio folder',
-                                            initialPath:
-                                                locations.downloadsDirectory,
-                                            isDefault: locations
-                                                .downloadsDirectoryIsDefault,
-                                            onSave: controller
-                                                .updateOfflineDownloadsDirectory,
-                                          ),
-                                    onReset: locations == null
-                                        ? null
-                                        : () => controller
-                                              .resetOfflineDownloadsDirectory(),
-                                  ),
-                                ),
-                                const Divider(height: 1),
-                                _settingsRow(
-                                  context,
-                                  leading: Icon(
-                                    Icons.delete_forever_rounded,
-                                    color: theme.colorScheme.error,
-                                  ),
-                                  title: 'Reset offline data',
-                                  subtitle:
-                                      'Delete local tracks, artwork, metadata, and offline databases',
-                                  titleColor: theme.colorScheme.error,
-                                  trailing: _resetOfflineDataAction(
-                                    context,
-                                    onTap: locations == null
-                                        ? null
-                                        : () => _confirmResetOfflineData(
-                                            context,
-                                            controller,
-                                          ),
-                                  ),
-                                ),
-                              ],
+                            return OfflineStorageSection(
+                              locations: locations,
+                              onChangeMetadata: locations == null
+                                  ? null
+                                  : () => _openStoragePathDialog(
+                                      context,
+                                      title: 'Metadata database folder',
+                                      initialPath: locations.metadataDirectory,
+                                      isDefault:
+                                          locations.metadataDirectoryIsDefault,
+                                      onSave: controller
+                                          .updateOfflineMetadataDirectory,
+                                    ),
+                              onResetMetadata: locations == null
+                                  ? null
+                                  : () => controller
+                                        .resetOfflineMetadataDirectory(),
+                              onChangeDownloads: locations == null
+                                  ? null
+                                  : () => _openStoragePathDialog(
+                                      context,
+                                      title: 'Downloaded audio folder',
+                                      initialPath: locations.downloadsDirectory,
+                                      isDefault:
+                                          locations.downloadsDirectoryIsDefault,
+                                      onSave: controller
+                                          .updateOfflineDownloadsDirectory,
+                                    ),
+                              onResetDownloads: locations == null
+                                  ? null
+                                  : () => controller
+                                        .resetOfflineDownloadsDirectory(),
+                              onResetOfflineData: locations == null
+                                  ? null
+                                  : () => _confirmResetOfflineData(
+                                      context,
+                                      controller,
+                                    ),
                             );
                           },
                         ),
@@ -204,11 +163,8 @@ class SettingsPage extends StatelessWidget {
                               title: 'Logs',
                               subtitle: logLabel,
                               trailing: const Icon(Icons.chevron_right_rounded),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const LogsPage(),
-                                ),
-                              ),
+                              onTap: () =>
+                                  Navigator.of(context).push(LogsPage.route()),
                             ),
                           ],
                         ),
@@ -230,6 +186,8 @@ class SettingsPage extends StatelessWidget {
         : state.baseUrl;
     final prefix = switch (state.status) {
       SessionStatus.authenticated => 'Connected',
+      SessionStatus.serverUnavailable =>
+        state.isReconnecting ? 'Reconnecting...' : 'Server unavailable',
       SessionStatus.serverReachable => 'Server reachable',
       SessionStatus.checking => 'Checking saved server',
       SessionStatus.offline => 'Offline',
@@ -244,6 +202,7 @@ class SettingsPage extends StatelessWidget {
   String _loginActionLabel(SessionStatus status) {
     return switch (status) {
       SessionStatus.authenticated => 'Change server',
+      SessionStatus.serverUnavailable => 'Change server',
       SessionStatus.serverReachable => 'Log in',
       SessionStatus.checking => 'Checking',
       SessionStatus.offline => 'Connect / Log in',
@@ -251,25 +210,11 @@ class SettingsPage extends StatelessWidget {
   }
 
   void _openLogin(BuildContext context, AppController controller) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LoginPage(controller: controller)),
-    );
+    Navigator.of(context).push(LoginPage.route(controller));
   }
 
-  String _storageSubtitle(
-    OfflineStorageLocations? locations, {
-    required bool metadata,
-  }) {
-    if (locations == null) {
-      return 'Loading storage path';
-    }
-    final isDefault = metadata
-        ? locations.metadataDirectoryIsDefault
-        : locations.downloadsDirectoryIsDefault;
-    final path = metadata
-        ? locations.metadataDirectory
-        : locations.downloadsDirectory;
-    return isDefault ? 'Default - $path' : path;
+  bool _usesManagedOfflineStoragePaths(BuildContext context) {
+    return Theme.of(context).platform == TargetPlatform.iOS;
   }
 
   void _openStoragePathDialog(
@@ -294,11 +239,13 @@ class SettingsPage extends StatelessWidget {
     BuildContext context,
     AppController controller,
   ) async {
+    final usesManagedPaths = _usesManagedOfflineStoragePaths(context);
     final confirmed = await ConfirmationModal.show(
       context,
       title: 'Reset offline data',
-      message:
-          'Delete all locally downloaded tracks, artwork, offline metadata, and offline database files from this device? Storage folder choices will be kept.',
+      message: usesManagedPaths
+          ? 'Delete all locally downloaded tracks, artwork, offline metadata, and offline database files from this device? Offline storage will remain managed automatically on this device.'
+          : 'Delete all locally downloaded tracks, artwork, offline metadata, and offline database files from this device? Storage folder choices will be kept.',
       confirmLabel: 'Reset',
       confirmVariant: TechButtonVariant.danger,
     );
@@ -315,17 +262,28 @@ class SettingsPage extends StatelessWidget {
   }) {
     final enabled = authState.status != SessionStatus.checking;
     final loginAction = enabled ? () => _openLogin(context, controller) : null;
+    final canRetry = authState.status == SessionStatus.serverUnavailable;
+    final retryAction = canRetry && !authState.isReconnecting
+        ? () async => controller.retryServerConnection()
+        : null;
+    final retryLabel = authState.isReconnecting ? 'Reconnecting...' : 'Retry';
     final loginIcon = authState.status == SessionStatus.checking
         ? Icons.hourglass_top_rounded
-        : authState.isAuthorized
+        : authState.hasSession
         ? Icons.swap_horiz_rounded
         : Icons.login_rounded;
 
     if (isCompactListWidth(context)) {
-      if (authState.isAuthorized) {
+      if (authState.hasSession) {
         return ObsidianOverflowActionButton(
           tooltip: 'Server actions',
           actions: [
+            if (canRetry)
+              ObsidianMenuAction(
+                label: retryLabel,
+                icon: Icons.sync_rounded,
+                onTap: retryAction,
+              ),
             ObsidianMenuAction(
               label: 'Change server',
               icon: Icons.swap_horiz_rounded,
@@ -352,6 +310,14 @@ class SettingsPage extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
+        if (canRetry)
+          TechButton(
+            label: retryLabel,
+            icon: Icons.sync_rounded,
+            density: TechButtonDensity.compact,
+            chrome: TechButtonChrome.borderless,
+            onTap: retryAction,
+          ),
         TechButton(
           label: _loginActionLabel(authState.status),
           icon: loginIcon,
@@ -359,7 +325,7 @@ class SettingsPage extends StatelessWidget {
           chrome: TechButtonChrome.borderless,
           onTap: loginAction,
         ),
-        if (authState.isAuthorized)
+        if (authState.hasSession)
           TechButton(
             label: 'Disconnect',
             icon: Icons.logout_rounded,
@@ -372,10 +338,199 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _resetOfflineDataAction(
+  Widget _settingsRow(
     BuildContext context, {
-    required VoidCallback? onTap,
+    required Widget leading,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+    Color? titleColor,
   }) {
+    final showHover = onTap != null;
+    final isCompact = isCompactListWidth(context);
+    final leadingWidth = isCompact ? 28.0 : 32.0;
+    final contentGap = isCompact ? 8.0 : 12.0;
+    final trailingGap = isCompact ? 6.0 : 8.0;
+    final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+      fontSize: isCompact ? 14.5 : null,
+      letterSpacing: isCompact ? 0.2 : 0.6,
+      color: titleColor,
+    );
+    final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+      fontSize: isCompact ? 12 : null,
+      letterSpacing: isCompact ? 0 : null,
+      color: ObsidianPalette.textMuted,
+    );
+
+    return ObsidianHoverRow(
+      onTap: onTap,
+      enabled: showHover,
+      padding: isCompact
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      borderColor: showHover ? ObsidianPalette.gold : Colors.transparent,
+      hoverGradient: showHover
+          ? null
+          : const LinearGradient(
+              colors: [Colors.transparent, Colors.transparent],
+            ),
+      hoverColor: showHover ? null : Colors.transparent,
+      child: Row(
+        children: [
+          SizedBox(
+            width: leadingWidth,
+            child: Center(
+              child: IconTheme.merge(
+                data: IconThemeData(size: isCompact ? 20 : 24),
+                child: leading,
+              ),
+            ),
+          ),
+          SizedBox(width: contentGap),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle,
+                ),
+                if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: subtitleStyle,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            SizedBox(width: trailingGap),
+            IconTheme.merge(
+              data: IconThemeData(size: isCompact ? 22 : 24),
+              child: trailing,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class OfflineStorageSection extends StatelessWidget {
+  const OfflineStorageSection({
+    super.key,
+    required this.locations,
+    required this.onChangeMetadata,
+    required this.onResetMetadata,
+    required this.onChangeDownloads,
+    required this.onResetDownloads,
+    required this.onResetOfflineData,
+  });
+
+  final OfflineStorageLocations? locations;
+  final VoidCallback? onChangeMetadata;
+  final VoidCallback? onResetMetadata;
+  final VoidCallback? onChangeDownloads;
+  final VoidCallback? onResetDownloads;
+  final VoidCallback? onResetOfflineData;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final usesManagedPaths = Theme.of(context).platform == TargetPlatform.iOS;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (usesManagedPaths) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Text(
+              'Folder selection and custom paths are not supported on iPhone or iPad.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: ObsidianPalette.textMuted,
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+        ],
+        _sectionRow(
+          context,
+          leading: const Icon(Icons.storage_rounded),
+          title: 'Metadata database',
+          subtitle: _subtitle(
+            locations,
+            metadata: true,
+            managed: usesManagedPaths,
+          ),
+          trailing: usesManagedPaths
+              ? const Icon(Icons.lock_outline_rounded)
+              : _StorageActions(
+                  onChange: onChangeMetadata,
+                  onReset: onResetMetadata,
+                ),
+        ),
+        const Divider(height: 1),
+        _sectionRow(
+          context,
+          leading: const Icon(Icons.folder_rounded),
+          title: 'Downloaded audio',
+          subtitle: _subtitle(
+            locations,
+            metadata: false,
+            managed: usesManagedPaths,
+          ),
+          trailing: usesManagedPaths
+              ? const Icon(Icons.lock_outline_rounded)
+              : _StorageActions(
+                  onChange: onChangeDownloads,
+                  onReset: onResetDownloads,
+                ),
+        ),
+        const Divider(height: 1),
+        _sectionRow(
+          context,
+          leading: Icon(
+            Icons.delete_forever_rounded,
+            color: theme.colorScheme.error,
+          ),
+          title: 'Reset offline data',
+          subtitle:
+              'Delete local tracks, artwork, metadata, and offline databases',
+          titleColor: theme.colorScheme.error,
+          trailing: _resetAction(context, onTap: onResetOfflineData),
+        ),
+      ],
+    );
+  }
+
+  String _subtitle(
+    OfflineStorageLocations? locations, {
+    required bool metadata,
+    required bool managed,
+  }) {
+    if (locations == null) {
+      return 'Loading storage path';
+    }
+    final isDefault = metadata
+        ? locations.metadataDirectoryIsDefault
+        : locations.downloadsDirectoryIsDefault;
+    final path = metadata
+        ? locations.metadataDirectory
+        : locations.downloadsDirectory;
+    if (managed) {
+      return 'Managed automatically on this device - $path';
+    }
+    return isDefault ? 'Default - $path' : path;
+  }
+
+  Widget _resetAction(BuildContext context, {required VoidCallback? onTap}) {
     if (isCompactListWidth(context)) {
       return _SettingsIconAction(
         tooltip: 'Full reset',
@@ -395,7 +550,7 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _settingsRow(
+  Widget _sectionRow(
     BuildContext context, {
     required Widget leading,
     required String title,

@@ -43,6 +43,50 @@ void main() {
       );
     });
 
+    test('pingHealthMs accepts api health when root health fails', () async {
+      final requested = <String>[];
+      final connection = ServerConnection(
+        baseUrl: 'http://example.test/api/v1',
+        client: MockClient((request) async {
+          requested.add(request.url.toString());
+          if (request.url.toString() == 'http://example.test/api/v1/health') {
+            return http.Response('ok', 200);
+          }
+          return http.Response('missing', 404);
+        }),
+      );
+
+      final rttMs = await connection.pingHealthMs();
+
+      expect(rttMs, isNotNull);
+      expect(requested, contains('http://example.test/health'));
+      expect(requested, contains('http://example.test/api/v1/health'));
+    });
+
+    test(
+      'reports exhausted transport failures to availability handler',
+      () async {
+        var attempts = 0;
+        final transportFailures = <Object>[];
+        final connection = ServerConnection(
+          baseUrl: 'http://example.test/api/v1',
+          client: MockClient((_) async {
+            attempts++;
+            throw http.ClientException('server offline');
+          }),
+        )..onTransportFailure = transportFailures.add;
+
+        await expectLater(
+          connection.fetchArtistsPage(),
+          throwsA(isA<http.ClientException>()),
+        );
+
+        expect(attempts, 3);
+        expect(transportFailures, hasLength(1));
+        expect(transportFailures.single, isA<http.ClientException>());
+      },
+    );
+
     test('cover url builders encode identifiers and optional query params', () {
       final connection = ServerConnection(
         baseUrl: 'http://example.test/api/v1',
