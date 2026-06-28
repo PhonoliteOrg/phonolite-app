@@ -84,11 +84,16 @@ class SettingsPage extends StatelessWidget {
                                 controller.customShuffleSettings;
                             final artistCount = settings.artistIds.length;
                             final genreCount = settings.genres.length;
-                            final summary = authState.isAuthorized
-                                ? 'Artists: $artistCount, Genres: $genreCount'
+                            final localArtistCount =
+                                settings.localArtistIds.length;
+                            final localGenreCount = settings.localGenres.length;
+                            final serverSummary = authState.isAuthorized
+                                ? '$artistCount artists, $genreCount genres'
                                 : authState.hasSession
-                                ? 'Server unavailable; reconnect to edit filters'
-                                : 'Connect to edit server shuffle filters';
+                                ? 'unavailable'
+                                : 'not connected';
+                            final summary =
+                                'Server: $serverSummary - Local: $localArtistCount artists, $localGenreCount genres';
                             return _settingsRow(
                               context,
                               leading: const Icon(Icons.shuffle_rounded),

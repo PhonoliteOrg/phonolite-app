@@ -21,10 +21,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   private var serverTemplate: CPListTemplate?
   private var localTemplate: CPListTemplate?
   private var emptyTemplate: CPListTemplate?
+  private var loadingTemplate: CPListTemplate?
   private var tabBarTemplate: CPTabBarTemplate?
   private var nowPlayingItem: CPListItem?
   private let nowPlayingTemplate = CPNowPlayingTemplate.shared
-  private var nowPlayingButtonVisible = false
   private var sourceState = CarPlaySourceState.empty
 
   private func refreshNowPlayingUI(force: Bool) {
@@ -35,6 +35,17 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
   private func configureRootTemplate(using interfaceController: CPInterfaceController) {
     self.interfaceController = interfaceController
+    nowPlayingItem = nil
+
+    let template = buildLoadingTemplate()
+    loadingTemplate = template
+    rootTemplate = template
+    if #available(iOS 14.0, *) {
+      interfaceController.setRootTemplate(template, animated: false, completion: nil)
+    } else {
+      interfaceController.setRootTemplate(template, animated: false)
+    }
+
     DispatchQueue.main.async {
       if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
         appDelegate.carPlaySceneDelegate = self
@@ -42,7 +53,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         appDelegate.configureCarPlayChannel()
       }
 
-      self.nowPlayingItem = nil
       self.requestCarPlayState(force: true)
     }
   }
@@ -63,7 +73,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         hasAnySource: hasAnySource || serverAvailable || localAvailable
       )
       if !force && self.sourceState == next {
-        self.refreshVisibleTemplates()
         return
       }
       self.sourceState = next
@@ -126,7 +135,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       title: title,
       sections: [CPListSection(items: buildSourceItems(scope: scope))]
     )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     configureTab(template, title: title, systemImageName: systemImageName, fallback: fallback)
     return template
   }
@@ -140,7 +148,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       title: "Phonolite",
       sections: [CPListSection(items: [item])]
     )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
+    return template
+  }
+
+  private func buildLoadingTemplate() -> CPListTemplate {
+    let template = CPListTemplate(
+      title: "Phonolite",
+      sections: [CPListSection(items: [disabledItem(text: "Loading...")])]
+    )
     return template
   }
 
@@ -209,7 +224,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       title: scope == "local" ? "Downloaded Artists" : "Artists",
       sections: [CPListSection(items: [disabledItem(text: "Loading artists...")])]
     )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     pushTemplate(template, animated: true)
 
     requestCarPlayList(method: "getArtists", arguments: ["scope": scope]) { [weak self] entries, error in
@@ -236,7 +250,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       title: title,
       sections: [CPListSection(items: [disabledItem(text: "Loading albums...")])]
     )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     pushTemplate(template, animated: true)
 
     requestCarPlayList(
@@ -272,7 +285,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       title: scope == "local" ? "Local Playlists" : "Playlists",
       sections: [CPListSection(items: [disabledItem(text: "Loading playlists...")])]
     )
-    setNowPlayingButtonVisible(template, visible: nowPlayingButtonVisible)
     pushTemplate(template, animated: true)
 
     requestCarPlayList(method: "getPlaylists", arguments: ["scope": scope]) { [weak self] entries, error in
@@ -552,16 +564,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
   }
 
-  func updateNowPlayingVisibility(hasTrack: Bool) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else {
-        return
-      }
-      self.nowPlayingButtonVisible = hasTrack
-      self.applyNowPlayingButtonVisibility()
-      self.refreshVisibleTemplates()
-    }
-  }
+  func updateNowPlayingVisibility(hasTrack _: Bool) {}
 
   private func showRootForCurrentState() {
     guard let interfaceController else {
@@ -570,6 +573,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     serverTemplate = nil
     localTemplate = nil
     emptyTemplate = nil
+    loadingTemplate = nil
     tabBarTemplate = nil
 
     if !sourceState.hasAnySource {
@@ -596,7 +600,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       templates.append(local)
     }
 
-    applyNowPlayingButtonVisibility()
     if #available(iOS 14.0, *), templates.count > 1 {
       let tabBar = CPTabBarTemplate(templates: templates)
       tabBarTemplate = tabBar
@@ -613,29 +616,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       } else {
         interfaceController.setRootTemplate(template, animated: false)
       }
-    }
-  }
-
-  private func refreshVisibleTemplates() {
-    applyNowPlayingButtonVisibility()
-  }
-
-  private func applyNowPlayingButtonVisibility() {
-    setNowPlayingButtonVisible(serverTemplate, visible: nowPlayingButtonVisible)
-    setNowPlayingButtonVisible(localTemplate, visible: nowPlayingButtonVisible)
-    setNowPlayingButtonVisible(emptyTemplate, visible: nowPlayingButtonVisible)
-    if let topTemplate = interfaceController?.topTemplate {
-      setNowPlayingButtonVisible(topTemplate, visible: nowPlayingButtonVisible)
-    }
-  }
-
-  private func setNowPlayingButtonVisible(_ template: CPTemplate?, visible: Bool) {
-    guard let template else {
-      return
-    }
-    let selector = Selector(("setShowsNowPlayingButton:"))
-    if template.responds(to: selector) {
-      template.setValue(visible, forKey: "showsNowPlayingButton")
     }
   }
 
@@ -722,6 +702,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     serverTemplate = nil
     localTemplate = nil
     emptyTemplate = nil
+    loadingTemplate = nil
     tabBarTemplate = nil
     nowPlayingItem = nil
     sourceState = .empty

@@ -32,6 +32,8 @@ class CustomShuffleSettingsPage extends StatefulWidget {
 
 enum _CustomShuffleView { artists, genres }
 
+enum _CustomShuffleTarget { server, local }
+
 class _GenreOption {
   const _GenreOption({required this.key, required this.label});
 
@@ -45,6 +47,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final Set<String> _selectedArtistIds = <String>{};
   final Set<String> _selectedGenres = <String>{};
+  final Set<String> _selectedLocalArtistIds = <String>{};
+  final Set<String> _selectedLocalGenres = <String>{};
+  _CustomShuffleTarget _target = _CustomShuffleTarget.server;
   _CustomShuffleView _view = _CustomShuffleView.artists;
   Timer? _saveDebounce;
   Future<void> _saveChain = Future.value();
@@ -71,6 +76,12 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     _selectedGenres.addAll(
       settings.genres.map(_normalizeGenre).where((genre) => genre.isNotEmpty),
     );
+    _selectedLocalArtistIds.addAll(settings.localArtistIds);
+    _selectedLocalGenres.addAll(
+      settings.localGenres
+          .map(_normalizeGenre)
+          .where((genre) => genre.isNotEmpty),
+    );
     if (_controller!.authState.isAuthorized && _controller!.artists.isEmpty) {
       unawaited(_controller!.loadArtists());
     }
@@ -92,12 +103,25 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     super.dispose();
   }
 
+  Set<String> get _activeArtistSelection =>
+      _target == _CustomShuffleTarget.server
+      ? _selectedArtistIds
+      : _selectedLocalArtistIds;
+
+  Set<String> get _activeGenreSelection =>
+      _target == _CustomShuffleTarget.server
+      ? _selectedGenres
+      : _selectedLocalGenres;
+
+  bool get _showingServerTarget => _target == _CustomShuffleTarget.server;
+
   void _toggleArtist(String artistId) {
     setState(() {
-      if (_selectedArtistIds.contains(artistId)) {
-        _selectedArtistIds.remove(artistId);
+      final selection = _activeArtistSelection;
+      if (selection.contains(artistId)) {
+        selection.remove(artistId);
       } else {
-        _selectedArtistIds.add(artistId);
+        selection.add(artistId);
       }
     });
     _scheduleSave();
@@ -105,7 +129,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
 
   void _selectAllArtists(List<Artist> artists) {
     setState(() {
-      _selectedArtistIds
+      _activeArtistSelection
         ..clear()
         ..addAll(artists.map((artist) => artist.id));
     });
@@ -117,6 +141,13 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     if (controller == null) {
       return;
     }
+    if (!_showingServerTarget) {
+      final localArtists = controller.offlineLibrarySnapshot.artistGroups
+          .map((group) => group.toArtist())
+          .toList(growable: false);
+      _selectAllArtists(localArtists);
+      return;
+    }
     await controller.loadAllArtists();
     if (!mounted) {
       return;
@@ -125,16 +156,17 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
   }
 
   void _clearArtists() {
-    setState(() => _selectedArtistIds.clear());
+    setState(() => _activeArtistSelection.clear());
     _scheduleSave();
   }
 
   void _toggleGenre(String genreKey) {
     setState(() {
-      if (_selectedGenres.contains(genreKey)) {
-        _selectedGenres.remove(genreKey);
+      final selection = _activeGenreSelection;
+      if (selection.contains(genreKey)) {
+        selection.remove(genreKey);
       } else {
-        _selectedGenres.add(genreKey);
+        selection.add(genreKey);
       }
     });
     _scheduleSave();
@@ -142,7 +174,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
 
   void _selectAllGenres(List<_GenreOption> genres) {
     setState(() {
-      _selectedGenres
+      _activeGenreSelection
         ..clear()
         ..addAll(genres.map((genre) => genre.key));
     });
@@ -150,7 +182,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
   }
 
   void _clearGenres() {
-    setState(() => _selectedGenres.clear());
+    setState(() => _activeGenreSelection.clear());
     _scheduleSave();
   }
 
@@ -163,6 +195,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     setState(() {});
     final controller = _controller;
     if (controller == null) {
+      return;
+    }
+    if (!_showingServerTarget) {
       return;
     }
     if (_artistSearchController.text.trim().isNotEmpty &&
@@ -182,10 +217,14 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     }
     final artistIds = _selectedArtistIds.toList();
     final genres = _selectedGenres.toList()..sort();
+    final localArtistIds = _selectedLocalArtistIds.toList();
+    final localGenres = _selectedLocalGenres.toList()..sort();
     _saveChain = _saveChain.then(
       (_) => controller.updateCustomShuffleSettings(
         artistIds: artistIds,
         genres: genres,
+        localArtistIds: localArtistIds,
+        localGenres: localGenres,
       ),
     );
   }
@@ -211,7 +250,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
         labels.putIfAbsent(normalized, () => genre.trim());
       }
     }
-    for (final selected in _selectedGenres) {
+    for (final selected in _activeGenreSelection) {
       if (selected.trim().isEmpty) {
         continue;
       }
@@ -241,98 +280,121 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    final canLoadArtists = controller.authState.isAuthorized;
+    final canUseServerArtists = controller.authState.isAuthorized;
 
     return Scaffold(
       backgroundColor: bgDark,
       body: SafeArea(
-        child: StreamBuilder<List<Artist>>(
-          stream: controller.artistsStream,
-          initialData: controller.artists,
-          builder: (context, snapshot) {
-            final artists = snapshot.data ?? <Artist>[];
-            final filteredArtists = _filterArtists(artists);
-            final genreOptions = _buildGenreOptions(artists);
-            final filteredGenres = _filterGenres(genreOptions);
-            return StreamBuilder<bool>(
-              stream: controller.artistsLoadingStream,
-              initialData: controller.artistsLoading,
-              builder: (context, loadingSnapshot) {
-                final isLoading = loadingSnapshot.data ?? false;
-                final showingArtists = _view == _CustomShuffleView.artists;
-                if (showingArtists &&
-                    artists.isNotEmpty &&
-                    controller.hasMoreArtists &&
-                    !isLoading &&
-                    _artistSearchController.text.trim().isEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _maybeLoadMoreArtists(),
-                  );
-                }
-                return ListView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    CommandLinkButton(
-                      label: 'Back to settings',
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(height: 12),
-                    const ObsidianSectionHeader(
-                      title: 'Custom Shuffle',
-                      subtitle:
-                          'Pick artists and genres used for library shuffles.',
-                    ),
-                    const SizedBox(height: 20),
-                    _buildViewToggle(),
-                    const SizedBox(height: 16),
-                    if (showingArtists) ...[
-                      _buildSelectionSection(
-                        title: 'Artists',
-                        controller: _artistSearchController,
-                        hintText: 'Search artists',
-                        summary: controller.hasMoreArtists
-                            ? 'Selected ${_selectedArtistIds.length} of loaded ${artists.length}'
-                            : 'Selected ${_selectedArtistIds.length} of ${artists.length}',
-                        onSelectAll:
-                            !canLoadArtists ||
-                                (artists.isEmpty && !controller.hasMoreArtists)
-                            ? null
-                            : _selectAllAvailableArtists,
-                        onClear: !canLoadArtists || _selectedArtistIds.isEmpty
-                            ? null
-                            : _clearArtists,
-                        child: _buildArtistList(
-                          canLoadArtists: canLoadArtists,
-                          artists: filteredArtists,
-                          fullCount: artists.length,
-                          isLoading: isLoading,
-                          hasMoreArtists: controller.hasMoreArtists,
+        child: StreamBuilder<Object?>(
+          stream: controller.offlineLibrarySnapshotStream,
+          initialData: controller.offlineLibrarySnapshot,
+          builder: (context, _) {
+            final localArtists = controller.offlineLibrarySnapshot.artistGroups
+                .map((group) => group.toArtist())
+                .toList(growable: false);
+            return StreamBuilder<List<Artist>>(
+              stream: controller.artistsStream,
+              initialData: controller.artists,
+              builder: (context, snapshot) {
+                final serverArtists = snapshot.data ?? <Artist>[];
+                final artists = _showingServerTarget
+                    ? serverArtists
+                    : localArtists;
+                final filteredArtists = _filterArtists(artists);
+                final genreOptions = _buildGenreOptions(artists);
+                final filteredGenres = _filterGenres(genreOptions);
+                return StreamBuilder<bool>(
+                  stream: controller.artistsLoadingStream,
+                  initialData: controller.artistsLoading,
+                  builder: (context, loadingSnapshot) {
+                    final serverLoading = loadingSnapshot.data ?? false;
+                    final isLoading = _showingServerTarget && serverLoading;
+                    final hasMoreArtists =
+                        _showingServerTarget && controller.hasMoreArtists;
+                    final canUseArtists = _showingServerTarget
+                        ? canUseServerArtists
+                        : true;
+                    final showingArtists = _view == _CustomShuffleView.artists;
+                    if (_showingServerTarget &&
+                        showingArtists &&
+                        artists.isNotEmpty &&
+                        hasMoreArtists &&
+                        !isLoading &&
+                        _artistSearchController.text.trim().isEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => _maybeLoadMoreArtists(),
+                      );
+                    }
+                    return ListView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(20),
+                      children: [
+                        CommandLinkButton(
+                          label: 'Back to settings',
+                          onTap: () => Navigator.of(context).pop(),
                         ),
-                      ),
-                    ] else ...[
-                      _buildSelectionSection(
-                        title: 'Genres',
-                        controller: _genreSearchController,
-                        hintText: 'Search genres',
-                        summary:
-                            'Selected ${_selectedGenres.length} of ${genreOptions.length}',
-                        onSelectAll: !canLoadArtists || genreOptions.isEmpty
-                            ? null
-                            : () => _selectAllGenres(genreOptions),
-                        onClear: !canLoadArtists || _selectedGenres.isEmpty
-                            ? null
-                            : _clearGenres,
-                        child: _buildGenreList(
-                          canLoadArtists: canLoadArtists,
-                          genres: filteredGenres,
-                          fullCount: genreOptions.length,
-                          isLoading: isLoading,
-                          hasMoreArtists: controller.hasMoreArtists,
+                        const SizedBox(height: 12),
+                        const ObsidianSectionHeader(
+                          title: 'Custom Shuffle',
+                          subtitle:
+                              'Pick artists and genres used for library shuffles.',
                         ),
-                      ),
-                    ],
-                  ],
+                        const SizedBox(height: 20),
+                        _buildTargetToggle(),
+                        const SizedBox(height: 12),
+                        _buildViewToggle(),
+                        const SizedBox(height: 16),
+                        if (showingArtists) ...[
+                          _buildSelectionSection(
+                            title: 'Artists',
+                            controller: _artistSearchController,
+                            hintText: 'Search artists',
+                            summary: hasMoreArtists
+                                ? 'Selected ${_activeArtistSelection.length} of loaded ${artists.length}'
+                                : 'Selected ${_activeArtistSelection.length} of ${artists.length}',
+                            onSelectAll:
+                                !canUseArtists ||
+                                    (artists.isEmpty && !hasMoreArtists)
+                                ? null
+                                : _selectAllAvailableArtists,
+                            onClear:
+                                !canUseArtists || _activeArtistSelection.isEmpty
+                                ? null
+                                : _clearArtists,
+                            child: _buildArtistList(
+                              canLoadArtists: canUseArtists,
+                              artists: filteredArtists,
+                              fullCount: artists.length,
+                              isLoading: isLoading,
+                              hasMoreArtists: hasMoreArtists,
+                            ),
+                          ),
+                        ] else ...[
+                          _buildSelectionSection(
+                            title: 'Genres',
+                            controller: _genreSearchController,
+                            hintText: 'Search genres',
+                            summary:
+                                'Selected ${_activeGenreSelection.length} of ${genreOptions.length}',
+                            onSelectAll: !canUseArtists || genreOptions.isEmpty
+                                ? null
+                                : () => _selectAllGenres(genreOptions),
+                            onClear:
+                                !canUseArtists || _activeGenreSelection.isEmpty
+                                ? null
+                                : _clearGenres,
+                            child: _buildGenreList(
+                              canLoadArtists: canUseArtists,
+                              genres: filteredGenres,
+                              fullCount: genreOptions.length,
+                              isLoading: isLoading,
+                              hasMoreArtists: hasMoreArtists,
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 );
               },
             );
@@ -414,13 +476,47 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     );
   }
 
+  Widget _buildTargetToggle() {
+    final showingServer = _target == _CustomShuffleTarget.server;
+    final theme = Theme.of(context);
+    final borderColor = theme.dividerColor.withValues(alpha: 0.35);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildToggleOption(
+              label: 'Server',
+              icon: Icons.cloud_queue_rounded,
+              isActive: showingServer,
+              onTap: () =>
+                  setState(() => _target = _CustomShuffleTarget.server),
+              border: Border(right: BorderSide(color: borderColor)),
+            ),
+          ),
+          Expanded(
+            child: _buildToggleOption(
+              label: 'Local',
+              icon: Icons.download_for_offline_rounded,
+              isActive: !showingServer,
+              onTap: () => setState(() => _target = _CustomShuffleTarget.local),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildViewToggle() {
     final showingArtists = _view == _CustomShuffleView.artists;
     final theme = Theme.of(context);
-    final borderColor = theme.dividerColor.withOpacity(0.35);
+    final borderColor = theme.dividerColor.withValues(alpha: 0.35);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: Colors.white.withValues(alpha: 0.03),
         border: Border.all(color: borderColor),
       ),
       child: Row(
@@ -442,7 +538,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
               onTap: () {
                 setState(() => _view = _CustomShuffleView.genres);
                 final controller = _controller;
-                if (controller != null && controller.hasMoreArtists) {
+                if (_showingServerTarget &&
+                    controller != null &&
+                    controller.hasMoreArtists) {
                   unawaited(controller.loadAllArtists());
                 }
               },
@@ -463,7 +561,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     final activeColor = ObsidianPalette.gold;
     final textColor = isActive ? activeColor : ObsidianPalette.textMuted;
     final fill = isActive
-        ? ObsidianPalette.gold.withOpacity(0.12)
+        ? ObsidianPalette.gold.withValues(alpha: 0.12)
         : Colors.transparent;
 
     return Material(
@@ -524,11 +622,11 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
           itemCount: artists.length,
           separatorBuilder: (_, __) => Divider(
             height: 1,
-            color: ObsidianPalette.border.withOpacity(0.35),
+            color: ObsidianPalette.border.withValues(alpha: 0.35),
           ),
           itemBuilder: (context, index) {
             final artist = artists[index];
-            final selected = _selectedArtistIds.contains(artist.id);
+            final selected = _activeArtistSelection.contains(artist.id);
             final subtitle = artist.genres.isEmpty
                 ? null
                 : artist.genres.join(', ');
@@ -569,11 +667,13 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: genres.length,
-      separatorBuilder: (_, __) =>
-          Divider(height: 1, color: ObsidianPalette.border.withOpacity(0.35)),
+      separatorBuilder: (_, __) => Divider(
+        height: 1,
+        color: ObsidianPalette.border.withValues(alpha: 0.35),
+      ),
       itemBuilder: (context, index) {
         final genre = genres[index];
-        final selected = _selectedGenres.contains(genre.key);
+        final selected = _activeGenreSelection.contains(genre.key);
         return _buildSelectableRow(
           title: genre.label,
           selected: selected,
@@ -653,6 +753,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       return;
     }
     if (_view != _CustomShuffleView.artists) {
+      return;
+    }
+    if (!_showingServerTarget) {
       return;
     }
     if (_artistSearchController.text.trim().isNotEmpty) {

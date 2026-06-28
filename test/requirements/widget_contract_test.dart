@@ -20,6 +20,7 @@ import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
 import 'package:phonolite_app/widgets/modals/confirmation_modal.dart';
 import 'package:phonolite_app/widgets/modals/download_manager_panel.dart';
 import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
+import 'package:phonolite_app/widgets/modals/obsidian_adaptive_modal.dart';
 import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/collection_view_toggle_button.dart';
 import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
@@ -122,6 +123,81 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('expanded now playing sheet uses native mobile treatment', () {
+      final source = readProjectFile(
+        'lib/widgets/display/now_playing_bar.dart',
+      );
+
+      expectContainsAll(source, const [
+        'const double _compactPlaybackChromeWidth = 980;',
+        'bool _usesNativeMobileExpandedSheet(BuildContext context)',
+        'platform == TargetPlatform.iOS || platform == TargetPlatform.android',
+        'useSafeArea: useNativeMobileTreatment,',
+        'barrierColor: useNativeMobileTreatment',
+        'useNativeMobileTreatment ? size.height : size.height * 0.92',
+        '? ObsidianPalette.obsidianElevated',
+        ': maybeBlur(sigma: 40, child: sheetBody)',
+      ]);
+    });
+
+    test('local shuffle modal mirrors server shuffle modes', () {
+      final source = readProjectFile(
+        'lib/widgets/display/now_playing_bar.dart',
+      );
+
+      expectContainsAll(source, const [
+        'const items = [',
+        'ShuffleMode.artist,',
+        'ShuffleMode.album,',
+        'ShuffleMode.currentPlaylist,',
+        'ShuffleMode.custom,',
+        'customSettings.localArtistIds.isNotEmpty',
+        'customSettings.localGenres.isNotEmpty',
+        'ShuffleMode.artist when !serverScope => localContextEnabled',
+        'ShuffleMode.album when !serverScope => localContextEnabled',
+        'ShuffleMode.custom when !serverScope =>',
+        'downloadedEnabled && customEnabled',
+      ]);
+    });
+
+    test('shuffle modal does not block on liked-state loads', () {
+      final source = readProjectFile(
+        'lib/widgets/display/now_playing_bar.dart',
+      );
+
+      expectContainsAll(source, const [
+        'void _warmShuffleLikedState(',
+        'unawaited(',
+        'controller.loadLocalLikedTracks()',
+        'StreamBuilder<List<Track>>',
+        'controller.localLikedStream',
+      ]);
+      expect(
+        source,
+        isNot(contains('await controller.loadLocalLikedTracks();')),
+      );
+      expect(source, isNot(contains('await controller.loadLikedTracks();')));
+    });
+
+    test('now playing source tags distinguish local playback queues', () {
+      final source = readProjectFile(
+        'lib/widgets/display/now_playing_bar.dart',
+      );
+
+      expectContainsAll(source, const [
+        'String? _queueSourceLabel(PlaybackState state)',
+        "return 'SOURCE: PLAYLIST';",
+        'case PlaybackQueueSource.offline:',
+        'switch (state.localPlaybackSource)',
+        'case LocalPlaybackSource.library:',
+        "return 'SOURCE: LOCAL LIBRARY';",
+        'case LocalPlaybackSource.liked:',
+        "return 'SOURCE: LOCAL LIKED';",
+        'case LocalPlaybackSource.playlist:',
+        "return 'SOURCE: LOCAL PLAYLIST';",
+      ]);
     });
 
     testWidgets('search hud clears input and routes submit actions', (
@@ -647,6 +723,56 @@ void main() {
       expect(savedTarget, PlaylistEditorTarget.server);
     });
 
+    testWidgets('playlist editor mobile keyboard actions dismiss editing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrapInTestApp(
+          PlaylistEditorModal(
+            title: 'Create playlist',
+            initialValue: '',
+            onSubmit: (_, _, _, _) {},
+          ),
+        ),
+      );
+
+      final fields = tester
+          .widgetList<TextField>(find.byType(TextField))
+          .toList(growable: false);
+      expect(fields, hasLength(2));
+      expect(fields[0].textInputAction, TextInputAction.done);
+      expect(fields[1].textInputAction, TextInputAction.done);
+      expect(fields[1].keyboardType, TextInputType.multiline);
+      expect(fields[0].onSubmitted, isNotNull);
+      expect(fields[1].onSubmitted, isNotNull);
+    });
+
+    test('playlist editor uses mobile photo picker and byte MIME fallback', () {
+      final pickerSource = readProjectFile(
+        'lib/widgets/modals/playlist_image_file_picker.dart',
+      );
+      final editorSource = readProjectFile(
+        'lib/widgets/modals/playlist_editor_modal.dart',
+      );
+
+      expectContainsAll(pickerSource, const [
+        "import 'package:image_picker/image_picker.dart' as image_picker;",
+        'bool get _usePhotoLibraryPicker',
+        'TargetPlatform.android || TargetPlatform.iOS => true',
+        'image_picker.ImagePicker().pickImage(',
+        'source: image_picker.ImageSource.gallery',
+        'return await openFile(acceptedTypeGroups: acceptedTypeGroups);',
+      ]);
+      expectContainsAll(editorSource, const [
+        'final contentType = _contentTypeForFile(file, bytes);',
+        'file.mimeType?.split',
+        'String _contentTypeForBytes(Uint8List bytes)',
+        "return 'image/jpeg';",
+        "return 'image/png';",
+        "return 'image/webp';",
+      ]);
+    });
+
     testWidgets('add to playlist modal filters, adds, and removes tracks', (
       tester,
     ) async {
@@ -1121,6 +1247,7 @@ void main() {
     testWidgets('download manager panel renders grouped states and actions', (
       tester,
     ) async {
+      _setViewport(tester, const Size(900, 900));
       final downloads = <OfflineTrackDownload>[
         _download('queued', OfflineDownloadStatus.queued),
         _download('paused', OfflineDownloadStatus.paused),
@@ -1169,6 +1296,7 @@ void main() {
     testWidgets('download manager does not clear completed cached tracks', (
       tester,
     ) async {
+      _setViewport(tester, const Size(900, 900));
       final downloads = <OfflineTrackDownload>[
         _download('cached', OfflineDownloadStatus.downloaded),
       ];
@@ -1182,6 +1310,43 @@ void main() {
       expect(find.text('RESUME PAUSED'), findsOneWidget);
       expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
       expect(find.text('No queued downloads'), findsOneWidget);
+    });
+
+    testWidgets('download manager mobile shell uses compact modal chrome', (
+      tester,
+    ) async {
+      _setViewport(tester, const Size(390, 844));
+      final downloads = <OfflineTrackDownload>[
+        _download('queued', OfflineDownloadStatus.queued),
+        _download('paused', OfflineDownloadStatus.paused),
+        _download('failed', OfflineDownloadStatus.corrupt),
+      ];
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          DownloadManagerPanel(
+            downloadsOverride: downloads,
+            jobsOverride: <OfflineDownloadJob>[
+              _job('artist-active', 'artist', OfflineDownloadStatus.queued),
+            ],
+            presentation: ObsidianAdaptiveModalPresentation.sheet,
+          ),
+        ),
+      );
+
+      expect(find.text('Download Manager'), findsOneWidget);
+      expect(find.byTooltip('Close'), findsOneWidget);
+      expect(find.byTooltip('Pause all'), findsOneWidget);
+      expect(find.byTooltip('Resume paused'), findsOneWidget);
+      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
+      expect(find.text('PAUSE ALL'), findsNothing);
+      expect(find.text('RESUME PAUSED'), findsNothing);
+      expect(find.text('CLEAR PARTIAL / FAILED'), findsNothing);
+      expect(find.text('Rolling Jobs'), findsOneWidget);
+      expect(find.text('Queue'), findsOneWidget);
+      expect(find.text('Paused'), findsOneWidget);
+      expect(find.text('Needs Attention'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('download manager panel sorts the live queue', (tester) async {

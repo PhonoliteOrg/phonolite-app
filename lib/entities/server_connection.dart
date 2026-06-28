@@ -124,8 +124,8 @@ class ServerConnection {
     return token;
   }
 
-  Future<void> logout() async {
-    await _postVoid('/auth/logout', {});
+  Future<void> logout({Duration timeout = _defaultRequestTimeout}) async {
+    await _postVoid('/auth/logout', {}, timeout: timeout);
   }
 
   Future<List<Artist>> fetchArtistsPage({
@@ -817,7 +817,11 @@ class ServerConnection {
     throw Exception('Expected list response for $path');
   }
 
-  Future<void> _postVoid(String path, Map<String, dynamic> payload) async {
+  Future<void> _postVoid(
+    String path,
+    Map<String, dynamic> payload, {
+    Duration timeout = _defaultRequestTimeout,
+  }) async {
     final response = await _executeRequest(
       () => _client.post(
         Uri.parse('$_baseUrl$path'),
@@ -825,6 +829,7 @@ class ServerConnection {
         body: jsonEncode(payload),
       ),
       label: 'POST $path',
+      timeout: timeout,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, response.body);

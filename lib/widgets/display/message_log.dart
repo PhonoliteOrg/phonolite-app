@@ -40,7 +40,8 @@ class _MessageLogState extends State<MessageLog> {
     final defaultSubtitle = widget.messages.isEmpty
         ? 'No events yet'
         : 'System log';
-    final combined = widget.messages.map((entry) => entry.format()).join('\n');
+    final displayMessages = widget.messages.reversed.toList(growable: false);
+    final combined = displayMessages.map((entry) => entry.format()).join('\n');
     final canCopy = combined.isNotEmpty;
     final copyButton = TextButton.icon(
       onPressed: canCopy
@@ -79,8 +80,8 @@ class _MessageLogState extends State<MessageLog> {
 
     final lineColor = ObsidianPalette.border.withOpacity(0.35);
     final lines = <Widget>[];
-    for (var i = 0; i < widget.messages.length; i++) {
-      final entry = widget.messages[i];
+    for (var i = 0; i < displayMessages.length; i++) {
+      final entry = displayMessages[i];
       final color = _colorForLevel(entry.level, theme);
       lines.add(
         SelectableText(
@@ -88,7 +89,7 @@ class _MessageLogState extends State<MessageLog> {
           style: baseStyle.copyWith(color: color),
         ),
       );
-      if (i < widget.messages.length - 1) {
+      if (i < displayMessages.length - 1) {
         lines.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -146,7 +147,6 @@ class _MessageLogState extends State<MessageLog> {
       case LogLevel.debug:
         return ObsidianPalette.textMuted;
       case LogLevel.info:
-      default:
         return ObsidianPalette.textPrimary;
     }
   }

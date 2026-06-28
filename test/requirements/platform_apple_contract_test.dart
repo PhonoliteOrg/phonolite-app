@@ -16,6 +16,9 @@ void main() {
       final nowPlaying = readProjectFile(
         'ios/Runner/AppDelegate+NowPlaying.swift',
       );
+      final nowPlayingCoordinator = readProjectFile(
+        'ios/Runner/NowPlayingCoordinator.swift',
+      );
       final permissions = readProjectFile(
         'ios/Runner/LocalNetworkPermissionManager.swift',
       );
@@ -41,6 +44,7 @@ void main() {
         '.allowBluetoothA2DP',
         'handleAudioSessionInterruption',
         'handleAudioSessionRouteChange',
+        'nowPlayingCoordinator.isPlaying',
         'sendRemoteCommandToFlutter("pause")',
       ]);
       expectContainsAll(channels, const [
@@ -50,6 +54,18 @@ void main() {
         'localNetworkPermissions.configureChannel(messenger: messenger)',
       ]);
       expectContainsAll(nowPlaying, const [
+        'nowPlayingCoordinator.update(',
+        'nowPlayingCoordinator.clear(',
+        'nowPlayingCoordinator.refreshForCarPlay(',
+        'MPRemoteCommandCenter.shared()',
+        'nowPlayingCoordinator.isPlaying',
+        '"play"',
+        '"pause"',
+        '"next"',
+        '"prev"',
+      ]);
+      expectContainsAll(nowPlayingCoordinator, const [
+        'final class NowPlayingCoordinator',
         'MPNowPlayingInfoCenter.default().nowPlayingInfo',
         'currentArtworkKey',
         'args["artworkKey"]',
@@ -57,11 +73,6 @@ void main() {
         'fetchArtwork(',
         'artworkKey: normalizedArtworkKey',
         'self.currentArtworkKey == artworkKey',
-        'MPRemoteCommandCenter.shared()',
-        '"play"',
-        '"pause"',
-        '"next"',
-        '"prev"',
       ]);
       expectContainsAll(permissions, const [
         '"getLocalNetworkPermission"',
@@ -101,13 +112,15 @@ void main() {
         '-Wl,-exported_symbol,_phonolite_local_audio_position_ms',
         '-Wl,-exported_symbol,_phonolite_local_audio_last_error',
         '-Wl,-exported_symbol,_phonolite_local_audio_close',
+        'NowPlayingCoordinator.swift',
       ]);
       expectContainsAll(infoPlist, const [
         'NSLocalNetworkUsageDescription',
+        'NSPhotoLibraryUsageDescription',
         '_phonolite._tcp',
         'CPTemplateApplicationScene',
         '<string>audio</string>',
-        'NSAllowsArbitraryLoads',
+        'NSAllowsLocalNetworking',
       ]);
       expectContainsAll(sceneDelegate, const [
         'configureNowPlayingChannel()',
@@ -119,9 +132,11 @@ void main() {
 
     test('carplay scene preserves home library and now playing flows', () {
       final source = readProjectFile('ios/Runner/CarPlaySceneDelegate.swift');
+      final controller = readProjectFile('lib/entities/app_controller.dart');
 
       expectContainsAll(source, const [
         'CPNowPlayingTemplate.shared',
+        'buildLoadingTemplate()',
         'title: "Server"',
         'title: "Local"',
         'getCarPlayState',
@@ -137,12 +152,33 @@ void main() {
         'withRenderingMode(.alwaysTemplate)',
         '"startShuffle"',
         'updateNowPlayingButtons(liked: Bool, available: Bool)',
-        'updateNowPlayingVisibility(hasTrack: Bool)',
-        'self.nowPlayingButtonVisible = hasTrack',
+        'func updateNowPlayingVisibility(hasTrack _: Bool) {}',
         'sendRemoteCommandToFlutter("toggleLike")',
       ]);
       expect(source, isNot(contains('title: "Listen"')));
       expect(source, isNot(contains('getListenActions')));
+      expect(source, isNot(contains('CPBarButton(image:')));
+      expect(source, isNot(contains('trailingNavigationBarButtons')));
+      expect(source, isNot(contains('nowPlayingButtonVisible')));
+      expect(source, isNot(contains('setShowsNowPlayingButton')));
+      expect(
+        source,
+        isNot(contains('setValue(visible, forKey: "showsNowPlayingButton")')),
+      );
+
+      expectContainsAll(controller, const [
+        "case 'startShuffle':",
+        "artistId: args['artistId']?.toString()",
+        "albumId: args['albumId']?.toString()",
+        "playlistId: args['playlistId']?.toString()",
+        "if (kind == 'custom')",
+        '_customShuffleSettings.localArtistIds.isEmpty',
+        '_customShuffleSettings.localGenres.isEmpty',
+        "'artist' => ShuffleMode.artist",
+        "'album' => ShuffleMode.album",
+        "'custom' => ShuffleMode.custom",
+        'await queueLocalShuffle(',
+      ]);
     });
 
     test('macos preserves app shell and native output device enumeration', () {

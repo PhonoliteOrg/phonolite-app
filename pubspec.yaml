@@ -29,6 +29,7 @@ dependencies:
   sqlite3: ^2.4.7
   sqlite3_flutter_libs: ^0.5.24
   file_selector: ^1.1.0
+  image_picker: ^1.2.2
 
 dev_dependencies:
   flutter_test:

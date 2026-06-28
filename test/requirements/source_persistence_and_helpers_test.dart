@@ -38,6 +38,8 @@ void main() {
 
       expectContainsAll(source, const [
         "static const String _fileName = 'shuffle_settings.json';",
+        'localArtistIds',
+        'localGenres',
         'text = text.toLowerCase();',
         'getApplicationCacheDirectory()',
         "Platform.environment['LOCALAPPDATA']",
