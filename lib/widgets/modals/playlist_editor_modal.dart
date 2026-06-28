@@ -157,11 +157,6 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
     if (file == null) {
       return;
     }
-    final contentType = _contentTypeForName(file.name);
-    if (contentType == 'application/octet-stream') {
-      setState(() => _imageError = 'Selected image type is not supported.');
-      return;
-    }
     final Uint8List bytes;
     try {
       bytes = await file.readAsBytes();
@@ -178,6 +173,11 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
     }
     if (bytes.length > _maxImageBytes) {
       setState(() => _imageError = 'Selected image is too large.');
+      return;
+    }
+    final contentType = _contentTypeForFile(file, bytes);
+    if (contentType == 'application/octet-stream') {
+      setState(() => _imageError = 'Selected image type is not supported.');
       return;
     }
     setState(() {
@@ -253,7 +253,8 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
           label: 'Name',
           hintText: 'Playlist name',
           maxLines: 1,
-          textInputAction: TextInputAction.next,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => FocusScope.of(context).unfocus(),
         ),
         const SizedBox(height: 6),
         Align(
@@ -274,8 +275,9 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
           height: 132,
           minLines: 4,
           maxLines: 4,
-          textInputAction: TextInputAction.newline,
+          textInputAction: TextInputAction.done,
           keyboardType: TextInputType.multiline,
+          onSubmitted: (_) => FocusScope.of(context).unfocus(),
         ),
         const SizedBox(height: 6),
         Align(
@@ -401,6 +403,21 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
     return const PlaylistImageEdit.keep();
   }
 
+  String _contentTypeForFile(XFile file, Uint8List bytes) {
+    final mimeType = file.mimeType?.split(';').first.trim().toLowerCase();
+    if (mimeType == 'image/jpeg' ||
+        mimeType == 'image/jpg' ||
+        mimeType == 'image/png' ||
+        mimeType == 'image/webp') {
+      return mimeType == 'image/jpg' ? 'image/jpeg' : mimeType!;
+    }
+    final nameType = _contentTypeForName(file.name);
+    if (nameType != 'application/octet-stream') {
+      return nameType;
+    }
+    return _contentTypeForBytes(bytes);
+  }
+
   String _contentTypeForName(String name) {
     final lower = name.trim().toLowerCase();
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
@@ -410,6 +427,38 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
       return 'image/png';
     }
     if (lower.endsWith('.webp')) {
+      return 'image/webp';
+    }
+    return 'application/octet-stream';
+  }
+
+  String _contentTypeForBytes(Uint8List bytes) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'image/jpeg';
+    }
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0D &&
+        bytes[5] == 0x0A &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0x0A) {
+      return 'image/png';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
       return 'image/webp';
     }
     return 'application/octet-stream';

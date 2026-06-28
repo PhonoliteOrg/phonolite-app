@@ -15,47 +15,15 @@ import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 import '../ui/tech_button.dart';
 import 'confirmation_modal.dart';
+import 'obsidian_adaptive_modal.dart';
 
 Future<void> showDownloadManagerPanel(BuildContext context) async {
   final controller = AppScope.of(context);
-  final size = MediaQuery.of(context).size;
-  if (size.width >= 820) {
-    const dialogInset = EdgeInsets.symmetric(horizontal: 24, vertical: 24);
-    final dialogWidth = (size.width - dialogInset.horizontal)
-        .clamp(0.0, 680.0)
-        .toDouble();
-    final dialogHeight = (size.height - dialogInset.vertical)
-        .clamp(0.0, 720.0)
-        .toDouble();
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      builder: (context) {
-        return Dialog(
-          insetPadding: dialogInset,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          child: SizedBox(
-            width: dialogWidth,
-            height: dialogHeight,
-            child: DownloadManagerPanel(controller: controller, cut: 18),
-          ),
-        );
-      },
-    );
-    return;
-  }
-
-  await showModalBottomSheet<void>(
+  await ObsidianAdaptiveModal.show<void>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) => SizedBox(
-      height: size.height * 0.92,
-      child: DownloadManagerPanel(controller: controller),
+    builder: (context, presentation) => DownloadManagerPanel(
+      controller: controller,
+      presentation: presentation,
     ),
   );
 }
@@ -66,7 +34,7 @@ class DownloadManagerPanel extends StatelessWidget {
     this.controller,
     this.downloadsOverride,
     this.jobsOverride,
-    this.cut = 0,
+    this.presentation = ObsidianAdaptiveModalPresentation.dialog,
   }) : assert(
          controller != null ||
              downloadsOverride != null ||
@@ -77,7 +45,7 @@ class DownloadManagerPanel extends StatelessWidget {
   final AppController? controller;
   final List<OfflineTrackDownload>? downloadsOverride;
   final List<OfflineDownloadJob>? jobsOverride;
-  final double cut;
+  final ObsidianAdaptiveModalPresentation presentation;
 
   @override
   Widget build(BuildContext context) {
@@ -114,92 +82,71 @@ class DownloadManagerPanel extends StatelessWidget {
   }
 
   Widget _panel(BuildContext context, _DownloadManagerViewState state) {
-    return GlassPanel(
-      cut: cut,
+    return ObsidianModalSurface(
+      title: 'Download Manager',
+      showDragHandle: presentation == ObsidianAdaptiveModalPresentation.sheet,
       blur: state.hasActiveWork ? 0 : 20,
-      padding: EdgeInsets.zero,
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          ObsidianPalette.obsidianElevated.withValues(alpha: 0.98),
-          ObsidianPalette.obsidian.withValues(alpha: 0.96),
-        ],
-      ),
-      child: SafeArea(child: _content(context, state)),
+      headerActions: _toolbar(context, state),
+      child: _content(context, state),
+    );
+  }
+
+  Widget _toolbar(BuildContext context, _DownloadManagerViewState state) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final iconOnly = constraints.maxWidth < 430;
+        return Wrap(
+          spacing: iconOnly ? 4 : 8,
+          runSpacing: iconOnly ? 2 : 8,
+          children: [
+            TechButton(
+              label: 'Pause all',
+              tooltip: 'Pause all',
+              icon: Icons.pause_rounded,
+              iconOnly: iconOnly,
+              density: TechButtonDensity.compact,
+              chrome: TechButtonChrome.borderless,
+              onTap: controller == null || !state.hasPausable
+                  ? null
+                  : () => unawaited(controller!.pauseAllOfflineDownloads()),
+            ),
+            TechButton(
+              label: 'Resume paused',
+              tooltip: 'Resume paused',
+              icon: Icons.play_arrow_rounded,
+              iconOnly: iconOnly,
+              density: TechButtonDensity.compact,
+              chrome: TechButtonChrome.borderless,
+              onTap: controller == null || !state.hasPaused
+                  ? null
+                  : () => unawaited(controller!.resumePausedOfflineDownloads()),
+            ),
+            TechButton(
+              label: 'Clear partial / failed',
+              tooltip: 'Clear partial / failed',
+              icon: Icons.delete_sweep_rounded,
+              iconOnly: iconOnly,
+              density: TechButtonDensity.compact,
+              chrome: TechButtonChrome.borderless,
+              onTap: controller == null || !state.hasClearable
+                  ? null
+                  : () => unawaited(
+                      _confirmClearPausedCached(
+                        context,
+                        controller!,
+                        state.clearableCount,
+                      ),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   Widget _content(BuildContext context, _DownloadManagerViewState state) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Download Manager',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  TechButton(
-                    label: 'Pause all',
-                    icon: Icons.pause_rounded,
-                    density: TechButtonDensity.compact,
-                    chrome: TechButtonChrome.borderless,
-                    onTap: controller == null || !state.hasPausable
-                        ? null
-                        : () =>
-                              unawaited(controller!.pauseAllOfflineDownloads()),
-                  ),
-                  TechButton(
-                    label: 'Resume paused',
-                    icon: Icons.play_arrow_rounded,
-                    density: TechButtonDensity.compact,
-                    chrome: TechButtonChrome.borderless,
-                    onTap: controller == null || !state.hasPaused
-                        ? null
-                        : () => unawaited(
-                            controller!.resumePausedOfflineDownloads(),
-                          ),
-                  ),
-                  TechButton(
-                    label: 'Clear partial / failed',
-                    icon: Icons.delete_sweep_rounded,
-                    density: TechButtonDensity.compact,
-                    chrome: TechButtonChrome.borderless,
-                    onTap: controller == null || !state.hasClearable
-                        ? null
-                        : () => unawaited(
-                            _confirmClearPausedCached(
-                              context,
-                              controller!,
-                              state.clearableCount,
-                            ),
-                          ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
         Expanded(
           child: state.isEmpty
               ? const EmptyStateText(

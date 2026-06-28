@@ -184,22 +184,58 @@ void main() {
       final settings = CustomShuffleSettings.fromJson(<String, dynamic>{
         'artistIds': <String>['artist-1', 'artist-1 ', 'artist-2', ''],
         'genres': <String>['Ambient', 'ambient', ' IDM ', ''],
+        'localArtistIds': <String>[
+          'local-artist-1',
+          'local-artist-1 ',
+          'local-artist-2',
+          '',
+        ],
+        'localGenres': <String>['Jazz', 'jazz', ' Fusion ', ''],
       });
 
       expect(settings.artistIds, <String>['artist-1', 'artist-2']);
       expect(settings.genres, <String>['ambient', 'idm']);
+      expect(settings.localArtistIds, <String>[
+        'local-artist-1',
+        'local-artist-2',
+      ]);
+      expect(settings.localGenres, <String>['jazz', 'fusion']);
+    });
+
+    test('defaults missing local shuffle filters for old cache files', () {
+      final settings = CustomShuffleSettings.fromJson(<String, dynamic>{
+        'artistIds': <String>['artist-1'],
+        'genres': <String>['Ambient'],
+      });
+
+      expect(settings.artistIds, <String>['artist-1']);
+      expect(settings.genres, <String>['ambient']);
+      expect(settings.localArtistIds, isEmpty);
+      expect(settings.localGenres, isEmpty);
     });
 
     test('copyWith preserves unspecified fields', () {
       const original = CustomShuffleSettings(
         artistIds: <String>['artist-1'],
         genres: <String>['ambient'],
+        localArtistIds: <String>['local-artist-1'],
+        localGenres: <String>['jazz'],
       );
 
-      final updated = original.copyWith(genres: <String>['idm']);
+      final updated = original.copyWith(
+        genres: <String>['idm'],
+        localGenres: <String>['fusion'],
+      );
 
       expect(updated.artistIds, original.artistIds);
       expect(updated.genres, <String>['idm']);
+      expect(updated.localArtistIds, original.localArtistIds);
+      expect(updated.localGenres, <String>['fusion']);
+      expect(
+        updated.toJson(),
+        containsPair('localArtistIds', <String>['local-artist-1']),
+      );
+      expect(updated.toJson(), containsPair('localGenres', <String>['fusion']));
     });
   });
 

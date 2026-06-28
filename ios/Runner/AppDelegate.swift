@@ -8,23 +8,10 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate {
   var nowPlayingChannel: FlutterMethodChannel?
   var carPlayChannel: FlutterMethodChannel?
-  var currentArtworkUrl: String?
-  var currentArtworkToken: String?
-  var currentArtworkKey: String?
-  var currentDuration: Double?
-  var currentIsPlaying: Bool = false
-  var currentLiked: Bool = false
-  var currentTitle: String?
-  var currentArtist: String?
-  var currentAlbum: String?
-  var currentArtwork: UIImage?
-  var currentTrackId: String?
-  var currentEpoch: Int = 0
-  var lastReportedPosition: Double = -1
-  let seekBackwardTolerance: Double = 0.75
   var remoteCommandsConfigured = false
   var audioSessionObserversConfigured = false
   weak var carPlaySceneDelegate: CarPlaySceneDelegate?
+  let nowPlayingCoordinator = NowPlayingCoordinator()
   let localNetworkPermissions = LocalNetworkPermissionManager()
 
   override func application(

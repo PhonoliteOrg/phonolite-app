@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:google_fonts/google_fonts.dart';
 
@@ -26,9 +27,18 @@ double _scaled(BuildContext context, double value) =>
 const Color _queueSourceGreen = Color(0xFF2ED573);
 const int _scrubberAuthoritativeDiscontinuityMs = 1500;
 const int _scrubberMaxInterpolationLeadMs = 1500;
+const double _compactPlaybackChromeWidth = 980;
 
 typedef ShuffleModeChanged =
     void Function(ShuffleMode mode, {ActionScope? scope});
+
+bool _usesNativeMobileExpandedSheet(BuildContext context) {
+  if (kIsWeb) {
+    return false;
+  }
+  final platform = Theme.of(context).platform;
+  return platform == TargetPlatform.iOS || platform == TargetPlatform.android;
+}
 
 Duration _boundedScrubberDisplayPosition({
   required Duration displayPosition,
@@ -143,7 +153,7 @@ String _shuffleLabel(
       return 'Shuffle: Off';
     case ShuffleMode.all:
       return scope == ActionScope.local
-          ? 'Shuffle: Downloaded All'
+          ? 'Shuffle: All Local Library'
           : 'Shuffle: All';
     case ShuffleMode.artist:
       return 'Shuffle: Current Artist';
@@ -164,11 +174,73 @@ String _shuffleLabel(
 
 bool _shuffleCanStartWithoutTrack(ShuffleMode mode, ActionScope scope) {
   if (scope == ActionScope.local) {
-    return mode == ShuffleMode.all || mode == ShuffleMode.liked;
+    return mode == ShuffleMode.all ||
+        mode == ShuffleMode.custom ||
+        mode == ShuffleMode.liked;
   }
   return mode == ShuffleMode.all ||
       mode == ShuffleMode.custom ||
       mode == ShuffleMode.liked;
+}
+
+bool _localTrackAvailableForShuffle(AppController controller, Track? track) {
+  if (track == null) {
+    return false;
+  }
+  for (final offline in controller.offlineTracks) {
+    if (offline.id == track.id ||
+        offline.localId == track.id ||
+        offline.serverTrackId == track.id ||
+        (track.localId != null &&
+            (offline.id == track.localId ||
+                offline.localId == track.localId)) ||
+        (track.serverTrackId != null &&
+            (offline.id == track.serverTrackId ||
+                offline.serverTrackId == track.serverTrackId))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void _warmShuffleLikedState(
+  AppController controller, {
+  required bool serverScope,
+  required bool serverAvailable,
+}) {
+  Future<void>? loadFuture;
+  try {
+    if (serverScope) {
+      if (!serverAvailable || controller.liked.isNotEmpty) {
+        return;
+      }
+      loadFuture = controller.loadLikedTracks();
+    } else {
+      if (controller.localLiked.isNotEmpty) {
+        return;
+      }
+      loadFuture = controller.loadLocalLikedTracks();
+    }
+  } catch (err, stack) {
+    developer.log(
+      'Failed to start shuffle liked-state warmup',
+      name: 'NowPlayingBar',
+      error: err,
+      stackTrace: stack,
+    );
+    return;
+  }
+
+  unawaited(
+    loadFuture.catchError((Object err, StackTrace stack) {
+      developer.log(
+        'Failed to load shuffle liked-state',
+        name: 'NowPlayingBar',
+        error: err,
+        stackTrace: stack,
+      );
+    }),
+  );
 }
 
 bool _transportControlsEnabled(PlaybackState state) {
@@ -203,6 +275,24 @@ String? _rttLabel(PlaybackState state) {
   return '${rtt}ms';
 }
 
+String? _bufferAheadLabel(PlaybackState state) {
+  if (state.track == null || state.isLocalPlayback) {
+    return null;
+  }
+  final durationMs = state.duration.inMilliseconds;
+  if (durationMs <= 0) {
+    return null;
+  }
+  final bufferedEndMs = (state.bufferRatio.clamp(0.0, 1.0) * durationMs)
+      .round();
+  final aheadMs = math.max(0, bufferedEndMs - state.position.inMilliseconds);
+  final aheadSeconds = aheadMs / 1000.0;
+  final label = aheadSeconds < 10
+      ? aheadSeconds.toStringAsFixed(1)
+      : aheadSeconds.round().toString();
+  return 'BUF ${label}s';
+}
+
 List<Widget> _buildTechTags(PlaybackState state) {
   final tags = <Widget>[];
   if (state.shuffleMode != ShuffleMode.off) {
@@ -228,6 +318,10 @@ List<Widget> _buildTechTags(PlaybackState state) {
   if (rtt != null) {
     tags.add(_TechTag(label: 'PING $rtt'));
   }
+  final buffer = _bufferAheadLabel(state);
+  if (buffer != null) {
+    tags.add(_TechTag(label: buffer));
+  }
   return tags;
 }
 
@@ -240,7 +334,16 @@ String? _queueSourceLabel(PlaybackState state) {
     case PlaybackQueueSource.playlist:
       return 'SOURCE: PLAYLIST';
     case PlaybackQueueSource.offline:
-      return null;
+      switch (state.localPlaybackSource) {
+        case LocalPlaybackSource.none:
+          return state.isLocalPlayback ? 'SOURCE: LOCAL' : null;
+        case LocalPlaybackSource.library:
+          return 'SOURCE: LOCAL LIBRARY';
+        case LocalPlaybackSource.liked:
+          return 'SOURCE: LOCAL LIKED';
+        case LocalPlaybackSource.playlist:
+          return 'SOURCE: LOCAL PLAYLIST';
+      }
   }
 }
 
@@ -323,22 +426,23 @@ Future<void> _showShuffleModal(
   final scope = _actionScopeForPlayback(playback);
   final serverScope = scope == ActionScope.server;
   final serverAvailable = serverScope && controller.authState.isAuthorized;
-  if (serverAvailable && controller.liked.isEmpty) {
-    await controller.loadLikedTracks();
-  }
-  if (!serverScope && controller.localLiked.isEmpty) {
-    await controller.loadLocalLikedTracks();
-  }
+  _warmShuffleLikedState(
+    controller,
+    serverScope: serverScope,
+    serverAvailable: serverAvailable,
+  );
   if (!context.mounted) {
     return;
   }
   final customSettings = controller.customShuffleSettings;
-  final customEnabled =
-      customSettings.artistIds.isNotEmpty || customSettings.genres.isNotEmpty;
-  final likedEnabled = serverScope
-      ? controller.liked.isNotEmpty
-      : controller.localLiked.isNotEmpty;
+  final customEnabled = serverScope
+      ? customSettings.artistIds.isNotEmpty || customSettings.genres.isNotEmpty
+      : customSettings.localArtistIds.isNotEmpty ||
+            customSettings.localGenres.isNotEmpty;
   final downloadedEnabled = controller.offlineTracks.isNotEmpty;
+  final localContextEnabled =
+      downloadedEnabled &&
+      _localTrackAvailableForShuffle(controller, playback.track);
   final currentPlaylistEnabled = serverScope
       ? playback.queueSource == PlaybackQueueSource.playlist &&
             (playback.queueSourcePlaylistId?.isNotEmpty ?? false)
@@ -347,52 +451,59 @@ Future<void> _showShuffleModal(
   final result = await showDialog<ShuffleMode>(
     context: context,
     builder: (dialogContext) {
-      final items = serverScope
-          ? const [
-              ShuffleMode.off,
-              ShuffleMode.all,
-              ShuffleMode.artist,
-              ShuffleMode.album,
-              ShuffleMode.currentPlaylist,
-              ShuffleMode.custom,
-              ShuffleMode.liked,
-            ]
-          : const [
-              ShuffleMode.off,
-              ShuffleMode.all,
-              ShuffleMode.currentPlaylist,
-              ShuffleMode.liked,
-            ];
+      const items = [
+        ShuffleMode.off,
+        ShuffleMode.all,
+        ShuffleMode.artist,
+        ShuffleMode.album,
+        ShuffleMode.currentPlaylist,
+        ShuffleMode.custom,
+        ShuffleMode.liked,
+      ];
       return AlertDialog(
         title: Text(serverScope ? 'Server Shuffle Mode' : 'Local Shuffle Mode'),
         content: SizedBox(
           width: _scaled(dialogContext, 320),
-          child: ListView(
-            shrinkWrap: true,
-            children: items.map((mode) {
-              final enabled = switch (mode) {
-                _
-                    when serverScope &&
-                        !serverAvailable &&
-                        mode != ShuffleMode.off =>
-                  false,
-                ShuffleMode.all when !serverScope => downloadedEnabled,
-                ShuffleMode.custom => serverScope && customEnabled,
-                ShuffleMode.liked => likedEnabled,
-                ShuffleMode.currentPlaylist => currentPlaylistEnabled,
-                _ => true,
-              };
-              return ListTile(
-                enabled: enabled,
-                title: Text(_shuffleLabel(mode, scope: scope)),
-                trailing: mode == current
-                    ? const Icon(Icons.check_rounded)
-                    : null,
-                onTap: enabled
-                    ? () => Navigator.of(dialogContext).pop(mode)
-                    : null,
+          child: StreamBuilder<List<Track>>(
+            stream: serverScope
+                ? controller.likedStream
+                : controller.localLikedStream,
+            initialData: serverScope ? controller.liked : controller.localLiked,
+            builder: (context, likedSnapshot) {
+              final likedEnabled =
+                  (likedSnapshot.data ?? const <Track>[]).isNotEmpty;
+              return ListView(
+                shrinkWrap: true,
+                children: items.map((mode) {
+                  final enabled = switch (mode) {
+                    _
+                        when serverScope &&
+                            !serverAvailable &&
+                            mode != ShuffleMode.off =>
+                      false,
+                    ShuffleMode.all when !serverScope => downloadedEnabled,
+                    ShuffleMode.artist when !serverScope => localContextEnabled,
+                    ShuffleMode.album when !serverScope => localContextEnabled,
+                    ShuffleMode.custom when !serverScope =>
+                      downloadedEnabled && customEnabled,
+                    ShuffleMode.custom => customEnabled,
+                    ShuffleMode.liked => likedEnabled,
+                    ShuffleMode.currentPlaylist => currentPlaylistEnabled,
+                    _ => true,
+                  };
+                  return ListTile(
+                    enabled: enabled,
+                    title: Text(_shuffleLabel(mode, scope: scope)),
+                    trailing: mode == current
+                        ? const Icon(Icons.check_rounded)
+                        : null,
+                    onTap: enabled
+                        ? () => Navigator.of(dialogContext).pop(mode)
+                        : null,
+                  );
+                }).toList(),
               );
-            }).toList(),
+            },
           ),
         ),
       );
@@ -424,9 +535,10 @@ Future<void> showNowPlayingExpandedSheet(
   VoidCallback? onOpenAlbum,
 }) async {
   final controller = AppScope.of(context);
-  if (MediaQuery.of(context).size.width >= 900) {
+  if (MediaQuery.of(context).size.width >= _compactPlaybackChromeWidth) {
     return;
   }
+  final useNativeMobileTreatment = _usesNativeMobileExpandedSheet(context);
   if (_nowPlayingSheetOpen) {
     return _nowPlayingSheetCompleter?.future ?? Future<void>.value();
   }
@@ -437,8 +549,11 @@ Future<void> showNowPlayingExpandedSheet(
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: useNativeMobileTreatment,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(0.65),
+      barrierColor: useNativeMobileTreatment
+          ? Colors.black
+          : Colors.black.withOpacity(0.65),
       builder: (sheetContext) {
         return StreamBuilder<PlaybackState>(
           stream: controller.playbackStream,
@@ -454,6 +569,7 @@ Future<void> showNowPlayingExpandedSheet(
                   };
             return NowPlayingExpandedSheet(
               state: playback,
+              useNativeMobileTreatment: useNativeMobileTreatment,
               onOpenAlbum: expandedOpenAlbum,
               onPlayPause: () => controller.pause(playback.isPlaying),
               onNext: controller.nextTrack,
@@ -954,9 +1070,11 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
     required this.onToggleLike,
+    this.useNativeMobileTreatment = false,
   });
 
   final PlaybackState state;
+  final bool useNativeMobileTreatment;
   final VoidCallback? onOpenAlbum;
   final VoidCallback onPlayPause;
   final VoidCallback onNext;
@@ -976,7 +1094,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final track = state.track;
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
-    final height = size.height * 0.92;
+    final height = useNativeMobileTreatment ? size.height : size.height * 0.92;
     final maxSeconds = state.duration.inMilliseconds <= 0
         ? 1.0
         : state.duration.inMilliseconds / 1000.0;
@@ -1013,210 +1131,190 @@ class NowPlayingExpandedSheet extends StatelessWidget {
       secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
     );
 
+    final sheetBody = Container(
+      color: useNativeMobileTreatment
+          ? ObsidianPalette.obsidianElevated
+          : ObsidianPalette.obsidianElevated.withOpacity(0.95),
+      child: Column(
+        children: [
+          SizedBox(height: s(12)),
+          Container(
+            width: s(64),
+            height: s(6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(s(6)),
+            ),
+          ),
+          SizedBox(height: s(12)),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(
+                    context,
+                  ).copyWith(scrollbars: false),
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(s(16), s(12), s(16), s(12)),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          GestureDetector(
+                            onTap: canOpenAlbum ? onOpenAlbum : null,
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              width: artSize,
+                              height: artSize,
+                              decoration: BoxDecoration(
+                                color: ObsidianPalette.obsidianGlass
+                                    .withOpacity(0.6),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.18),
+                                ),
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  if (track != null)
+                                    AlbumArt(
+                                      title: track.album,
+                                      size: artSize,
+                                      imageUrl: imageUrl,
+                                      headers: headers,
+                                    ),
+                                  if (state.isLoading)
+                                    ColoredBox(
+                                      color: Colors.black.withOpacity(0.34),
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: s(28),
+                                          height: s(28),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: s(2.6),
+                                            valueColor:
+                                                const AlwaysStoppedAnimation<
+                                                  Color
+                                                >(ObsidianPalette.gold),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: s(22)),
+                          MarqueeText(
+                            text: track?.title ?? 'Nothing playing',
+                            style: GoogleFonts.rajdhani(
+                              fontSize: s(26),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: s(1.1),
+                            ),
+                            velocity: s(28),
+                            gap: s(28),
+                          ),
+                          if (track != null) ...[
+                            SizedBox(height: s(10)),
+                            GestureDetector(
+                              onTap: canOpenAlbum ? onOpenAlbum : null,
+                              behavior: HitTestBehavior.opaque,
+                              child: MarqueeText(
+                                text: '${track.artist} - ${track.album}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: s(15),
+                                  color: ObsidianPalette.textMuted,
+                                ),
+                                velocity: s(26),
+                                gap: s(24),
+                              ),
+                            ),
+                          ],
+                          if (inlineTags.isNotEmpty) ...[
+                            SizedBox(height: s(10)),
+                            _techTagRow(context, inlineTags, center: true),
+                          ],
+                          SizedBox(height: s(20)),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              s(20),
+              s(6),
+              s(20),
+              s(20) + padding.bottom,
+            ),
+            child: Column(
+              children: [
+                _ProgressBar(
+                  sliderTheme: sliderTheme,
+                  maxSeconds: maxSeconds,
+                  position: state.position,
+                  duration: state.duration,
+                  animate: track != null && state.isPlaying && !state.isLoading,
+                  bufferedPositionSeconds: bufferedPositionSeconds,
+                  onSeek: onSeek,
+                  onSeekPreview: onSeekPreview,
+                  enabled: track != null,
+                ),
+                SizedBox(height: s(22)),
+                _ExpandedControls(
+                  state: state,
+                  onPlayPause: onPlayPause,
+                  onPrev: onPrev,
+                  onNext: onNext,
+                  onStop: onStop,
+                  onShuffle: () => _showShuffleModal(
+                    context,
+                    current: state.shuffleMode,
+                    onSelected: onShuffleChanged,
+                  ),
+                  onRepeat: onToggleRepeat,
+                ),
+                SizedBox(height: s(20)),
+                _ExpandedExtras(
+                  state: state,
+                  onToggleLike: onToggleLike,
+                  onStreamModeChanged: onStreamModeChanged,
+                  onVolumeChanged: onVolumeChanged,
+                  onAddToPlaylist: () => showAddToPlaylistModalForTrack(
+                    context,
+                    state.track,
+                    scope: _actionScopeForPlayback(state),
+                  ),
+                  onShowDevicePicker: () => _showDevicePicker(context),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
     return SafeArea(
-      top: true,
+      top: !useNativeMobileTreatment,
+      bottom: !useNativeMobileTreatment,
       child: Align(
         alignment: Alignment.bottomCenter,
         child: SizedBox(
           height: height,
           child: ClipPath(
             clipper: _HudChamferClipper(cut: s(24)),
-            child: maybeBlur(
-              sigma: 40,
-              child: Container(
-                color: ObsidianPalette.obsidianElevated.withOpacity(0.95),
-                child: Column(
-                  children: [
-                    SizedBox(height: s(12)),
-                    Container(
-                      width: s(64),
-                      height: s(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.35),
-                        borderRadius: BorderRadius.circular(s(6)),
-                      ),
-                    ),
-                    SizedBox(height: s(12)),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          return ScrollConfiguration(
-                            behavior: ScrollConfiguration.of(
-                              context,
-                            ).copyWith(scrollbars: false),
-                            child: SingleChildScrollView(
-                              physics: const NeverScrollableScrollPhysics(),
-                              padding: EdgeInsets.fromLTRB(
-                                s(16),
-                                s(12),
-                                s(16),
-                                s(12),
-                              ),
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minHeight: constraints.maxHeight,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: canOpenAlbum ? onOpenAlbum : null,
-                                      behavior: HitTestBehavior.opaque,
-                                      child: Container(
-                                        width: artSize,
-                                        height: artSize,
-                                        decoration: BoxDecoration(
-                                          color: ObsidianPalette.obsidianGlass
-                                              .withOpacity(0.6),
-                                          border: Border.all(
-                                            color: Colors.white.withOpacity(
-                                              0.18,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            if (track != null)
-                                              AlbumArt(
-                                                title: track.album,
-                                                size: artSize,
-                                                imageUrl: imageUrl,
-                                                headers: headers,
-                                              ),
-                                            if (state.isLoading)
-                                              ColoredBox(
-                                                color: Colors.black.withOpacity(
-                                                  0.34,
-                                                ),
-                                                child: Center(
-                                                  child: SizedBox(
-                                                    width: s(28),
-                                                    height: s(28),
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: s(2.6),
-                                                      valueColor:
-                                                          const AlwaysStoppedAnimation<
-                                                            Color
-                                                          >(
-                                                            ObsidianPalette
-                                                                .gold,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(height: s(22)),
-                                    MarqueeText(
-                                      text: track?.title ?? 'Nothing playing',
-                                      style: GoogleFonts.rajdhani(
-                                        fontSize: s(26),
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: s(1.1),
-                                      ),
-                                      velocity: s(28),
-                                      gap: s(28),
-                                    ),
-                                    if (track != null) ...[
-                                      SizedBox(height: s(10)),
-                                      GestureDetector(
-                                        onTap: canOpenAlbum
-                                            ? onOpenAlbum
-                                            : null,
-                                        behavior: HitTestBehavior.opaque,
-                                        child: MarqueeText(
-                                          text:
-                                              '${track.artist} - ${track.album}',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: s(15),
-                                            color: ObsidianPalette.textMuted,
-                                          ),
-                                          velocity: s(26),
-                                          gap: s(24),
-                                        ),
-                                      ),
-                                    ],
-                                    if (inlineTags.isNotEmpty) ...[
-                                      SizedBox(height: s(10)),
-                                      _techTagRow(
-                                        context,
-                                        inlineTags,
-                                        center: true,
-                                      ),
-                                    ],
-                                    SizedBox(height: s(20)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        s(20),
-                        s(6),
-                        s(20),
-                        s(20) + padding.bottom,
-                      ),
-                      child: Column(
-                        children: [
-                          _ProgressBar(
-                            sliderTheme: sliderTheme,
-                            maxSeconds: maxSeconds,
-                            position: state.position,
-                            duration: state.duration,
-                            animate:
-                                track != null &&
-                                state.isPlaying &&
-                                !state.isLoading,
-                            bufferedPositionSeconds: bufferedPositionSeconds,
-                            onSeek: onSeek,
-                            onSeekPreview: onSeekPreview,
-                            enabled: track != null,
-                          ),
-                          SizedBox(height: s(22)),
-                          _ExpandedControls(
-                            state: state,
-                            onPlayPause: onPlayPause,
-                            onPrev: onPrev,
-                            onNext: onNext,
-                            onStop: onStop,
-                            onShuffle: () => _showShuffleModal(
-                              context,
-                              current: state.shuffleMode,
-                              onSelected: onShuffleChanged,
-                            ),
-                            onRepeat: onToggleRepeat,
-                          ),
-                          SizedBox(height: s(20)),
-                          _ExpandedExtras(
-                            state: state,
-                            onToggleLike: onToggleLike,
-                            onStreamModeChanged: onStreamModeChanged,
-                            onVolumeChanged: onVolumeChanged,
-                            onAddToPlaylist: () =>
-                                showAddToPlaylistModalForTrack(
-                                  context,
-                                  state.track,
-                                  scope: _actionScopeForPlayback(state),
-                                ),
-                            onShowDevicePicker: () =>
-                                _showDevicePicker(context),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            child: useNativeMobileTreatment
+                ? sheetBody
+                : maybeBlur(sigma: 40, child: sheetBody),
           ),
         ),
       ),

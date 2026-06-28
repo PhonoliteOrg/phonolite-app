@@ -47,7 +47,7 @@ extension AppDelegate {
     }
     switch type {
     case .began:
-      if currentIsPlaying {
+      if nowPlayingCoordinator.isPlaying {
         sendRemoteCommandToFlutter("pause")
       }
     case .ended:
@@ -68,7 +68,7 @@ extension AppDelegate {
     }
     switch reason {
     case .oldDeviceUnavailable:
-      if currentIsPlaying {
+      if nowPlayingCoordinator.isPlaying {
         sendRemoteCommandToFlutter("pause")
       }
     default:

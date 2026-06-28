@@ -6,10 +6,12 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
+import '../platform/local_network_permission_service.dart';
+import '../platform/now_playing_platform_service.dart';
+import '../platform/vehicle_surface_service.dart';
 import 'app_log.dart';
 import 'auth_state.dart';
 import 'auth_storage.dart';
@@ -35,6 +37,8 @@ enum StreamMode { auto, high, medium, low }
 enum LocalNetworkPermissionState { unknown, granted, denied }
 
 enum PlaybackQueueSource { none, liked, playlist, offline }
+
+enum LocalPlaybackSource { none, library, liked, playlist }
 
 enum _SeekDirection { none, forward, backward }
 
@@ -74,6 +78,7 @@ class PlaybackState {
     required this.streamRttMs,
     required this.queueSource,
     required this.queueSourcePlaylistId,
+    required this.localPlaybackSource,
     required this.isLocalPlayback,
   });
 
@@ -93,6 +98,7 @@ class PlaybackState {
   final int? streamRttMs;
   final PlaybackQueueSource queueSource;
   final String? queueSourcePlaylistId;
+  final LocalPlaybackSource localPlaybackSource;
   final bool isLocalPlayback;
 
   PlaybackState copyWith({
@@ -112,6 +118,7 @@ class PlaybackState {
     int? streamRttMs,
     PlaybackQueueSource? queueSource,
     Object? queueSourcePlaylistId = _unset,
+    LocalPlaybackSource? localPlaybackSource,
     bool? isLocalPlayback,
   }) {
     return PlaybackState(
@@ -133,6 +140,7 @@ class PlaybackState {
       queueSourcePlaylistId: queueSourcePlaylistId == _unset
           ? this.queueSourcePlaylistId
           : queueSourcePlaylistId as String?,
+      localPlaybackSource: localPlaybackSource ?? this.localPlaybackSource,
       isLocalPlayback: isLocalPlayback ?? this.isLocalPlayback,
     );
   }
@@ -146,8 +154,16 @@ class AppController {
   AppController({
     required this.connection,
     ConnectivitySignalSource? connectivitySignalSource,
+    NowPlayingPlatformService? nowPlayingPlatformService,
+    VehicleSurfaceService? vehicleSurfaceService,
+    LocalNetworkPermissionService? localNetworkPermissionService,
   }) : _connectivitySignalSource =
-           connectivitySignalSource ?? ConnectivityPlusSignalSource() {
+           connectivitySignalSource ?? ConnectivityPlusSignalSource(),
+       _nowPlayingPlatform =
+           nowPlayingPlatformService ?? NowPlayingPlatformService(),
+       _vehicleSurface = vehicleSurfaceService ?? VehicleSurfaceService(),
+       _localNetworkPermissions =
+           localNetworkPermissionService ?? LocalNetworkPermissionService() {
     _initialBaseUrl = connection.baseUrl;
     _logListener = _addLogEntry;
     AppLogger.instance.attach(_logListener, includeHistory: true);
@@ -168,6 +184,7 @@ class AppController {
       streamRttMs: null,
       queueSource: PlaybackQueueSource.none,
       queueSourcePlaylistId: null,
+      localPlaybackSource: LocalPlaybackSource.none,
       isLocalPlayback: false,
     );
     _authState = AuthState(isAuthorized: false, baseUrl: connection.baseUrl);
@@ -240,6 +257,7 @@ class AppController {
           _pushNowPlayingUpdate(force: true);
         }
       },
+      onState: _handleAudioEngineState,
     );
     _configureLocalNetworkPermissions();
     _configureNowPlaying();
@@ -255,15 +273,9 @@ class AppController {
   final OfflineLibraryStorage _offlineStorage = const OfflineLibraryStorage();
   late final OfflineDownloadManager _offlineDownloadManager;
   late final AudioEngine _audioEngine;
-  final MethodChannel _nowPlayingChannel = const MethodChannel(
-    'phonolite/now_playing',
-  );
-  final MethodChannel _carPlayChannel = const MethodChannel(
-    'phonolite/carplay',
-  );
-  final MethodChannel _permissionsChannel = const MethodChannel(
-    'phonolite/permissions',
-  );
+  final NowPlayingPlatformService _nowPlayingPlatform;
+  final VehicleSurfaceService _vehicleSurface;
+  final LocalNetworkPermissionService _localNetworkPermissions;
   late final String _initialBaseUrl;
   final AuthStorage _authStorage = const AuthStorage();
   final CustomShuffleSettingsStorage _customShuffleStorage =
@@ -317,8 +329,11 @@ class AppController {
   bool _nowPlayingArtworkFetchInFlight = false;
   DateTime? _lastStartPlaybackAt;
   DateTime? _lastManualPauseAt;
+  DateTime? _lastInterruptedStreamRestartAt;
   String? _lastStartPlaybackTrackId;
+  String? _lastInterruptedStreamRestartTrackId;
   int? _lastStartPlaybackOffsetMs;
+  int? _lastInterruptedStreamRestartPositionMs;
   Timer? _healthTimer;
   Timer? _serverReconnectTimer;
   Future<void>? _serverAvailabilityFuture;
@@ -330,6 +345,10 @@ class AppController {
   int _serverReconnectAttempt = 0;
   int? _quicPort;
   static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);
+  static const Duration _interruptedStreamRestartCooldown = Duration(
+    seconds: 8,
+  );
+  static const int _interruptedStreamRestartPositionToleranceMs = 5000;
 
   final _artistsController = StreamController<List<Artist>>.broadcast();
   final _albumsController = StreamController<List<Album>>.broadcast();
@@ -438,6 +457,9 @@ class AppController {
     milliseconds: 250,
   );
   static const Duration _metadataEventsReconnectDelay = Duration(seconds: 3);
+  static const Duration _serverLogoutBestEffortTimeout = Duration(
+    milliseconds: 750,
+  );
 
   Stream<List<Artist>> get artistsStream => _artistsController.stream;
   Stream<List<Album>> get albumsStream => _albumsController.stream;
@@ -522,15 +544,13 @@ class AppController {
   CustomShuffleSettings get customShuffleSettings => _customShuffleSettings;
   List<String> get customShuffleArtistIds => _customShuffleSettings.artistIds;
   List<String> get customShuffleGenres => _customShuffleSettings.genres;
+  List<String> get localCustomShuffleArtistIds =>
+      _customShuffleSettings.localArtistIds;
+  List<String> get localCustomShuffleGenres =>
+      _customShuffleSettings.localGenres;
   bool get collectionListMode => _collectionListMode;
   bool get localNetworkPermissionSupported {
-    if (kIsWeb) {
-      return false;
-    }
-    if (Platform.isIOS) {
-      return true;
-    }
-    return defaultTargetPlatform == TargetPlatform.iOS;
+    return _localNetworkPermissions.isSupported;
   }
 
   Future<void> openAppSettings() async {
@@ -538,7 +558,7 @@ class AppController {
       return;
     }
     try {
-      await _permissionsChannel.invokeMethod('openAppSettings');
+      await _localNetworkPermissions.openAppSettings();
     } catch (_) {}
   }
 
@@ -561,6 +581,18 @@ class AppController {
   String? get savedUsername => _savedCredentials?.username;
   String? get savedBaseUrl => _savedCredentials?.baseUrl;
   bool get canUseServer => _authState.isAuthorized;
+
+  bool get _canAttemptRemotePlayback {
+    final token = connection.token;
+    return token != null && token.isNotEmpty && _authState.hasSession;
+  }
+
+  bool get _hasActiveRemotePlayback {
+    return _playbackState.track != null &&
+        _playbackState.isPlaying &&
+        !_playbackState.isLocalPlayback &&
+        _audioEngine.hasActivePlayer;
+  }
 
   OfflineTrackDownload? offlineDownloadForTrack(String trackId) {
     return _offlineDownloadManager.findForCurrentServer(trackId) ??
@@ -1361,31 +1393,86 @@ class AppController {
 
   Future<void> logout({bool clearSaved = true}) async {
     final serverBaseUrl = connection.baseUrl;
+    final preserveLocalPlayback =
+        _playbackState.isLocalPlayback && _playbackState.track != null;
     _stopMetadataEventListener();
-    await _offlineDownloadManager.pauseDownloadsForServer(serverBaseUrl);
-    final hadToken = connection.token?.isNotEmpty == true;
-    if (hadToken) {
-      try {
-        await connection.logout();
-      } catch (err) {
-        _pushMessage(
-          'Server logout failed; clearing local session: $err',
-          level: LogLevel.warning,
-        );
-      }
-    }
+    _beginBestEffortServerLogout();
+    _pauseDownloadsForDisconnectedServer(serverBaseUrl);
     connection.setToken(null);
     _serverHealthFailureCount = 0;
+    _serverReconnectAttempt = 0;
     _setSessionStatus(SessionStatus.offline, error: null);
-    _audioEngine.stop();
-    _playQueue = <Track>[];
-    _playIndex = 0;
-    _autoAdvanceInFlight = false;
     _quicPort = null;
-    _clearNowPlaying();
+    if (preserveLocalPlayback) {
+      _closeStreamControl();
+    } else {
+      _clearPlaybackForServerDisconnect();
+    }
     if (clearSaved) {
       await _clearSavedCredentials();
     }
+  }
+
+  void _beginBestEffortServerLogout() {
+    if (connection.token?.isNotEmpty != true) {
+      return;
+    }
+    unawaited(() async {
+      try {
+        await connection.logout(timeout: _serverLogoutBestEffortTimeout);
+      } catch (err) {
+        AppLogger.debug('Server logout skipped after local disconnect: $err');
+      }
+    }());
+  }
+
+  void _pauseDownloadsForDisconnectedServer(String serverBaseUrl) {
+    unawaited(() async {
+      try {
+        await _offlineDownloadManager.pauseDownloadsForServer(serverBaseUrl);
+      } catch (err) {
+        if (_disposed) {
+          return;
+        }
+        _pushMessage(
+          'Failed to pause server downloads after disconnect: $err',
+          level: LogLevel.warning,
+        );
+      }
+    }());
+  }
+
+  void _clearPlaybackForServerDisconnect() {
+    _resetTrackTransitionState();
+    _audioEngine.stop();
+    _playQueue = <Track>[];
+    _playIndex = 0;
+    _queueShuffleMode = ShuffleMode.off;
+    _queueShuffleScope = null;
+    _queueShuffleArtistId = null;
+    _queueShuffleAlbumId = null;
+    _queueShufflePlaylistId = null;
+    _offlineQueueSource = _OfflineQueueSource.none;
+    _lastStartPlaybackAt = null;
+    _lastStartPlaybackTrackId = null;
+    _lastStartPlaybackOffsetMs = null;
+    _audioOutputStarted = false;
+    _updatePlayback(
+      track: null,
+      isPlaying: false,
+      isLoading: false,
+      position: Duration.zero,
+      duration: Duration.zero,
+      bufferRatio: 0.0,
+      bitrateKbps: null,
+      streamConnected: false,
+      streamRttMs: null,
+      isLocalPlayback: false,
+      queueSource: PlaybackQueueSource.none,
+      queueSourcePlaylistId: null,
+      localPlaybackSource: LocalPlaybackSource.none,
+    );
+    _clearNowPlaying();
   }
 
   Future<AuthCredentials?> loadSavedCredentials() async {
@@ -1522,53 +1609,38 @@ class AppController {
   }
 
   void _configureLocalNetworkPermissions() {
-    if (!Platform.isIOS) {
+    if (!_localNetworkPermissions.isSupported) {
       return;
     }
-    _permissionsChannel.setMethodCallHandler((call) async {
-      if (call.method != 'localNetworkPermission') {
-        return;
-      }
-      final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
-      final status = args['status']?.toString().toLowerCase().trim() ?? '';
-      switch (status) {
-        case 'granted':
-          _setLocalNetworkPermission(LocalNetworkPermissionState.granted);
-          break;
-        case 'denied':
-          _setLocalNetworkPermission(LocalNetworkPermissionState.denied);
-          break;
-        case 'unknown':
-          _setLocalNetworkPermission(LocalNetworkPermissionState.unknown);
-          break;
-        default:
-          break;
-      }
+    _localNetworkPermissions.setStatusHandler((status) {
+      _handleLocalNetworkPermissionStatus(status);
     });
     _refreshLocalNetworkPermission();
   }
 
   Future<void> _refreshLocalNetworkPermission() async {
     try {
-      await _permissionsChannel.invokeMethod('refreshLocalNetworkPermission');
-      final result = await _permissionsChannel.invokeMethod(
-        'getLocalNetworkPermission',
+      await _localNetworkPermissions.refreshPermission();
+      _handleLocalNetworkPermissionStatus(
+        await _localNetworkPermissions.getPermission(),
       );
-      final status = result?.toString().toLowerCase().trim() ?? '';
-      switch (status) {
-        case 'granted':
-          _setLocalNetworkPermission(LocalNetworkPermissionState.granted);
-          break;
-        case 'denied':
-          _setLocalNetworkPermission(LocalNetworkPermissionState.denied);
-          break;
-        case 'unknown':
-          _setLocalNetworkPermission(LocalNetworkPermissionState.unknown);
-          break;
-        default:
-          break;
-      }
     } catch (_) {}
+  }
+
+  void _handleLocalNetworkPermissionStatus(String status) {
+    switch (status) {
+      case 'granted':
+        _setLocalNetworkPermission(LocalNetworkPermissionState.granted);
+        break;
+      case 'denied':
+        _setLocalNetworkPermission(LocalNetworkPermissionState.denied);
+        break;
+      case 'unknown':
+        _setLocalNetworkPermission(LocalNetworkPermissionState.unknown);
+        break;
+      default:
+        break;
+    }
   }
 
   void _setLocalNetworkPermission(LocalNetworkPermissionState value) {
@@ -1580,17 +1652,12 @@ class AppController {
   }
 
   void _configureNowPlaying() {
-    if (!(Platform.isIOS || Platform.isAndroid)) {
+    if (!_nowPlayingPlatform.isSupported) {
       return;
     }
     _nowPlayingReady = true;
-    _nowPlayingChannel.setMethodCallHandler((call) async {
-      if (call.method != 'remoteCommand') {
-        return;
-      }
-      final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
-      final type = args['type']?.toString() ?? '';
-      switch (type) {
+    _nowPlayingPlatform.setRemoteCommandHandler((command) async {
+      switch (command.type) {
         case 'play':
           await pause(false);
           break;
@@ -1614,7 +1681,7 @@ class AppController {
           await pause(false);
           break;
         case 'seek':
-          final raw = args['position'];
+          final raw = command.arguments['position'];
           final seconds = raw is num ? raw.toDouble() : double.tryParse('$raw');
           if (seconds != null) {
             final ms = (seconds * 1000).round();
@@ -1629,12 +1696,11 @@ class AppController {
   }
 
   void _configureCarPlay() {
-    if (!(Platform.isIOS || Platform.isAndroid)) {
+    if (!_vehicleSurface.isSupported) {
       return;
     }
-    _carPlayChannel.setMethodCallHandler((call) async {
-      final args = Map<String, dynamic>.from(call.arguments as Map? ?? {});
-      switch (call.method) {
+    _vehicleSurface.setMethodHandler((method, args) async {
+      switch (method) {
         case 'getCarPlayState':
           return _carPlayGetState();
         case 'getHomeActions':
@@ -1664,7 +1730,13 @@ class AppController {
           return _carPlayPlayLiked(_carPlayScope(args));
         case 'startShuffle':
           final kind = args['kind']?.toString() ?? 'library';
-          return _carPlayStartShuffle(_carPlayScope(args), kind);
+          return _carPlayStartShuffle(
+            _carPlayScope(args),
+            kind,
+            artistId: args['artistId']?.toString(),
+            albumId: args['albumId']?.toString(),
+            playlistId: args['playlistId']?.toString(),
+          );
         case 'startLibraryShuffle':
           return _carPlayStartShuffle('server', 'library');
         case 'startLikedShuffle':
@@ -1683,7 +1755,7 @@ class AppController {
   }
 
   void _scheduleCarPlayStateUpdate() {
-    if (!(Platform.isIOS || Platform.isAndroid)) {
+    if (!_vehicleSurface.isSupported) {
       return;
     }
     _carPlayStateDebounce?.cancel();
@@ -1694,13 +1766,13 @@ class AppController {
   }
 
   void _notifyCarPlayState() {
-    if (!(Platform.isIOS || Platform.isAndroid)) {
+    if (!_vehicleSurface.isSupported) {
       return;
     }
     final payload = _carPlayStatePayload();
-    _carPlayChannel.invokeMethod('carPlayState', payload).catchError((_) {});
-    _carPlayChannel
-        .invokeMethod('authState', {'authorized': payload['serverAvailable']})
+    _vehicleSurface.notifyState(payload).catchError((_) {});
+    _vehicleSurface
+        .notifyAuthorization(payload['serverAvailable'] == true)
         .catchError((_) {});
   }
 
@@ -2029,17 +2101,34 @@ class AppController {
 
   Future<Map<String, dynamic>> _carPlayStartShuffle(
     String scope,
-    String kind,
-  ) async {
+    String kind, {
+    String? artistId,
+    String? albumId,
+    String? playlistId,
+  }) async {
     if (scope == 'local') {
       if (kind == 'custom') {
-        return _carPlayError('custom_unavailable');
+        await _ensureCustomShuffleSettingsLoaded();
+        if (_customShuffleSettings.localArtistIds.isEmpty &&
+            _customShuffleSettings.localGenres.isEmpty) {
+          return _carPlayError('custom_empty');
+        }
       }
-      updateShuffleMode(
-        kind == 'liked' ? ShuffleMode.liked : ShuffleMode.all,
-        scope: ActionScope.local,
+      final mode = switch (kind) {
+        'artist' => ShuffleMode.artist,
+        'album' => ShuffleMode.album,
+        'playlist' => ShuffleMode.currentPlaylist,
+        'custom' => ShuffleMode.custom,
+        'liked' => ShuffleMode.liked,
+        _ => ShuffleMode.all,
+      };
+      updateShuffleMode(mode, scope: ActionScope.local);
+      await queueLocalShuffle(
+        playlistId: playlistId,
+        artistId: artistId,
+        albumId: albumId,
+        play: true,
       );
-      await queueLocalShuffle(play: true);
       return _carPlayOk();
     }
 
@@ -2085,23 +2174,11 @@ class AppController {
   }
 
   OfflineArtistGroup? _carPlayLocalArtistGroup(String artistId) {
-    for (final group in offlineLibrarySnapshot.artistGroups) {
-      if (group.id == artistId) {
-        return group;
-      }
-    }
-    return null;
+    return _localArtistGroup(artistId);
   }
 
   OfflineAlbumGroup? _carPlayLocalAlbumGroup(String albumId) {
-    for (final artist in offlineLibrarySnapshot.artistGroups) {
-      for (final album in artist.albums) {
-        if (album.id == albumId) {
-          return album;
-        }
-      }
-    }
-    return null;
+    return _localAlbumGroup(albumId);
   }
 
   String? _carPlayFileUrl(String? path) {
@@ -2113,16 +2190,16 @@ class AppController {
   }
 
   Future<void> _clearNowPlaying() async {
-    if (!(Platform.isIOS || Platform.isAndroid)) {
+    if (!_nowPlayingPlatform.isSupported) {
       return;
     }
     try {
-      await _nowPlayingChannel.invokeMethod('clearNowPlaying');
+      await _nowPlayingPlatform.clearNowPlaying();
     } catch (_) {}
   }
 
   Future<void> _pushNowPlayingUpdate({bool force = false}) async {
-    if (!(Platform.isIOS || Platform.isAndroid) || !_nowPlayingReady) {
+    if (!_nowPlayingPlatform.isSupported || !_nowPlayingReady) {
       return;
     }
     final track = _playbackState.track;
@@ -2182,15 +2259,13 @@ class AppController {
       'position': positionMs / 1000.0,
       'isPlaying': nowPlayingIsPlaying,
       'liked': track.liked,
-      'artworkUrl': artworkUrl ?? '',
       'artworkKey': artworkKey ?? '',
-      'token': token,
     };
     if (_nowPlayingArtworkBytes != null) {
       payload['artworkBytes'] = _nowPlayingArtworkBytes;
     }
     try {
-      await _nowPlayingChannel.invokeMethod('setNowPlaying', payload);
+      await _nowPlayingPlatform.setNowPlaying(payload);
       _lastNowPlayingSentAt = now;
       _lastNowPlayingTrackId = track.id;
       _lastNowPlayingIsPlaying = nowPlayingIsPlaying;
@@ -2219,7 +2294,7 @@ class AppController {
     required String? localPath,
     required String token,
   }) {
-    if (!(Platform.isIOS || Platform.isAndroid)) {
+    if (!_nowPlayingPlatform.isSupported) {
       return;
     }
     final artworkKey = _nowPlayingArtworkSourceKey(
@@ -2610,8 +2685,7 @@ class AppController {
     if (_playbackState.shuffleMode != ShuffleMode.off) {
       if (_playbackState.shuffleScope == ActionScope.local) {
         final mode = _playbackState.shuffleMode;
-        if (mode == ShuffleMode.all ||
-            (mode == ShuffleMode.liked && _localTrackIsLiked(trackId))) {
+        if (await _localShuffleCanStartFromTrack(mode, trackId)) {
           await queueLocalShuffle(startTrackId: trackId);
           return;
         }
@@ -2654,6 +2728,41 @@ class AppController {
     _queueShuffleScope = null;
     _armAutoAdvanceGuard();
     await _playCurrent();
+  }
+
+  Future<bool> _localShuffleCanStartFromTrack(
+    ShuffleMode mode,
+    String trackId,
+  ) async {
+    switch (mode) {
+      case ShuffleMode.all:
+      case ShuffleMode.artist:
+      case ShuffleMode.album:
+        return _localTrackForId(trackId) != null;
+      case ShuffleMode.liked:
+        return _localTrackIsLiked(trackId);
+      case ShuffleMode.custom:
+        await _ensureCustomShuffleSettingsLoaded();
+        final track = _localTrackForId(trackId);
+        if (track == null) {
+          return false;
+        }
+        final artistIds = _customShuffleSettings.localArtistIds.toSet();
+        final genres = _customShuffleSettings.localGenres
+            .map((genre) => genre.toLowerCase())
+            .toSet();
+        if (artistIds.isEmpty && genres.isEmpty) {
+          return false;
+        }
+        return _localTrackMatchesCustomShuffle(
+          track,
+          artistIds: artistIds,
+          genres: genres,
+        );
+      case ShuffleMode.currentPlaylist:
+      case ShuffleMode.off:
+        return false;
+    }
   }
 
   Future<void> loadStats({int? year, int? month}) async {
@@ -3811,6 +3920,8 @@ class AppController {
 
   Future<void> queueLocalShuffle({
     String? playlistId,
+    String? artistId,
+    String? albumId,
     bool play = true,
     String? startTrackId,
   }) async {
@@ -3824,19 +3935,13 @@ class AppController {
         _pushMessage('Local shuffle requires a local playback scope');
         return;
       }
-      if (mode == ShuffleMode.artist ||
-          mode == ShuffleMode.album ||
-          mode == ShuffleMode.custom) {
-        _pushMessage(
-          'This shuffle mode is only available for server playback.',
-        );
-        return;
-      }
 
       List<Track> tracks;
       _OfflineQueueSource offlineSource;
       String? sourcePlaylistId;
       String contextScope;
+      String? contextArtistId;
+      String? contextAlbumId;
 
       if (mode == ShuffleMode.currentPlaylist) {
         sourcePlaylistId =
@@ -3859,6 +3964,61 @@ class AppController {
         tracks = localLiked;
         offlineSource = _OfflineQueueSource.localLiked;
         contextScope = 'localLiked';
+      } else if (mode == ShuffleMode.artist) {
+        contextArtistId = _resolveLocalShuffleArtistId(
+          startTrackId: startTrackId,
+          artistId: artistId,
+        );
+        if (contextArtistId == null || contextArtistId.isEmpty) {
+          _pushMessage('Select a local artist to shuffle');
+          return;
+        }
+        final group = _localArtistGroup(contextArtistId);
+        if (group == null) {
+          _pushMessage('No downloaded tracks found for local artist');
+          return;
+        }
+        tracks = [for (final album in group.albums) ...album.tracks];
+        offlineSource = _OfflineQueueSource.tracks;
+        contextScope = 'localArtist';
+      } else if (mode == ShuffleMode.album) {
+        contextAlbumId = _resolveLocalShuffleAlbumId(
+          startTrackId: startTrackId,
+          albumId: albumId,
+        );
+        if (contextAlbumId == null || contextAlbumId.isEmpty) {
+          _pushMessage('Select a local album to shuffle');
+          return;
+        }
+        final group = _localAlbumGroup(contextAlbumId);
+        if (group == null) {
+          _pushMessage('No downloaded tracks found for local album');
+          return;
+        }
+        tracks = group.tracks;
+        offlineSource = _OfflineQueueSource.tracks;
+        contextScope = 'localAlbum';
+      } else if (mode == ShuffleMode.custom) {
+        await _ensureCustomShuffleSettingsLoaded();
+        final artistIds = _customShuffleSettings.localArtistIds.toSet();
+        final genres = _customShuffleSettings.localGenres
+            .map((genre) => genre.toLowerCase())
+            .toSet();
+        if (artistIds.isEmpty && genres.isEmpty) {
+          _pushMessage('Local custom shuffle has no filters.');
+          return;
+        }
+        tracks = offlineTracks
+            .where(
+              (track) => _localTrackMatchesCustomShuffle(
+                track,
+                artistIds: artistIds,
+                genres: genres,
+              ),
+            )
+            .toList(growable: false);
+        offlineSource = _OfflineQueueSource.tracks;
+        contextScope = 'localCustom';
       } else {
         tracks = offlineTracks;
         offlineSource = _OfflineQueueSource.tracks;
@@ -3873,6 +4033,8 @@ class AppController {
       _rememberShuffleContext(
         scope: contextScope,
         playlistId: sourcePlaylistId,
+        artistId: contextArtistId,
+        albumId: contextAlbumId,
       );
       _setQueue(
         _shuffleTracks(tracks),
@@ -3888,6 +4050,208 @@ class AppController {
     } catch (err) {
       _pushMessage('Failed to queue local shuffle: $err');
     }
+  }
+
+  String? _resolveLocalShuffleArtistId({
+    String? startTrackId,
+    String? artistId,
+  }) {
+    final fromStart = _localArtistGroupForTrackId(startTrackId)?.id;
+    if (fromStart != null && fromStart.isNotEmpty) {
+      return fromStart;
+    }
+    final current = _playbackState.track;
+    if (current != null) {
+      final fromCurrent = _localArtistGroupForTrack(current)?.id;
+      if (fromCurrent != null && fromCurrent.isNotEmpty) {
+        return fromCurrent;
+      }
+    }
+    final explicit = artistId?.trim();
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit;
+    }
+    if (_queueShuffleScope == 'localArtist' &&
+        _queueShuffleArtistId != null &&
+        _queueShuffleArtistId!.isNotEmpty) {
+      return _queueShuffleArtistId;
+    }
+    return null;
+  }
+
+  String? _resolveLocalShuffleAlbumId({String? startTrackId, String? albumId}) {
+    final fromStart = _localAlbumGroupForTrackId(startTrackId)?.id;
+    if (fromStart != null && fromStart.isNotEmpty) {
+      return fromStart;
+    }
+    final current = _playbackState.track;
+    if (current != null) {
+      final fromCurrent = _localAlbumGroupForTrack(current)?.id;
+      if (fromCurrent != null && fromCurrent.isNotEmpty) {
+        return fromCurrent;
+      }
+    }
+    final explicit = albumId?.trim();
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit;
+    }
+    if (_queueShuffleScope == 'localAlbum' &&
+        _queueShuffleAlbumId != null &&
+        _queueShuffleAlbumId!.isNotEmpty) {
+      return _queueShuffleAlbumId;
+    }
+    return null;
+  }
+
+  OfflineArtistGroup? _localArtistGroup(String artistId) {
+    final target = artistId.trim();
+    if (target.isEmpty) {
+      return null;
+    }
+    for (final group in offlineLibrarySnapshot.artistGroups) {
+      if (group.id == target) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  OfflineAlbumGroup? _localAlbumGroup(String albumId) {
+    final target = albumId.trim();
+    if (target.isEmpty) {
+      return null;
+    }
+    for (final artist in offlineLibrarySnapshot.artistGroups) {
+      for (final album in artist.albums) {
+        if (album.id == target) {
+          return album;
+        }
+      }
+    }
+    return null;
+  }
+
+  OfflineArtistGroup? _localArtistGroupForTrackId(String? trackId) {
+    final track = _localTrackForId(trackId);
+    if (track == null) {
+      return null;
+    }
+    return _localArtistGroupForTrack(track);
+  }
+
+  OfflineAlbumGroup? _localAlbumGroupForTrackId(String? trackId) {
+    final track = _localTrackForId(trackId);
+    if (track == null) {
+      return null;
+    }
+    return _localAlbumGroupForTrack(track);
+  }
+
+  OfflineArtistGroup? _localArtistGroupForTrack(Track track) {
+    for (final group in offlineLibrarySnapshot.artistGroups) {
+      for (final album in group.albums) {
+        if (album.tracks.any(
+          (candidate) => _sameLocalTrack(candidate, track),
+        )) {
+          return group;
+        }
+      }
+    }
+    return null;
+  }
+
+  OfflineAlbumGroup? _localAlbumGroupForTrack(Track track) {
+    for (final group in offlineLibrarySnapshot.artistGroups) {
+      for (final album in group.albums) {
+        if (album.tracks.any(
+          (candidate) => _sameLocalTrack(candidate, track),
+        )) {
+          return album;
+        }
+      }
+    }
+    return null;
+  }
+
+  Track? _localTrackForId(String? trackId) {
+    final target = trackId?.trim();
+    if (target == null || target.isEmpty) {
+      return null;
+    }
+    for (final track in offlineTracks) {
+      if (_localTrackMatchesId(track, target)) {
+        return track;
+      }
+    }
+    return null;
+  }
+
+  bool _sameLocalTrack(Track left, Track right) {
+    final leftIds = _localTrackIdentityValues(left).toSet();
+    for (final id in _localTrackIdentityValues(right)) {
+      if (leftIds.contains(id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _localTrackMatchesId(Track track, String trackId) {
+    return _localTrackIdentityValues(track).contains(trackId);
+  }
+
+  Iterable<String> _localTrackIdentityValues(Track track) sync* {
+    for (final value in <String?>[
+      track.id,
+      track.localId,
+      track.serverTrackId,
+    ]) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) {
+        yield trimmed;
+      }
+    }
+  }
+
+  bool _localTrackMatchesCustomShuffle(
+    Track track, {
+    required Set<String> artistIds,
+    required Set<String> genres,
+  }) {
+    if (artistIds.isNotEmpty) {
+      final group = _localArtistGroupForTrack(track);
+      final ids = <String>{
+        if (group != null) group.id,
+        if (track.artistId != null && track.artistId!.isNotEmpty)
+          track.artistId!,
+        if (track.offlineArtist?.id.isNotEmpty ?? false)
+          track.offlineArtist!.id,
+      };
+      if (ids.any(artistIds.contains)) {
+        return true;
+      }
+    }
+    if (genres.isNotEmpty) {
+      return _localTrackGenres(track).any(genres.contains);
+    }
+    return false;
+  }
+
+  Set<String> _localTrackGenres(Track track) {
+    final values = <String>{};
+    void addAll(Iterable<String> genres) {
+      for (final genre in genres) {
+        final normalized = genre.trim().toLowerCase();
+        if (normalized.isNotEmpty) {
+          values.add(normalized);
+        }
+      }
+    }
+
+    addAll(track.genres);
+    addAll(track.offlineAlbum?.genres ?? const <String>[]);
+    addAll(track.offlineArtist?.genres ?? const <String>[]);
+    return values;
   }
 
   Future<void> nextTrack({bool fromAutoAdvance = false}) async {
@@ -3976,6 +4340,7 @@ class AppController {
     try {
       _resetTrackTransitionState();
       final shouldDisableShuffle =
+          _playbackState.shuffleScope == ActionScope.local ||
           _playbackState.shuffleMode == ShuffleMode.album ||
           _playbackState.shuffleMode == ShuffleMode.artist ||
           _playbackState.shuffleMode == ShuffleMode.currentPlaylist;
@@ -4310,6 +4675,9 @@ class AppController {
     _ignoreCompleteUntil = null;
     _suppressAutoAdvanceUntil = null;
     _autoAdvanceInFlight = false;
+    _lastInterruptedStreamRestartAt = null;
+    _lastInterruptedStreamRestartTrackId = null;
+    _lastInterruptedStreamRestartPositionMs = null;
     _resetPlaybackPositionTracking(
       position: Duration(milliseconds: positionMs),
     );
@@ -4697,8 +5065,20 @@ class AppController {
                   offlineQueueSource == _OfflineQueueSource.localPlaylist)
           ? queueSourcePlaylistId
           : null,
+      localPlaybackSource: queueSource == PlaybackQueueSource.offline
+          ? _localPlaybackSourceFor(offlineQueueSource)
+          : LocalPlaybackSource.none,
       nowPlaying: false,
     );
+  }
+
+  LocalPlaybackSource _localPlaybackSourceFor(_OfflineQueueSource source) {
+    return switch (source) {
+      _OfflineQueueSource.localLiked => LocalPlaybackSource.liked,
+      _OfflineQueueSource.localPlaylist => LocalPlaybackSource.playlist,
+      _OfflineQueueSource.tracks => LocalPlaybackSource.library,
+      _OfflineQueueSource.none => LocalPlaybackSource.none,
+    };
   }
 
   void _armAutoAdvanceGuard([
@@ -5313,9 +5693,15 @@ class AppController {
     int? streamRttMs,
     PlaybackQueueSource? queueSource,
     Object? queueSourcePlaylistId = _unset,
+    LocalPlaybackSource? localPlaybackSource,
     bool? isLocalPlayback,
     bool nowPlaying = true,
   }) {
+    final resolvedLocalPlaybackSource =
+        localPlaybackSource ??
+        (queueSource != null && queueSource != PlaybackQueueSource.offline
+            ? LocalPlaybackSource.none
+            : null);
     _playbackState = _playbackState.copyWith(
       track: track,
       isPlaying: isPlaying,
@@ -5333,6 +5719,7 @@ class AppController {
       streamRttMs: streamRttMs,
       queueSource: queueSource,
       queueSourcePlaylistId: queueSourcePlaylistId,
+      localPlaybackSource: resolvedLocalPlaybackSource,
       isLocalPlayback: isLocalPlayback,
     );
     _playbackController.add(_playbackState);
@@ -5835,6 +6222,8 @@ class AppController {
   Future<void> updateCustomShuffleSettings({
     List<String>? artistIds,
     List<String>? genres,
+    List<String>? localArtistIds,
+    List<String>? localGenres,
   }) async {
     final next = CustomShuffleSettings(
       artistIds: _normalizeCustomList(
@@ -5842,6 +6231,13 @@ class AppController {
       ),
       genres: _normalizeCustomList(
         genres ?? _customShuffleSettings.genres,
+        lowerCase: true,
+      ),
+      localArtistIds: _normalizeCustomList(
+        localArtistIds ?? _customShuffleSettings.localArtistIds,
+      ),
+      localGenres: _normalizeCustomList(
+        localGenres ?? _customShuffleSettings.localGenres,
         lowerCase: true,
       ),
     );
@@ -5905,8 +6301,11 @@ class AppController {
   }
 
   Future<void> _refreshCustomShuffleQueueIfNeeded() async {
-    if (_playbackState.shuffleMode != ShuffleMode.custom ||
-        _playbackState.shuffleScope != ActionScope.server) {
+    if (_playbackState.shuffleMode != ShuffleMode.custom) {
+      return;
+    }
+    final scope = _playbackState.shuffleScope;
+    if (scope != ActionScope.server && scope != ActionScope.local) {
       return;
     }
     final hasActiveShuffle =
@@ -5917,6 +6316,16 @@ class AppController {
     if (!hasActiveShuffle) {
       _queueShuffleMode = ShuffleMode.off;
       _queueShuffleScope = null;
+      return;
+    }
+    if (scope == ActionScope.local) {
+      if (_customShuffleSettings.localArtistIds.isEmpty &&
+          _customShuffleSettings.localGenres.isEmpty) {
+        _pushMessage('Local custom shuffle has no filters.');
+        updateShuffleMode(ShuffleMode.off, scope: ActionScope.local);
+        return;
+      }
+      await _refreshLocalCustomShuffleQueue();
       return;
     }
     await _refreshCustomShuffleQueue();
@@ -5943,6 +6352,25 @@ class AppController {
           albumId: albumId,
           play: false,
           startTrackId: startTrackId,
+        );
+      } while (_customShuffleRefreshQueued);
+    } finally {
+      _customShuffleRefreshInFlight = false;
+    }
+  }
+
+  Future<void> _refreshLocalCustomShuffleQueue() async {
+    if (_customShuffleRefreshInFlight) {
+      _customShuffleRefreshQueued = true;
+      return;
+    }
+    _customShuffleRefreshInFlight = true;
+    try {
+      do {
+        _customShuffleRefreshQueued = false;
+        await queueLocalShuffle(
+          play: false,
+          startTrackId: _playbackState.track?.id,
         );
       } while (_customShuffleRefreshQueued);
     } finally {
@@ -6000,15 +6428,17 @@ class AppController {
   }
 
   void _handleServerTransportFailure(Object error) {
-    if (!_authState.isAuthorized) {
+    if (!_canAttemptRemotePlayback) {
       return;
     }
-    _serverHealthFailureCount = _serverUnavailableHealthFailureThreshold;
-    _markServerUnavailable(error: 'Server unavailable: $error');
+    _recordServerAvailabilityFailure(
+      error: 'Server unavailable: $error',
+      reconnectAttempt: false,
+    );
   }
 
   void _markServerUnavailable({required String error}) {
-    if (!_authState.isAuthorized) {
+    if (!_canAttemptRemotePlayback) {
       return;
     }
     _serverHealthFailureCount = max(
@@ -6046,13 +6476,17 @@ class AppController {
     _scheduleLikeSync(immediate: true);
   }
 
-  void _startPlayback(Track track, {Duration startOffset = Duration.zero}) {
+  void _startPlayback(
+    Track track, {
+    Duration startOffset = Duration.zero,
+    bool quickStart = true,
+  }) {
     final settings = _streamSettings(_playbackState.streamMode);
     final queueIds = _buildQueueIds(track.id, 3);
     final offlineDownload = availableOfflineDownloadForTrack(track.id);
     final shouldUseLocal =
         _playbackState.queueSource == PlaybackQueueSource.offline ||
-        !_authState.isAuthorized;
+        !_canAttemptRemotePlayback;
     final now = DateTime.now();
     final offsetMs = startOffset.inMilliseconds;
     if (_audioEngine.hasActivePlayer &&
@@ -6115,6 +6549,7 @@ class AppController {
           startOffset: startOffset,
           queueTrackIds: queueIds,
           quicPort: _quicPort,
+          quickStart: quickStart,
         );
       } catch (err) {
         if (offlineDownload != null) {
@@ -6197,6 +6632,82 @@ class AppController {
 
   void _closeStreamControl() {
     _updatePlayback(streamConnected: false, streamRttMs: null);
+  }
+
+  void _handleAudioEngineState(bool active, bool paused) {
+    if (active || paused) {
+      return;
+    }
+    _recoverInterruptedRemoteStream();
+  }
+
+  void _recoverInterruptedRemoteStream() {
+    final track = _playbackState.track;
+    if (_disposed ||
+        track == null ||
+        !_playbackState.isPlaying ||
+        _playbackState.isLocalPlayback ||
+        _isScrubbing ||
+        _seeking) {
+      return;
+    }
+    if (!_canAttemptRemotePlayback) {
+      _updatePlayback(
+        isPlaying: false,
+        isLoading: false,
+        streamConnected: false,
+        streamRttMs: null,
+      );
+      return;
+    }
+
+    final restartPositionMs = max(_actualPositionMs, _displayPositionMs);
+    if (_recentlyRetriedInterruptedStream(track, restartPositionMs)) {
+      _pushMessage(
+        'Stream interrupted again; waiting for server reconnect.',
+        level: LogLevel.warning,
+      );
+      _updatePlayback(
+        isPlaying: false,
+        isLoading: false,
+        streamConnected: false,
+        streamRttMs: null,
+      );
+      unawaited(_refreshServerAvailability(reconnectAttempt: true));
+      return;
+    }
+
+    _lastInterruptedStreamRestartAt = DateTime.now();
+    _lastInterruptedStreamRestartTrackId = track.id;
+    _lastInterruptedStreamRestartPositionMs = restartPositionMs;
+    _pushMessage(
+      'Stream interrupted; reconnecting from current position.',
+      level: LogLevel.warning,
+    );
+    _updatePlayback(isLoading: true, streamConnected: false, streamRttMs: null);
+    _startPlayback(
+      track,
+      startOffset: Duration(milliseconds: restartPositionMs),
+      quickStart: false,
+    );
+  }
+
+  bool _recentlyRetriedInterruptedStream(Track track, int positionMs) {
+    final lastRestartAt = _lastInterruptedStreamRestartAt;
+    final lastTrackId = _lastInterruptedStreamRestartTrackId;
+    final lastPositionMs = _lastInterruptedStreamRestartPositionMs;
+    if (lastRestartAt == null ||
+        lastTrackId == null ||
+        lastPositionMs == null ||
+        lastTrackId != track.id) {
+      return false;
+    }
+    if (DateTime.now().difference(lastRestartAt) >=
+        _interruptedStreamRestartCooldown) {
+      return false;
+    }
+    return (positionMs - lastPositionMs).abs() <=
+        _interruptedStreamRestartPositionToleranceMs;
   }
 
   Future<void> _refreshServerPorts({
@@ -6324,6 +6835,9 @@ class AppController {
     required bool reconnectAttempt,
   }) {
     _serverHealthFailureCount++;
+    if (_hasActiveRemotePlayback) {
+      return;
+    }
     if (!_audioEngine.hasActivePlayer) {
       _updatePlayback(streamConnected: false, streamRttMs: null);
     }

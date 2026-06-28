@@ -45,10 +45,12 @@ class AudioEngine {
     onStats,
     void Function()? onComplete,
     void Function()? onStarted,
+    void Function(bool active, bool paused)? onState,
   }) : _onMessage = onMessage,
        _onStats = onStats,
        _onComplete = onComplete,
-       _onStarted = onStarted {
+       _onStarted = onStarted,
+       _onState = onState {
     _shutdownPreviousWorker();
     _spawnWorker();
   }
@@ -64,6 +66,7 @@ class AudioEngine {
   _onStats;
   final void Function()? _onComplete;
   final void Function()? _onStarted;
+  final void Function(bool active, bool paused)? _onState;
   final ReceivePort _receivePort = ReceivePort();
   SendPort? _workerPort;
   final Completer<void> _ready = Completer<void>();
@@ -145,8 +148,11 @@ class AudioEngine {
         }
         break;
       case 'state':
-        _active = message['active'] == true;
-        _paused = message['paused'] == true;
+        final active = message['active'] == true;
+        final paused = message['paused'] == true;
+        _active = active;
+        _paused = paused;
+        _onState?.call(active, paused);
         break;
       default:
         break;
@@ -271,6 +277,7 @@ class AudioEngine {
     Duration startOffset = Duration.zero,
     List<String> queueTrackIds = const [],
     int? quicPort,
+    bool quickStart = true,
   }) async {
     final playbackId = ++_playbackId;
     _active = true;
@@ -289,6 +296,7 @@ class AudioEngine {
       'queue': queueTrackIds,
       'device_id': _outputDeviceId,
       'quic_port': quicPort,
+      'quick_start': quickStart,
     });
   }
 
@@ -408,6 +416,7 @@ class _AudioWorkerEngine {
     Duration startOffset = Duration.zero,
     List<String> queueTrackIds = const [],
     int? quicPort,
+    bool quickStart = true,
   }) async {
     stop(notify: false);
     _playbackId = playbackId;
@@ -423,6 +432,7 @@ class _AudioWorkerEngine {
       settings: settings,
       startOffset: startOffset,
       queueTrackIds: queueTrackIds,
+      quickStart: quickStart,
       volume: _volume,
       outputDeviceId: _outputDeviceId,
     );
@@ -480,6 +490,7 @@ class _PlaybackSession {
     required this.settings,
     required this.startOffset,
     required this.queueTrackIds,
+    required this.quickStart,
     required double volume,
     required int outputDeviceId,
   }) : _send = send,
@@ -507,6 +518,7 @@ class _PlaybackSession {
        quicPort = null,
        settings = const StreamSettings(mode: 'local', quality: 'source'),
        queueTrackIds = const <String>[],
+       quickStart = true,
        _volume = volume,
        _outputDeviceId = outputDeviceId,
        localFilePath = filePath;
@@ -522,6 +534,7 @@ class _PlaybackSession {
   final StreamSettings settings;
   final Duration startOffset;
   final List<String> queueTrackIds;
+  final bool quickStart;
   final String? localFilePath;
   double _volume;
   int _outputDeviceId;
@@ -894,6 +907,41 @@ class _PlaybackSession {
     }
   }
 
+  bool _requestInitialServerSeek(QuicClient quic, int positionMs) {
+    if (positionMs <= 0) {
+      return false;
+    }
+    final seekId = _allocateSeekId();
+    final previousPendingSeekMs = _pendingSeekMs;
+    final previousPendingSeekId = _pendingSeekId;
+    final previousPendingSeekRequestedAtMs = _pendingSeekRequestedAtMs;
+    final previousDiscardUntilSeekMarker = _discardUntilSeekMarker;
+    _pendingSeekMs = positionMs;
+    _pendingSeekId = seekId;
+    _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _discardUntilSeekMarker = true;
+    _log('Requesting initial QUIC seek to ${positionMs}ms (seek_id=$seekId).');
+    try {
+      quic.seek(trackId: trackId, positionMs: positionMs, seekId: seekId);
+    } catch (err) {
+      _pendingSeekMs = previousPendingSeekMs;
+      _pendingSeekId = previousPendingSeekId;
+      _pendingSeekRequestedAtMs = previousPendingSeekRequestedAtMs;
+      _discardUntilSeekMarker = previousDiscardUntilSeekMarker;
+      _log('Initial QUIC seek failed; falling back to client skip: $err');
+      return false;
+    }
+    _pendingClientSkipMs = 0;
+    if (_serverBackpressureEnabled) {
+      try {
+        quic.sendBufferStats(bufferMs: 0, targetMs: _serverBufferTargetMs());
+      } catch (_) {
+        // Ignore closed/failed QUIC stats updates.
+      }
+    }
+    return true;
+  }
+
   Future<void> _runLocalFilePlayback(String filePath) async {
     _configureLocalBufferProfile();
     _log('Opening local audio file: $filePath');
@@ -904,7 +952,7 @@ class _PlaybackSession {
     _channels = decoder.channels;
     _baseOffsetMs = startOffset.inMilliseconds;
     _pendingClientSkipMs = 0;
-    _quickStart = startOffset.inMilliseconds > 0;
+    _quickStart = quickStart && startOffset.inMilliseconds > 0;
     _log(
       'Local decoder: $_sampleRate Hz, ${_channels}ch, duration=${decoder.duration.inMilliseconds} ms',
     );
@@ -1072,7 +1120,7 @@ class _PlaybackSession {
     _lastQuicStatsLogAtMs = 0;
     _baseOffsetMs = startOffset.inMilliseconds;
     _pendingClientSkipMs = startOffset.inMilliseconds;
-    _quickStart = startOffset.inMilliseconds > 0;
+    _quickStart = quickStart && startOffset.inMilliseconds > 0;
     _pendingSeekMs = null;
     _pendingSeekId = null;
     _activeSeekId = null;
@@ -1144,6 +1192,7 @@ class _PlaybackSession {
         return;
       }
     }
+    _requestInitialServerSeek(quic, startOffset.inMilliseconds);
 
     final reader = _ByteQueue();
     RawOpusHeader? header;
@@ -1237,8 +1286,9 @@ class _PlaybackSession {
       }
       if (read == 0) {
         final detail = quic.lastError();
-        _log('QUIC stream closed: ${detail ?? 'no detail'}');
-        _streamEnded = true;
+        throw Exception(
+          'QUIC transport closed before stream EOS${detail == null ? '' : ': $detail'}',
+        );
       } else if (read > 0) {
         final data = Uint8List.fromList(readBuffer.sublist(0, read));
         bytesReceived += data.length;
@@ -1643,7 +1693,8 @@ class _PlaybackSession {
         _log(
           'Stream stats: bytes=${bytesReceived}, frames=${framesDecoded}, '
           'buffered=${reader.available} bytes, last_frame=${lastFrameLen}, '
-          'decode_errors=${decodeErrors}',
+          'decode_errors=${decodeErrors}, pcm_buffered=${_bufferedAudioMs()}ms, '
+          'target=${_serverBufferTargetMs()}ms',
         );
       }
     }
@@ -1964,7 +2015,7 @@ class _PlaybackSession {
         _networkProfileLevel += 1;
         _applyBufferProfile(log: true);
       }
-      _pauseForBuffer();
+      _pauseForBuffer(bufferedSamples);
       return;
     }
     final resumeThresholdSamples = _reportedStart && _playedSamples == 0
@@ -1975,11 +2026,30 @@ class _PlaybackSession {
     }
   }
 
-  void _pauseForBuffer() {
+  int _bufferedAudioMs() {
+    final samplesPerSecond = _sampleRate * _channels;
+    if (samplesPerSecond <= 0) {
+      return 0;
+    }
+    final bufferSamples = _buffer?.length ?? 0;
+    final queuedInPlayer = _queuedToPlayerSamples > _playedSamples
+        ? (_queuedToPlayerSamples - _playedSamples)
+        : 0;
+    return ((bufferSamples + queuedInPlayer) * 1000 ~/ samplesPerSecond);
+  }
+
+  void _pauseForBuffer(int bufferedSamples) {
     final player = _player;
     if (player == null) {
       return;
     }
+    final samplesPerSecond = _sampleRate * _channels;
+    final bufferedMs = samplesPerSecond <= 0
+        ? 0
+        : (bufferedSamples * 1000 ~/ samplesPerSecond);
+    _log(
+      'Buffer low: buffered=${bufferedMs}ms target=${_serverBufferTargetMs()}ms; refilling.',
+    );
     player.pause();
     _paused = true;
     _autoPaused = true;
@@ -1997,6 +2067,9 @@ class _PlaybackSession {
     player.resume();
     _paused = false;
     _autoPaused = false;
+    _log(
+      'Buffer recovered: buffered=${_bufferedAudioMs()}ms target=${_serverBufferTargetMs()}ms.',
+    );
     _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': false});
   }
 
@@ -2237,6 +2310,7 @@ void _audioWorkerMain(_AudioWorkerInit init) {
             milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0,
           ),
           queueTrackIds: queue,
+          quickStart: message['quick_start'] != false,
         );
         break;
       case 'play_local':

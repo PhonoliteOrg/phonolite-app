@@ -157,9 +157,13 @@ class _LikedPageState extends State<LikedPage> {
                               ),
                             ),
                             _LikedSection(
-                              title: 'Local Liked Tracks',
+                              title: authState.isAuthorized
+                                  ? 'Local Liked Tracks'
+                                  : null,
                               tracks: localTracks,
-                              emptyTitle: 'No local liked tracks',
+                              emptyTitle: authState.isAuthorized
+                                  ? 'No local liked tracks'
+                                  : 'No liked tracks',
                               playback: playback,
                               onTap: (track) =>
                                   controller.playLocalLikedTrack(track.id),
@@ -383,7 +387,7 @@ class _LikedSection extends StatelessWidget {
     this.onDownload,
   });
 
-  final String title;
+  final String? title;
   final List<Track> tracks;
   final String emptyTitle;
   final PlaybackState playback;
@@ -401,14 +405,16 @@ class _LikedSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final playingId = playback.track?.id;
+    final sectionTitle = title;
     return SliverMainAxisGroup(
       slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-          sliver: SliverToBoxAdapter(
-            child: ObsidianSectionHeader(title: title),
+        if (sectionTitle != null)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+            sliver: SliverToBoxAdapter(
+              child: ObsidianSectionHeader(title: sectionTitle),
+            ),
           ),
-        ),
         if (tracks.isEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
