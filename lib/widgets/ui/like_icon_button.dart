@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'phonolite_icons.dart';
+
 import 'obsidian_widgets.dart';
 
 class LikeIconButton extends StatelessWidget {
@@ -17,7 +19,7 @@ class LikeIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ObsidianHudIconButton(
-      icon: isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+      icon: PhonoliteIcons.heart,
       isActive: isLiked,
       onPressed: onPressed,
       size: size,

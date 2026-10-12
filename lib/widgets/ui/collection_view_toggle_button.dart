@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'phonolite_icons.dart';
+
 import 'obsidian_widgets.dart';
 
 class CollectionViewToggleButton extends StatelessWidget {
@@ -29,7 +31,7 @@ class CollectionViewToggleButton extends StatelessWidget {
         toggled: isListView,
         label: semanticLabel,
         child: ObsidianHudIconButton(
-          icon: Icons.view_agenda_rounded,
+          icon: PhonoliteIcons.rows3,
           size: iconSize,
           isActive: isListView,
           onPressed: onPressed,

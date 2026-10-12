@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/edit_icon.dart';
+
 import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../entities/offline_library_views.dart';
 import '../widgets/display/album_card.dart';
 import '../widgets/display/album_row_tile.dart';
 import '../widgets/display/artist_hero.dart';
+import '../widgets/display/artist_release_sections.dart';
 import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/detail_action_header.dart';
 import '../widgets/ui/collection_view_toggle_button.dart';
@@ -43,9 +47,11 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
           initialData: controller.offlineDownloads,
           builder: (context, _) {
             final group = _currentGroup(controller);
-            final removableAlbumIds = _removableAlbumIds(group.albums);
+            final albums = group.soloAlbums;
+            final releases = group.releases;
+            final removableAlbumIds = _removableAlbumIds(group.headlineAlbums);
             final selectedAlbums = _selectedAlbums(
-              group.albums,
+              group.headlineAlbums,
               removableAlbumIds,
             );
             final removingTrackIds = _removingTrackIds(controller);
@@ -112,18 +118,23 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                         ),
                       ),
                     ),
-                    if (group.albums.isEmpty)
+                    if (albums.isNotEmpty)
+                      ArtistReleaseHeading(
+                        title: 'Albums',
+                        count: albums.length,
+                      ),
+                    if (albums.isEmpty && releases.collabAlbums.isEmpty)
                       const SliverPadding(
                         padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
                         sliver: SliverToBoxAdapter(
                           child: EmptyState(
                             title: 'No downloaded albums',
                             message:
-                                'Downloaded albums for this artist appear here.',
+                                'Download this artist’s albums or collaborations to keep them here.',
                           ),
                         ),
                       )
-                    else
+                    else if (albums.isNotEmpty)
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                         sliver: showCollectionList
@@ -135,7 +146,7 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                                   if (index.isOdd) {
                                     return const Divider(height: 1);
                                   }
-                                  final album = group.albums[index ~/ 2];
+                                  final album = albums[index ~/ 2];
                                   final isDeleting = _albumHasRemovingTracks(
                                     album,
                                     removingTrackIds,
@@ -158,7 +169,7 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                                     onSelectionToggle: () =>
                                         _toggleAlbumSelection(album),
                                   );
-                                }, childCount: group.albums.length * 2 - 1),
+                                }, childCount: albums.length * 2 - 1),
                               )
                             : SafeSliverGrid(
                                 gridDelegate:
@@ -172,7 +183,7 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                                   context,
                                   index,
                                 ) {
-                                  final album = group.albums[index];
+                                  final album = albums[index];
                                   final isDeleting = _albumHasRemovingTracks(
                                     album,
                                     removingTrackIds,
@@ -195,9 +206,84 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                                     onSelectionToggle: () =>
                                         _toggleAlbumSelection(album),
                                   );
-                                }, childCount: group.albums.length),
+                                }, childCount: albums.length),
                               ),
                       ),
+                    if (releases.collabAlbums.isNotEmpty)
+                      ArtistContributionSliver(
+                        title: 'Collab albums',
+                        entries: releases.collabAlbums,
+                        isListView: showCollectionList,
+                        coverFor: (album) =>
+                            group.albums
+                                .firstWhere((item) => item.id == album.id)
+                                .coverPath ??
+                            '',
+                        onOpen: (album) => _openAlbum(
+                          context,
+                          group.albums.firstWhere(
+                            (item) => item.id == album.id,
+                          ),
+                        ),
+                        selectionMode: _albumSelectionMode,
+                        selected: (entry) =>
+                            _selectedAlbumIds.contains(entry.album.id),
+                        selectable: (entry) =>
+                            entry.isAlbumArtist &&
+                            removableAlbumIds.contains(entry.album.id) &&
+                            !_albumHasRemovingTracks(
+                              group.albums.firstWhere(
+                                (album) => album.id == entry.album.id,
+                              ),
+                              removingTrackIds,
+                            ),
+                        isDeleting: (entry) => _albumHasRemovingTracks(
+                          group.albums.firstWhere(
+                            (album) => album.id == entry.album.id,
+                          ),
+                          removingTrackIds,
+                        ),
+                        onSelectionToggle: (entry) => _toggleAlbumSelection(
+                          group.albums.firstWhere(
+                            (album) => album.id == entry.album.id,
+                          ),
+                        ),
+                      ),
+                    if (releases.appearsOn.isNotEmpty)
+                      ArtistContributionSliver(
+                        title: 'Appears on',
+                        entries: releases.appearsOn,
+                        isListView: showCollectionList,
+                        coverFor: (album) =>
+                            group.albums
+                                .firstWhere((item) => item.id == album.id)
+                                .coverPath ??
+                            '',
+                        onOpen: (album) => _openAlbum(
+                          context,
+                          group.albums.firstWhere(
+                            (item) => item.id == album.id,
+                          ),
+                        ),
+                      ),
+                    if (releases.otherCredits.isNotEmpty)
+                      ArtistContributionSliver(
+                        title: 'Other credits',
+                        entries: releases.otherCredits,
+                        isListView: showCollectionList,
+                        coverFor: (album) =>
+                            group.albums
+                                .firstWhere((item) => item.id == album.id)
+                                .coverPath ??
+                            '',
+                        onOpen: (album) => _openAlbum(
+                          context,
+                          group.albums.firstWhere(
+                            (item) => item.id == album.id,
+                          ),
+                        ),
+                      ),
+                    const SliverPlaybackInset(),
                   ],
                 );
               },
@@ -325,7 +411,7 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
     return Tooltip(
       message: 'Edit',
       child: ObsidianHudIconButton(
-        icon: Icons.edit_rounded,
+        iconWidget: const EditIcon(),
         onPressed: onPressed,
       ),
     );

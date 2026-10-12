@@ -113,22 +113,29 @@ void main() {
       expectContainsAll(dartSource, const [
         "return ffi.DynamicLibrary.open('libphonolite_quic.so');",
         "return ffi.DynamicLibrary.open('phonolite_quic.dll');",
-        'void openTrack({',
-        'void sendBufferStats({required int bufferMs, int? targetMs})',
+        'int openTrack({',
+        'void sendBufferStats({',
         'void sendPlayback({',
-        'void seek({',
+        'int seek({',
+        'int get requestId',
+        'void suspendAudio()',
+        'Map<String, Object?>? pollEvent()',
         'int? pollRttMs()',
       ]);
       expectContainsAll(rustSource, const [
         'const ALPN_QUIC: &[&[u8]] = &[b"phonolite-quic"];',
-        'const MAX_PREFETCH_BYTES: usize = 12 * 1024 * 1024;',
+        'const MAX_DELIVERY_BYTES: usize = 512 * 1024;',
         'config.verify_peer(false);',
         'config.set_max_idle_timeout(30_000);',
-        'if last_ping.elapsed() >= Duration::from_millis(500)',
-        'if last_ack_elicit.elapsed() >= Duration::from_millis(200)',
+        'const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);',
+        'if last_ping.elapsed() >= KEEPALIVE_INTERVAL',
         'ClientMessage::Auth { token: &token }',
         'ControlCommand::Seek',
         'ControlCommand::Advance',
+        'ControlCommand::SuspendAudio',
+        'source_version: Option<String>',
+        'range_end_ms: Option<u32>',
+        'end_of_track: Option<bool>',
       ]);
       expectContainsAll(cargo, const [
         'quiche = { version = "0.20", default-features = false, features = ["boringssl-vendored"] }',
@@ -136,9 +143,13 @@ void main() {
       expectContainsAll(header, const [
         'phonolite_quic_connect',
         'phonolite_quic_open_track',
+        'phonolite_quic_open_track_at',
         'phonolite_quic_send_buffer',
         'phonolite_quic_send_playback',
         'phonolite_quic_seek',
+        'phonolite_quic_suspend_audio',
+        'phonolite_quic_generation',
+        'phonolite_quic_poll_event',
         'phonolite_quic_poll_rtt_ms',
       ]);
     });

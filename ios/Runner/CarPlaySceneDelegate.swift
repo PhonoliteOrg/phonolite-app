@@ -111,8 +111,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     return buildSourceTemplate(
       scope: "server",
       title: "Server",
-      systemImageName: "antenna.radiowaves.left.and.right",
-      fallback: .more
+      imageName: "LucideAntenna",
+      fallback: "LucideEllipsis"
     )
   }
 
@@ -120,22 +120,22 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     return buildSourceTemplate(
       scope: "local",
       title: "Local",
-      systemImageName: "arrow.down.circle",
-      fallback: .bookmarks
+      imageName: "LucideDownload",
+      fallback: "LucideBookmark"
     )
   }
 
   private func buildSourceTemplate(
     scope: String,
     title: String,
-    systemImageName: String,
-    fallback: UITabBarItem.SystemItem
+    imageName: String,
+    fallback: String
   ) -> CPListTemplate {
     let template = CPListTemplate(
       title: title,
       sections: [CPListSection(items: buildSourceItems(scope: scope))]
     )
-    configureTab(template, title: title, systemImageName: systemImageName, fallback: fallback)
+    configureTab(template, title: title, imageName: imageName, fallback: fallback)
     return template
   }
 
@@ -167,7 +167,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       detailText: localScope ? "Browse downloaded artists" : "Browse server artists"
     )
     libraryItem.setImage(
-      carPlaySymbol(named: localScope ? "arrow.down.circle" : "music.mic")
+      carPlayIcon(named: localScope ? "LucideDownload" : "LucideMicVocal")
     )
     libraryItem.handler = { [weak self] _, completion in
       self?.showArtistsList(scope: scope)
@@ -178,7 +178,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       text: "\(sourceName) Playlists",
       detailText: localScope ? "Play downloaded playlists" : "Pick a server playlist"
     )
-    playlistsItem.setImage(carPlaySymbol(named: "music.note.list"))
+    playlistsItem.setImage(carPlayIcon(named: "LucideListMusic"))
     playlistsItem.handler = { [weak self] _, completion in
       self?.showPlaylistsList(scope: scope)
       completion()
@@ -188,7 +188,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       text: "\(sourceName) Liked Songs",
       detailText: "Play from the top"
     )
-    likedItem.setImage(carPlaySymbol(named: "heart.fill"))
+    likedItem.setImage(carPlayIcon(named: "LucideHeartFilled"))
     likedItem.handler = { [weak self] _, completion in
       if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
         appDelegate.invokeCarPlayMethod("playLiked", arguments: ["scope": scope])
@@ -201,7 +201,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       text: "\(sourceName) Shuffle",
       detailText: localScope ? "Shuffle downloaded tracks" : "Shuffle server library"
     )
-    shuffleItem.setImage(carPlaySymbol(named: "shuffle"))
+    shuffleItem.setImage(carPlayIcon(named: "LucideShuffle"))
     shuffleItem.handler = { [weak self] _, completion in
       if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
         appDelegate.invokeCarPlayMethod(
@@ -313,7 +313,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     method: String,
     arguments: [String: Any]? = nil,
     completion: @escaping (
-      [(id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)],
+      [(id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?, serverPin: String?)],
       String?
     ) -> Void
   ) {
@@ -333,7 +333,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     _ result: Any?
   ) -> (
     items: [
-      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?, serverPin: String?)
     ],
     error: String?
   ) {
@@ -346,7 +346,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     let error = payload["error"] as? String
     let rawItems = payload["items"] as? [[String: Any]] ?? []
     let items: [
-      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?, serverPin: String?)
     ] = rawItems.compactMap { item in
       let id = item["id"] as? String ?? ""
       let title = item["title"] as? String ?? ""
@@ -354,6 +354,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       let enabled = item["enabled"] as? Bool ?? true
       let artworkUrl = item["artworkUrl"] as? String
       let token = item["token"] as? String
+      let serverPin = item["serverPin"] as? String
       if id.isEmpty || title.isEmpty {
         return nil
       }
@@ -363,7 +364,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         subtitle: subtitle,
         enabled: enabled,
         artworkUrl: artworkUrl,
-        token: token
+        token: token,
+        serverPin: serverPin
       )
     }
     return (items, error)
@@ -371,13 +373,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
   private func buildListItems(
     entries: [
-      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?, serverPin: String?)
     ],
     emptyText: String,
     errorText: String,
     error: String?,
     onSelect: @escaping (
-      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?)
+      (id: String, title: String, subtitle: String?, enabled: Bool, artworkUrl: String?, token: String?, serverPin: String?)
     ) -> Void
   ) -> [CPListItem] {
     if let error, !error.isEmpty {
@@ -389,7 +391,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     return entries.map { entry in
       let item = CPListItem(text: entry.title, detailText: entry.subtitle)
       if let artworkUrl = entry.artworkUrl, !artworkUrl.isEmpty {
-        fetchCarPlayImage(urlString: artworkUrl, token: entry.token) { image in
+        fetchCarPlayImage(urlString: artworkUrl, token: entry.token, serverPin: entry.serverPin) { image in
           if let image {
             item.setImage(image)
           }
@@ -422,6 +424,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   private func fetchCarPlayImage(
     urlString: String,
     token: String?,
+    serverPin: String?,
     completion: @escaping (UIImage?) -> Void
   ) {
     guard let url = URL(string: urlString) else {
@@ -442,12 +445,18 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       }
       return
     }
+    guard let serverPin, let session = PinnedArtworkSession.make(url: url, pin: serverPin) else {
+      completion(nil)
+      return
+    }
     var request = URLRequest(url: url)
     if let token, !token.isEmpty {
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
-    URLSession.shared.dataTask(with: request) { data, _, _ in
-      if let data, let image = UIImage(data: data) {
+    session.dataTask(with: request) { data, response, error in
+      session.finishTasksAndInvalidate()
+      if error == nil, let response = response as? HTTPURLResponse,
+         (200..<300).contains(response.statusCode), let data, let image = UIImage(data: data) {
         DispatchQueue.main.async {
           completion(image)
         }
@@ -550,8 +559,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self.nowPlayingTemplate.updateNowPlayingButtons([])
         return
       }
-      let imageName = liked ? "heart.fill" : "heart"
-      guard let image = carPlaySymbol(named: imageName) else {
+      let imageName = liked ? "LucideHeartFilled" : "LucideHeart"
+      guard let image = carPlayIcon(named: imageName) else {
         self.nowPlayingTemplate.updateNowPlayingButtons([])
         return
       }
@@ -622,21 +631,21 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   private func configureTab(
     _ template: CPTemplate,
     title: String,
-    systemImageName: String,
-    fallback: UITabBarItem.SystemItem
+    imageName: String,
+    fallback: String
   ) {
     if #available(iOS 14.0, *) {
       template.tabTitle = title
-      if let image = carPlaySymbol(named: systemImageName) {
+      if let image = carPlayIcon(named: imageName) {
         template.tabImage = image
       } else {
-        template.tabSystemItem = fallback
+        template.tabImage = carPlayIcon(named: fallback)
       }
     }
   }
 
-  private func carPlaySymbol(named systemName: String) -> UIImage? {
-    return UIImage(systemName: systemName)?.withRenderingMode(.alwaysTemplate)
+  private func carPlayIcon(named imageName: String) -> UIImage? {
+    return UIImage(named: imageName)?.withRenderingMode(.alwaysTemplate)
   }
 
   private func refreshTabBarTemplates() {
@@ -648,13 +657,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       configureTab(
         serverTemplate,
         title: "Server",
-        systemImageName: "antenna.radiowaves.left.and.right",
-        fallback: .more
+        imageName: "LucideAntenna",
+        fallback: "LucideEllipsis"
       )
       templates.append(serverTemplate)
     }
     if let localTemplate {
-      configureTab(localTemplate, title: "Local", systemImageName: "arrow.down.circle", fallback: .bookmarks)
+      configureTab(localTemplate, title: "Local", imageName: "LucideDownload", fallback: "LucideBookmark")
       templates.append(localTemplate)
     }
     DispatchQueue.main.async { [weak tabBarTemplate] in

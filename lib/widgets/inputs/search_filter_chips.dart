@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/phonolite_icons.dart';
+
 class SearchFilterChips extends StatelessWidget {
   const SearchFilterChips({
     super.key,
@@ -20,6 +22,10 @@ class SearchFilterChips extends StatelessWidget {
             (filter) => ChoiceChip(
               label: Text(filter.toUpperCase()),
               selected: activeFilter == filter,
+              showCheckmark: false,
+              avatar: activeFilter == filter
+                  ? const Icon(PhonoliteIcons.check, size: 18)
+                  : null,
               onSelected: (_) => onChanged(filter),
             ),
           )

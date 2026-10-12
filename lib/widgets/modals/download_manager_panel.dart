@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../ui/phonolite_icons.dart';
+import '../ui/reload_icon.dart';
+
 import '../../core/library_helpers.dart';
 import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
 import '../../entities/offline_download_manager.dart';
-import '../../entities/offline_library.dart';
+import '../../entities/offline_models.dart';
 import '../display/album_row_tile.dart';
 import '../display/artist_row_tile.dart';
 import '../display/empty_state.dart';
@@ -16,6 +19,7 @@ import '../ui/obsidian_widgets.dart';
 import '../ui/tech_button.dart';
 import 'confirmation_modal.dart';
 import 'obsidian_adaptive_modal.dart';
+import 'obsidian_modal_scope.dart';
 
 Future<void> showDownloadManagerPanel(BuildContext context) async {
   final controller = AppScope.of(context);
@@ -48,7 +52,10 @@ class DownloadManagerPanel extends StatelessWidget {
   final ObsidianAdaptiveModalPresentation presentation;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildPanel);
+
+  Widget _buildPanel(BuildContext context) {
     final downloadsOverride = this.downloadsOverride;
     final jobsOverride = this.jobsOverride;
     if (downloadsOverride != null || jobsOverride != null) {
@@ -85,7 +92,6 @@ class DownloadManagerPanel extends StatelessWidget {
     return ObsidianModalSurface(
       title: 'Download Manager',
       showDragHandle: presentation == ObsidianAdaptiveModalPresentation.sheet,
-      blur: state.hasActiveWork ? 0 : 20,
       headerActions: _toolbar(context, state),
       child: _content(context, state),
     );
@@ -102,7 +108,7 @@ class DownloadManagerPanel extends StatelessWidget {
             TechButton(
               label: 'Pause all',
               tooltip: 'Pause all',
-              icon: Icons.pause_rounded,
+              icon: PhonoliteIcons.pause,
               iconOnly: iconOnly,
               density: TechButtonDensity.compact,
               chrome: TechButtonChrome.borderless,
@@ -113,7 +119,7 @@ class DownloadManagerPanel extends StatelessWidget {
             TechButton(
               label: 'Resume paused',
               tooltip: 'Resume paused',
-              icon: Icons.play_arrow_rounded,
+              icon: PhonoliteIcons.play,
               iconOnly: iconOnly,
               density: TechButtonDensity.compact,
               chrome: TechButtonChrome.borderless,
@@ -124,7 +130,7 @@ class DownloadManagerPanel extends StatelessWidget {
             TechButton(
               label: 'Clear partial / failed',
               tooltip: 'Clear partial / failed',
-              icon: Icons.delete_sweep_rounded,
+              icon: PhonoliteIcons.trash2,
               iconOnly: iconOnly,
               density: TechButtonDensity.compact,
               chrome: TechButtonChrome.borderless,
@@ -154,7 +160,7 @@ class DownloadManagerPanel extends StatelessWidget {
                   message: 'New album and artist downloads will appear here.',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: const EdgeInsets.only(bottom: 16),
                   itemCount: state.entries.length,
                   itemBuilder: (context, index) =>
                       _entry(context, state.entries[index]),
@@ -491,52 +497,69 @@ class _DownloadJobRow extends StatelessWidget {
     final title = _jobTitle;
     final coverUrl = _coverUrl;
     final headers = _headers;
-    final trailing = _DownloadJobActions(job: job, controller: controller);
+    final actions = _DownloadJobActions(job: job, controller: controller);
+    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
+    final trailing = touchLayout ? const SizedBox.shrink() : actions;
+    Widget withActions(Widget row) => touchLayout
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              row,
+              Align(alignment: Alignment.centerRight, child: actions),
+            ],
+          )
+        : row;
     final subtitle = _subtitle;
     if (job.kind == 'artist') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: ArtistRowTile(
-          artist: Artist(
-            id: _sourceId ?? job.jobId,
-            name: title,
-            albumCount: 0,
+        child: withActions(
+          ArtistRowTile(
+            artist: Artist(
+              id: _sourceId ?? job.jobId,
+              name: title,
+              albumCount: 0,
+            ),
+            coverUrl: coverUrl,
+            headers: headers,
+            subtitle: subtitle,
+            trailing: trailing,
           ),
-          coverUrl: coverUrl,
-          headers: headers,
-          subtitle: subtitle,
-          trailing: trailing,
         ),
       );
     }
     if (job.kind == 'album') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: AlbumRowTile(
-          album: Album(
-            id: _sourceId ?? job.jobId,
-            title: title,
-            artist: '',
-            artistId: '',
-            trackCount: job.totalCount > 0
-                ? job.totalCount
-                : job.discoveredCount,
+        child: withActions(
+          AlbumRowTile(
+            album: Album(
+              id: _sourceId ?? job.jobId,
+              title: title,
+              artist: '',
+              artistId: '',
+              trackCount: job.totalCount > 0
+                  ? job.totalCount
+                  : job.discoveredCount,
+            ),
+            coverUrl: coverUrl ?? '',
+            headers: headers,
+            subtitle: subtitle,
+            trailing: trailing,
           ),
-          coverUrl: coverUrl ?? '',
-          headers: headers,
-          subtitle: subtitle,
-          trailing: trailing,
         ),
       );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: ArtistRowTile(
-        artist: Artist(id: job.jobId, name: title, albumCount: 0),
-        coverUrl: null,
-        headers: const {},
-        subtitle: subtitle,
-        trailing: trailing,
+      child: withActions(
+        ArtistRowTile(
+          artist: Artist(id: job.jobId, name: title, albumCount: 0),
+          coverUrl: null,
+          headers: const {},
+          subtitle: subtitle,
+          trailing: trailing,
+        ),
       ),
     );
   }
@@ -602,28 +625,27 @@ class _DownloadJobActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
       children: [
         _ActionButton(
           tooltip: 'Pause download job',
-          icon: Icons.pause_rounded,
+          icon: PhonoliteIcons.pause,
           onPressed: controller == null || !_canPauseJob(job)
               ? null
               : () => unawaited(controller!.pauseOfflineDownloadJob(job)),
         ),
-        const SizedBox(width: 4),
         _ActionButton(
           tooltip: 'Resume download job',
-          icon: Icons.play_arrow_rounded,
+          icon: PhonoliteIcons.play,
           onPressed: controller == null || !_canResumeJob(job)
               ? null
               : () => unawaited(controller!.resumeOfflineDownloadJob(job)),
         ),
-        const SizedBox(width: 4),
         _ActionButton(
           tooltip: 'Cancel and remove job',
-          icon: Icons.close_rounded,
+          icon: PhonoliteIcons.x,
           onPressed: controller == null
               ? null
               : () => unawaited(controller!.cancelOfflineDownloadJob(job)),
@@ -655,21 +677,35 @@ class _DownloadItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
+    final actions = _DownloadActions(
+      download: download,
+      controller: controller,
+    );
+    final row = TrackRowTile(
+      track: download.track,
+      index: 0,
+      showIndex: false,
+      showAlbumArt: true,
+      showDuration: false,
+      albumArtUrl: _albumArtUrl,
+      albumArtHeaders: _headers,
+      subtitle: _subtitle,
+      offlineDownload: download,
+      leading: _DownloadStatusGlyph(download: download),
+      trailing: touchLayout ? const SizedBox.shrink() : actions,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: TrackRowTile(
-        track: download.track,
-        index: 0,
-        showIndex: false,
-        showAlbumArt: true,
-        showDuration: false,
-        albumArtUrl: _albumArtUrl,
-        albumArtHeaders: _headers,
-        subtitle: _subtitle,
-        offlineDownload: download,
-        leading: _DownloadStatusGlyph(download: download),
-        trailing: _DownloadActions(download: download, controller: controller),
-      ),
+      child: touchLayout
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                row,
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            )
+          : row,
     );
   }
 
@@ -734,16 +770,16 @@ class _DownloadStatusGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = switch (download.status) {
-      OfflineDownloadStatus.queued => Icons.schedule_rounded,
-      OfflineDownloadStatus.preparing => Icons.sync_rounded,
-      OfflineDownloadStatus.downloading => Icons.downloading_rounded,
-      OfflineDownloadStatus.paused => Icons.pause_circle_outline_rounded,
-      OfflineDownloadStatus.validating => Icons.downloading_rounded,
-      OfflineDownloadStatus.removing => Icons.delete_sweep_rounded,
+      OfflineDownloadStatus.queued => PhonoliteIcons.clock,
+      OfflineDownloadStatus.preparing => null,
+      OfflineDownloadStatus.downloading => PhonoliteIcons.download,
+      OfflineDownloadStatus.paused => PhonoliteIcons.circlePause,
+      OfflineDownloadStatus.validating => PhonoliteIcons.download,
+      OfflineDownloadStatus.removing => PhonoliteIcons.trash2,
       OfflineDownloadStatus.failed ||
-      OfflineDownloadStatus.corrupt => Icons.error_outline_rounded,
-      OfflineDownloadStatus.canceled => Icons.cancel_outlined,
-      OfflineDownloadStatus.downloaded => Icons.offline_pin_rounded,
+      OfflineDownloadStatus.corrupt => PhonoliteIcons.circleAlert,
+      OfflineDownloadStatus.canceled => PhonoliteIcons.circleX,
+      OfflineDownloadStatus.downloaded => PhonoliteIcons.circleCheck,
     };
     if (download.status == OfflineDownloadStatus.downloading) {
       return SizedBox.square(
@@ -772,7 +808,12 @@ class _DownloadStatusGlyph extends StatelessWidget {
       OfflineDownloadStatus.downloaded => ObsidianPalette.gold,
       _ => ObsidianPalette.textMuted,
     };
-    return Icon(icon, size: 22, color: color);
+    return download.status == OfflineDownloadStatus.preparing
+        ? IconTheme.merge(
+            data: IconThemeData(size: 22, color: color),
+            child: const ReloadIcon(),
+          )
+        : Icon(icon, size: 22, color: color);
   }
 }
 
@@ -789,40 +830,41 @@ class _DownloadActions extends StatelessWidget {
     final canRetry = _canRetry(download.status);
     final canCancel = _canCancel(download.status);
     final canRemovePartial = _canRemovePartial(download.status);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
       children: [
         _ActionButton(
           tooltip: 'Pause',
-          icon: Icons.pause_rounded,
+          icon: PhonoliteIcons.pause,
           onPressed: controller == null || !canPause
               ? null
               : () => unawaited(controller!.pauseOfflineDownload(download)),
         ),
         _ActionButton(
           tooltip: 'Resume',
-          icon: Icons.play_arrow_rounded,
+          icon: PhonoliteIcons.play,
           onPressed: controller == null || !canResume
               ? null
               : () => unawaited(controller!.resumeOfflineDownload(download)),
         ),
         _ActionButton(
           tooltip: 'Retry',
-          icon: Icons.refresh_rounded,
+          iconWidget: const ReloadIcon(),
           onPressed: controller == null || !canRetry
               ? null
               : () => unawaited(controller!.retryOfflineDownload(download)),
         ),
         _ActionButton(
           tooltip: 'Cancel',
-          icon: Icons.close_rounded,
+          icon: PhonoliteIcons.x,
           onPressed: controller == null || !canCancel
               ? null
               : () => unawaited(controller!.cancelOfflineDownload(download)),
         ),
         _ActionButton(
           tooltip: 'Remove partial cache',
-          icon: Icons.delete_sweep_rounded,
+          icon: PhonoliteIcons.trash2,
           onPressed: controller == null || !canRemovePartial
               ? null
               : () => unawaited(controller!.removeOfflineDownload(download)),
@@ -873,27 +915,31 @@ class _DownloadActions extends StatelessWidget {
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
     required this.tooltip,
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.onPressed,
-  });
+  }) : assert((icon == null) != (iconWidget == null));
 
   final String tooltip;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
+    final size = touchLayout ? 48.0 : 32.0;
     return Tooltip(
       message: tooltip,
       child: SizedBox.square(
-        dimension: 32,
+        dimension: size,
         child: IconButton(
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-          visualDensity: VisualDensity.compact,
-          iconSize: 20,
+          constraints: BoxConstraints.tightFor(width: size, height: size),
+          visualDensity: VisualDensity.standard,
+          iconSize: touchLayout ? 24 : 20,
           onPressed: onPressed,
-          icon: Icon(icon),
+          icon: iconWidget ?? Icon(icon),
         ),
       ),
     );

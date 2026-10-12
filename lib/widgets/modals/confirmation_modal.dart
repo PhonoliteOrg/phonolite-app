@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/tech_button.dart';
 import 'modal_action_button.dart';
+import 'obsidian_dialog.dart';
+import 'obsidian_modal_scope.dart';
 
 class ConfirmationModal extends StatelessWidget {
   const ConfirmationModal({
@@ -12,7 +14,7 @@ class ConfirmationModal extends StatelessWidget {
     this.confirmLabel = 'Yes',
     this.cancelLabel = 'Cancel',
     this.confirmVariant = TechButtonVariant.danger,
-    this.actionChrome = TechButtonChrome.framed,
+    this.actionChrome = TechButtonChrome.borderless,
   });
 
   final String title;
@@ -29,7 +31,7 @@ class ConfirmationModal extends StatelessWidget {
     String confirmLabel = 'Yes',
     String cancelLabel = 'Cancel',
     TechButtonVariant confirmVariant = TechButtonVariant.danger,
-    TechButtonChrome actionChrome = TechButtonChrome.framed,
+    TechButtonChrome actionChrome = TechButtonChrome.borderless,
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -46,15 +48,15 @@ class ConfirmationModal extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildDialog);
+
+  Widget _buildDialog(BuildContext context) {
     final dialogWidth = (MediaQuery.of(context).size.width - 48)
         .clamp(0.0, 420.0)
         .toDouble();
-    return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-      contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+    return ObsidianAlertDialog(
+      scrollable: true,
       title: Text(title),
       content: SizedBox(
         width: dialogWidth,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../ui/phonolite_icons.dart';
 import 'package:flutter/services.dart';
 
 import '../../entities/app_log.dart';
@@ -40,31 +42,25 @@ class _MessageLogState extends State<MessageLog> {
     final defaultSubtitle = widget.messages.isEmpty
         ? 'No events yet'
         : 'System log';
-    final displayMessages = widget.messages.reversed.toList(growable: false);
-    final combined = displayMessages.map((entry) => entry.format()).join('\n');
-    final canCopy = combined.isNotEmpty;
+    final canCopy = widget.messages.isNotEmpty;
     final copyButton = TextButton.icon(
       onPressed: canCopy
           ? () async {
+              // Formatting the entire history is only needed on demand.
+              final combined = widget.messages.reversed
+                  .map((entry) => entry.format())
+                  .join('\n');
               await Clipboard.setData(ClipboardData(text: combined));
-              if (!mounted) {
-                return;
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Copied ${widget.messages.length} log entries'),
-                ),
-              );
             }
           : null,
-      icon: const Icon(Icons.copy_all_rounded),
+      icon: const Icon(PhonoliteIcons.copyCheck),
       label: const Text('Copy All'),
     );
     final clearButton = widget.onClear == null
         ? null
         : TextButton.icon(
             onPressed: widget.onClear,
-            icon: const Icon(Icons.clear_all_rounded),
+            icon: const Icon(PhonoliteIcons.listX),
             label: const Text('Clear'),
           );
     final trailing =
@@ -78,27 +74,7 @@ class _MessageLogState extends State<MessageLog> {
         theme.textTheme.bodyMedium?.copyWith(height: 1.4) ??
         const TextStyle(height: 1.4);
 
-    final lineColor = ObsidianPalette.border.withOpacity(0.35);
-    final lines = <Widget>[];
-    for (var i = 0; i < displayMessages.length; i++) {
-      final entry = displayMessages[i];
-      final color = _colorForLevel(entry.level, theme);
-      lines.add(
-        SelectableText(
-          '[${entry.timestampLabel}][${entry.levelLabel}] ${entry.message}',
-          style: baseStyle.copyWith(color: color),
-        ),
-      );
-      if (i < displayMessages.length - 1) {
-        lines.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Container(height: 1, color: lineColor),
-          ),
-        );
-      }
-    }
-
+    final lineColor = ObsidianPalette.border.withValues(alpha: 0.35);
     return Column(
       children: [
         ObsidianSectionHeader(
@@ -123,10 +99,21 @@ class _MessageLogState extends State<MessageLog> {
                         ),
                       ),
                     )
-                  : SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: lines,
+                  : ListView.separated(
+                      itemCount: widget.messages.length,
+                      itemBuilder: (context, index) {
+                        final entry =
+                            widget.messages[widget.messages.length - index - 1];
+                        return SelectableText(
+                          entry.format(),
+                          style: baseStyle.copyWith(
+                            color: _colorForLevel(entry.level, theme),
+                          ),
+                        );
+                      },
+                      separatorBuilder: (_, __) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Container(height: 1, color: lineColor),
                       ),
                     ),
             ),

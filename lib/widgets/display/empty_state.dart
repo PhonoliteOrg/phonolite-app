@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/phonolite_icons.dart';
+
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 
@@ -21,7 +23,7 @@ class EmptyState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.inbox_rounded, size: 48, color: ObsidianPalette.gold),
+              Icon(PhonoliteIcons.inbox, size: 48, color: ObsidianPalette.gold),
               const SizedBox(height: 12),
               Text(title, style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),

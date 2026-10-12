@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/library_helpers.dart';
 import '../entities/models.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/display/search_result_tile.dart';
@@ -87,6 +88,8 @@ class _SearchPageState extends State<SearchPage> {
                       final result = results[index];
                       return SearchResultTile(
                         result: result,
+                        connection: controller.connection,
+                        headers: authHeaders(controller),
                         onTap: () => controller.selectSearchResult(result),
                       );
                     },

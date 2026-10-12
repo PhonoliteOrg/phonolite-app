@@ -1,10 +1,98 @@
 library phonolite_quic;
 
+import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+
+/// Runs the connection-bound password proof off the UI isolate. Only proof
+/// messages cross the network; passwords are never included in HTTP requests.
+Future<Map<String, dynamic>> authenticateServer({
+  required String host,
+  required int port,
+  required String username,
+  required String password,
+  String? expectedSpki,
+  String? expectedOpaque,
+}) {
+  final request = jsonEncode({
+    'host': host,
+    'port': port,
+    'username': username,
+    'password': password,
+    'expected_spki': expectedSpki,
+    'expected_opaque': expectedOpaque,
+  });
+  return Isolate.run(() => _authenticateServer(request));
+}
+
+Map<String, dynamic> _authenticateServer(String request) {
+  final library = _loadLibrary();
+  final login = library
+      .lookupFunction<
+        ffi.Pointer<Utf8> Function(ffi.Pointer<Utf8>),
+        ffi.Pointer<Utf8> Function(ffi.Pointer<Utf8>)
+      >('phonolite_security_login');
+  final free = library
+      .lookupFunction<
+        ffi.Void Function(ffi.Pointer<Utf8>),
+        void Function(ffi.Pointer<Utf8>)
+      >('phonolite_quic_free_string');
+  final input = request.toNativeUtf8();
+  try {
+    final output = login(input);
+    if (output == ffi.nullptr) {
+      throw QuicException('Authentication unavailable');
+    }
+    try {
+      final response = Map<String, dynamic>.from(
+        jsonDecode(output.toDartString()) as Map,
+      );
+      if (response['ok'] != true) {
+        throw QuicException(response['error']?.toString() ?? 'Sign-in failed');
+      }
+      return response;
+    } finally {
+      free(output);
+    }
+  } finally {
+    input
+        .cast<ffi.Uint8>()
+        .asTypedList(utf8.encode(request).length)
+        .fillRange(0, utf8.encode(request).length, 0);
+    calloc.free(input);
+  }
+}
+
+String? certificateSpki(Uint8List certificate) {
+  final library = _loadLibrary();
+  final hash = library
+      .lookupFunction<
+        ffi.Pointer<Utf8> Function(ffi.Pointer<ffi.Uint8>, ffi.Size),
+        ffi.Pointer<Utf8> Function(ffi.Pointer<ffi.Uint8>, int)
+      >('phonolite_security_spki');
+  final free = library
+      .lookupFunction<
+        ffi.Void Function(ffi.Pointer<Utf8>),
+        void Function(ffi.Pointer<Utf8>)
+      >('phonolite_quic_free_string');
+  final input = calloc<ffi.Uint8>(certificate.length);
+  try {
+    input.asTypedList(certificate.length).setAll(0, certificate);
+    final output = hash(input, certificate.length);
+    if (output == ffi.nullptr) return null;
+    try {
+      return output.toDartString();
+    } finally {
+      free(output);
+    }
+  } finally {
+    calloc.free(input);
+  }
+}
 
 class QuicException implements Exception {
   QuicException(this.message);
@@ -22,13 +110,20 @@ class QuicClient {
     required String host,
     required int port,
     required String token,
+    required String serverPin,
   }) {
     final bindings = _Bindings(_loadLibrary());
     final hostPtr = host.toNativeUtf8();
     final tokenPtr = token.toNativeUtf8();
-    final handle = bindings.connect(hostPtr, port, tokenPtr);
-    calloc.free(hostPtr);
-    calloc.free(tokenPtr);
+    final pinPtr = serverPin.toNativeUtf8();
+    late final ffi.Pointer<_QuicHandle> handle;
+    try {
+      handle = bindings.connect(hostPtr, port, tokenPtr, pinPtr);
+    } finally {
+      calloc.free(hostPtr);
+      calloc.free(tokenPtr);
+      calloc.free(pinPtr);
+    }
     if (handle == ffi.nullptr) {
       throw QuicException('failed to connect QUIC client');
     }
@@ -38,13 +133,27 @@ class QuicClient {
   final _Bindings _bindings;
   ffi.Pointer<_QuicHandle> _handle;
   bool _closed = false;
+  ffi.Pointer<ffi.Uint8> _readBuffer = ffi.nullptr;
+  int _readCapacity = 0;
+  int? _lastBufferMs;
+  int? _lastBufferTargetMs;
+  String? _lastPlaybackTrack;
+  int? _lastPlaybackPosition;
+  bool? _lastPlaybackPlaying;
 
-  void openTrack({
+  /// Generation echoed as request_id by stream announcements and errors.
+  int get requestId {
+    _ensureActive();
+    return _bindings.generation(_handle);
+  }
+
+  int openTrack({
     required String trackId,
     String? mode,
     String? quality,
     int frameMs = 20,
     List<String> queue = const [],
+    int startMs = 0,
   }) {
     _ensureActive();
     final trackPtr = trackId.toNativeUtf8();
@@ -59,6 +168,7 @@ class QuicClient {
       qualityPtr,
       frameMs,
       queuePtr,
+      startMs.clamp(0, 0xffffffff),
     );
     calloc.free(trackPtr);
     calloc.free(modePtr);
@@ -67,23 +177,41 @@ class QuicClient {
     if (result != 0) {
       throw QuicException('failed to open track (code $result)');
     }
+    _lastBufferMs = null;
+    _lastPlaybackTrack = null;
+    return requestId;
   }
 
   int read(Uint8List buffer) {
     _ensureActive();
-    final ptr = calloc<ffi.Uint8>(buffer.length);
-    final read = _bindings.read(_handle, ptr, buffer.length);
-    if (read > 0) {
-      buffer.setRange(0, read, ptr.asTypedList(read));
+    if (buffer.isEmpty) return 0;
+    if (buffer.length > _readCapacity) {
+      if (_readBuffer != ffi.nullptr) calloc.free(_readBuffer);
+      _readBuffer = calloc<ffi.Uint8>(buffer.length);
+      _readCapacity = buffer.length;
     }
-    calloc.free(ptr);
+    final read = _bindings.read(_handle, _readBuffer, buffer.length);
+    if (read > 0) {
+      buffer.setRange(0, read, _readBuffer.asTypedList(read));
+    }
     return read;
   }
 
-  void sendBufferStats({required int bufferMs, int? targetMs}) {
+  void sendBufferStats({
+    required int bufferMs,
+    int? targetMs,
+    bool force = false,
+  }) {
     _ensureActive();
     final target = targetMs ?? 0;
-    _bindings.sendBuffer(_handle, bufferMs, target);
+    if (!force && _lastBufferMs == bufferMs && _lastBufferTargetMs == target)
+      return;
+    final result = _bindings.sendBuffer(_handle, bufferMs, target);
+    if (result != 0) {
+      throw QuicException('failed to send buffer stats (code $result)');
+    }
+    _lastBufferMs = bufferMs;
+    _lastBufferTargetMs = target;
   }
 
   void sendPlayback({
@@ -92,6 +220,10 @@ class QuicClient {
     required bool playing,
   }) {
     _ensureActive();
+    if (_lastPlaybackTrack == trackId &&
+        _lastPlaybackPosition == positionMs &&
+        _lastPlaybackPlaying == playing)
+      return;
     final trackPtr = trackId.toNativeUtf8();
     final result = _bindings.sendPlayback(
       _handle,
@@ -103,9 +235,12 @@ class QuicClient {
     if (result != 0) {
       throw QuicException('failed to send playback stats (code $result)');
     }
+    _lastPlaybackTrack = trackId;
+    _lastPlaybackPosition = positionMs;
+    _lastPlaybackPlaying = playing;
   }
 
-  void seek({
+  int seek({
     required String trackId,
     required int positionMs,
     required int seekId,
@@ -116,6 +251,31 @@ class QuicClient {
     calloc.free(trackPtr);
     if (result != 0) {
       throw QuicException('failed to seek track (code $result)');
+    }
+    _lastBufferMs = null;
+    return requestId;
+  }
+
+  /// Cancel delivery while decoding a local cached range. A later open/seek
+  /// resumes transport with a fresh generation and stream.
+  void suspendAudio() {
+    _ensureActive();
+    final result = _bindings.suspendAudio(_handle);
+    if (result != 0) {
+      throw QuicException('failed to suspend audio (code $result)');
+    }
+  }
+
+  /// Poll acknowledgments independently of audio buffer capacity.
+  Map<String, Object?>? pollEvent() {
+    _ensureActive();
+    final ptr = _bindings.pollEvent(_handle);
+    if (ptr == ffi.nullptr) return null;
+    try {
+      final decoded = jsonDecode(ptr.toDartString());
+      return decoded is Map ? Map<String, Object?>.from(decoded) : null;
+    } finally {
+      _bindings.freeString(ptr);
     }
   }
 
@@ -160,6 +320,9 @@ class QuicClient {
       return;
     }
     _bindings.close(_handle);
+    if (_readBuffer != ffi.nullptr) calloc.free(_readBuffer);
+    _readBuffer = ffi.nullptr;
+    _readCapacity = 0;
     _handle = ffi.nullptr;
     _closed = true;
   }
@@ -220,11 +383,13 @@ typedef _ConnectNative =
       ffi.Pointer<Utf8>,
       ffi.Uint16,
       ffi.Pointer<Utf8>,
+      ffi.Pointer<Utf8>,
     );
 typedef _ConnectDart =
     ffi.Pointer<_QuicHandle> Function(
       ffi.Pointer<Utf8>,
       int,
+      ffi.Pointer<Utf8>,
       ffi.Pointer<Utf8>,
     );
 
@@ -236,6 +401,7 @@ typedef _OpenTrackNative =
       ffi.Pointer<Utf8>,
       ffi.Uint32,
       ffi.Pointer<Utf8>,
+      ffi.Uint32,
     );
 typedef _OpenTrackDart =
     int Function(
@@ -245,6 +411,7 @@ typedef _OpenTrackDart =
       ffi.Pointer<Utf8>,
       int,
       ffi.Pointer<Utf8>,
+      int,
     );
 
 typedef _ReadNative =
@@ -283,6 +450,9 @@ typedef _SeekDart =
 typedef _AdvanceNative = ffi.Int32 Function(ffi.Pointer<_QuicHandle>);
 typedef _AdvanceDart = int Function(ffi.Pointer<_QuicHandle>);
 
+typedef _GenerationNative = ffi.Uint64 Function(ffi.Pointer<_QuicHandle>);
+typedef _GenerationDart = int Function(ffi.Pointer<_QuicHandle>);
+
 typedef _LastErrorNative = ffi.Pointer<Utf8> Function(ffi.Pointer<_QuicHandle>);
 typedef _LastErrorDart = ffi.Pointer<Utf8> Function(ffi.Pointer<_QuicHandle>);
 
@@ -305,7 +475,7 @@ class _Bindings {
           .asFunction(),
       openTrack = library
           .lookup<ffi.NativeFunction<_OpenTrackNative>>(
-            'phonolite_quic_open_track',
+            'phonolite_quic_open_track_at',
           )
           .asFunction(),
       read = library
@@ -326,6 +496,21 @@ class _Bindings {
           .asFunction(),
       advance = library
           .lookup<ffi.NativeFunction<_AdvanceNative>>('phonolite_quic_advance')
+          .asFunction(),
+      suspendAudio = library
+          .lookup<ffi.NativeFunction<_AdvanceNative>>(
+            'phonolite_quic_suspend_audio',
+          )
+          .asFunction(),
+      generation = library
+          .lookup<ffi.NativeFunction<_GenerationNative>>(
+            'phonolite_quic_generation',
+          )
+          .asFunction(),
+      pollEvent = library
+          .lookup<ffi.NativeFunction<_PollStatsNative>>(
+            'phonolite_quic_poll_event',
+          )
           .asFunction(),
       lastError = library
           .lookup<ffi.NativeFunction<_LastErrorNative>>(
@@ -358,6 +543,9 @@ class _Bindings {
   final _SendPlaybackDart sendPlayback;
   final _SeekDart seek;
   final _AdvanceDart advance;
+  final _AdvanceDart suspendAudio;
+  final _GenerationDart generation;
+  final _PollStatsDart pollEvent;
   final _LastErrorDart lastError;
   final _PollStatsDart pollStats;
   final _PollRttDart pollRttMs;

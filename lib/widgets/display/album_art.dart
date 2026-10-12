@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/artwork_errors.dart';
 import '../../core/constants.dart';
 
 class AlbumArt extends StatelessWidget {
@@ -13,6 +14,7 @@ class AlbumArt extends StatelessWidget {
     this.imageUrl,
     this.headers,
     this.placeholder,
+    this.fit = BoxFit.cover,
   });
 
   final String title;
@@ -20,6 +22,7 @@ class AlbumArt extends StatelessWidget {
   final String? imageUrl;
   final Map<String, String>? headers;
   final Widget? placeholder;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +49,19 @@ class AlbumArt extends StatelessWidget {
           ),
         );
 
+    Widget frameBuilder(
+      BuildContext context,
+      Widget child,
+      int? frame,
+      bool wasSynchronouslyLoaded,
+    ) => frame == null ? fallback : child;
+
     final imagePath = imageUrl?.trim();
+    Widget onImageError(BuildContext context, Object error, StackTrace? stack) {
+      ArtworkErrors.instance.report(imagePath!, error);
+      return fallback;
+    }
+
     final image = imagePath == null || imagePath.isEmpty
         ? fallback
         : _isRemoteImage(imagePath)
@@ -55,18 +70,20 @@ class AlbumArt extends StatelessWidget {
             headers: headers,
             width: size,
             height: size,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback,
+            fit: fit,
+            frameBuilder: frameBuilder,
+            errorBuilder: onImageError,
           )
         : Image.file(
             File(imagePath),
             width: size,
             height: size,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback,
+            fit: fit,
+            frameBuilder: frameBuilder,
+            errorBuilder: onImageError,
           );
 
-    return image;
+    return SizedBox.square(dimension: size, child: image);
   }
 
   bool _isRemoteImage(String value) {

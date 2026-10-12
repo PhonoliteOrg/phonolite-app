@@ -2,16 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/phonolite_icons.dart';
+
 import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../widgets/display/album_hero.dart';
+import '../widgets/display/banner_playback_button.dart';
 import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
@@ -177,6 +181,21 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                   album: _album,
                                   coverUrl: coverUrl,
                                   headers: authHeadersMap,
+                                  actions: BannerPlaybackButton(
+                                    message: 'Play album',
+                                    visible: !_selectionMode,
+                                    onPressed: isLoading || tracks.isEmpty
+                                        ? null
+                                        : () async {
+                                            controller.updateShuffleMode(
+                                              ShuffleMode.off,
+                                              scope: ActionScope.server,
+                                            );
+                                            await controller.queueAlbum(
+                                              _album.id,
+                                            );
+                                          },
+                                  ),
                                 ),
                               ),
                             ),
@@ -203,6 +222,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                 ),
                                 sliver: TrackSliverList(
                                   tracks: tracks,
+                                  useAlbumTrackNumbers: true,
                                   isPlayingTrack: (track) =>
                                       playback.isPlaying &&
                                       playingId == track.id,
@@ -229,6 +249,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                       .offlineDownloadForTrack(track.id),
                                 ),
                               ),
+                            const SliverPlaybackInset(),
                           ],
                         );
                       },
@@ -397,14 +418,14 @@ class _CollectionDownloadSummary {
 
   IconData get icon {
     if (active > 0) {
-      return Icons.downloading_rounded;
+      return PhonoliteIcons.download;
     }
     if (isComplete) {
-      return Icons.offline_pin_rounded;
+      return PhonoliteIcons.circleCheck;
     }
     if (failed > 0) {
-      return Icons.download_for_offline_rounded;
+      return PhonoliteIcons.download;
     }
-    return Icons.download_for_offline_outlined;
+    return PhonoliteIcons.download;
   }
 }

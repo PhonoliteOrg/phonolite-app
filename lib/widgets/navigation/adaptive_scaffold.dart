@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../display/now_playing_bar.dart';
 import '../layouts/obsidian_scale.dart';
+import '../layouts/playback_content_inset.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 import '../../entities/app_controller.dart';
+
+const _navigationBackground = Color(0x40000000);
+const _navigationBorder = BorderSide(color: ObsidianPalette.border);
 
 class AdaptiveScaffold extends StatelessWidget {
   const AdaptiveScaffold({
@@ -69,6 +73,16 @@ class AdaptiveScaffold extends StatelessWidget {
         ? nowPlayingHeight + s(_nowPlayingPadding)
         : miniBarHeight;
     final navPad = _navBarHeight + media.padding.bottom;
+    // Keep the viewport behind the glass; only the end of its content needs
+    // clearance. The compact navigation bar reserves its own area below it.
+    final pageContent = MediaQuery.removePadding(
+      context: context,
+      removeBottom: true,
+      child: SafeArea(
+        bottom: false,
+        child: PlaybackContentInset(bottom: bottomInset, child: page),
+      ),
+    );
 
     final nowPlaying = NowPlayingBar(
       state: playbackState,
@@ -91,13 +105,11 @@ class AdaptiveScaffold extends StatelessWidget {
         body: Row(
           children: [
             SizedBox(
-              width: s(96),
+              width: s(64),
               child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.25),
-                  border: const Border(
-                    right: BorderSide(color: Color(0x1FFFFFFF)),
-                  ),
+                decoration: const BoxDecoration(
+                  color: _navigationBackground,
+                  border: Border(right: _navigationBorder),
                 ),
                 child: Padding(
                   padding: EdgeInsets.symmetric(vertical: s(16)),
@@ -110,6 +122,7 @@ class AdaptiveScaffold extends StatelessWidget {
                               destinations[i].selectedIcon ??
                               destinations[i].icon,
                           isSelected: i == selectedIndex,
+                          label: destinations[i].label,
                           onTap: () => onDestinationSelected(i),
                         ),
                         SizedBox(height: s(12)),
@@ -122,15 +135,7 @@ class AdaptiveScaffold extends StatelessWidget {
             Expanded(
               child: Stack(
                 children: [
-                  Positioned.fill(
-                    child: SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: bottomInset),
-                        child: page,
-                      ),
-                    ),
-                  ),
+                  Positioned.fill(child: pageContent),
                   if (showWideBar)
                     Positioned(left: 0, right: 0, bottom: 0, child: nowPlaying),
                 ],
@@ -144,15 +149,7 @@ class AdaptiveScaffold extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: EdgeInsets.only(bottom: bottomInset + navPad),
-                child: page,
-              ),
-            ),
-          ),
+          Positioned.fill(bottom: navPad, child: pageContent),
           if (showMiniBar)
             Positioned(
               left: 0,
@@ -160,7 +157,9 @@ class AdaptiveScaffold extends StatelessWidget {
               bottom: navPad,
               child: NowPlayingMiniBar(
                 state: playbackState,
+                onOpenAlbum: onOpenAlbum,
                 onPlayPause: onPlayPause,
+                onNext: onNext,
                 onExpand: () => showNowPlayingExpandedSheet(
                   context,
                   onOpenAlbum: onOpenAlbum,
@@ -202,9 +201,9 @@ class _BottomNavBar extends StatelessWidget {
     return Container(
       height: _height + bottomPad,
       padding: EdgeInsets.only(bottom: bottomPad),
-      decoration: BoxDecoration(
-        color: ObsidianPalette.obsidianElevated.withOpacity(0.92),
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+      decoration: const BoxDecoration(
+        color: _navigationBackground,
+        border: Border(top: _navigationBorder),
       ),
       child: Center(
         child: Row(
@@ -215,9 +214,10 @@ class _BottomNavBar extends StatelessWidget {
                   child: ObsidianNavIcon(
                     icon: destinations[i].selectedIcon ?? destinations[i].icon,
                     isSelected: i == selectedIndex,
+                    label: destinations[i].label,
                     onTap: () => onDestinationSelected(i),
                     size: 56,
-                    iconSize: 36,
+                    iconSize: 40,
                   ),
                 ),
               ),

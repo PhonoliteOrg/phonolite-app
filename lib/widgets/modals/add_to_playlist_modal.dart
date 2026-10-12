@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
+import 'obsidian_dialog.dart';
+import 'obsidian_modal_scope.dart';
+
+import '../ui/phonolite_icons.dart';
+
 import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
 import '../layouts/app_scope.dart';
-import '../inputs/obsidian_text_field.dart';
+import '../inputs/search_hud.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 import 'confirmation_modal.dart';
+import 'modal_action_button.dart';
 
 Future<void> showAddToPlaylistModalForTrack(
   BuildContext context,
@@ -115,13 +121,16 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildPicker);
+
+  Widget _buildPicker(BuildContext context) {
     final hasPlaylists = widget.playlists.isNotEmpty;
     final normalized = _query.trim().toLowerCase();
     final filteredPlaylists = _filterPlaylists(widget.playlists, normalized);
     final scopeLabel = widget.scope == ActionScope.local ? 'local' : 'server';
 
-    return AlertDialog(
+    return ObsidianAlertDialog(
       title: Text('Add to $scopeLabel playlist'),
       content: SizedBox(
         width: 360,
@@ -130,11 +139,15 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ObsidianTextField(
+                  SearchHud(
                     controller: _controller,
+                    height: ObsidianModalScope.usesTouchTargets(context)
+                        ? 56
+                        : 48,
                     hintText: 'Search playlists',
-                    onChanged: (value) => setState(() => _query = value),
-                    textInputAction: TextInputAction.search,
+                    onChanged: _updateQuery,
+                    onSubmit: _updateQuery,
+                    onClear: _updateQuery,
                   ),
                   const SizedBox(height: 12),
                   Expanded(
@@ -175,12 +188,16 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
               ),
       ),
       actions: [
-        TextButton(
+        ModalActionButton(
+          label: 'Close',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );
+  }
+
+  void _updateQuery() {
+    setState(() => _query = _controller.text);
   }
 
   List<Playlist> _filterPlaylists(List<Playlist> playlists, String normalized) {
@@ -205,6 +222,15 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
     }
     final disabled = !widget.canUsePlaylists;
     final scopeLabel = widget.scope == ActionScope.local ? 'Local' : 'Server';
+    final onAdd = isInPlaylist || disabled
+        ? null
+        : () {
+            widget.onSelected(playlist);
+            setState(() {
+              _addedPlaylistIds.add(playlist.id);
+              _removedPlaylistIds.remove(playlist.id);
+            });
+          };
 
     return _ModalListRow(
       title: playlist.name,
@@ -213,49 +239,34 @@ class _AddToPlaylistModalState extends State<AddToPlaylistModal> {
                 ? 'Download this song first'
                 : 'Unavailable on this server'
           : '$scopeLabel - $count tracks',
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isInPlaylist ? Icons.check_rounded : Icons.add_rounded,
-            color: disabled ? ObsidianPalette.textMuted : ObsidianPalette.gold,
-          ),
-          if (isInPlaylist && widget.onRemoved != null) ...[
-            const SizedBox(width: 8),
-            ObsidianHudIconButton(
-              icon: Icons.delete_outline_rounded,
-              onPressed: () async {
-                final confirmed = await ConfirmationModal.show(
-                  context,
-                  title: 'Remove song from playlist',
-                  message:
-                      'Are you sure you want to remove this song from this playlist?',
-                );
-                if (!confirmed || !mounted) {
-                  return;
+      trailing: Tooltip(
+        message: isInPlaylist ? 'Remove from playlist' : 'Add to playlist',
+        child: ObsidianHudIconButton(
+          icon: isInPlaylist ? PhonoliteIcons.trash2 : PhonoliteIcons.plus,
+          size: ObsidianModalScope.usesTouchTargets(context) ? 24 : 20,
+          onPressed: isInPlaylist && widget.onRemoved != null
+              ? () async {
+                  final confirmed = await ConfirmationModal.show(
+                    context,
+                    title: 'Remove song from playlist',
+                    message:
+                        'Are you sure you want to remove this song from this playlist?',
+                  );
+                  if (!confirmed || !mounted) {
+                    return;
+                  }
+                  widget.onRemoved!.call(playlist);
+                  setState(() {
+                    _removedPlaylistIds.add(playlist.id);
+                    _addedPlaylistIds.remove(playlist.id);
+                  });
                 }
-                widget.onRemoved!.call(playlist);
-                setState(() {
-                  _removedPlaylistIds.add(playlist.id);
-                  _addedPlaylistIds.remove(playlist.id);
-                });
-              },
-              size: 20,
-            ),
-          ],
-        ],
+              : onAdd,
+        ),
       ),
       enabled: !isInPlaylist && !disabled,
       isSelected: isInPlaylist,
-      onTap: isInPlaylist || disabled
-          ? null
-          : () {
-              widget.onSelected(playlist);
-              setState(() {
-                _addedPlaylistIds.add(playlist.id);
-                _removedPlaylistIds.remove(playlist.id);
-              });
-            },
+      onTap: onAdd,
     );
   }
 }
@@ -301,14 +312,18 @@ class _ModalListRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  maxLines: 1,
+                  maxLines: ObsidianModalScope.usesTouchTargets(context)
+                      ? 2
+                      : 1,
                   overflow: TextOverflow.ellipsis,
                   style: titleStyle,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  maxLines: 1,
+                  maxLines: ObsidianModalScope.usesTouchTargets(context)
+                      ? 2
+                      : 1,
                   overflow: TextOverflow.ellipsis,
                   style: subtitleStyle,
                 ),

@@ -131,6 +131,10 @@ class OpusDecoder {
   final _Bindings _bindings;
   ffi.Pointer<_OpusDecoderHandle> _handle;
   bool _disposed = false;
+  ffi.Pointer<ffi.Uint8> _packetBuffer = ffi.nullptr;
+  int _packetCapacity = 0;
+  ffi.Pointer<ffi.Int16> _outputBuffer = ffi.nullptr;
+  int _outputCapacity = 0;
 
   int get maxFrameSize => _bindings.maxFrameSize();
 
@@ -141,35 +145,39 @@ class OpusDecoder {
     }
 
     final effectiveFrameSize = frameSize ?? maxFrameSize;
-    if (effectiveFrameSize <= 0) {
+    if (effectiveFrameSize <= 0 || effectiveFrameSize > maxFrameSize) {
       throw OpusException('invalid frame size');
     }
 
-    final packetPtr = calloc<ffi.Uint8>(packet.length);
-    packetPtr.asTypedList(packet.length).setAll(0, packet);
+    if (packet.length > _packetCapacity) {
+      if (_packetBuffer != ffi.nullptr) calloc.free(_packetBuffer);
+      _packetCapacity = packet.length;
+      _packetBuffer = calloc<ffi.Uint8>(_packetCapacity);
+    }
+    _packetBuffer.asTypedList(packet.length).setAll(0, packet);
 
     final outputSamples = effectiveFrameSize * channels;
-    final outputPtr = calloc<ffi.Int16>(outputSamples);
+    if (outputSamples > _outputCapacity) {
+      if (_outputBuffer != ffi.nullptr) calloc.free(_outputBuffer);
+      _outputCapacity = outputSamples;
+      _outputBuffer = calloc<ffi.Int16>(_outputCapacity);
+    }
     final decodedFrames = _bindings.decode(
       _handle,
-      packetPtr,
+      _packetBuffer,
       packet.length,
-      outputPtr,
+      _outputBuffer,
       effectiveFrameSize,
     );
 
-    calloc.free(packetPtr);
-
     if (decodedFrames < 0) {
-      calloc.free(outputPtr);
       throw OpusException(_errorMessage(decodedFrames), code: decodedFrames);
     }
 
     final decodedSamples = decodedFrames * channels;
     final samples = Int16List.fromList(
-      outputPtr.asTypedList(decodedSamples),
+      _outputBuffer.asTypedList(decodedSamples),
     );
-    calloc.free(outputPtr);
     return samples;
   }
 
@@ -178,6 +186,10 @@ class OpusDecoder {
       return;
     }
     _bindings.decoderDestroy(_handle);
+    if (_packetBuffer != ffi.nullptr) calloc.free(_packetBuffer);
+    if (_outputBuffer != ffi.nullptr) calloc.free(_outputBuffer);
+    _packetBuffer = ffi.nullptr;
+    _outputBuffer = ffi.nullptr;
     _handle = ffi.nullptr;
     _disposed = true;
   }
@@ -268,26 +280,24 @@ String _errorMessage(int code) {
 
 class _Bindings {
   _Bindings(ffi.DynamicLibrary library)
-      : decoderCreate = library
-            .lookup<ffi.NativeFunction<_DecoderCreateNative>>(
-              'phonolite_opus_decoder_create',
-            )
-            .asFunction(),
-        decoderDestroy = library
-            .lookup<ffi.NativeFunction<_DecoderDestroyNative>>(
-              'phonolite_opus_decoder_destroy',
-            )
-            .asFunction(),
-        decode = library
-            .lookup<ffi.NativeFunction<_DecodeNative>>(
-              'phonolite_opus_decode',
-            )
-            .asFunction(),
-        maxFrameSize = library
-            .lookup<ffi.NativeFunction<_MaxFrameSizeNative>>(
-              'phonolite_opus_max_frame_size',
-            )
-            .asFunction();
+    : decoderCreate = library
+          .lookup<ffi.NativeFunction<_DecoderCreateNative>>(
+            'phonolite_opus_decoder_create',
+          )
+          .asFunction(),
+      decoderDestroy = library
+          .lookup<ffi.NativeFunction<_DecoderDestroyNative>>(
+            'phonolite_opus_decoder_destroy',
+          )
+          .asFunction(),
+      decode = library
+          .lookup<ffi.NativeFunction<_DecodeNative>>('phonolite_opus_decode')
+          .asFunction(),
+      maxFrameSize = library
+          .lookup<ffi.NativeFunction<_MaxFrameSizeNative>>(
+            'phonolite_opus_max_frame_size',
+          )
+          .asFunction();
 
   final _DecoderCreateDart decoderCreate;
   final _DecoderDestroyDart decoderDestroy;
@@ -297,38 +307,40 @@ class _Bindings {
 
 final class _OpusDecoderHandle extends ffi.Opaque {}
 
-typedef _DecoderCreateNative = ffi.Pointer<_OpusDecoderHandle> Function(
-  ffi.Int32 sampleRate,
-  ffi.Int32 channels,
-  ffi.Pointer<ffi.Int32> errorOut,
-);
-typedef _DecoderCreateDart = ffi.Pointer<_OpusDecoderHandle> Function(
-  int sampleRate,
-  int channels,
-  ffi.Pointer<ffi.Int32> errorOut,
-);
+typedef _DecoderCreateNative =
+    ffi.Pointer<_OpusDecoderHandle> Function(
+      ffi.Int32 sampleRate,
+      ffi.Int32 channels,
+      ffi.Pointer<ffi.Int32> errorOut,
+    );
+typedef _DecoderCreateDart =
+    ffi.Pointer<_OpusDecoderHandle> Function(
+      int sampleRate,
+      int channels,
+      ffi.Pointer<ffi.Int32> errorOut,
+    );
 
-typedef _DecoderDestroyNative = ffi.Void Function(
-  ffi.Pointer<_OpusDecoderHandle> decoder,
-);
-typedef _DecoderDestroyDart = void Function(
-  ffi.Pointer<_OpusDecoderHandle> decoder,
-);
+typedef _DecoderDestroyNative =
+    ffi.Void Function(ffi.Pointer<_OpusDecoderHandle> decoder);
+typedef _DecoderDestroyDart =
+    void Function(ffi.Pointer<_OpusDecoderHandle> decoder);
 
-typedef _DecodeNative = ffi.Int32 Function(
-  ffi.Pointer<_OpusDecoderHandle> decoder,
-  ffi.Pointer<ffi.Uint8> data,
-  ffi.Int32 len,
-  ffi.Pointer<ffi.Int16> pcm,
-  ffi.Int32 frameSize,
-);
-typedef _DecodeDart = int Function(
-  ffi.Pointer<_OpusDecoderHandle> decoder,
-  ffi.Pointer<ffi.Uint8> data,
-  int len,
-  ffi.Pointer<ffi.Int16> pcm,
-  int frameSize,
-);
+typedef _DecodeNative =
+    ffi.Int32 Function(
+      ffi.Pointer<_OpusDecoderHandle> decoder,
+      ffi.Pointer<ffi.Uint8> data,
+      ffi.Int32 len,
+      ffi.Pointer<ffi.Int16> pcm,
+      ffi.Int32 frameSize,
+    );
+typedef _DecodeDart =
+    int Function(
+      ffi.Pointer<_OpusDecoderHandle> decoder,
+      ffi.Pointer<ffi.Uint8> data,
+      int len,
+      ffi.Pointer<ffi.Int16> pcm,
+      int frameSize,
+    );
 
 typedef _MaxFrameSizeNative = ffi.Int32 Function();
 typedef _MaxFrameSizeDart = int Function();

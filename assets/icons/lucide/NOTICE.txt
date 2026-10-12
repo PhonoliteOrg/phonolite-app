@@ -1,0 +1,10 @@
+Lucide 1.52.0
+Official source: https://lucide.dev/guide/static
+The app bundles these SVGs and a subset of the official icon font for offline use.
+The font subset centers each glyph within its square advance cell.
+LICENSE contains the Lucide ISC and inherited Feather MIT notices.
+manifest.json records the full replacement mapping and package integrity.
+Regenerate: python tools/vendor_lucide.py --download
+Then: node tools/render_lucide_native.cjs <path-to-sharp-module>
+Finally: dart format lib/widgets/ui/phonolite_icons.dart
+Original Phonolite branding and launcher assets are retained.

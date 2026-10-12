@@ -2,13 +2,18 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+
+import '../ui/phonolite_icons.dart';
 import 'package:file_selector/file_selector.dart';
 
 import '../../entities/models.dart';
 import '../display/album_art.dart';
 import '../inputs/obsidian_text_field.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/server_icon.dart';
 import 'modal_action_button.dart';
+import 'obsidian_dialog.dart';
+import 'obsidian_modal_scope.dart';
 import 'playlist_image_file_picker.dart';
 
 typedef PlaylistEditorSubmit =
@@ -48,7 +53,7 @@ class PlaylistEditorModal extends StatefulWidget {
 }
 
 class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
-  static const int _maxNameLength = 24;
+  static const int _maxNameLength = 32;
   static const int _maxDescriptionLength = 500;
   static const int _maxImageBytes = 5 * 1024 * 1024;
   static const List<String> _imageExtensions = <String>[
@@ -217,7 +222,10 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildEditor);
+
+  Widget _buildEditor(BuildContext context) {
     final theme = Theme.of(context);
     final rawLength = _nameController.text.length;
     final currentLength = rawLength > _maxNameLength
@@ -228,10 +236,20 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
         ? _maxDescriptionLength
         : _descriptionController.text.length;
     final canSave = _nameController.text.trim().isNotEmpty && !_saving;
-    final dialogWidth = (MediaQuery.of(context).size.width - 48)
-        .clamp(0.0, 760.0)
-        .toDouble();
-    final compact = dialogWidth < 620;
+    final dialogWidth =
+        (MediaQuery.of(context).size.width -
+                ObsidianModalScope.insetsOf(context).horizontal)
+            .clamp(0.0, 760.0)
+            .toDouble();
+    final extraTextHeight = (MediaQuery.textScalerOf(context).scale(16) - 16)
+        .clamp(0.0, double.infinity);
+    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
+    final formHeight =
+        (touchLayout ? 320 : 280) + extraTextHeight * (touchLayout ? 8 : 6);
+    final nameFieldHeight = (touchLayout ? 56 : 48) + extraTextHeight;
+    final compact =
+        dialogWidth - ObsidianModalStyle.contentPadding.horizontal <
+        formHeight + 24 + 280 + extraTextHeight * 2;
     final imagePicker = Align(
       alignment: compact ? Alignment.center : Alignment.centerLeft,
       child: _PlaylistImagePicker(
@@ -241,56 +259,65 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
         imageUrl: widget.initialImageUrl,
         headers: widget.imageHeaders,
         bytes: _selectedImageBytes,
-        size: compact ? 180 : 214,
+        size: compact ? 180 : formHeight,
         onTap: () => unawaited(_pickImage()),
       ),
     );
-    final fields = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ObsidianTextField(
-          controller: _nameController,
-          label: 'Name',
-          hintText: 'Playlist name',
-          maxLines: 1,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => FocusScope.of(context).unfocus(),
-        ),
-        const SizedBox(height: 6),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            '$currentLength/$_maxNameLength',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: ObsidianPalette.textMuted,
-              letterSpacing: 0.6,
+    final fields = SizedBox(
+      height: formHeight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.showTargetSelector) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _PlaylistTargetToggle(
+                value: _target,
+                onChanged: (value) => setState(() => _target = value),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _PlaylistFieldHeading(
+            label: 'Name',
+            counter: '$currentLength/$_maxNameLength',
+          ),
+          const SizedBox(height: 6),
+          ObsidianTextField(
+            controller: _nameController,
+            hintText: 'Playlist name',
+            height: nameFieldHeight,
+            startPadding: 24,
+            cut: 0,
+            isDense: true,
+            maxLines: 1,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => FocusScope.of(context).unfocus(),
+          ),
+          const SizedBox(height: 16),
+          _PlaylistFieldHeading(
+            label: 'Description',
+            counter: '$descriptionLength/$_maxDescriptionLength',
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => ObsidianTextField(
+                controller: _descriptionController,
+                hintText: 'Playlist description',
+                height: constraints.maxHeight,
+                startPadding: 24,
+                cut: 0,
+                minLines: 1,
+                maxLines: null,
+                textInputAction: TextInputAction.done,
+                keyboardType: TextInputType.multiline,
+                onSubmitted: (_) => FocusScope.of(context).unfocus(),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 12),
-        ObsidianTextField(
-          controller: _descriptionController,
-          label: 'Description',
-          hintText: 'Playlist summary',
-          height: 132,
-          minLines: 4,
-          maxLines: 4,
-          textInputAction: TextInputAction.done,
-          keyboardType: TextInputType.multiline,
-          onSubmitted: (_) => FocusScope.of(context).unfocus(),
-        ),
-        const SizedBox(height: 6),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            '$descriptionLength/$_maxDescriptionLength',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: ObsidianPalette.textMuted,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
     final imageError = _imageError == null
         ? null
@@ -300,92 +327,80 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
               color: Colors.redAccent,
             ),
           );
-    final content = compact
+    final editor = compact
         ? Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              imagePicker,
-              const SizedBox(height: 18),
-              fields,
-              if (imageError != null) ...[
-                const SizedBox(height: 10),
-                imageError,
-              ],
-            ],
+            children: [imagePicker, const SizedBox(height: 18), fields],
           )
         : Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               imagePicker,
               const SizedBox(width: 24),
               Expanded(child: fields),
-              if (imageError != null) ...[
-                const SizedBox(width: 14),
-                SizedBox(width: 160, child: imageError),
-              ],
             ],
           );
-    final targetSelector = !widget.showTargetSelector
-        ? null
-        : Align(
-            alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
-            child: _PlaylistTargetToggle(
-              value: _target,
-              onChanged: (value) => setState(() => _target = value),
-            ),
-          );
-    final maxDialogHeight = (MediaQuery.of(context).size.height - 48)
-        .clamp(0.0, double.infinity)
-        .toDouble();
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        editor,
+        if (imageError != null) ...[const SizedBox(height: 10), imageError],
+      ],
+    );
+    final maxDialogHeight =
+        (MediaQuery.of(context).size.height -
+                ObsidianModalScope.insetsOf(context).vertical -
+                MediaQuery.viewInsetsOf(context).vertical -
+                MediaQuery.paddingOf(context).vertical)
+            .clamp(0.0, double.infinity)
+            .toDouble();
+    return ObsidianDialog(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxDialogHeight),
         child: SizedBox(
           width: dialogWidth,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: ObsidianModalStyle.titlePadding,
+                child: Text(
+                  widget.title,
+                  style: ObsidianModalStyle.titleStyle(context),
+                ),
+              ),
+              Flexible(
+                fit: FlexFit.loose,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: ObsidianModalStyle.contentPadding,
+                    child: DefaultTextStyle.merge(
+                      style: ObsidianModalStyle.bodyStyle(context),
+                      child: content,
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: ObsidianModalStyle.actionsPadding,
+                child: ObsidianModalActions(
                   children: [
-                    Expanded(child: Text(widget.title)),
-                    IconButton(
-                      tooltip: 'Close',
-                      constraints: const BoxConstraints.tightFor(
-                        width: 36,
-                        height: 36,
-                      ),
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
+                    ModalActionButton(
+                      label: 'Close',
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                    ),
+                    ModalActionButton(
+                      label: _saving ? 'Saving' : 'Save',
+                      onPressed: canSave ? () => unawaited(_submit()) : null,
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                if (targetSelector != null) ...[
-                  targetSelector,
-                  const SizedBox(height: 8),
-                ],
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: SingleChildScrollView(child: content),
-                ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ModalActionButton(
-                    label: _saving ? 'Saving' : 'Save',
-                    onPressed: canSave ? () => unawaited(_submit()) : null,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -512,7 +527,7 @@ class _PlaylistImagePicker extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Tooltip(
-            message: hasImage ? 'Change image' : 'Choose image',
+            message: 'Choose image',
             preferBelow: true,
             verticalOffset: 10,
             child: MouseRegion(
@@ -520,27 +535,38 @@ class _PlaylistImagePicker extends StatelessWidget {
               child: GestureDetector(
                 onTap: onTap,
                 behavior: HitTestBehavior.opaque,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
+                child: ClipRect(
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
                       SizedBox(width: size, height: size, child: art),
-                      if (!hasImage) ...[
-                        Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Colors.transparent,
-                              border: Border.all(color: ObsidianPalette.border),
-                            ),
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            border: Border.all(color: ObsidianPalette.border),
                           ),
                         ),
-                        Icon(
-                          Icons.add_photo_alternate_outlined,
-                          color: ObsidianPalette.textMuted,
-                          size: 34,
-                        ),
-                      ],
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            PhonoliteIcons.imagePlus,
+                            color: Colors.white,
+                            size: 34,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Choose image',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -568,113 +594,126 @@ class _QuietPlaylistArtPlaceholder extends StatelessWidget {
   }
 }
 
+class _PlaylistFieldHeading extends StatelessWidget {
+  const _PlaylistFieldHeading({required this.label, required this.counter});
+
+  final String label;
+  final String counter;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: ObsidianPalette.textMuted,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          counter,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: ObsidianPalette.textMuted,
+            letterSpacing: 0.6,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PlaylistTargetToggle extends StatelessWidget {
   const _PlaylistTargetToggle({required this.value, required this.onChanged});
-
-  static const double _height = 36;
 
   final PlaylistEditorTarget value;
   final ValueChanged<PlaylistEditorTarget> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _height,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _PlaylistTargetOption(
-            label: 'LOCAL',
-            selected: value == PlaylistEditorTarget.local,
-            onTap: () => onChanged(PlaylistEditorTarget.local),
-            height: _height,
-          ),
-          const SizedBox(width: 8),
-          _PlaylistTargetOption(
-            label: 'SERVER',
-            selected: value == PlaylistEditorTarget.server,
-            onTap: () => onChanged(PlaylistEditorTarget.server),
-            height: _height,
-          ),
-        ],
-      ),
+    return Wrap(
+      children: [
+        _PlaylistTargetOption(
+          label: 'LOCAL',
+          icon: const Icon(PhonoliteIcons.download),
+          selected: value == PlaylistEditorTarget.local,
+          onTap: () => onChanged(PlaylistEditorTarget.local),
+        ),
+        _PlaylistTargetOption(
+          label: 'SERVER',
+          icon: const ServerIcon(),
+          selected: value == PlaylistEditorTarget.server,
+          onTap: () => onChanged(PlaylistEditorTarget.server),
+        ),
+      ],
     );
   }
 }
 
-class _PlaylistTargetOption extends StatefulWidget {
+class _PlaylistTargetOption extends StatelessWidget {
   const _PlaylistTargetOption({
     required this.label,
+    required this.icon,
     required this.selected,
     required this.onTap,
-    required this.height,
   });
 
   final String label;
+  final Widget icon;
   final bool selected;
   final VoidCallback onTap;
-  final double height;
-
-  @override
-  State<_PlaylistTargetOption> createState() => _PlaylistTargetOptionState();
-}
-
-class _PlaylistTargetOptionState extends State<_PlaylistTargetOption> {
-  static const _transition = Duration(milliseconds: 160);
-  bool _hovered = false;
-
-  void _setHovered(bool value) {
-    if (_hovered == value) {
-      return;
-    }
-    setState(() => _hovered = value);
-  }
 
   @override
   Widget build(BuildContext context) {
-    final highlighted = widget.selected || _hovered;
-    final borderColor = highlighted
-        ? ObsidianPalette.gold.withValues(alpha: 0.6)
-        : Colors.white.withValues(alpha: 0.12);
-    final textColor = highlighted
-        ? ObsidianPalette.gold
-        : ObsidianPalette.textMuted;
-
-    return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: _transition,
-          curve: Curves.easeOut,
-          alignment: Alignment.center,
-          constraints: BoxConstraints(minHeight: widget.height),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              if (highlighted)
-                BoxShadow(
-                  color: ObsidianPalette.gold.withValues(alpha: 0.35),
-                  blurRadius: 10,
-                ),
-            ],
+    return Semantics(
+      selected: selected,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? ObsidianPalette.gold : Colors.transparent,
+              width: 2,
+            ),
           ),
-          child: AnimatedDefaultTextStyle(
-            duration: _transition,
-            curve: Curves.easeOut,
-            style:
-                Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: textColor,
-                  letterSpacing: 1.0,
-                ) ??
-                TextStyle(color: textColor),
-            child: Text(widget.label),
+        ),
+        child: TextButton.icon(
+          onPressed: onTap,
+          style: ButtonStyle(
+            foregroundColor: WidgetStateProperty.resolveWith((states) {
+              final highlighted =
+                  selected ||
+                  states.contains(WidgetState.hovered) ||
+                  states.contains(WidgetState.focused) ||
+                  states.contains(WidgetState.pressed);
+              return highlighted
+                  ? ObsidianPalette.gold
+                  : ObsidianPalette.textMuted;
+            }),
+            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+            iconSize: const WidgetStatePropertyAll(18),
+            minimumSize: ObsidianModalScope.usesTouchTargets(context)
+                ? const WidgetStatePropertyAll(Size(112, 48))
+                : null,
+            visualDensity: VisualDensity.standard,
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            ),
+            textStyle: WidgetStatePropertyAll(
+              Theme.of(context).textTheme.titleSmall?.copyWith(
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
+          icon: icon,
+          label: Text(label),
         ),
       ),
     );

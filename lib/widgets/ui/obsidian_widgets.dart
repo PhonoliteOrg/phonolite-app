@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../layouts/obsidian_scale.dart';
+import '../modals/obsidian_modal_scope.dart';
 import 'blur.dart';
 import 'chamfer_clipper.dart';
 import 'hoverable.dart';
@@ -70,15 +71,17 @@ class GlassPanel extends StatelessWidget {
 class ObsidianIconButton extends StatelessWidget {
   const ObsidianIconButton({
     super.key,
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     this.onPressed,
     this.isActive = false,
     this.size = 46,
     this.cut = 12,
     this.style = ObsidianButtonStyle.glass,
-  });
+  }) : assert((icon == null) != (iconWidget == null));
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final VoidCallback? onPressed;
   final bool isActive;
   final double size;
@@ -137,7 +140,14 @@ class ObsidianIconButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        child: Center(child: Icon(icon, color: color, size: 20)),
+        child: Center(
+          child: iconWidget != null
+              ? IconTheme.merge(
+                  data: IconThemeData(color: color, size: 20),
+                  child: iconWidget!,
+                )
+              : Icon(icon, color: color, size: 20),
+        ),
       ),
     );
   }
@@ -146,13 +156,15 @@ class ObsidianIconButton extends StatelessWidget {
 class ObsidianHudIconButton extends StatelessWidget {
   const ObsidianHudIconButton({
     super.key,
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     this.isActive = false,
     this.size = 26,
     this.onPressed,
-  });
+  }) : assert((icon == null) != (iconWidget == null));
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final bool isActive;
   final double size;
   final VoidCallback? onPressed;
@@ -161,6 +173,7 @@ class ObsidianHudIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HoverHudIconButton(
       icon: icon,
+      iconWidget: iconWidget,
       size: size,
       isActive: isActive,
       onPressed: onPressed,
@@ -171,12 +184,14 @@ class ObsidianHudIconButton extends StatelessWidget {
 class _HoverHudIconButton extends StatefulWidget {
   const _HoverHudIconButton({
     required this.icon,
+    required this.iconWidget,
     required this.size,
     required this.isActive,
     required this.onPressed,
   });
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final double size;
   final bool isActive;
   final VoidCallback? onPressed;
@@ -240,7 +255,10 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
         onTapUp: enabled ? (_) => _setPressed(false) : null,
         onTapCancel: enabled ? () => _setPressed(false) : null,
         behavior: HitTestBehavior.opaque,
-        child: Padding(
+        child: Container(
+          constraints: ObsidianModalScope.usesTouchTargets(context)
+              ? const BoxConstraints(minWidth: 48, minHeight: 48)
+              : null,
           padding: const EdgeInsets.all(8),
           child: TweenAnimationBuilder<double>(
             tween: Tween<double>(end: glowOpacity),
@@ -254,17 +272,28 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
                 duration: _transition,
                 curve: Curves.easeOut,
                 builder: (context, animatedColor, _) {
+                  final shadows = [
+                    if (animatedGlow > 0)
+                      Shadow(
+                        color: ObsidianPalette.gold.withOpacity(animatedGlow),
+                        blurRadius: 10,
+                      ),
+                  ];
+                  if (widget.iconWidget != null) {
+                    return IconTheme.merge(
+                      data: IconThemeData(
+                        color: animatedColor,
+                        size: widget.size,
+                        shadows: shadows,
+                      ),
+                      child: widget.iconWidget!,
+                    );
+                  }
                   return Icon(
                     widget.icon,
                     color: animatedColor,
                     size: widget.size,
-                    shadows: [
-                      if (animatedGlow > 0)
-                        Shadow(
-                          color: ObsidianPalette.gold.withOpacity(animatedGlow),
-                          blurRadius: 10,
-                        ),
-                    ],
+                    shadows: shadows,
                   );
                 },
               );
@@ -301,20 +330,13 @@ class ObsidianSectionHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [Colors.white, Color(0xFF9A9A9A)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ).createShader(bounds),
-                blendMode: BlendMode.srcIn,
-                child: Text(
-                  title,
-                  style: textTheme.headlineLarge?.copyWith(
-                    fontSize: isCompact ? 18 : null,
-                    letterSpacing: isCompact ? 0.8 : 1.2,
-                    height: 1.05,
-                  ),
+              Text(
+                title,
+                style: textTheme.headlineLarge?.copyWith(
+                  color: ObsidianPalette.textPrimary,
+                  fontSize: isCompact ? 18 : null,
+                  letterSpacing: isCompact ? 0.8 : 1.2,
+                  height: 1.05,
                 ),
               ),
               if (subtitle != null) ...[
@@ -456,7 +478,8 @@ class ObsidianNavIcon extends StatelessWidget {
     required this.isSelected,
     this.onTap,
     this.size = 52,
-    this.iconSize,
+    this.iconSize = 32,
+    this.label,
     this.enableHover,
   });
 
@@ -464,15 +487,16 @@ class ObsidianNavIcon extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onTap;
   final double size;
-  final double? iconSize;
+  final double iconSize;
+  final String? label;
   final bool? enableHover;
 
   @override
   Widget build(BuildContext context) {
     final scale = ObsidianScale.of(context);
     double s(double value) => value * scale;
-    final boxSize = s(size);
-    final resolvedIconSize = iconSize == null ? null : s(iconSize!);
+    final boxSize = s(size).clamp(48.0, double.infinity);
+    final resolvedIconSize = s(iconSize);
     final cursor = onTap == null
         ? SystemMouseCursors.basic
         : SystemMouseCursors.click;
@@ -481,60 +505,37 @@ class ObsidianNavIcon extends StatelessWidget {
       cursor: cursor,
       enableHover: enableHover,
       builder: (context, hovered) {
-        final fill = isSelected
-            ? ObsidianPalette.gold.withOpacity(0.1)
-            : Colors.white.withOpacity(0.03);
-        final border = isSelected
-            ? ObsidianPalette.gold
-            : hovered
-            ? Colors.grey.shade300.withOpacity(0.8)
-            : Colors.white.withOpacity(0.05);
         final iconColor = isSelected
             ? ObsidianPalette.gold
             : hovered
             ? Colors.grey.shade300.withOpacity(0.9)
             : ObsidianPalette.textMuted;
-        final shadow = [
-          BoxShadow(
-            color: isSelected
-                ? ObsidianPalette.goldSoft
-                : hovered
-                ? Colors.grey.shade300.withOpacity(0.25)
-                : Colors.transparent,
-            blurRadius: isSelected || hovered ? 12 : 0,
-          ),
-        ];
-
-        return ClipPath(
-          clipper: CutTopLeftBottomRightClipper(cut: s(10)),
-          child: AnimatedContainer(
+        return Semantics(
+          selected: isSelected,
+          child: TweenAnimationBuilder<Color?>(
             duration: const Duration(milliseconds: 200),
+            tween: ColorTween(end: iconColor),
             curve: Curves.easeOut,
-            decoration: BoxDecoration(
-              color: fill,
-              border: Border.all(color: border),
-              boxShadow: shadow,
-            ),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              child: SizedBox(
-                width: boxSize,
-                height: boxSize,
-                child: Center(
-                  child: TweenAnimationBuilder<Color?>(
-                    duration: const Duration(milliseconds: 200),
-                    tween: ColorTween(end: iconColor),
-                    curve: Curves.easeOut,
-                    builder: (context, color, child) => IconTheme(
-                      data: IconThemeData(color: color, size: resolvedIconSize),
-                      child: child!,
-                    ),
-                    child: icon,
-                  ),
+            builder: (context, color, child) => IconButton(
+              onPressed: onTap,
+              tooltip: label,
+              iconSize: resolvedIconSize,
+              style: ButtonStyle(
+                fixedSize: WidgetStatePropertyAll(Size.square(boxSize)),
+                padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                backgroundColor: const WidgetStatePropertyAll(
+                  Colors.transparent,
+                ),
+                overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.focused)
+                      ? ObsidianPalette.gold
+                      : color,
                 ),
               ),
+              icon: child!,
             ),
+            child: icon,
           ),
         );
       },

@@ -16,24 +16,30 @@ void main() {
         'lib/platform/local_network_permission_service.dart',
       );
 
-      expectContainsAll(source, const [
+      final playbackValues = readProjectFile(
+        'lib/entities/playback_state.dart',
+      );
+      expect(source, contains("export 'playback_state.dart';"));
+      expectContainsAll(playbackValues, const [
         'enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }',
         'enum ActionScope { local, server }',
         'enum RepeatMode { off, one }',
         'enum StreamMode { auto, high, medium, low }',
-        'enum LocalNetworkPermissionState { unknown, granted, denied }',
         'enum PlaybackQueueSource { none, liked, playlist, offline }',
         'enum LocalPlaybackSource { none, library, liked, playlist }',
+      ]);
+      expectContainsAll(source, const [
+        'enum LocalNetworkPermissionState { unknown, granted, denied }',
         'NowPlayingPlatformService? nowPlayingPlatformService,',
         'VehicleSurfaceService? vehicleSurfaceService,',
         'LocalNetworkPermissionService? localNetworkPermissionService,',
         'final NowPlayingPlatformService _nowPlayingPlatform;',
         'final VehicleSurfaceService _vehicleSurface;',
         'final LocalNetworkPermissionService _localNetworkPermissions;',
-        "'artworkKey': artworkKey",
-        '_nowPlayingArtworkSourceKey(',
+        "'artworkKey': _artwork.key",
+        '_artwork.load(',
         '_maybeLoadNowPlayingArtwork(',
-        '_fetchNowPlayingArtworkFile(',
+        'final NowPlayingArtwork _artwork;',
         'getCarPlayState',
         '_carPlayGetArtists(_carPlayScope(args))',
         '_carPlayPlayAlbum(_carPlayScope(args), albumId)',
@@ -50,9 +56,11 @@ void main() {
         'StreamSubscription<bool>? _connectivitySubscription;',
         'static const Duration storedSessionRestoreTimeout = Duration(seconds: 10);',
         'static const Duration _storedSessionRequestTimeout = Duration(seconds: 4);',
-        'static const Duration _seekDebounceDelay = Duration(milliseconds: 180);',
+        'await _commitSeek(clamped, requestGeneration);',
         'static const Duration _seekCompletionGuard = Duration(seconds: 8);',
-        'static const Duration _resumeStreamRestartThreshold = Duration(seconds: 45);',
+        'bool _wantsPlayback = false;',
+        'void _retryPlaybackAfterServerReconnect()',
+        'initialPaused: initialPaused,',
         'static const Duration _interruptedStreamRestartCooldown = Duration(',
         'seconds: 8,',
         'static const int _interruptedStreamRestartPositionToleranceMs = 5000;',
@@ -144,7 +152,7 @@ void main() {
         'static const int _seekCompletionToleranceMs = 400;',
         'int _bufferedEndHighWaterMs = 0;',
         '_seekDirection = _seekDirectionFor(_seekOriginMs, _seekTargetMs);',
-        'if (!_seeking || _isScrubbing) {',
+        'if (!_seeking || _isScrubbing || _pendingSeekGeneration != null) {',
         '_SeekDirection.forward =>',
         'positionMs >= targetMs - _seekCompletionToleranceMs',
         '_SeekDirection.backward =>',
@@ -228,7 +236,7 @@ void main() {
         'mode == ShuffleMode.custom',
         '_resolveLocalShuffleArtistId(',
         '_resolveLocalShuffleAlbumId(',
-        '_localTrackMatchesCustomShuffle(',
+        '_localLibrary.matchesCustomShuffle(',
         'Future<bool> _localShuffleCanStartFromTrack(',
         'Future<void> queueServerShuffle(',
         'Future<void> toggleLocalLike(Track track) async {',
@@ -269,11 +277,11 @@ void main() {
       final source = readProjectFile('lib/entities/app_controller.dart');
 
       expectContainsAll(source, const [
-        'StreamSubscription<MetadataUpdateEvent>? _metadataEventsSubscription',
+        'late final MetadataEventListener _metadataEvents',
         'Stream<Artist> watchArtist(String artistId)',
         'Stream<Album> watchAlbum(String albumId)',
-        'connection.streamMetadataEvents().listen(',
-        '_queueMetadataEvent(event)',
+        'openStream: connection.streamMetadataEvents,',
+        'applyEvent: _applyMetadataEvent,',
         "case 'artist':",
         "case 'album':",
         "case 'album_artists':",
@@ -342,7 +350,7 @@ void main() {
 
   group('audio engine source contracts', () {
     test(
-      'audio engine preserves platform players transport tags and defaults',
+      'audio engine preserves platform output and local playback interfaces',
       () {
         final source = readProjectFile('lib/entities/audio_engine.dart');
 
@@ -354,29 +362,17 @@ void main() {
           'class _CoreAudioPlayer implements _NativeAudioPlayer {',
           'const int kDefaultOutputDeviceId = -1;',
           "OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default')",
-          'static const double _seekStartSeconds = 0.05;',
-          'static const double _seekCatchupMinSeconds = 0.2;',
-          'static const double _seekCatchupTargetSeconds = 0.4;',
-          'static const int _pumpChunkMs = 200;',
-          'static const int _playbackReportIntervalMs = 1000;',
-          'static const int _quicStatsLogIntervalMs = 2000;',
-          'const List<int> _rawHeaderMagic = [79, 80, 85, 83, 82, 48, 49, 0];',
-          'const List<int> _rawSeekMarkerBytes = [255, 255];',
           'void Function(bool active, bool paused)? onState,',
           'final void Function(bool active, bool paused)? _onState;',
           "case 'state':",
           "final active = message['active'] == true;",
           "final paused = message['paused'] == true;",
           '_onState?.call(active, paused);',
-          'QUIC transport closed before stream EOS',
           'bool quickStart = true,',
           "'quick_start': quickStart,",
           'required this.quickStart,',
           'final bool quickStart;',
           '_quickStart = quickStart && startOffset.inMilliseconds > 0;',
-          'bool _requestInitialServerSeek(QuicClient quic, int positionMs)',
-          "'Requesting initial QUIC seek to ",
-          r"'decode_errors=${decodeErrors}, pcm_buffered=${_bufferedAudioMs()}ms, '",
           "quickStart: message['quick_start'] != false,",
           "import 'package:phonolite_local_audio/phonolite_local_audio.dart';",
           'Future<void> playLocalFile({',
@@ -388,14 +384,76 @@ void main() {
           'LocalAudioDecoder.open(filePath, startOffset: startOffset)',
           'Future<void> _runLocalFilePlayback(String filePath) async',
           'Future<void> _applyLocalSeek(',
-          'void _createLocalPcmOutput()',
+          'Future<void> _createLocalPcmOutput()',
           "'local': _isLocalFile",
           '_createPlayer(',
+          'Future<void> flush();',
+          'abstract class AudioPcmOutput',
+          'await player.flush();',
+          'bool initialPaused = false,',
+          "initialPaused: message['initial_paused'] == true,",
         ]);
         expect(source, isNot(contains('package:just_audio/just_audio.dart')));
         expect(source, isNot(contains('ja.AudioPlayer')));
         expect(source, isNot(contains('StreamAudioSource')));
       },
     );
+
+    test(
+      'remote audio separates framed reception from cached packet decoding',
+      () {
+        final engine = readProjectFile('lib/entities/audio_engine.dart');
+        final framing = readProjectFile('lib/entities/raw_opus_stream.dart');
+        final cache = readProjectFile('lib/entities/encoded_audio_cache.dart');
+
+        expectContainsAll(engine, const [
+          "import 'encoded_audio_cache.dart';",
+          "import 'raw_opus_stream.dart';",
+          '_receiveRemoteAudio(quic)',
+          '_decodeRemoteAudio()',
+          '_encodedCache.append(',
+          '_encodedCache.seek(ms)',
+          'quic.suspendAudio();',
+          'quic.pollEvent()',
+          "event['source_version']",
+          "event['range_end_ms']",
+          "event['end_of_track']",
+          'startMs: startOffset.inMilliseconds,',
+        ]);
+        expectContainsAll(framing, const [
+          'class RawOpusStreamReader',
+          'class RawOpusStreamHeader',
+          'class RawOpusPacket',
+          'class RawOpusSeekMarker',
+          'class RawOpusEnd',
+          'List<RawOpusEvent> add(Uint8List data)',
+        ]);
+        expectContainsAll(cache, const [
+          'class EncodedAudioCache',
+          'class EncodedAudioSegment',
+          'final int maxBytes;',
+          'final String sourceVersion;',
+          'EncodedAudioCursor? seek(int positionMs)',
+          'int bufferedAheadMs(int positionMs)',
+        ]);
+        expect(engine, isNot(contains('class _ByteQueue')));
+        expect(engine, isNot(contains('_requestInitialServerSeek')));
+      },
+    );
+
+    test('seeks acknowledge buffer readiness and failures', () {
+      final engine = readProjectFile('lib/entities/audio_engine.dart');
+      expectContainsAll(engine, const [
+        'Future<bool> seekTo(Duration position)',
+        'Completer<bool>()',
+        "case 'seek_ready':",
+        "case 'seek_failed':",
+        'Timer? _seekDeadline;',
+        'void _markSeekReady()',
+        'void _failSeek(String outcome)',
+        '_markSeekReady();',
+        "_failSeek('timeout');",
+      ]);
+    });
   });
 }

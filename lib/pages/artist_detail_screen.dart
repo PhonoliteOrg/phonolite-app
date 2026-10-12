@@ -2,19 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/phonolite_icons.dart';
+
 import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../entities/offline_download_manager.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../widgets/display/album_card.dart';
 import '../widgets/display/album_row_tile.dart';
 import '../widgets/display/artist_hero.dart';
+import '../widgets/display/artist_release_sections.dart';
 import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
@@ -49,7 +53,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
     _loaded = true;
     final controller = AppScope.of(context);
     _artist = widget.artist;
-    controller.loadAlbums(widget.artist.id);
+    controller.loadArtistReleases(widget.artist.id);
     _refreshArtist(controller);
     _artistSubscription = controller.watchArtist(widget.artist.id).listen((
       updated,
@@ -73,10 +77,18 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
     final authHeadersMap = authHeaders(controller);
     final coverUrl = _artist.logoRef == null || _artist.logoRef!.isEmpty
         ? null
-        : controller.connection.buildArtistCoverUrl(_artist.id, kind: 'logo');
+        : controller.connection.buildArtistCoverUrl(
+            _artist.id,
+            kind: 'logo',
+            ref: _artist.logoRef,
+          );
     final bannerUrl = _artist.bannerRef == null || _artist.bannerRef!.isEmpty
         ? null
-        : controller.connection.buildArtistCoverUrl(_artist.id, kind: 'banner');
+        : controller.connection.buildArtistCoverUrl(
+            _artist.id,
+            kind: 'banner',
+            ref: _artist.bannerRef,
+          );
     final compactHeaderActions = isCompactListWidth(context);
 
     return Scaffold(
@@ -87,11 +99,13 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
           initialData: controller.albumsLoading,
           builder: (context, loadingSnapshot) {
             final isLoading = loadingSnapshot.data ?? false;
-            return StreamBuilder<List<Album>>(
-              stream: controller.albumsStream,
-              initialData: controller.albums,
+            return StreamBuilder<ArtistReleases>(
+              stream: controller.artistReleasesStream,
+              initialData: controller.artistReleases,
               builder: (context, snapshot) {
-                final albums = snapshot.data ?? [];
+                final releases = snapshot.data ?? const ArtistReleases();
+                final albums = releases.albums;
+                final headlineAlbums = releases.headlineAlbums;
                 return StreamBuilder<bool>(
                   stream: controller.collectionListModeStream,
                   initialData: controller.collectionListMode,
@@ -106,18 +120,18 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                             _ArtistDownloadSummary.forArtist(
                               controller,
                               _artist,
-                              albums,
+                              headlineAlbums,
                             );
                         final removableAlbumIds = _removableAlbumIds(
                           controller,
-                          albums,
+                          headlineAlbums,
                         );
                         final removingAlbumIds = _removingAlbumIds(
                           controller,
-                          albums,
+                          headlineAlbums,
                         );
                         final selectedAlbums = _selectedAlbums(
-                          albums,
+                          headlineAlbums,
                           removableAlbumIds,
                         );
                         return CustomScrollView(
@@ -175,7 +189,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                                   ? () =>
                                                         _confirmDownloadArtist(
                                                           controller,
-                                                          albums,
+                                                          headlineAlbums,
                                                           downloadSummary,
                                                         )
                                                   : null,
@@ -201,19 +215,26 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                 ),
                               ),
                             ),
+                            if (!isLoading && albums.isNotEmpty)
+                              ArtistReleaseHeading(
+                                title: 'Albums',
+                                count: albums.length,
+                              ),
                             if (isLoading && albums.isEmpty)
                               loadingSliver()
-                            else if (albums.isEmpty)
+                            else if (albums.isEmpty &&
+                                releases.collabAlbums.isEmpty)
                               const SliverPadding(
                                 padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
                                 sliver: SliverToBoxAdapter(
                                   child: EmptyState(
                                     title: 'No albums',
-                                    message: 'This artist has no albums yet.',
+                                    message:
+                                        'This artist has no releases in the library yet.',
                                   ),
                                 ),
                               )
-                            else
+                            else if (albums.isNotEmpty)
                               SliverPadding(
                                 padding: const EdgeInsets.fromLTRB(
                                   20,
@@ -306,6 +327,52 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                         }, childCount: albums.length),
                                       ),
                               ),
+                            if (!isLoading && releases.collabAlbums.isNotEmpty)
+                              ArtistContributionSliver(
+                                title: 'Collab albums',
+                                entries: releases.collabAlbums,
+                                isListView: showCollectionList,
+                                coverFor: (album) =>
+                                    _albumCoverUrl(controller, album),
+                                headers: authHeadersMap,
+                                onOpen: _openAlbumDetail,
+                                selectionMode: _albumSelectionMode,
+                                selected: (entry) => _selectedAlbumIds.contains(
+                                  _albumSelectionKey(entry.album),
+                                ),
+                                selectable: (entry) =>
+                                    entry.isAlbumArtist &&
+                                    !removingAlbumIds.contains(
+                                      _albumSelectionKey(entry.album),
+                                    ) &&
+                                    removableAlbumIds.contains(
+                                      _albumSelectionKey(entry.album),
+                                    ),
+                                isDeleting: (entry) => removingAlbumIds
+                                    .contains(_albumSelectionKey(entry.album)),
+                                onSelectionToggle: (entry) =>
+                                    _toggleAlbumSelection(entry.album),
+                              ),
+                            if (!isLoading && releases.appearsOn.isNotEmpty)
+                              ArtistContributionSliver(
+                                title: 'Appears on',
+                                entries: releases.appearsOn,
+                                isListView: showCollectionList,
+                                coverFor: (album) =>
+                                    _albumCoverUrl(controller, album),
+                                headers: authHeadersMap,
+                                onOpen: _openAlbumDetail,
+                              ),
+                            if (!isLoading && releases.otherCredits.isNotEmpty)
+                              ArtistContributionSliver(
+                                title: 'Other credits',
+                                entries: releases.otherCredits,
+                                isListView: showCollectionList,
+                                coverFor: (album) =>
+                                    _albumCoverUrl(controller, album),
+                                headers: authHeadersMap,
+                                onOpen: _openAlbumDetail,
+                              ),
                             if (isLoading && albums.isNotEmpty)
                               const SliverToBoxAdapter(
                                 child: Padding(
@@ -321,6 +388,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                   ),
                                 ),
                               ),
+                            const SliverPlaybackInset(),
                           ],
                         );
                       },
@@ -520,11 +588,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
       if (!mounted) {
         return;
       }
-      setState(() {
-        _artist = updated.albumCount == 0 && _artist.albumCount > 0
-            ? updated.copyWith(albumCount: _artist.albumCount)
-            : updated;
-      });
+      setState(() => _artist = updated);
     } catch (_) {}
   }
 
@@ -535,8 +599,10 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
   void _openAlbumDetail(Album album) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            AlbumDetailScreen(album: album, artistName: _artist.name),
+        builder: (_) => AlbumDetailScreen(
+          album: album,
+          artistName: album.artist.isEmpty ? _artist.name : album.artist,
+        ),
       ),
     );
   }
@@ -672,14 +738,14 @@ class _ArtistDownloadSummary {
 
   IconData get icon {
     if (active > 0) {
-      return Icons.downloading_rounded;
+      return PhonoliteIcons.download;
     }
     if (isComplete) {
-      return Icons.offline_pin_rounded;
+      return PhonoliteIcons.circleCheck;
     }
     if (failed > 0) {
-      return Icons.download_for_offline_rounded;
+      return PhonoliteIcons.download;
     }
-    return Icons.download_for_offline_outlined;
+    return PhonoliteIcons.download;
   }
 }

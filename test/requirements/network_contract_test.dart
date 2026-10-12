@@ -19,7 +19,7 @@ void main() {
       expect(connection.baseUrl, 'http://example.test/api/v1');
     });
 
-    test('resolveBaseUrl accepts api health when root health fails', () async {
+    test('resolveBaseUrl uses HTTPS and waits for OPAQUE to authenticate', () async {
       final requested = <String>[];
       final connection = ServerConnection(
         baseUrl: 'http://placeholder.test/api/v1',
@@ -34,13 +34,8 @@ void main() {
 
       final resolved = await connection.resolveBaseUrl('example.test');
 
-      expect(resolved, 'http://example.test/api/v1');
-      expect(requested.any((url) => url.endsWith('/health')), isTrue);
-      expect(
-        requested.any((url) => url.contains('/api/v1/health')),
-        isTrue,
-        reason: 'Expected an API health probe. Requests: $requested',
-      );
+      expect(resolved, 'https://example.test/api/v1');
+      expect(requested, isEmpty);
     });
 
     test('pingHealthMs accepts api health when root health fails', () async {
@@ -97,6 +92,11 @@ void main() {
         'artist/id with spaces',
         kind: 'banner art',
       );
+      final versionedArtistUrl = connection.buildArtistCoverUrl(
+        'artist/id with spaces',
+        kind: 'banner art',
+        ref: 'art:rev 1&2',
+      );
       final playlistUrl = connection.buildPlaylistCoverUrl(
         'playlist/id with spaces',
         imageRef: 'rev 1',
@@ -109,6 +109,11 @@ void main() {
       expect(
         artistUrl,
         'http://example.test/api/v1/library/artists/artist%2Fid%20with%20spaces/cover?kind=banner%20art',
+      );
+      expect(versionedArtistUrl, '$artistUrl&v=art%3Arev%201%262');
+      expect(
+        connection.buildArtistCoverUrl('artist', ref: 'rev1'),
+        isNot(connection.buildArtistCoverUrl('artist', ref: 'rev2')),
       );
       expect(
         playlistUrl,
@@ -714,14 +719,14 @@ void main() {
         'static const Duration _defaultRequestTimeout = Duration(seconds: 8);',
         'static const Duration _healthRequestTimeout = Duration(seconds: 2);',
         'static const int _maxGetAttempts = 3;',
-        "'/auth/login'",
+        "authenticateServer(",
         "'/auth/logout'",
         'Future<void> logout({',
         'Duration timeout = _defaultRequestTimeout,',
         "await _postVoid('/auth/logout', {}, timeout: timeout);",
         'Duration timeout = _defaultRequestTimeout,',
         'timeout: timeout,',
-        "'/browse/artists?limit=\$limit&offset=\$offset'",
+        "'/browse/artists?limit=\$limit&offset=\$offset&include_contributors=\$includeContributors'",
         "'/library/playlists'",
         "'/browse/likes'",
         "'/library/shuffle?mode=\$mode'",
@@ -734,7 +739,7 @@ void main() {
         'Future<ServerArtwork?> _fetchArtworkUrl',
         "'/player/settings'",
         "'/server/ports'",
-        "headers['Authorization'] = 'Bearer \$_token';",
+        "'Authorization': 'Bearer \$_token'",
         "request.headers[HttpHeaders.rangeHeader] = 'bytes=\$startByte-';",
         "request.headers[HttpHeaders.ifRangeHeader] = ifRange.trim();",
         'final maxAttempts = retryable ? _maxGetAttempts : 1;',

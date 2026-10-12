@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/material.dart';
+
+import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../entities/app_controller.dart';
@@ -13,18 +16,33 @@ import '../layouts/app_scope.dart';
 import '../layouts/obsidian_scale.dart';
 import '../modals/add_to_playlist_modal.dart';
 import '../modals/device_picker_modal.dart';
+import '../modals/modal_action_button.dart';
+import '../modals/obsidian_dialog.dart';
+import '../modals/obsidian_modal_scope.dart';
 import 'album_art.dart';
 import '../ui/blur.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
+import '../ui/playlist_add_icon.dart';
 import '../ui/marquee_text.dart';
+import '../ui/obsidian_glass_surface.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 
 double _scaled(BuildContext context, double value) =>
     value * ObsidianScale.of(context);
 
+bool _canOpenPlaybackDetails(PlaybackState state) {
+  final track = state.track;
+  return track != null &&
+      (state.hasPlaylistSource ||
+          state.isLocalPlayback ||
+          state.queueSource == PlaybackQueueSource.offline ||
+          (track.albumId?.trim().isNotEmpty ?? false));
+}
+
 const Color _queueSourceGreen = Color(0xFF2ED573);
+const Color _playlistSourcePurple = Color(0xFFB388FF);
 const int _scrubberAuthoritativeDiscontinuityMs = 1500;
 const int _scrubberMaxInterpolationLeadMs = 1500;
 const double _compactPlaybackChromeWidth = 980;
@@ -83,8 +101,14 @@ Future<void> _showStreamModal(
     context: context,
     builder: (dialogContext) {
       final items = const [StreamMode.high, StreamMode.medium, StreamMode.low];
-      return AlertDialog(
+      return ObsidianAlertDialog(
         title: const Text('Stream Quality'),
+        actions: [
+          ModalActionButton(
+            label: 'Close',
+            onPressed: () => Navigator.of(dialogContext).pop(),
+          ),
+        ],
         content: SizedBox(
           width: _scaled(dialogContext, 320),
           child: ListView.separated(
@@ -102,7 +126,7 @@ Future<void> _showStreamModal(
                 title: _streamLabel(mode),
                 trailing: isSelected
                     ? const Icon(
-                        Icons.check_rounded,
+                        PhonoliteIcons.check,
                         color: ObsidianPalette.gold,
                       )
                     : const SizedBox.shrink(),
@@ -259,6 +283,9 @@ bool _transportControlsEnabled(PlaybackState state) {
 }
 
 String? _bitrateLabel(PlaybackState state) {
+  if (state.isLocalPlayback) {
+    return null;
+  }
   final bitrate = state.bitrateKbps;
   if (bitrate == null || bitrate.isNaN || bitrate.isInfinite || bitrate <= 0) {
     return null;
@@ -269,7 +296,7 @@ String? _bitrateLabel(PlaybackState state) {
 
 String? _rttLabel(PlaybackState state) {
   final rtt = state.streamRttMs;
-  if (rtt == null) {
+  if (state.isLocalPlayback || rtt == null) {
     return null;
   }
   return '${rtt}ms';
@@ -307,8 +334,13 @@ List<Widget> _buildTechTags(PlaybackState state) {
   if (state.repeatMode == RepeatMode.one) {
     tags.add(const _TechTag(label: 'LOOP', highlight: true));
   }
-  if (state.isLocalPlayback) {
-    tags.add(const _TechTag(label: 'LOCAL', highlight: true));
+  if (state.track != null) {
+    tags.add(
+      _TechTag(
+        label: state.isLocalPlayback ? 'LOCAL' : 'SERVER',
+        highlight: true,
+      ),
+    );
   }
   final bitrate = _bitrateLabel(state);
   if (bitrate != null) {
@@ -332,17 +364,17 @@ String? _queueSourceLabel(PlaybackState state) {
     case PlaybackQueueSource.liked:
       return 'SOURCE: LIKED';
     case PlaybackQueueSource.playlist:
-      return 'SOURCE: PLAYLIST';
+      return null;
     case PlaybackQueueSource.offline:
       switch (state.localPlaybackSource) {
         case LocalPlaybackSource.none:
           return state.isLocalPlayback ? 'SOURCE: LOCAL' : null;
         case LocalPlaybackSource.library:
-          return 'SOURCE: LOCAL LIBRARY';
+          return null;
         case LocalPlaybackSource.liked:
-          return 'SOURCE: LOCAL LIKED';
+          return 'LIKED TRACKS';
         case LocalPlaybackSource.playlist:
-          return 'SOURCE: LOCAL PLAYLIST';
+          return null;
       }
   }
 }
@@ -351,13 +383,64 @@ List<Widget> _buildQueueSourceTags(PlaybackState state) {
   if (state.track == null) {
     return const [];
   }
+  if (state.queueSource == PlaybackQueueSource.playlist ||
+      (state.queueSource == PlaybackQueueSource.offline &&
+          state.localPlaybackSource == LocalPlaybackSource.playlist)) {
+    return [
+      _PlaylistSourceTag(
+        playlistId: state.queueSourcePlaylistId,
+        isLocal: state.queueSource == PlaybackQueueSource.offline,
+      ),
+    ];
+  }
   final label = _queueSourceLabel(state);
   if (label == null) {
     return const [];
   }
+  final isLocalLiked =
+      state.queueSource == PlaybackQueueSource.offline &&
+      state.localPlaybackSource == LocalPlaybackSource.liked;
   return [
-    _TechTag(label: label, outlineColor: _queueSourceGreen.withOpacity(0.7)),
+    _TechTag(
+      label: label,
+      highlight: isLocalLiked,
+      outlineColor: isLocalLiked ? null : _queueSourceGreen.withOpacity(0.7),
+    ),
   ];
+}
+
+class _PlaylistSourceTag extends StatelessWidget {
+  const _PlaylistSourceTag({required this.playlistId, required this.isLocal});
+
+  final String? playlistId;
+  final bool isLocal;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppScope.of(context);
+    final playlists = isLocal
+        ? controller.localPlaylists
+        : controller.playlists;
+    return StreamBuilder<List<Playlist>>(
+      stream: isLocal
+          ? controller.localPlaylistsStream
+          : controller.playlistsStream,
+      initialData: playlists,
+      builder: (context, snapshot) {
+        var name = 'Playlist';
+        for (final playlist in snapshot.data ?? playlists) {
+          if (playlist.id == playlistId) {
+            name = playlist.name;
+            break;
+          }
+        }
+        return _TechTag(
+          label: name,
+          outlineColor: _playlistSourcePurple.withValues(alpha: 0.7),
+        );
+      },
+    );
+  }
 }
 
 List<Widget> _buildInlineTags(PlaybackState state) {
@@ -460,8 +543,14 @@ Future<void> _showShuffleModal(
         ShuffleMode.custom,
         ShuffleMode.liked,
       ];
-      return AlertDialog(
+      return ObsidianAlertDialog(
         title: Text(serverScope ? 'Server Shuffle Mode' : 'Local Shuffle Mode'),
+        actions: [
+          ModalActionButton(
+            label: 'Close',
+            onPressed: () => Navigator.of(dialogContext).pop(),
+          ),
+        ],
         content: SizedBox(
           width: _scaled(dialogContext, 320),
           child: StreamBuilder<List<Track>>(
@@ -474,6 +563,7 @@ Future<void> _showShuffleModal(
                   (likedSnapshot.data ?? const <Track>[]).isNotEmpty;
               return ListView(
                 shrinkWrap: true,
+                padding: EdgeInsets.zero,
                 children: items.map((mode) {
                   final enabled = switch (mode) {
                     _
@@ -491,12 +581,16 @@ Future<void> _showShuffleModal(
                     ShuffleMode.currentPlaylist => currentPlaylistEnabled,
                     _ => true,
                   };
-                  return ListTile(
+                  return _HudModalListRow(
                     enabled: enabled,
-                    title: Text(_shuffleLabel(mode, scope: scope)),
+                    title: _shuffleLabel(mode, scope: scope),
+                    isSelected: mode == current,
                     trailing: mode == current
-                        ? const Icon(Icons.check_rounded)
-                        : null,
+                        ? const Icon(
+                            PhonoliteIcons.check,
+                            color: ObsidianPalette.gold,
+                          )
+                        : const SizedBox.shrink(),
                     onTap: enabled
                         ? () => Navigator.of(dialogContext).pop(mode)
                         : null,
@@ -549,6 +643,7 @@ Future<void> showNowPlayingExpandedSheet(
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: double.infinity),
       useSafeArea: useNativeMobileTreatment,
       backgroundColor: Colors.transparent,
       barrierColor: useNativeMobileTreatment
@@ -647,7 +742,7 @@ class NowPlayingBar extends StatelessWidget {
   static const double _tightWidth = 520;
   static const double _wideSideWidth = 350;
   static const double _wideRowGap = 12;
-  static const double _wideCommandMin = 230;
+  static const double _wideCommandMin = 312;
 
   static double heightForWidth(double width) {
     if (width < _tightWidth) {
@@ -689,8 +784,13 @@ class NowPlayingBar extends StatelessWidget {
     if (state.repeatMode == RepeatMode.one) {
       techTags.add(const _TechTag(label: 'LOOP', highlight: true));
     }
-    if (state.isLocalPlayback) {
-      techTags.add(const _TechTag(label: 'LOCAL', highlight: true));
+    if (state.track != null) {
+      techTags.add(
+        _TechTag(
+          label: state.isLocalPlayback ? 'LOCAL' : 'SERVER',
+          highlight: true,
+        ),
+      );
     }
     final bitrate = _bitrateLabel(state);
     if (bitrate != null) {
@@ -715,12 +815,10 @@ class NowPlayingBar extends StatelessWidget {
         final width = constraints.maxWidth;
         final isCompact = width < _compactWidth;
         final barHeight = heightForWidth(width);
-        final innerWidth = (width - s(72)).clamp(0.0, double.infinity);
         final baseRowWidth =
             s(_wideSideWidth) * 2 + s(_wideRowGap) * 2 + s(_wideCommandMin);
-        final denseScale = (innerWidth / baseRowWidth).clamp(0.7, 1.0);
-        final sideWidth = s(_wideSideWidth) * denseScale;
-        final rowGap = s(_wideRowGap) * denseScale;
+        final sideWidth = s(_wideSideWidth);
+        final rowGap = s(_wideRowGap);
 
         final content = isCompact
             ? Column(
@@ -732,7 +830,9 @@ class NowPlayingBar extends StatelessWidget {
                         _IntelZone(
                           track: track,
                           isLoading: state.isLoading,
-                          onTap: onOpenAlbum,
+                          onTap: _canOpenPlaybackDetails(state)
+                              ? onOpenAlbum
+                              : null,
                           techTags: techTags,
                           sourceTags: _buildQueueSourceTags(state),
                         ),
@@ -785,56 +885,67 @@ class NowPlayingBar extends StatelessWidget {
             : Column(
                 children: [
                   Expanded(
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: sideWidth,
-                          child: _IntelZone(
-                            track: track,
-                            isLoading: state.isLoading,
-                            onTap: onOpenAlbum,
-                            techTags: techTags,
-                            sourceTags: _buildQueueSourceTags(state),
-                          ),
-                        ),
-                        SizedBox(width: rowGap),
-                        Expanded(
-                          child: _CommandZone(
-                            state: state,
-                            onPlayPause: onPlayPause,
-                            onPrev: onPrev,
-                            onNext: onNext,
-                            onStop: onStop,
-                            density: denseScale,
-                            onShuffle: () => _showShuffleModal(
-                              context,
-                              current: state.shuffleMode,
-                              onSelected: onShuffleChanged,
-                            ),
-                            onRepeat: onToggleRepeat,
-                          ),
-                        ),
-                        SizedBox(width: rowGap),
-                        SizedBox(
-                          width: sideWidth,
-                          child: _OutputZone(
-                            state: state,
-                            compact: false,
-                            density: denseScale,
-                            onStreamModeChanged: onStreamModeChanged,
-                            onVolumeChanged: onVolumeChanged,
-                            onToggleLike: onToggleLike,
-                            onAddToPlaylist: () =>
-                                showAddToPlaylistModalForTrack(
-                                  context,
-                                  state.track,
-                                  scope: _actionScopeForPlayback(state),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => FittedBox(
+                        fit: BoxFit.scaleDown,
+                        // Scale all three groups together, including text,
+                        // artwork, slider shapes, and button hit padding.
+                        child: SizedBox(
+                          width: math.max(constraints.maxWidth, baseRowWidth),
+                          height: constraints.maxHeight,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: sideWidth,
+                                child: _IntelZone(
+                                  track: track,
+                                  isLoading: state.isLoading,
+                                  onTap: _canOpenPlaybackDetails(state)
+                                      ? onOpenAlbum
+                                      : null,
+                                  techTags: techTags,
+                                  sourceTags: _buildQueueSourceTags(state),
                                 ),
-                            onShowDevicePicker: () =>
-                                _showDevicePicker(context),
+                              ),
+                              SizedBox(width: rowGap),
+                              Expanded(
+                                child: _CommandZone(
+                                  state: state,
+                                  onPlayPause: onPlayPause,
+                                  onPrev: onPrev,
+                                  onNext: onNext,
+                                  onStop: onStop,
+                                  onShuffle: () => _showShuffleModal(
+                                    context,
+                                    current: state.shuffleMode,
+                                    onSelected: onShuffleChanged,
+                                  ),
+                                  onRepeat: onToggleRepeat,
+                                ),
+                              ),
+                              SizedBox(width: rowGap),
+                              SizedBox(
+                                width: sideWidth,
+                                child: _OutputZone(
+                                  state: state,
+                                  compact: false,
+                                  onStreamModeChanged: onStreamModeChanged,
+                                  onVolumeChanged: onVolumeChanged,
+                                  onToggleLike: onToggleLike,
+                                  onAddToPlaylist: () =>
+                                      showAddToPlaylistModalForTrack(
+                                        context,
+                                        state.track,
+                                        scope: _actionScopeForPlayback(state),
+                                      ),
+                                  onShowDevicePicker: () =>
+                                      _showDevicePicker(context),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                   _ProgressBar(
@@ -856,34 +967,11 @@ class NowPlayingBar extends StatelessWidget {
 
         return Padding(
           padding: EdgeInsets.fromLTRB(s(16), s(6), s(16), s(16)),
-          child: ClipPath(
-            clipper: _HudChamferClipper(cut: s(20)),
-            child: maybeBlur(
-              sigma: 40,
-              child: Container(
-                height: barHeight,
-                padding: EdgeInsets.symmetric(
-                  horizontal: s(20),
-                  vertical: s(6),
-                ),
-                decoration: BoxDecoration(
-                  color: ObsidianPalette.obsidianElevated.withOpacity(0.85),
-                  border: Border(
-                    top: BorderSide(color: Colors.white.withOpacity(0.2)),
-                    left: BorderSide(color: Colors.white.withOpacity(0.12)),
-                    right: BorderSide(color: Colors.white.withOpacity(0.12)),
-                    bottom: BorderSide(color: Colors.white.withOpacity(0.12)),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.65),
-                      blurRadius: 28,
-                      offset: const Offset(0, 14),
-                    ),
-                  ],
-                ),
-                child: content,
-              ),
+          child: ObsidianGlassSurface(
+            child: Container(
+              height: barHeight,
+              padding: EdgeInsets.symmetric(horizontal: s(20), vertical: s(6)),
+              child: content,
             ),
           ),
         );
@@ -897,12 +985,16 @@ class NowPlayingMiniBar extends StatelessWidget {
     super.key,
     required this.state,
     required this.onPlayPause,
+    required this.onNext,
     required this.onExpand,
+    this.onOpenAlbum,
   });
 
   final PlaybackState state;
   final VoidCallback onPlayPause;
+  final VoidCallback onNext;
   final VoidCallback onExpand;
+  final VoidCallback? onOpenAlbum;
 
   static const double _height = 72;
 
@@ -917,7 +1009,7 @@ class NowPlayingMiniBar extends StatelessWidget {
     final playEnabled = transportEnabled && !state.isLoading;
     final subtitle = track == null ? 'IDLE' : _miniSubtitle(track);
     final inlineTags = _buildInlineTags(state);
-    final tags = inlineTags.isEmpty
+    final tags = inlineTags.isEmpty && track == null
         ? const [_TechTag(label: 'IDLE')]
         : inlineTags;
     final albumId = track?.albumId?.trim();
@@ -938,48 +1030,39 @@ class NowPlayingMiniBar extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(s(12), 0, s(12), s(12)),
-      child: ClipPath(
-        clipper: _HudChamferClipper(cut: s(18)),
+      child: ObsidianGlassSurface(
         child: Material(
-          color: ObsidianPalette.obsidianElevated.withOpacity(0.9),
+          color: Colors.transparent,
           child: InkWell(
             onTap: onExpand,
             child: Container(
               height: _height,
               padding: EdgeInsets.symmetric(horizontal: s(14)),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: Colors.white.withOpacity(0.15)),
-                  left: BorderSide(color: Colors.white.withOpacity(0.1)),
-                  right: BorderSide(color: Colors.white.withOpacity(0.1)),
-                  bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
-                ),
-              ),
               child: Row(
                 children: [
-                  ClipPath(
-                    clipper: _HudChamferClipper(cut: s(8)),
-                    child: Container(
-                      width: artSize,
-                      height: artSize,
-                      decoration: BoxDecoration(
+                  GestureDetector(
+                    onTap: track != null && state.hasPlaylistSource
+                        ? onOpenAlbum
+                        : null,
+                    behavior: HitTestBehavior.opaque,
+                    child: ClipRect(
+                      child: Container(
+                        width: artSize,
+                        height: artSize,
                         color: ObsidianPalette.obsidianGlass.withOpacity(0.6),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.12),
-                        ),
+                        child: track == null
+                            ? Icon(
+                                PhonoliteIcons.music,
+                                color: ObsidianPalette.textMuted,
+                                size: artSize * 0.5,
+                              )
+                            : AlbumArt(
+                                title: track.album,
+                                size: artSize,
+                                imageUrl: imageUrl,
+                                headers: headers,
+                              ),
                       ),
-                      child: track == null
-                          ? Icon(
-                              Icons.music_note_rounded,
-                              color: ObsidianPalette.textMuted,
-                              size: artSize * 0.5,
-                            )
-                          : AlbumArt(
-                              title: track.album,
-                              size: artSize,
-                              imageUrl: imageUrl,
-                              headers: headers,
-                            ),
                     ),
                   ),
                   SizedBox(width: s(12)),
@@ -1015,6 +1098,14 @@ class NowPlayingMiniBar extends StatelessWidget {
                           _techTagRow(context, tags),
                         ],
                       ],
+                    ),
+                  ),
+                  Tooltip(
+                    message: 'Next song',
+                    child: ObsidianHudIconButton(
+                      icon: PhonoliteIcons.skipForward,
+                      onPressed: transportEnabled ? onNext : null,
+                      size: s(28),
                     ),
                   ),
                   GestureDetector(
@@ -1089,7 +1180,10 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   final VoidCallback onToggleLike;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildSheet);
+
+  Widget _buildSheet(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final track = state.track;
     final size = MediaQuery.of(context).size;
@@ -1109,7 +1203,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final inlineTags = _buildInlineTags(state);
 
     final albumId = track?.albumId?.trim() ?? '';
-    final canOpenAlbum = onOpenAlbum != null && albumId.isNotEmpty;
+    final canOpenAlbum = onOpenAlbum != null && _canOpenPlaybackDetails(state);
     final localImageUrl = track?.albumArtPath?.trim();
     final hasLocalImage = localImageUrl != null && localImageUrl.isNotEmpty;
     final imageUrl = hasLocalImage
@@ -1155,7 +1249,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                     context,
                   ).copyWith(scrollbars: false),
                   child: SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
+                    physics: const ClampingScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(s(16), s(12), s(16), s(12)),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
@@ -1165,47 +1259,47 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          GestureDetector(
-                            onTap: canOpenAlbum ? onOpenAlbum : null,
-                            behavior: HitTestBehavior.opaque,
-                            child: Container(
-                              width: artSize,
-                              height: artSize,
-                              decoration: BoxDecoration(
+                          MouseRegion(
+                            cursor: canOpenAlbum
+                                ? SystemMouseCursors.click
+                                : SystemMouseCursors.basic,
+                            child: GestureDetector(
+                              onTap: canOpenAlbum ? onOpenAlbum : null,
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                width: artSize,
+                                height: artSize,
                                 color: ObsidianPalette.obsidianGlass
                                     .withOpacity(0.6),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.18),
-                                ),
-                              ),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  if (track != null)
-                                    AlbumArt(
-                                      title: track.album,
-                                      size: artSize,
-                                      imageUrl: imageUrl,
-                                      headers: headers,
-                                    ),
-                                  if (state.isLoading)
-                                    ColoredBox(
-                                      color: Colors.black.withOpacity(0.34),
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: s(28),
-                                          height: s(28),
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: s(2.6),
-                                            valueColor:
-                                                const AlwaysStoppedAnimation<
-                                                  Color
-                                                >(ObsidianPalette.gold),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    if (track != null)
+                                      AlbumArt(
+                                        title: track.album,
+                                        size: artSize,
+                                        imageUrl: imageUrl,
+                                        headers: headers,
+                                      ),
+                                    if (state.isLoading)
+                                      ColoredBox(
+                                        color: Colors.black.withOpacity(0.34),
+                                        child: Center(
+                                          child: SizedBox(
+                                            width: s(28),
+                                            height: s(28),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: s(2.6),
+                                              valueColor:
+                                                  const AlwaysStoppedAnimation<
+                                                    Color
+                                                  >(ObsidianPalette.gold),
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1222,17 +1316,22 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                           ),
                           if (track != null) ...[
                             SizedBox(height: s(10)),
-                            GestureDetector(
-                              onTap: canOpenAlbum ? onOpenAlbum : null,
-                              behavior: HitTestBehavior.opaque,
-                              child: MarqueeText(
-                                text: '${track.artist} - ${track.album}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: s(15),
-                                  color: ObsidianPalette.textMuted,
+                            MouseRegion(
+                              cursor: canOpenAlbum
+                                  ? SystemMouseCursors.click
+                                  : SystemMouseCursors.basic,
+                              child: GestureDetector(
+                                onTap: canOpenAlbum ? onOpenAlbum : null,
+                                behavior: HitTestBehavior.opaque,
+                                child: MarqueeText(
+                                  text: '${track.artist} - ${track.album}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: s(15),
+                                    color: ObsidianPalette.textMuted,
+                                  ),
+                                  velocity: s(26),
+                                  gap: s(24),
                                 ),
-                                velocity: s(26),
-                                gap: s(24),
                               ),
                             ),
                           ],
@@ -1310,12 +1409,10 @@ class NowPlayingExpandedSheet extends StatelessWidget {
         alignment: Alignment.bottomCenter,
         child: SizedBox(
           height: height,
-          child: ClipPath(
-            clipper: _HudChamferClipper(cut: s(24)),
-            child: useNativeMobileTreatment
-                ? sheetBody
-                : maybeBlur(sigma: 40, child: sheetBody),
-          ),
+          width: double.infinity,
+          child: useNativeMobileTreatment
+              ? sheetBody
+              : ClipRect(child: maybeBlur(sigma: 40, child: sheetBody)),
         ),
       ),
     );
@@ -1340,8 +1437,10 @@ class _IntelZone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final tags = techTags.isEmpty ? const [_TechTag(label: 'IDLE')] : techTags;
-    final enabled = onTap != null && (track?.albumId?.isNotEmpty ?? false);
+    final tags = techTags.isEmpty && track == null
+        ? const [_TechTag(label: 'IDLE')]
+        : techTags;
+    final enabled = onTap != null && track != null;
     final subtitle = _subtitle(track);
     final displayTags = sourceTags.isEmpty ? tags : [...sourceTags, ...tags];
     final content = Row(
@@ -1383,8 +1482,12 @@ class _IntelZone extends StatelessWidget {
         ),
       ],
     );
+    final paddedContent = Padding(
+      padding: EdgeInsets.symmetric(vertical: s(6), horizontal: s(4)),
+      child: content,
+    );
     if (!enabled) {
-      return content;
+      return paddedContent;
     }
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1393,10 +1496,7 @@ class _IntelZone extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(s(12)),
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: s(6), horizontal: s(4)),
-            child: content,
-          ),
+          child: paddedContent,
         ),
       ),
     );
@@ -1452,25 +1552,20 @@ class _AlbumArtThumb extends StatelessWidget {
       ),
     );
 
-    final image = imageUrl == null || imageUrl.isEmpty || track == null
-        ? placeholder
-        : AlbumArt(
-            title: track!.album,
-            size: s(64),
-            imageUrl: imageUrl,
-            headers: hasLocalImage
-                ? const <String, String>{}
-                : authHeaders(AppScope.of(context)),
-          );
+    final image = AlbumArt(
+      title: track?.album ?? '',
+      size: s(64),
+      imageUrl: imageUrl,
+      headers: hasLocalImage || imageUrl == null
+          ? const <String, String>{}
+          : authHeaders(AppScope.of(context)),
+      placeholder: placeholder,
+    );
 
-    return ClipPath(
-      clipper: _HudChamferClipper(cut: s(10)),
-      child: Container(
+    return ClipRect(
+      child: SizedBox(
         width: s(64),
         height: s(64),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white.withOpacity(0.12)),
-        ),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -1507,7 +1602,6 @@ class _CommandZone extends StatelessWidget {
     required this.onStop,
     required this.onShuffle,
     required this.onRepeat,
-    this.density = 1.0,
   });
 
   final PlaybackState state;
@@ -1517,67 +1611,56 @@ class _CommandZone extends StatelessWidget {
   final VoidCallback onStop;
   final VoidCallback onShuffle;
   final VoidCallback onRepeat;
-  final double density;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final d = density;
     final transportEnabled = _transportControlsEnabled(state);
     final playEnabled = transportEnabled && !state.isLoading;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ObsidianHudIconButton(
-                    icon: state.shuffleMode == ShuffleMode.off
-                        ? Icons.shuffle_rounded
-                        : Icons.shuffle_on_rounded,
-                    isActive: state.shuffleMode != ShuffleMode.off,
-                    onPressed: onShuffle,
-                    size: s(24 * d),
-                  ),
-                  SizedBox(width: s(6 * d)),
-                  ObsidianHudIconButton(
-                    icon: Icons.skip_previous,
-                    onPressed: transportEnabled ? onPrev : null,
-                    size: s(26 * d),
-                  ),
-                  SizedBox(width: s(8 * d)),
-                  _HudPlayButton(
-                    icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                    onPressed: playEnabled ? onPlayPause : null,
-                    size: 54 * d,
-                  ),
-                  SizedBox(width: s(8 * d)),
-                  ObsidianHudIconButton(
-                    icon: Icons.stop_rounded,
-                    onPressed: transportEnabled ? onStop : null,
-                    size: s(28 * d),
-                  ),
-                  SizedBox(width: s(6 * d)),
-                  ObsidianHudIconButton(
-                    icon: Icons.skip_next,
-                    onPressed: transportEnabled ? onNext : null,
-                    size: s(26 * d),
-                  ),
-                  SizedBox(width: s(6 * d)),
-                  ObsidianHudIconButton(
-                    icon: Icons.repeat_rounded,
-                    isActive: state.repeatMode == RepeatMode.one,
-                    onPressed: onRepeat,
-                    size: s(24 * d),
-                  ),
-                ],
-              ),
-            );
-          },
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ObsidianHudIconButton(
+              icon: PhonoliteIcons.shuffle,
+              isActive: state.shuffleMode != ShuffleMode.off,
+              onPressed: onShuffle,
+              size: s(24),
+            ),
+            SizedBox(width: s(6)),
+            ObsidianHudIconButton(
+              icon: PhonoliteIcons.skipBack,
+              onPressed: transportEnabled ? onPrev : null,
+              size: s(26),
+            ),
+            SizedBox(width: s(8)),
+            _HudPlayButton(
+              icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+              onPressed: playEnabled ? onPlayPause : null,
+            ),
+            SizedBox(width: s(8)),
+            ObsidianHudIconButton(
+              icon: PhonoliteIcons.square,
+              onPressed: transportEnabled ? onStop : null,
+              size: s(28),
+            ),
+            SizedBox(width: s(6)),
+            ObsidianHudIconButton(
+              icon: PhonoliteIcons.skipForward,
+              onPressed: transportEnabled ? onNext : null,
+              size: s(26),
+            ),
+            SizedBox(width: s(6)),
+            ObsidianHudIconButton(
+              icon: PhonoliteIcons.repeat,
+              isActive: state.repeatMode == RepeatMode.one,
+              onPressed: onRepeat,
+              size: s(24),
+            ),
+          ],
         ),
       ],
     );
@@ -1609,20 +1692,71 @@ class _ExpandedControls extends StatelessWidget {
     final transportEnabled = _transportControlsEnabled(state);
     final playEnabled = transportEnabled && !state.isLoading;
 
+    // Keep every transport action finger-sized instead of shrinking the side
+    // groups with a FittedBox on a narrow phone.
+    if (ObsidianModalScope.usesTouchTargets(context)) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ObsidianHudIconButton(
+                icon: PhonoliteIcons.skipBack,
+                size: 32,
+                onPressed: transportEnabled ? onPrev : null,
+              ),
+              _HudPlayButton(
+                icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                size: 80,
+                onPressed: playEnabled ? onPlayPause : null,
+              ),
+              ObsidianHudIconButton(
+                icon: PhonoliteIcons.skipForward,
+                size: 32,
+                onPressed: transportEnabled ? onNext : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ObsidianHudIconButton(
+                icon: PhonoliteIcons.shuffle,
+                size: 28,
+                isActive: state.shuffleMode != ShuffleMode.off,
+                onPressed: onShuffle,
+              ),
+              ObsidianHudIconButton(
+                icon: PhonoliteIcons.square,
+                size: 28,
+                onPressed: transportEnabled ? onStop : null,
+              ),
+              ObsidianHudIconButton(
+                icon: PhonoliteIcons.repeat,
+                size: 28,
+                isActive: state.repeatMode == RepeatMode.one,
+                onPressed: onRepeat,
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     final leftRow = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         ObsidianHudIconButton(
-          icon: state.shuffleMode == ShuffleMode.off
-              ? Icons.shuffle_rounded
-              : Icons.shuffle_on_rounded,
+          icon: PhonoliteIcons.shuffle,
           isActive: state.shuffleMode != ShuffleMode.off,
           onPressed: onShuffle,
           size: s(32),
         ),
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
-          icon: Icons.skip_previous,
+          icon: PhonoliteIcons.skipBack,
           onPressed: transportEnabled ? onPrev : null,
           size: s(38),
         ),
@@ -1632,19 +1766,19 @@ class _ExpandedControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ObsidianHudIconButton(
-          icon: Icons.skip_next,
+          icon: PhonoliteIcons.skipForward,
           onPressed: transportEnabled ? onNext : null,
           size: s(38),
         ),
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
-          icon: Icons.stop_rounded,
+          icon: PhonoliteIcons.square,
           onPressed: transportEnabled ? onStop : null,
           size: s(38),
         ),
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
-          icon: Icons.repeat_rounded,
+          icon: PhonoliteIcons.repeat,
           isActive: state.repeatMode == RepeatMode.one,
           onPressed: onRepeat,
           size: s(32),
@@ -1742,7 +1876,7 @@ class _ExpandedExtras extends StatelessWidget {
     final userActionsEnabled = trackAvailable;
     final actions = <Widget>[
       ObsidianHudIconButton(
-        icon: Icons.playlist_add,
+        iconWidget: const PlaylistAddIcon(),
         onPressed: userActionsEnabled ? onAddToPlaylist : null,
         size: s(32),
       ),
@@ -1752,47 +1886,54 @@ class _ExpandedExtras extends StatelessWidget {
         size: s(32),
       ),
       ObsidianHudIconButton(
-        icon: Icons.speaker_rounded,
+        icon: PhonoliteIcons.speaker,
         onPressed: onShowDevicePicker,
         size: s(32),
       ),
-      _QualityBadge(
-        label: state.isLocalPlayback ? 'LOCAL' : _streamLabel(state.streamMode),
-        onTap: state.isLocalPlayback
-            ? null
-            : () => _showStreamModal(
-                context,
-                current: state.streamMode,
-                onSelected: onStreamModeChanged,
-              ),
-      ),
+      if (state.track != null && !state.isLocalPlayback)
+        _QualityBadge(
+          label: _streamLabel(state.streamMode),
+          onTap: () => _showStreamModal(
+            context,
+            current: state.streamMode,
+            onSelected: onStreamModeChanged,
+          ),
+        ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: s(48),
-          child: Center(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < actions.length; i++) ...[
-                    if (i > 0) SizedBox(width: s(14)),
-                    actions[i],
+        if (ObsidianModalScope.usesTouchTargets(context))
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: actions,
+          )
+        else
+          SizedBox(
+            height: s(48),
+            child: Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < actions.length; i++) ...[
+                      if (i > 0) SizedBox(width: s(14)),
+                      actions[i],
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
-        ),
         SizedBox(height: s(14)),
         Row(
           children: [
             Icon(
-              Icons.volume_up,
+              PhonoliteIcons.volume2,
               size: s(28),
               color: ObsidianPalette.textMuted,
             ),
@@ -1850,15 +1991,13 @@ class _CompactControls extends StatelessWidget {
       runSpacing: s(8),
       children: [
         ObsidianHudIconButton(
-          icon: state.shuffleMode == ShuffleMode.off
-              ? Icons.shuffle_rounded
-              : Icons.shuffle_on_rounded,
+          icon: PhonoliteIcons.shuffle,
           isActive: state.shuffleMode != ShuffleMode.off,
           onPressed: onShuffle,
           size: s(22),
         ),
         ObsidianHudIconButton(
-          icon: Icons.skip_previous,
+          icon: PhonoliteIcons.skipBack,
           onPressed: transportEnabled ? onPrev : null,
           size: s(24),
         ),
@@ -1868,18 +2007,18 @@ class _CompactControls extends StatelessWidget {
           size: playSize,
         ),
         ObsidianHudIconButton(
-          icon: Icons.skip_next,
+          icon: PhonoliteIcons.skipForward,
           onPressed: transportEnabled ? onNext : null,
           size: s(24),
         ),
         ObsidianHudIconButton(
-          icon: Icons.repeat_rounded,
+          icon: PhonoliteIcons.repeat,
           isActive: state.repeatMode == RepeatMode.one,
           onPressed: onRepeat,
           size: s(22),
         ),
         ObsidianHudIconButton(
-          icon: Icons.playlist_add,
+          iconWidget: const PlaylistAddIcon(),
           onPressed: userActionsEnabled ? onAddToPlaylist : null,
           size: s(22),
         ),
@@ -1889,16 +2028,15 @@ class _CompactControls extends StatelessWidget {
           size: s(22),
         ),
         ObsidianHudIconButton(
-          icon: Icons.speaker_rounded,
+          icon: PhonoliteIcons.speaker,
           onPressed: onShowDevicePicker,
           size: s(22),
         ),
-        _QualityBadge(
-          label: state.isLocalPlayback
-              ? 'LOCAL'
-              : _streamLabel(state.streamMode),
-          onTap: state.isLocalPlayback ? null : onShowStreamMode,
-        ),
+        if (state.track != null && !state.isLocalPlayback)
+          _QualityBadge(
+            label: _streamLabel(state.streamMode),
+            onTap: onShowStreamMode,
+          ),
       ],
     );
   }
@@ -2139,7 +2277,7 @@ class _CompactFooterRowState extends State<_CompactFooterRow> {
           child: Row(
             children: [
               Icon(
-                Icons.volume_up,
+                PhonoliteIcons.volume2,
                 size: s(18),
                 color: ObsidianPalette.textMuted,
               ),
@@ -2170,7 +2308,6 @@ class _OutputZone extends StatelessWidget {
     required this.onToggleLike,
     required this.onAddToPlaylist,
     required this.onShowDevicePicker,
-    this.density = 1.0,
   });
 
   final PlaybackState state;
@@ -2180,15 +2317,13 @@ class _OutputZone extends StatelessWidget {
   final VoidCallback onToggleLike;
   final VoidCallback onAddToPlaylist;
   final VoidCallback onShowDevicePicker;
-  final double density;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final d = density;
     final volumeTheme = SliderTheme.of(context).copyWith(
-      trackHeight: s(6 * d),
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(8 * d)),
+      trackHeight: s(6),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(8)),
       thumbColor: Colors.white,
       overlayShape: SliderComponentShape.noOverlay,
       inactiveTrackColor: Colors.white.withOpacity(0.1),
@@ -2196,37 +2331,34 @@ class _OutputZone extends StatelessWidget {
     );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTight = compact || constraints.maxWidth < s(320 * d);
-        final controlSpacing = isTight ? s(10 * d) : s(16 * d);
+        final isTight = compact || constraints.maxWidth < s(320);
+        final controlSpacing = isTight ? s(10) : s(16);
         final userActionsEnabled = state.track != null;
         final controls = <Widget>[
           ObsidianHudIconButton(
-            icon: Icons.playlist_add,
+            iconWidget: const PlaylistAddIcon(),
             onPressed: userActionsEnabled ? onAddToPlaylist : null,
-            size: s(26 * d),
+            size: s(26),
           ),
           LikeIconButton(
             isLiked: state.track?.liked == true,
             onPressed: userActionsEnabled ? onToggleLike : null,
-            size: s(26 * d),
+            size: s(26),
           ),
           ObsidianHudIconButton(
-            icon: Icons.speaker_rounded,
+            icon: PhonoliteIcons.speaker,
             onPressed: onShowDevicePicker,
-            size: s(26 * d),
+            size: s(26),
           ),
-          _QualityBadge(
-            label: state.isLocalPlayback
-                ? 'LOCAL'
-                : _streamLabel(state.streamMode),
-            onTap: state.isLocalPlayback
-                ? null
-                : () => _showStreamModal(
-                    context,
-                    current: state.streamMode,
-                    onSelected: onStreamModeChanged,
-                  ),
-          ),
+          if (state.track != null && !state.isLocalPlayback)
+            _QualityBadge(
+              label: _streamLabel(state.streamMode),
+              onTap: () => _showStreamModal(
+                context,
+                current: state.streamMode,
+                onSelected: onStreamModeChanged,
+              ),
+            ),
         ];
         final controlsRow = isTight
             ? Wrap(
@@ -2241,24 +2373,26 @@ class _OutputZone extends StatelessWidget {
                     : MainAxisAlignment.end,
                 children: [
                   controls[0],
-                  SizedBox(width: s(14 * d)),
+                  SizedBox(width: s(14)),
                   controls[1],
                   SizedBox(width: controlSpacing),
                   controls[2],
-                  SizedBox(width: controlSpacing),
-                  controls[3],
+                  if (state.track != null && !state.isLocalPlayback) ...[
+                    SizedBox(width: controlSpacing),
+                    controls[3],
+                  ],
                 ],
               );
 
-        final sliderWidth = isTight ? constraints.maxWidth : s(200 * d);
+        final sliderWidth = isTight ? constraints.maxWidth : s(200);
         final sliderRow = Align(
           alignment: compact ? Alignment.center : Alignment.centerRight,
           child: SizedBox(
             width: sliderWidth,
             child: Row(
               children: [
-                Icon(Icons.volume_up, size: s(26 * d)),
-                SizedBox(width: s(8 * d)),
+                Icon(PhonoliteIcons.volume2, size: s(26)),
+                SizedBox(width: s(8)),
                 Expanded(
                   child: SliderTheme(
                     data: volumeTheme,
@@ -2351,6 +2485,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
     final scaleFactor = widget.size / 54;
     final baseSize = s(widget.size);
     final iconSize = baseSize * 0.48;
+    final borderWidth = s(1.5 * scaleFactor);
     final enabled = widget.onPressed != null;
     final highlight = enabled && (_hovered || _pressed);
     final glowOpacity = enabled ? (highlight ? 0.7 : 0.35) : 0.0;
@@ -2361,8 +2496,8 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
         ? ObsidianPalette.gold
         : ObsidianPalette.textMuted.withOpacity(0.28);
     final idleFill = enabled
-        ? ObsidianPalette.obsidianElevated
-        : ObsidianPalette.obsidianElevated.withOpacity(0.6);
+        ? ObsidianPalette.obsidianElevated.withValues(alpha: 0.72)
+        : ObsidianPalette.obsidianElevated.withValues(alpha: 0.4);
     final idleIcon = enabled
         ? ObsidianPalette.gold
         : ObsidianPalette.textMuted.withOpacity(0.75);
@@ -2376,39 +2511,56 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
         onTapDown: enabled ? (_) => _setPressed(true) : null,
         onTapUp: enabled ? (_) => _setPressed(false) : null,
         onTapCancel: enabled ? () => _setPressed(false) : null,
-        child: ClipPath(
-          clipper: const _OctagonClipper(cutFraction: 0.3),
+        child: SizedBox(
+          width: baseSize,
+          height: baseSize,
           child: TweenAnimationBuilder<double>(
             tween: Tween<double>(end: glowOpacity),
             duration: _transition,
             curve: Curves.easeOut,
             builder: (context, animatedGlow, _) {
-              return Container(
-                width: baseSize,
-                height: baseSize,
-                decoration: BoxDecoration(
+              return CustomPaint(
+                painter: animatedGlow > 0
+                    ? _HudPlayButtonBorderPainter(
+                        color: ObsidianPalette.gold.withValues(
+                          alpha: animatedGlow,
+                        ),
+                        width: borderWidth,
+                        blurSigma: s(8 * scaleFactor),
+                      )
+                    : null,
+                foregroundPainter: _HudPlayButtonBorderPainter(
                   color: baseColor,
-                  boxShadow: [
-                    if (animatedGlow > 0)
-                      BoxShadow(
-                        color: ObsidianPalette.gold.withOpacity(animatedGlow),
-                        blurRadius: s(14 * scaleFactor),
-                      ),
-                  ],
+                  width: borderWidth,
                 ),
-                child: Padding(
-                  padding: EdgeInsets.all(s(1.5 * scaleFactor)),
-                  child: ClipPath(
-                    clipper: const _OctagonClipper(cutFraction: 0.3),
-                    child: TweenAnimationBuilder<Color?>(
-                      tween: ColorTween(
-                        end: highlight ? ObsidianPalette.gold : idleFill,
-                      ),
-                      duration: _transition,
-                      curve: Curves.easeOut,
-                      builder: (context, animatedFill, __) {
-                        return Container(
-                          color: animatedFill,
+                child: ClipPath(
+                  clipper: const _OctagonClipper(cutFraction: 0.3),
+                  child: TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(
+                      end: highlight
+                          ? ObsidianPalette.gold.withValues(alpha: 0.75)
+                          : idleFill,
+                    ),
+                    duration: _transition,
+                    curve: Curves.easeOut,
+                    builder: (context, animatedFill, __) {
+                      final fill = animatedFill ?? idleFill;
+                      return maybeBlur(
+                        sigma: s(12 * scaleFactor),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color.alphaBlend(
+                                  Colors.white.withValues(alpha: 0.06),
+                                  fill,
+                                ),
+                                fill,
+                              ],
+                            ),
+                          ),
                           alignment: Alignment.center,
                           child: TweenAnimationBuilder<Color?>(
                             tween: ColorTween(
@@ -2424,9 +2576,9 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
                               );
                             },
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               );
@@ -2487,7 +2639,12 @@ class _QualityBadgeState extends State<_QualityBadge> {
           duration: _transition,
           curve: Curves.easeOut,
           alignment: Alignment.center,
-          constraints: BoxConstraints(minHeight: s(36)),
+          constraints: BoxConstraints(
+            minWidth: ObsidianModalScope.usesTouchTargets(context) ? 48 : 0,
+            minHeight: ObsidianModalScope.usesTouchTargets(context)
+                ? 48
+                : s(36),
+          ),
           padding: EdgeInsets.symmetric(horizontal: s(12), vertical: s(6)),
           decoration: BoxDecoration(
             color: bgColor,
@@ -2696,6 +2853,8 @@ class _ProgressBarState extends State<_ProgressBar> {
               textAlign: TextAlign.center,
               style: GoogleFonts.rajdhani(
                 fontSize: s(13),
+                // Keep the footer height stable before and after font loading.
+                height: 1.0,
                 letterSpacing: s(1.1),
                 color: ObsidianPalette.textMuted,
               ),
@@ -2704,7 +2863,7 @@ class _ProgressBarState extends State<_ProgressBar> {
           SizedBox(width: s(12)),
           Expanded(
             child: SizedBox(
-              height: s(36),
+              height: ObsidianModalScope.usesTouchTargets(context) ? 48 : s(36),
               child: SliderTheme(
                 data: progressTheme,
                 child: Slider(
@@ -2726,6 +2885,7 @@ class _ProgressBarState extends State<_ProgressBar> {
               textAlign: TextAlign.center,
               style: GoogleFonts.rajdhani(
                 fontSize: s(13),
+                height: 1.0,
                 letterSpacing: s(1.1),
                 color: ObsidianPalette.textMuted,
               ),
@@ -2774,56 +2934,78 @@ class _TechTag extends StatelessWidget {
   }
 }
 
-class _HudChamferClipper extends CustomClipper<Path> {
-  const _HudChamferClipper({required this.cut});
-
-  final double cut;
-
-  @override
-  Path getClip(Size size) {
-    final c = cut.clamp(0.0, size.shortestSide / 2);
-    return Path()
-      ..moveTo(c, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height - c)
-      ..lineTo(size.width - c, size.height)
-      ..lineTo(0, size.height)
-      ..lineTo(0, c)
-      ..close();
-  }
-
-  @override
-  bool shouldReclip(covariant _HudChamferClipper oldClipper) {
-    return oldClipper.cut != cut;
-  }
-}
-
 class _OctagonClipper extends CustomClipper<Path> {
-  const _OctagonClipper({required this.cutFraction});
+  const _OctagonClipper({required this.cutFraction, this.inset = 0});
 
   final double cutFraction;
+  final double inset;
 
   @override
   Path getClip(Size size) {
-    final cut = (size.shortestSide * cutFraction).clamp(
+    final inset = this.inset.clamp(0.0, size.shortestSide / 2);
+    final rect = (Offset.zero & size).deflate(inset);
+    if (rect.isEmpty) {
+      return Path();
+    }
+    final outerCut = (size.shortestSide * cutFraction).clamp(
       0.0,
       size.shortestSide / 2,
     );
+    // Offset diagonals by the same perpendicular distance as straight edges.
+    final cut = (outerCut - (2 - math.sqrt2) * inset).clamp(
+      0.0,
+      rect.shortestSide / 2,
+    );
     return Path()
-      ..moveTo(cut, 0)
-      ..lineTo(size.width - cut, 0)
-      ..lineTo(size.width, cut)
-      ..lineTo(size.width, size.height - cut)
-      ..lineTo(size.width - cut, size.height)
-      ..lineTo(cut, size.height)
-      ..lineTo(0, size.height - cut)
-      ..lineTo(0, cut)
+      ..moveTo(rect.left + cut, rect.top)
+      ..lineTo(rect.right - cut, rect.top)
+      ..lineTo(rect.right, rect.top + cut)
+      ..lineTo(rect.right, rect.bottom - cut)
+      ..lineTo(rect.right - cut, rect.bottom)
+      ..lineTo(rect.left + cut, rect.bottom)
+      ..lineTo(rect.left, rect.bottom - cut)
+      ..lineTo(rect.left, rect.top + cut)
       ..close();
   }
 
   @override
   bool shouldReclip(covariant _OctagonClipper oldClipper) {
-    return oldClipper.cutFraction != cutFraction;
+    return oldClipper.cutFraction != cutFraction || oldClipper.inset != inset;
+  }
+}
+
+class _HudPlayButtonBorderPainter extends CustomPainter {
+  const _HudPlayButtonBorderPainter({
+    required this.color,
+    required this.width,
+    this.blurSigma = 0,
+  });
+
+  final Color color;
+  final double width;
+  final double blurSigma;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final outer = const _OctagonClipper(cutFraction: 0.3).getClip(size);
+    final inner = _OctagonClipper(cutFraction: 0.3, inset: width).getClip(size);
+    final ring = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addPath(outer, Offset.zero)
+      ..addPath(inner, Offset.zero);
+    final paint = Paint()..color = color;
+    if (blurSigma > 0) {
+      paint.maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, blurSigma);
+    }
+    // Paint over the full glass fill so the inner edge cannot expose a seam.
+    canvas.drawPath(ring, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HudPlayButtonBorderPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.width != width ||
+        oldDelegate.blurSigma != blurSigma;
   }
 }
 
@@ -2844,7 +3026,6 @@ class _HudModalListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = (double value) => _scaled(context, value);
     final theme = Theme.of(context);
     return ObsidianHoverRow(
       onTap: onTap,
@@ -2855,14 +3036,17 @@ class _HudModalListRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              maxLines: 1,
+              maxLines: ObsidianModalScope.usesTouchTargets(context) ? null : 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleMedium?.copyWith(
-                letterSpacing: s(0.4),
+                color: enabled
+                    ? ObsidianPalette.textPrimary
+                    : ObsidianPalette.textMuted,
+                letterSpacing: 0.4,
               ),
             ),
           ),
-          SizedBox(width: s(12)),
+          const SizedBox(width: 12),
           trailing,
         ],
       ),

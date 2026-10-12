@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/phonolite_icons.dart';
+import '../widgets/ui/edit_icon.dart';
+
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
@@ -10,6 +13,7 @@ import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/layout/library_header.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/ui/collection_view_toggle_button.dart';
@@ -138,7 +142,7 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                                         Tooltip(
                                           message: 'Create playlist',
                                           child: ObsidianHudIconButton(
-                                            icon: Icons.add_rounded,
+                                            icon: PhonoliteIcons.plus,
                                             size: headerActionIconSize,
                                             onPressed: () => _openCreate(
                                               controller,
@@ -150,7 +154,7 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                                         Tooltip(
                                           message: 'Edit playlists',
                                           child: ObsidianHudIconButton(
-                                            icon: Icons.edit_rounded,
+                                            iconWidget: const EditIcon(),
                                             size: headerActionIconSize,
                                             onPressed: totalPlaylistCount == 0
                                                 ? null
@@ -218,6 +222,7 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                                 _toggleSelection(playlist, isLocal: false),
                             emptyText: 'No server playlists',
                           ),
+                        const SliverPlaybackInset(),
                       ],
                     );
                   },
@@ -489,28 +494,6 @@ class _PlaylistSection extends StatelessWidget {
                       onLongPress: playlist.trackIds.isEmpty
                           ? null
                           : () => onPlayFromTop(playlist),
-                      trailing: selectionMode
-                          ? null
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Tooltip(
-                                  message: 'Play playlist',
-                                  child: ObsidianHudIconButton(
-                                    icon: Icons.play_arrow_rounded,
-                                    onPressed: playlist.trackIds.isEmpty
-                                        ? null
-                                        : () => onPlayFromTop(playlist),
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: Colors.white38,
-                                ),
-                              ],
-                            ),
                       selectionMode: selectionMode,
                       selected: isSelected(playlist),
                       isDeleting: isDeleting(playlist),
@@ -532,9 +515,6 @@ class _PlaylistSection extends StatelessWidget {
                       coverUrl: coverUrlFor(playlist) ?? '',
                       headers: headers,
                       onTap: () => onOpen(playlist),
-                      onPlay: playlist.trackIds.isEmpty
-                          ? null
-                          : () => onPlayFromTop(playlist),
                       onLongPress: playlist.trackIds.isEmpty
                           ? null
                           : () => onPlayFromTop(playlist),

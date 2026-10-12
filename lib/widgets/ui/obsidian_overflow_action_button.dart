@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+
+import 'phonolite_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'obsidian_theme.dart';
 import 'obsidian_widgets.dart';
 import 'tech_button.dart';
+import '../modals/obsidian_modal_scope.dart';
 
 class ObsidianMenuAction {
   const ObsidianMenuAction({
     required this.label,
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.onTap,
     this.variant = TechButtonVariant.standard,
-  });
+  }) : assert((icon == null) != (iconWidget == null));
 
   final String label;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final VoidCallback? onTap;
   final TechButtonVariant variant;
 }
@@ -24,7 +29,7 @@ class ObsidianOverflowActionButton extends StatelessWidget {
     super.key,
     required this.actions,
     required this.tooltip,
-    this.icon = Icons.more_vert_rounded,
+    this.icon = PhonoliteIcons.ellipsisVertical,
     this.size = 22,
   });
 
@@ -35,6 +40,7 @@ class ObsidianOverflowActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = ObsidianModalScope.isCompact(context);
     final enabled = actions.any((action) => action.onTap != null);
     if (!enabled) {
       return Tooltip(
@@ -64,7 +70,7 @@ class ObsidianOverflowActionButton extends StatelessWidget {
         onSelected: (index) => actions[index].onTap?.call(),
         itemBuilder: (context) => [
           for (final entry in actions.indexed)
-            _menuItem(index: entry.$1, action: entry.$2),
+            _menuItem(index: entry.$1, action: entry.$2, compact: compact),
         ],
         icon: Icon(icon, color: ObsidianPalette.textMuted, size: size),
       ),
@@ -74,6 +80,7 @@ class ObsidianOverflowActionButton extends StatelessWidget {
   PopupMenuItem<int> _menuItem({
     required int index,
     required ObsidianMenuAction action,
+    required bool compact,
   }) {
     final enabled = action.onTap != null;
     final danger = action.variant == TechButtonVariant.danger;
@@ -85,19 +92,27 @@ class ObsidianOverflowActionButton extends StatelessWidget {
     return PopupMenuItem<int>(
       value: index,
       enabled: enabled,
-      height: 40,
+      height: compact ? 56 : 40,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(action.icon, size: 18, color: color),
+          if (action.iconWidget != null)
+            IconTheme.merge(
+              data: IconThemeData(size: compact ? 22 : 18, color: color),
+              child: action.iconWidget!,
+            )
+          else
+            Icon(action.icon, size: compact ? 22 : 18, color: color),
           const SizedBox(width: 10),
-          Text(
-            action.label,
-            style: GoogleFonts.rajdhani(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-              color: color,
+          Flexible(
+            child: Text(
+              action.label,
+              style: GoogleFonts.rajdhani(
+                fontSize: compact ? 16 : 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: color,
+              ),
             ),
           ),
         ],

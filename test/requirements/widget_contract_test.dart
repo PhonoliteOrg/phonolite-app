@@ -1,5 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/entities/app_controller.dart';
@@ -181,23 +184,27 @@ void main() {
       expect(source, isNot(contains('await controller.loadLikedTracks();')));
     });
 
-    test('now playing source tags distinguish local playback queues', () {
+    test('now playing source tags show playlist names for both scopes', () {
       final source = readProjectFile(
         'lib/widgets/display/now_playing_bar.dart',
       );
 
       expectContainsAll(source, const [
         'String? _queueSourceLabel(PlaybackState state)',
-        "return 'SOURCE: PLAYLIST';",
+        '_PlaylistSourceTag(',
+        'isLocal: state.queueSource == PlaybackQueueSource.offline',
+        'controller.localPlaylistsStream',
+        'controller.playlistsStream',
         'case PlaybackQueueSource.offline:',
         'switch (state.localPlaybackSource)',
         'case LocalPlaybackSource.library:',
-        "return 'SOURCE: LOCAL LIBRARY';",
         'case LocalPlaybackSource.liked:',
-        "return 'SOURCE: LOCAL LIKED';",
+        "return 'LIKED TRACKS';",
         'case LocalPlaybackSource.playlist:',
-        "return 'SOURCE: LOCAL PLAYLIST';",
+        'playlistId: state.queueSourcePlaylistId',
       ]);
+      expect(source, isNot(contains("'SOURCE: PLAYLIST'")));
+      expect(source, isNot(contains("'SOURCE: LOCAL LIBRARY'")));
     });
 
     testWidgets('search hud clears input and routes submit actions', (
@@ -206,6 +213,7 @@ void main() {
       final controller = TextEditingController(text: 'Boards');
       var submitted = 0;
       var cleared = 0;
+      var changed = 0;
 
       await tester.pumpWidget(
         wrapInTestApp(
@@ -213,19 +221,27 @@ void main() {
             controller: controller,
             onSubmit: () => submitted += 1,
             onClear: () => cleared += 1,
+            onChanged: () => changed += 1,
           ),
         ),
       );
 
       expect(find.text('Boards'), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.search), findsNothing);
 
-      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.tap(find.byIcon(PhonoliteIcons.x));
       await tester.pump();
 
       expect(controller.text, isEmpty);
       expect(cleared, 1);
 
-      await tester.tap(find.byIcon(Icons.search_rounded));
+      await tester.enterText(find.byType(TextField), 'Boards of Canada');
+      await tester.pump();
+
+      expect(controller.text, 'Boards of Canada');
+      expect(changed, 1);
+
+      await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pump();
 
       expect(submitted, 1);
@@ -267,7 +283,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byIcon(Icons.view_agenda_rounded));
+      await tester.tap(find.byIcon(PhonoliteIcons.rows3));
       await tester.pumpAndSettle();
 
       expect(tapped, 1);
@@ -282,7 +298,7 @@ void main() {
         wrapInTestApp(
           TechButton(
             label: 'Download Artist',
-            icon: Icons.download_for_offline_outlined,
+            icon: PhonoliteIcons.download,
             chrome: TechButtonChrome.borderless,
             onTap: () => tapped += 1,
           ),
@@ -303,9 +319,7 @@ void main() {
         ObsidianPalette.textMuted,
       );
       expect(
-        tester
-            .widget<Icon>(find.byIcon(Icons.download_for_offline_outlined))
-            .color,
+        tester.widget<Icon>(find.byIcon(PhonoliteIcons.download)).color,
         ObsidianPalette.textMuted,
       );
 
@@ -323,7 +337,7 @@ void main() {
       expect(tester.widget<Text>(label).style?.color, ObsidianPalette.gold);
       expect(tester.widget<Text>(label).style?.shadows, isNotEmpty);
       final hoveredIcon = tester.widget<Icon>(
-        find.byIcon(Icons.download_for_offline_outlined),
+        find.byIcon(PhonoliteIcons.download),
       );
       expect(hoveredIcon.color, ObsidianPalette.gold);
       expect(hoveredIcon.shadows, isNotEmpty);
@@ -343,7 +357,7 @@ void main() {
         wrapInTestApp(
           TechButton(
             label: 'Download Artist',
-            icon: Icons.download_for_offline_outlined,
+            icon: PhonoliteIcons.download,
             iconOnly: true,
             tooltip: 'Download Artist',
             chrome: TechButtonChrome.borderless,
@@ -353,16 +367,14 @@ void main() {
       );
 
       expect(find.text('DOWNLOAD ARTIST'), findsNothing);
-      expect(find.byIcon(Icons.download_for_offline_outlined), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.download), findsOneWidget);
       expect(find.bySemanticsLabel('Download Artist'), findsOneWidget);
       expect(
-        tester
-            .widget<Icon>(find.byIcon(Icons.download_for_offline_outlined))
-            .size,
+        tester.widget<Icon>(find.byIcon(PhonoliteIcons.download)).size,
         24,
       );
 
-      await tester.tap(find.byIcon(Icons.download_for_offline_outlined));
+      await tester.tap(find.byIcon(PhonoliteIcons.download));
       await tester.pump();
 
       expect(tapped, 1);
@@ -387,28 +399,28 @@ void main() {
       expect(find.text('CANCEL'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.bySubtype<AlertDialog>(),
           matching: find.byType(ModalActionButton),
         ),
         findsNWidgets(2),
       );
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.bySubtype<AlertDialog>(),
           matching: find.byType(TechButton),
-        ),
-        findsNWidgets(2),
-      );
-      expect(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(TextButton),
         ),
         findsNothing,
       );
       expect(
         find.descendant(
-          of: find.byType(TechButton),
+          of: find.bySubtype<AlertDialog>(),
+          matching: find.byType(TextButton),
+        ),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(ModalActionButton),
           matching: find.byType(AnimatedContainer),
         ),
         findsNothing,
@@ -425,7 +437,7 @@ void main() {
             actions: [
               ObsidianMenuAction(
                 label: 'Enabled action',
-                icon: Icons.check_rounded,
+                icon: PhonoliteIcons.check,
                 onTap: () => selected += 1,
               ),
               const ObsidianMenuAction(
@@ -676,13 +688,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('24/24'), findsOneWidget);
+      expect(find.text('32/32'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(PlaylistEditorModal),
           matching: find.byType(ModalActionButton),
         ),
-        findsOneWidget,
+        findsNWidgets(2),
       );
       expect(find.text('LOCAL'), findsNothing);
       expect(find.text('SERVER'), findsNothing);
@@ -691,7 +703,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(savedName, isNotNull);
-      expect(savedName!.length, lessThanOrEqualTo(24));
+      expect(savedName!.length, lessThanOrEqualTo(32));
       expect(savedName, savedName!.trim());
     });
 
@@ -815,7 +827,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'liked');
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+      await tester.tap(find.byIcon(PhonoliteIcons.trash2));
       await tester.pumpAndSettle();
       await tester.tap(find.text('YES'));
       await tester.pumpAndSettle();
@@ -852,9 +864,9 @@ void main() {
       expect(find.text('Dayvan Cowboy'), findsOneWidget);
       expect(find.textContaining('Boards of Canada'), findsOneWidget);
       expect(find.text('05:21'), findsOneWidget);
-      expect(find.byIcon(Icons.playlist_add_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.delete_outline_rounded), findsOneWidget);
+      expect(find.byType(PlaylistAddIcon), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.heart), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.trash2), findsOneWidget);
     });
 
     testWidgets('compact track row keeps priority actions and menus the rest', (
@@ -890,15 +902,15 @@ void main() {
       );
 
       expect(find.text('05:21'), findsNothing);
-      expect(find.byIcon(Icons.download_for_offline_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.playlist_add_rounded), findsNothing);
-      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
+      expect(find.byIcon(PhonoliteIcons.download), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.heart), findsOneWidget);
+      expect(find.byType(PlaylistAddIcon), findsNothing);
+      expect(find.byIcon(PhonoliteIcons.trash2), findsNothing);
       expect(find.byTooltip('Track actions'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.download_for_offline_outlined));
+      await tester.tap(find.byIcon(PhonoliteIcons.download));
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+      await tester.tap(find.byIcon(PhonoliteIcons.heart));
       await tester.pump();
 
       expect(downloaded, 1);
@@ -1003,8 +1015,8 @@ void main() {
       );
 
       expect(find.byTooltip('Remove download'), findsOneWidget);
-      expect(find.byIcon(Icons.delete_outline_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.offline_pin_rounded), findsNothing);
+      expect(find.byIcon(PhonoliteIcons.trash2), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.circleCheck), findsNothing);
       await tester.tap(find.byTooltip('Remove download'));
       await tester.pump();
 
@@ -1117,7 +1129,7 @@ void main() {
       expect(selectedAll, 1);
       expect(deselectedAll, 0);
 
-      await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+      await tester.tap(find.byIcon(PhonoliteIcons.trash2));
       await tester.pump();
 
       expect(removed, 0);
@@ -1167,7 +1179,7 @@ void main() {
       expect(selectedAll, 1);
       expect(deselectedAll, 1);
 
-      await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+      await tester.tap(find.byIcon(PhonoliteIcons.trash2));
       await tester.pump();
 
       expect(removed, 1);
@@ -1235,7 +1247,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Listening Statistics'), findsOneWidget);
+      expect(find.text('LISTENING STATISTICS'), findsOneWidget);
       expect(find.text('ALL MONTHS'), findsOneWidget);
       expect(find.text('2026'), findsOneWidget);
       expect(find.text('TOTAL PLAYTIME'), findsOneWidget);
@@ -1270,7 +1282,7 @@ void main() {
       final managerPanel = find.byType(DownloadManagerPanel);
       expect(
         find.descendant(of: managerPanel, matching: find.byType(TextButton)),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.descendant(of: managerPanel, matching: find.byType(TechButton)),
@@ -1335,7 +1347,7 @@ void main() {
       );
 
       expect(find.text('Download Manager'), findsOneWidget);
-      expect(find.byTooltip('Close'), findsOneWidget);
+      expect(find.text('CLOSE'), findsOneWidget);
       expect(find.byTooltip('Pause all'), findsOneWidget);
       expect(find.byTooltip('Resume paused'), findsOneWidget);
       expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
@@ -1350,6 +1362,7 @@ void main() {
     });
 
     testWidgets('download manager panel sorts the live queue', (tester) async {
+      _setViewport(tester, const Size(1280, 900));
       final downloads = <OfflineTrackDownload>[
         _download(
           'queued-low',

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/artwork_errors.dart';
 import '../../core/constants.dart';
 import '../ui/backdrop_color.dart';
 
@@ -72,7 +73,10 @@ class ArtistAvatar extends StatelessWidget {
               width: size,
               height: size,
               fit: fit,
-              errorBuilder: (_, __, ___) => placeholder,
+              errorBuilder: (_, error, ___) {
+                ArtworkErrors.instance.report(imagePath, error);
+                return placeholder;
+              },
             ),
           );
         },

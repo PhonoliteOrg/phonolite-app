@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'hoverable.dart';
 import 'obsidian_theme.dart';
+import '../modals/obsidian_modal_scope.dart';
 
 class ObsidianHoverRow extends StatelessWidget {
   const ObsidianHoverRow({
@@ -65,6 +66,9 @@ class ObsidianHoverRow extends StatelessWidget {
             onTap: enabled ? onTap : null,
             onLongPress: enabled ? onLongPress : null,
             child: AnimatedContainer(
+              constraints: ObsidianModalScope.usesTouchTargets(context)
+                  ? const BoxConstraints(minHeight: 56)
+                  : null,
               duration: duration,
               curve: curve,
               padding: padding,

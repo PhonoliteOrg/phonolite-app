@@ -330,7 +330,9 @@ class PhonoliteAudioOutputManager(
     private val pendingFrames = AtomicLong(0)
     private val totalWrittenFrames = AtomicLong(0)
     private val writeGeneration = AtomicInteger(0)
-    private val writeQueue = LinkedBlockingQueue<QueuedChunk>()
+    private val writeQueue = LinkedBlockingQueue<QueuedChunk>(5)
+    private val writeLock = Any()
+    private val writeFailure = AtomicInteger(0)
     private val audioTrack: AudioTrack
     private val maxBufferedFrames: Long
     private val audioTimestamp =
@@ -348,6 +350,7 @@ class PhonoliteAudioOutputManager(
     private var lastReportedPlaybackHead = 0L
     private var estimatedPlaybackHead = 0L
     private var lastEstimateTimeNs = 0L
+    private var uncollectedFrames = 0L
 
     private val writerThread =
       Thread({
@@ -386,7 +389,7 @@ class PhonoliteAudioOutputManager(
           channelMask,
           AudioFormat.ENCODING_PCM_16BIT,
         ).coerceAtLeast(4096)
-      val targetBufferBytes = max(minBufferBytes * 2, sampleRate * bytesPerFrame / 4)
+      val targetBufferBytes = max(minBufferBytes, sampleRate * bytesPerFrame / 10)
       val format =
         AudioFormat.Builder()
           .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -412,12 +415,13 @@ class PhonoliteAudioOutputManager(
           audioTrack.setPreferredDevice(preferredDevice)
         }
       }
-      maxBufferedFrames = max(targetBufferBytes / bytesPerFrame, sampleRate).toLong()
+      maxBufferedFrames = max(targetBufferBytes / bytesPerFrame, sampleRate / 5).toLong()
       audioTrack.play()
       lastEstimateTimeNs = System.nanoTime()
       writerThread.start()
     }
 
+    @Synchronized
     fun write(chunk: ByteArray): Int {
       if (!running || chunk.isEmpty()) {
         return -1
@@ -426,28 +430,43 @@ class PhonoliteAudioOutputManager(
       if (frames <= 0) {
         return -2
       }
-      pollCompletedFrames()
-      if (pendingFrames.get() >= maxBufferedFrames * 2) {
-        return -3
+      val failure = writeFailure.get()
+      if (failure != 0) {
+        return failure
       }
-      pendingFrames.addAndGet(frames.toLong())
-      writeQueue.offer(QueuedChunk(chunk, writeGeneration.get()))
-      return 0
+      pollCompletedFrames()
+      synchronized(writeLock) {
+        if (pendingFrames.get() + frames > maxBufferedFrames) {
+          return -3
+        }
+        pendingFrames.addAndGet(frames.toLong())
+        if (!writeQueue.offer(QueuedChunk(chunk, writeGeneration.get()))) {
+          pendingFrames.addAndGet(-frames.toLong())
+          return -3
+        }
+        return 0
+      }
     }
 
     fun setVolume(volume: Float) {
       audioTrack.setVolume(volume.coerceIn(0f, 1f))
     }
 
+    @Synchronized
     fun pause() {
       pollCompletedFrames()
-      audioTrack.pause()
-      lastEstimateTimeNs = 0L
+      synchronized(writeLock) {
+        audioTrack.pause()
+        lastEstimateTimeNs = 0L
+      }
     }
 
+    @Synchronized
     fun resume() {
-      audioTrack.play()
-      lastEstimateTimeNs = System.nanoTime()
+      synchronized(writeLock) {
+        audioTrack.play()
+        lastEstimateTimeNs = System.nanoTime()
+      }
     }
 
     @Synchronized
@@ -455,33 +474,41 @@ class PhonoliteAudioOutputManager(
       if (!running) {
         return
       }
-      val shouldResume = audioTrack.playState == AudioTrack.PLAYSTATE_PLAYING
-      writeGeneration.incrementAndGet()
-      writeQueue.clear()
-      pendingFrames.set(0L)
-      totalWrittenFrames.set(0L)
-      lastRawPlaybackHead = 0L
-      playbackHeadWraps = 0L
-      lastReportedPlaybackHead = 0L
-      estimatedPlaybackHead = 0L
-      lastEstimateTimeNs = 0L
-      runCatching {
-        audioTrack.pause()
-      }
-      runCatching {
-        audioTrack.flush()
-      }
-      if (shouldResume) {
+      synchronized(writeLock) {
+        val shouldResume = audioTrack.playState == AudioTrack.PLAYSTATE_PLAYING
+        writeGeneration.incrementAndGet()
+        writeQueue.clear()
+        pendingFrames.set(0L)
+        totalWrittenFrames.set(0L)
+        writeFailure.set(0)
+        lastRawPlaybackHead = 0L
+        playbackHeadWraps = 0L
+        lastReportedPlaybackHead = 0L
+        estimatedPlaybackHead = 0L
+        lastEstimateTimeNs = 0L
         runCatching {
-          audioTrack.play()
+          audioTrack.pause()
         }
-        lastEstimateTimeNs = System.nanoTime()
+        runCatching {
+          audioTrack.flush()
+        }
+        if (shouldResume) {
+          runCatching {
+            audioTrack.play()
+          }
+          lastEstimateTimeNs = System.nanoTime()
+        }
       }
     }
 
     @Synchronized
     fun collectDoneSamples(): Int {
-      val doneFrames = pollCompletedFrames()
+      pollCompletedFrames()
+      // Writes, pauses and idle checks also poll the playback head. Retain all
+      // completed frames until the audio engine explicitly consumes them.
+      val maximumFrames = Int.MAX_VALUE.toLong() / (bytesPerFrame / 2)
+      val doneFrames = minOf(uncollectedFrames, maximumFrames)
+      uncollectedFrames -= doneFrames
       return (doneFrames * bytesPerFrame / 2).toInt()
     }
 
@@ -491,49 +518,71 @@ class PhonoliteAudioOutputManager(
       return pendingFrames.get() <= 0L && writeQueue.isEmpty()
     }
 
+    @Synchronized
     fun close() {
-      running = false
-      writeGeneration.incrementAndGet()
-      writeQueue.clear()
-      writeQueue.offer(QueuedChunk(ByteArray(0), writeGeneration.get()))
-      writerThread.interrupt()
-      runCatching {
-        audioTrack.pause()
-      }
-      runCatching {
-        audioTrack.flush()
-      }
-      runCatching {
-        audioTrack.release()
+      synchronized(writeLock) {
+        running = false
+        writeGeneration.incrementAndGet()
+        writeQueue.clear()
+        writeQueue.offer(QueuedChunk(ByteArray(0), writeGeneration.get()))
+        writerThread.interrupt()
+        runCatching {
+          audioTrack.pause()
+        }
+        runCatching {
+          audioTrack.flush()
+        }
+        runCatching {
+          audioTrack.release()
+        }
       }
     }
 
     private fun writeChunk(chunk: QueuedChunk) {
       var offset = 0
       while (running && offset < chunk.data.size) {
-        if (chunk.generation != writeGeneration.get()) {
-          break
-        }
         val written =
-          try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-              audioTrack.write(
-                chunk.data,
-                offset,
-                chunk.data.size - offset,
-                AudioTrack.WRITE_BLOCKING,
-              )
-            } else {
-              @Suppress("DEPRECATION")
-              audioTrack.write(chunk.data, offset, chunk.data.size - offset)
+          synchronized(writeLock) {
+            if (!running || chunk.generation != writeGeneration.get()) {
+              return
             }
-          } catch (_: Throwable) {
-            break
+            // Builder already requires API 23. Nonblocking writes let pause or
+            // seek acquire this lock immediately even when the device is full.
+            val accepted =
+              try {
+                audioTrack.write(
+                  chunk.data,
+                  offset,
+                  chunk.data.size - offset,
+                  AudioTrack.WRITE_NON_BLOCKING,
+                )
+              } catch (_: Throwable) {
+                -1
+              }
+            if (accepted > 0) {
+              // Flush changes the generation and resets this ledger under the
+              // same lock, so an obsolete write cannot advance the new track.
+              totalWrittenFrames.addAndGet((accepted / bytesPerFrame).toLong())
+            } else if (accepted < 0) {
+              writeFailure.set(accepted)
+              val remainingFrames = (chunk.data.size - offset) / bytesPerFrame
+              pendingFrames.updateAndGet { current ->
+                (current - remainingFrames).coerceAtLeast(0L)
+              }
+            }
+            accepted
           }
-        if (written <= 0) {
+        if (written < 0) {
           break
         }
-        totalWrittenFrames.addAndGet((written / bytesPerFrame).toLong())
+        if (written == 0) {
+          try {
+            Thread.sleep(2)
+          } catch (_: InterruptedException) {
+            return
+          }
+          continue
+        }
         offset += written
       }
     }
@@ -569,6 +618,7 @@ class PhonoliteAudioOutputManager(
         maxOf(absoluteReportedHead, estimatedHead).coerceAtMost(writtenFrames)
       val deltaFrames = (absoluteHead - lastReportedPlaybackHead).coerceAtLeast(0L)
       if (deltaFrames > 0L) {
+        uncollectedFrames += deltaFrames
         lastReportedPlaybackHead = absoluteHead
         pendingFrames.updateAndGet { current ->
           if (current <= deltaFrames) {

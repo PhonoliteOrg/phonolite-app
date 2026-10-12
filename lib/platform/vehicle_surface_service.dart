@@ -28,4 +28,6 @@ class VehicleSurfaceService {
   Future<void> notifyAuthorization(bool authorized) async {
     await _channel.invokeMethod('authState', {'authorized': authorized});
   }
+
+  void dispose() => _channel.setMethodCallHandler(null);
 }

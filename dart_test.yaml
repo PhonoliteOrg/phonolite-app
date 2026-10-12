@@ -1,0 +1,4 @@
+# Server fixtures are opt-in; ordinary verification never opens HTTP listeners.
+tags:
+  requires-server:
+exclude_tags: requires-server

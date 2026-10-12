@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
+import '../widgets/inputs/lucide_checkbox.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
+import '../widgets/layout/library_header.dart';
+import '../widgets/modals/modal_action_button.dart';
+import '../widgets/modals/obsidian_dialog.dart';
+import '../widgets/modals/obsidian_modal_scope.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/obsidian_theme.dart';
-import '../widgets/ui/obsidian_widgets.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.controller});
@@ -32,7 +36,6 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   bool _isSubmitting = false;
   String? _error;
   bool _connected = false;
-  bool _useHttps = false;
   bool _normalizingAddress = false;
   bool _rememberMe = false;
 
@@ -88,70 +91,105 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
             20,
             20 + MediaQuery.of(context).viewInsets.bottom,
           ),
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (Navigator.of(context).canPop()) ...[
-                    CommandLinkButton(
-                      label: 'Back to settings',
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  ObsidianSectionHeader(
-                    title: _connected ? 'Sign in' : 'Connect to server',
-                    subtitle: _connected
-                        ? 'Use your server account to finish connecting.'
-                        : 'Enter the address of the server you want to use.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (Navigator.of(context).canPop()) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: CommandLinkButton(
+                    label: 'Back to settings',
+                    onTap: () => Navigator.of(context).pop(),
                   ),
-                  const SizedBox(height: 20),
-                  _buildLocalNetworkWarning(),
-                  if (!_connected) _buildServerSection(context),
-                  if (_connected) ...[_buildCredentialsSection(context)],
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    SelectableText(
-                      _error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(_connected ? 'Sign in' : 'Connect'),
-                  ),
-                  if (_connected)
-                    TextButton(
-                      onPressed: _isSubmitting
-                          ? null
-                          : () => setState(() {
-                              _connected = false;
-                              _error = null;
-                            }),
-                      child: const Text('Change server'),
-                    ),
-                ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              LibraryHeader(
+                title: (_connected ? 'Sign in' : 'Connect to server')
+                    .toUpperCase(),
+                moduleCount: 0,
+                maxLines: 3,
               ),
-            ),
+              const SizedBox(height: 24),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  // Use the same readable fields and touch targets as modals.
+                  child: ObsidianModalScope(builder: _buildForm),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  Widget _buildForm(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          _connected
+              ? 'Use your server account to finish connecting.'
+              : 'Enter the address of the server you want to use.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: ObsidianPalette.textMuted),
+        ),
+        const SizedBox(height: 24),
+        _buildLocalNetworkSettings(),
+        if (_connected)
+          _buildCredentialsSection(context)
+        else
+          _buildServerSection(context),
+        if (_error != null) ...[
+          const SizedBox(height: 16),
+          SelectableText(
+            _error!,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        ObsidianModalActions(
+          children: [
+            if (_connected)
+              ModalActionButton(
+                label: 'Change server',
+                onPressed: _isSubmitting
+                    ? null
+                    : () => setState(() {
+                        _connected = false;
+                        _error = null;
+                      }),
+              ),
+            if (_isSubmitting)
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ModalActionButton(
+              label: _isSubmitting
+                  ? (_connected ? 'Signing in...' : 'Connecting...')
+                  : (_connected ? 'Sign in' : 'Connect'),
+              onPressed: _isSubmitting ? null : _submit,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Future<void> _submit() async {
+    if (_isSubmitting) {
+      return;
+    }
     FocusManager.instance.primaryFocus?.unfocus();
 
     final portValue = _parsePortInput();
@@ -185,7 +223,7 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     }
 
     final username = _usernameController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
     if (username.isEmpty || password.isEmpty) {
       _setStateIfMounted(() {
         _isSubmitting = false;
@@ -221,47 +259,35 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   }
 
   Widget _buildServerSection(BuildContext context) {
+    final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
+      color: ObsidianPalette.textMuted,
+      letterSpacing: 1.2,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _SchemeToggle(
-              value: _useHttps,
-              enabled: !_connected,
-              onChanged: (value) => setState(() => _useHttps = value),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        ObsidianTextField(
+        Text('Encrypted connection', style: labelStyle),
+        const SizedBox(height: 6),
+        const Text('Your account verifies the server when you sign in.'),
+        const SizedBox(height: 20),
+        _buildInput(
+          context,
           controller: _serverHostController,
-          label: null,
+          label: 'Server address',
           hintText: 'server.example.com',
           keyboardType: TextInputType.url,
-          textInputAction: _connected
-              ? TextInputAction.next
-              : TextInputAction.next,
-          enabled: !_connected,
+          textInputAction: TextInputAction.next,
           onSubmitted: (_) => FocusScope.of(context).nextFocus(),
         ),
-        const SizedBox(height: 12),
-        ObsidianTextField(
+        const SizedBox(height: 20),
+        _buildInput(
+          context,
           controller: _serverPortController,
-          label: null,
+          label: 'Port (optional)',
           hintText: '3000',
           keyboardType: TextInputType.number,
-          textInputAction: _connected
-              ? TextInputAction.next
-              : TextInputAction.done,
-          enabled: !_connected,
-          onSubmitted: _connected
-              ? null
-              : (_) {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  _submit();
-                },
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
         ),
       ],
     );
@@ -271,13 +297,16 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ObsidianTextField(
+        _buildInput(
+          context,
           controller: _usernameController,
           label: 'Username',
           textInputAction: TextInputAction.next,
+          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
         ),
-        const SizedBox(height: 12),
-        ObsidianTextField(
+        const SizedBox(height: 20),
+        _buildInput(
+          context,
           controller: _passwordController,
           label: 'Password',
           obscureText: true,
@@ -289,29 +318,62 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
           onTap: _isSubmitting
               ? null
               : () => setState(() => _rememberMe = !_rememberMe),
-          child: Row(
-            children: [
-              Checkbox(
-                value: _rememberMe,
-                onChanged: _isSubmitting
-                    ? null
-                    : (value) => setState(() => _rememberMe = value ?? false),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Remember me',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: ObsidianPalette.textMuted,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Row(
+              children: [
+                LucideCheckbox(
+                  value: _rememberMe,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.standard,
+                  onChanged: _isSubmitting
+                      ? null
+                      : (value) => setState(() => _rememberMe = value ?? false),
                 ),
-              ),
-            ],
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Remember me',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: ObsidianPalette.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildLocalNetworkWarning() {
+  Widget _buildInput(
+    BuildContext context, {
+    required TextEditingController controller,
+    required String label,
+    String? hintText,
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
+  }) {
+    return ObsidianTextField(
+      controller: controller,
+      label: label,
+      hintText: hintText,
+      height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
+      cut: 0,
+      startPadding: 24,
+      isDense: true,
+      enabled: !_isSubmitting,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
+    );
+  }
+
+  Widget _buildLocalNetworkSettings() {
     return StreamBuilder<LocalNetworkPermissionState>(
       stream: widget.controller.localNetworkPermissionStream,
       initialData: widget.controller.localNetworkPermissionState,
@@ -324,39 +386,11 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         }
         final state = snapshot.data ?? LocalNetworkPermissionState.unknown;
         final theme = Theme.of(context);
-        final message = state == LocalNetworkPermissionState.denied
-            ? 'Local network access is turned off. Enable it in iOS Settings to connect to servers on your network.'
-            : 'Local network access hasn’t been granted yet. Enable it in iOS Settings if you can’t connect.';
-        final showBanner = state != LocalNetworkPermissionState.granted;
+        final needsSettings = state != LocalNetworkPermissionState.granted;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (showBanner) ...[
-              GlassPanel(
-                cut: 16,
-                padding: const EdgeInsets.all(12),
-                borderColor: theme.colorScheme.error.withOpacity(0.45),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.wifi_off_rounded,
-                      color: theme.colorScheme.error,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        message,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: ObsidianPalette.textMuted,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 6),
+            if (needsSettings) ...[
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
@@ -401,7 +435,6 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   void _initializeServerAddress(String baseUrl) {
     final parsed = Uri.tryParse(baseUrl);
     if (parsed != null && parsed.host.isNotEmpty) {
-      _useHttps = parsed.scheme == 'https';
       final port = parsed.hasPort ? parsed.port.toString() : '';
       final path = _stripApiSuffix(parsed.path);
       final query = parsed.hasQuery ? '?${parsed.query}' : '';
@@ -411,7 +444,6 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
       return;
     }
 
-    _useHttps = baseUrl.trimLeft().startsWith('https://');
     final withoutScheme = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
     final cleaned = _stripApiSuffix(withoutScheme);
     final parts = _splitHostAndPort(cleaned);
@@ -432,13 +464,6 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         value.toLowerCase().startsWith('http://') ||
         value.toLowerCase().startsWith('https://');
     if (hasScheme) {
-      final isHttps = value.toLowerCase().startsWith('https://');
-      if (_useHttps != isHttps) {
-        _useHttps = isHttps;
-        if (mounted) {
-          setState(() {});
-        }
-      }
       value = value.replaceFirst(
         RegExp(r'^https?://', caseSensitive: false),
         '',
@@ -474,12 +499,12 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     if (cleaned.isEmpty) {
       return '';
     }
-    final scheme = _useHttps ? 'https' : 'http';
+    const scheme = 'https';
     final parsed = Uri.tryParse('$scheme://$cleaned');
     if (parsed == null || parsed.host.isEmpty) {
       return '';
     }
-    final port = _parsePortInput() ?? (parsed.hasPort ? parsed.port : null);
+    final port = _parsePortInput() ?? (parsed.hasPort ? parsed.port : 3000);
     final uri = Uri(
       scheme: scheme,
       userInfo: parsed.userInfo,
@@ -526,7 +551,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
     final path = _stripApiSuffix(parsed.path);
     final query = parsed.hasQuery ? '?${parsed.query}' : '';
     final pathValue = (path.isEmpty || path == '/') ? '' : path;
-    final hostValue = '${parsed.host}$pathValue$query';
+    final host = parsed.host.contains(':') ? '[${parsed.host}]' : parsed.host;
+    final hostValue = '$host$pathValue$query';
     final portValue = parsed.hasPort ? parsed.port.toString() : null;
     return _HostPortParts(hostValue, portValue);
   }
@@ -537,130 +563,4 @@ class _HostPortParts {
 
   final String host;
   final String? port;
-}
-
-class _SchemeToggle extends StatelessWidget {
-  const _SchemeToggle({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  static const double _height = 40;
-
-  final bool value;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: _height,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _GlowToggleOption(
-            label: 'HTTP',
-            selected: !value,
-            enabled: enabled,
-            onTap: () => onChanged(false),
-            height: _height,
-          ),
-          const SizedBox(width: 8),
-          _GlowToggleOption(
-            label: 'HTTPS',
-            selected: value,
-            enabled: enabled,
-            onTap: () => onChanged(true),
-            height: _height,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GlowToggleOption extends StatefulWidget {
-  const _GlowToggleOption({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-    required this.height,
-  });
-
-  final String label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-  final double height;
-
-  @override
-  State<_GlowToggleOption> createState() => _GlowToggleOptionState();
-}
-
-class _GlowToggleOptionState extends State<_GlowToggleOption> {
-  static const _transition = Duration(milliseconds: 160);
-  bool _hovered = false;
-
-  void _setHovered(bool value) {
-    if (_hovered == value) {
-      return;
-    }
-    setState(() => _hovered = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final baseBg = Colors.white.withOpacity(0.05);
-    final baseBorder = Colors.white.withOpacity(0.12);
-    final activeBorder = ObsidianPalette.gold.withOpacity(0.6);
-    final highlight = widget.selected || _hovered;
-    final bgColor = baseBg;
-    final borderColor = highlight ? activeBorder : baseBorder;
-    final textColor = widget.enabled
-        ? (highlight ? ObsidianPalette.gold : ObsidianPalette.textMuted)
-        : ObsidianPalette.textMuted.withOpacity(0.4);
-
-    return MouseRegion(
-      onEnter: widget.enabled ? (_) => _setHovered(true) : null,
-      onExit: widget.enabled ? (_) => _setHovered(false) : null,
-      cursor: widget.enabled
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
-      child: GestureDetector(
-        onTap: widget.enabled ? widget.onTap : null,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: _transition,
-          curve: Curves.easeOut,
-          alignment: Alignment.center,
-          constraints: BoxConstraints(minHeight: widget.height),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: bgColor,
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              if (highlight)
-                BoxShadow(
-                  color: ObsidianPalette.gold.withOpacity(0.35),
-                  blurRadius: 10,
-                ),
-            ],
-          ),
-          child: AnimatedDefaultTextStyle(
-            duration: _transition,
-            curve: Curves.easeOut,
-            style:
-                Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: textColor,
-                  letterSpacing: 1.0,
-                ) ??
-                TextStyle(color: textColor),
-            child: Text(widget.label),
-          ),
-        ),
-      ),
-    );
-  }
 }

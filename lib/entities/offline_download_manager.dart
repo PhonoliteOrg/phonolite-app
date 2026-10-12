@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:ui' show RootIsolateToken;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +12,7 @@ import 'offline_library.dart';
 import 'offline_library_views.dart' as offline_views;
 import 'offline_storage_settings.dart';
 import 'server_connection.dart';
+import 'server_trust.dart';
 
 class OfflineDownloadManager {
   OfflineDownloadManager({
@@ -86,6 +86,7 @@ class OfflineDownloadManager {
     return storage.runtimeType == OfflineLibraryStorage &&
         storage.settingsStorage.runtimeType == OfflineStorageSettingsStorage &&
         storage.baseDirectory == null &&
+        storage.defaultDirectoryProvider == null &&
         storage.metadataDirectory == null &&
         storage.downloadsDirectory == null;
   }
@@ -411,6 +412,27 @@ class OfflineDownloadManager {
     );
   }
 
+  Future<Playlist> downloadPlaylist(
+    Playlist playlist,
+    List<Track> tracks, {
+    required String name,
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) {
+    final request = _DownloadPlaylistRequest(
+      playlist.copyWith(trackIds: List.unmodifiable(playlist.trackIds)),
+      List.unmodifiable(tracks),
+      name,
+      description,
+      imageEdit,
+    );
+    final core = _inlineCore;
+    if (core != null) {
+      return core.downloadPlaylist(request);
+    }
+    return _send<Playlist>('downloadPlaylist', request);
+  }
+
   Future<Playlist?> renameLocalPlaylist(
     String playlistId,
     String name, {
@@ -534,6 +556,7 @@ class OfflineDownloadManager {
         payload: payload,
         baseUrl: connection.baseUrl,
         token: connection.token,
+        trust: connection.trust,
       ),
     );
     final result = await completer.future;
@@ -560,13 +583,18 @@ class OfflineDownloadManager {
             replyPort: _receivePort!.sendPort,
             baseUrl: connection.baseUrl,
             token: connection.token,
+            trust: connection.trust,
             storageConfig: _storageConfig,
             rootIsolateToken: _rootIsolateToken,
           ),
           debugName: 'OfflineDownloadActor',
         )
         .then((isolate) {
-          _isolate = isolate;
+          if (_disposed) {
+            isolate.kill(priority: Isolate.immediate);
+          } else {
+            _isolate = isolate;
+          }
         })
         .catchError((Object err, StackTrace stack) {
           if (!ready.isCompleted) {
@@ -837,6 +865,7 @@ class OfflineDownloadManager {
         a.title == b.title &&
         a.artist == b.artist &&
         a.artistId == b.artistId &&
+        _sameCreditMetadata(a, b) &&
         a.album == b.album &&
         a.albumId == b.albumId &&
         a.durationMs == b.durationMs &&
@@ -965,6 +994,7 @@ class _OfflineStorageConfig {
 
   OfflineLibraryStorage createStorage() {
     return OfflineLibraryStorage(
+      keepDatabaseOpen: true,
       baseDirectory: baseDirectory == null ? null : Directory(baseDirectory!),
       metadataDirectory: metadataDirectory == null
           ? null
@@ -981,6 +1011,7 @@ class _OfflineActorInit {
     required this.replyPort,
     required this.baseUrl,
     required this.token,
+    required this.trust,
     required this.storageConfig,
     required this.rootIsolateToken,
   });
@@ -988,6 +1019,7 @@ class _OfflineActorInit {
   final SendPort replyPort;
   final String baseUrl;
   final String? token;
+  final ServerTrust? trust;
   final _OfflineStorageConfig storageConfig;
   final RootIsolateToken? rootIsolateToken;
 }
@@ -1004,6 +1036,7 @@ class _OfflineActorCommand {
     required this.name,
     required this.baseUrl,
     required this.token,
+    required this.trust,
     this.payload,
   });
 
@@ -1011,6 +1044,7 @@ class _OfflineActorCommand {
   final String name;
   final String baseUrl;
   final String? token;
+  final ServerTrust? trust;
   final Object? payload;
 }
 
@@ -1100,6 +1134,22 @@ class _PlaylistDetailsRequest {
   final String? description;
 }
 
+class _DownloadPlaylistRequest {
+  const _DownloadPlaylistRequest(
+    this.playlist,
+    this.tracks,
+    this.name,
+    this.description,
+    this.imageEdit,
+  );
+
+  final Playlist playlist;
+  final List<Track> tracks;
+  final String name;
+  final String? description;
+  final PlaylistImageEdit imageEdit;
+}
+
 class _PlaylistImageRequest {
   const _PlaylistImageRequest(this.playlistId, this.imageEdit);
 
@@ -1115,6 +1165,8 @@ class _PlaylistTrackRequest {
 }
 
 void _offlineDownloadActorMain(_OfflineActorInit init) {
+  installServerTrustOverrides();
+  if (init.trust != null) ServerTrustRegistry.register(init.baseUrl, init.trust!);
   final token = init.rootIsolateToken;
   if (token != null) {
     BackgroundIsolateBinaryMessenger.ensureInitialized(token);
@@ -1253,6 +1305,7 @@ void _offlineDownloadActorMain(_OfflineActorInit init) {
     final task = developer.TimelineTask()..start('offline.actor.command');
     try {
       connection.setBaseUrl(message.baseUrl);
+      if (message.trust != null) connection.setTrust(message.trust!);
       connection.setToken(message.token);
       final result = await _handleOfflineActorCommand(core, message);
       if (_offlineActorCommandNeedsDownloadState(message.name)) {
@@ -1325,6 +1378,7 @@ bool _offlineActorCommandMayChangeLibraryState(String name) {
     'setLocalLike' ||
     'applySyncedLocalLikeState' ||
     'createLocalPlaylist' ||
+    'downloadPlaylist' ||
     'renameLocalPlaylist' ||
     'updateLocalPlaylistImage' ||
     'deleteLocalPlaylist' ||
@@ -1346,6 +1400,18 @@ bool _actorSameTrackSnapshots(List<Track> left, List<Track> right) {
   return true;
 }
 
+bool _sameCreditMetadata(Track a, Track b) {
+  Object metadata(Track track) => [
+    track.artistIds,
+    track.artistNames,
+    track.artistCredits.map((credit) => credit.toJson()).toList(),
+    track.offlineAlbum?.toJson(),
+    track.offlineArtist?.toJson(),
+    track.offlineArtists.map((artist) => artist.toJson()).toList(),
+  ];
+  return jsonEncode(metadata(a)) == jsonEncode(metadata(b));
+}
+
 bool _actorSameTrackSnapshot(Track a, Track b) {
   return a.id == b.id &&
       a.localId == b.localId &&
@@ -1354,6 +1420,7 @@ bool _actorSameTrackSnapshot(Track a, Track b) {
       a.title == b.title &&
       a.artist == b.artist &&
       a.artistId == b.artistId &&
+      _sameCreditMetadata(a, b) &&
       a.album == b.album &&
       a.albumId == b.albumId &&
       a.durationMs == b.durationMs &&
@@ -1502,6 +1569,10 @@ Future<Object?> _handleOfflineActorCommand(
       return core.createLocalPlaylist(
         request.name,
         description: request.description,
+      );
+    case 'downloadPlaylist':
+      return core.downloadPlaylist(
+        command.payload! as _DownloadPlaylistRequest,
       );
     case 'renameLocalPlaylist':
       final request = command.payload! as _PlaylistDetailsRequest;
@@ -2490,6 +2561,11 @@ class _OfflineDownloadActorCore {
     await _refreshOfflineMetadataWhere(
       (download) =>
           _nonEmpty(download.track.artistId) == id ||
+          download.track.credits.any((credit) => credit.artistId == id) ||
+          (download.offlineMetadata?.album.credits.any(
+                (credit) => credit.artistId == id,
+              ) ??
+              false) ||
           _nonEmpty(download.offlineMetadata?.artist.id) == id,
     );
   }
@@ -2723,6 +2799,7 @@ class _OfflineDownloadActorCore {
       await _topUpFuture;
       await Future.wait(_active.values.toList(), eagerError: false);
       await _pendingFileCleanupFuture;
+      await _storage.close();
       await _storage.resetLocalData();
       _downloads = const <OfflineTrackDownload>[];
       _batches = const <OfflineDownloadBatch>[];
@@ -2811,6 +2888,69 @@ class _OfflineDownloadActorCore {
     );
     await loadLocalPlaylists();
     return playlist;
+  }
+
+  Future<Playlist> downloadPlaylist(_DownloadPlaylistRequest request) async {
+    await _ensureLoaded();
+    final baseUrl = connection.baseUrl;
+    if (request.name.trim().isEmpty) {
+      throw ArgumentError('Playlist name is required.');
+    }
+    final tracksById = {for (final track in request.tracks) track.id: track};
+    final orderedTracks = [
+      for (final id in request.playlist.trackIds)
+        tracksById[id] ??
+            (throw StateError('Playlist track $id is unavailable.')),
+    ];
+    var imageEdit = request.imageEdit;
+    final imageRef = request.playlist.imageRef?.trim();
+    if (imageEdit.kind == PlaylistImageEditKind.keep &&
+        imageRef != null &&
+        imageRef.isNotEmpty) {
+      final artwork = await connection.fetchPlaylistCoverBytes(
+        request.playlist.id,
+        imageRef: imageRef,
+      );
+      if (artwork == null) {
+        throw StateError('Playlist artwork could not be downloaded.');
+      }
+      imageEdit = PlaylistImageEdit.replace(
+        bytes: Uint8List.fromList(artwork.bytes),
+        contentType: artwork.contentType ?? 'application/octet-stream',
+      );
+    }
+    if (connection.baseUrl != baseUrl) {
+      throw StateError('The server changed while downloading the playlist.');
+    }
+    await queueTracks(
+      orderedTracks,
+      label: request.name,
+      kind: 'playlist',
+      sourceId: request.playlist.id,
+    );
+    // Persist order separately from the queue, which deduplicates track downloads.
+    var localPlaylist = await _storage.createLocalPlaylist(
+      request.name,
+      description: request.description,
+      downloadServerBaseUrl: baseUrl,
+      downloadTrackIds: orderedTracks.map((track) => track.id).toList(),
+    );
+    try {
+      if (imageEdit.kind == PlaylistImageEditKind.replace) {
+        localPlaylist =
+            await _storage.updateLocalPlaylistImage(
+              localPlaylist.id,
+              imageEdit,
+            ) ??
+            localPlaylist;
+      }
+      await _loadLocalUserData();
+      return localPlaylist;
+    } catch (_) {
+      await _storage.deleteLocalPlaylist(localPlaylist.id);
+      await _loadLocalUserData();
+      rethrow;
+    }
   }
 
   Future<Playlist?> renameLocalPlaylist(
@@ -3997,6 +4137,7 @@ class _OfflineDownloadActorCore {
                   downloadUrl: download.downloadUrl,
                 ),
           token: connection.token!,
+          trust: connection.trust,
           partialPath: partialFile.path,
           startByte: bytesDownloaded > 0 ? bytesDownloaded : null,
           ifRange: bytesDownloaded > 0 ? download.etag : null,
@@ -4331,7 +4472,7 @@ class _OfflineDownloadActorCore {
       if (paths.isEmpty) {
         return;
       }
-      if (_resettingLocalData) {
+      if (_disposed || _resettingLocalData) {
         return;
       }
       await _storage.updateTrackArtPaths(
@@ -4339,8 +4480,9 @@ class _OfflineDownloadActorCore {
         albumArtPath: paths.albumArtPath,
         artistArtPath: paths.artistArtPath,
         artistBannerPath: paths.artistBannerPath,
+        artworkSource: download.track,
       );
-      _applyArtworkPaths(localTrackId, paths);
+      _applyArtworkPaths(localTrackId, paths, download.track);
       _scheduleLocalUserDataReload();
     } catch (err) {
       AppLogger.warning(
@@ -4461,7 +4603,11 @@ class _OfflineDownloadActorCore {
     return File(trimmed).existsSync() ? trimmed : null;
   }
 
-  void _applyArtworkPaths(String localTrackId, _ArtworkPaths paths) {
+  void _applyArtworkPaths(
+    String localTrackId,
+    _ArtworkPaths paths,
+    Track artworkSource,
+  ) {
     var changed = false;
     _downloads = _downloads
         .map((download) {
@@ -4471,7 +4617,7 @@ class _OfflineDownloadActorCore {
           }
           changed = true;
           return download.copyWith(
-            track: _trackWithArtwork(download.track, paths),
+            track: _trackWithArtwork(download.track, paths, artworkSource),
           );
         })
         .toList(growable: false);
@@ -4481,12 +4627,28 @@ class _OfflineDownloadActorCore {
     }
   }
 
-  Track _trackWithArtwork(Track track, _ArtworkPaths paths) {
+  Track _trackWithArtwork(
+    Track track,
+    _ArtworkPaths paths,
+    Track artworkSource,
+  ) {
+    final sameArtist =
+        _artistArtworkIdentity(track) == _artistArtworkIdentity(artworkSource);
     return track.copyWith(
       albumArtPath: paths.albumArtPath ?? track.albumArtPath,
-      artistArtPath: paths.artistArtPath ?? track.artistArtPath,
-      artistBannerPath: paths.artistBannerPath ?? track.artistBannerPath,
+      artistArtPath:
+          (sameArtist ? paths.artistArtPath : null) ?? track.artistArtPath,
+      artistBannerPath:
+          (sameArtist ? paths.artistBannerPath : null) ??
+          track.artistBannerPath,
     );
+  }
+
+  String _artistArtworkIdentity(Track track) {
+    final id = track.artistId?.trim();
+    return id != null && id.isNotEmpty
+        ? 'id:$id'
+        : 'name:${track.artist.trim().toLowerCase()}';
   }
 
   Future<bool> _replace(
@@ -4788,11 +4950,13 @@ class _OfflineDownloadActorCore {
       return;
     }
 
+    final sessionRevision = connection.sessionRevision;
     final attemptedKeys = <String>{};
     final repairedKeys = <String>{};
     while (attemptedKeys.length < _metadataRepairMaxPerRun &&
         !_disposed &&
-        !_resettingLocalData) {
+        !_resettingLocalData &&
+        connection.sessionRevision == sessionRevision) {
       final remaining = _metadataRepairMaxPerRun - attemptedKeys.length;
       final requests =
           (await _storage.readMetadataRepairRequests(
@@ -4874,31 +5038,53 @@ class _OfflineDownloadActorCore {
   Future<Set<String>> _repairOfflineMetadataRequests(
     List<OfflineMetadataRepairRequest> requests,
   ) async {
+    final serverBaseUrl = connection.baseUrl;
+    final sessionRevision = connection.sessionRevision;
+    bool shouldPersist() =>
+        !_disposed &&
+        !_resettingLocalData &&
+        connection.sessionRevision == sessionRevision;
     final repairedKeys = <String>{};
     for (
       var index = 0;
       index < requests.length;
       index += _maxParallelMetadataRepairs
     ) {
-      if (_disposed || _resettingLocalData) {
+      if (!shouldPersist()) {
         break;
       }
       final chunk = requests
           .skip(index)
           .take(_maxParallelMetadataRepairs)
+          .where((request) => request.serverBaseUrl == serverBaseUrl)
           .toList(growable: false);
       final results = await Future.wait(
         chunk.map((request) async {
-          final repaired = await _repairOfflineMetadata(request);
-          return repaired
-              ? _lookupKey(request.serverBaseUrl, request.serverTrackId)
-              : null;
+          final metadata = await _fetchOfflineMetadataForRepair(request);
+          return metadata == null
+              ? null
+              : MapEntry(request.serverTrackId, metadata);
         }),
       );
-      for (final key in results) {
-        if (key != null) {
-          repairedKeys.add(key);
-        }
+      if (!shouldPersist()) {
+        break;
+      }
+      final metadataByTrackId = Map<String, OfflineTrackMetadata>.fromEntries(
+        results.whereType<MapEntry<String, OfflineTrackMetadata>>(),
+      );
+      try {
+        final persisted = await _storage.upsertOfflineMetadataFragments(
+          serverBaseUrl,
+          metadataByTrackId,
+          shouldPersist: shouldPersist,
+        );
+        repairedKeys.addAll(
+          persisted.map((trackId) => _lookupKey(serverBaseUrl, trackId)),
+        );
+      } catch (err) {
+        AppLogger.debug(
+          'Failed to persist offline metadata repair chunk: $err',
+        );
       }
     }
     return repairedKeys;
@@ -4919,24 +5105,16 @@ class _OfflineDownloadActorCore {
     _emit();
   }
 
-  Future<bool> _repairOfflineMetadata(
+  Future<OfflineTrackMetadata?> _fetchOfflineMetadataForRepair(
     OfflineMetadataRepairRequest request,
   ) async {
     try {
-      final metadata = await connection.fetchOfflineMetadata(
-        request.serverTrackId,
-      );
-      await _storage.upsertOfflineMetadataFragment(
-        request.serverBaseUrl,
-        request.serverTrackId,
-        metadata,
-      );
-      return true;
+      return await connection.fetchOfflineMetadata(request.serverTrackId);
     } catch (err) {
       AppLogger.debug(
         'Failed to repair offline metadata for ${request.serverTrackId}: $err',
       );
-      return false;
+      return null;
     }
   }
 
@@ -5619,6 +5797,7 @@ class _DownloadWorkerRequest {
     required this.trackId,
     required this.url,
     required this.token,
+    required this.trust,
     required this.partialPath,
     required this.progressIntervalMs,
     required this.progressMinBytes,
@@ -5634,6 +5813,7 @@ class _DownloadWorkerRequest {
   final String trackId;
   final String url;
   final String token;
+  final ServerTrust? trust;
   final String partialPath;
   final int? startByte;
   final String? ifRange;
@@ -5727,11 +5907,16 @@ Future<void> _downloadWorkerMain(_DownloadWorkerStart start) async {
     }
 
     final timeout = Duration(seconds: request.timeoutSeconds);
+    if (request.trust == null) throw StateError('Download server is not authenticated');
+    ServerTrustRegistry.register(request.serverBaseUrl, request.trust!);
+    installServerTrustOverrides();
+    if (ServerTrustRegistry.origin(Uri.parse(request.url)) != ServerTrustRegistry.origin(Uri.parse(request.serverBaseUrl))) throw StateError('Cross-server download blocked');
     client = HttpClient();
     throwIfCanceled();
     final httpRequest = await client
         .getUrl(Uri.parse(request.url))
         .timeout(timeout);
+    httpRequest.followRedirects = false;
     httpRequest.headers.set(
       HttpHeaders.authorizationHeader,
       'Bearer ${request.token}',

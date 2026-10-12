@@ -1,7 +1,8 @@
 import '../../entities/models.dart';
+import 'genre_text.dart';
 
 String artistAlbumCountLabel(Artist artist) {
-  return artist.albumCount == 1 ? '1 album' : '${artist.albumCount} albums';
+  return artist.releaseCount == 1 ? '1 album' : '${artist.releaseCount} albums';
 }
 
 String albumTrackCountLabel(Album album) {
@@ -9,8 +10,12 @@ String albumTrackCountLabel(Album album) {
 }
 
 String artistDetailLabel(Artist artist, {int genreLimit = 2}) {
-  final details = <String>[artistAlbumCountLabel(artist)];
-  details.addAll(_cleanGenres(artist.genres).take(genreLimit));
+  final details = <String>[
+    artistAlbumCountLabel(artist),
+    if (artist.collabAlbumCount > 0)
+      '${artist.collabAlbumCount} collab ${artist.collabAlbumCount == 1 ? 'album' : 'albums'}',
+  ];
+  details.addAll(displayGenres(artist.genres).take(genreLimit));
   return details.join(' / ');
 }
 
@@ -21,7 +26,7 @@ String albumDetailLabel(Album album, {int genreLimit = 2}) {
     details.add(year.toString());
   }
   details.add(albumTrackCountLabel(album));
-  details.addAll(_cleanGenres(album.genres).take(genreLimit));
+  details.addAll(displayGenres(album.genres).take(genreLimit));
   return details.join(' / ');
 }
 
@@ -32,9 +37,7 @@ String albumMetaLabel(Album album) {
     details.add(year.toString());
   }
   details.add(albumTrackCountLabel(album));
-  details.addAll(
-    _cleanGenres(album.genres).take(3).map((g) => g.toUpperCase()),
-  );
+  details.addAll(displayGenres(album.genres).take(3));
   return details.join(' / ');
 }
 
@@ -43,18 +46,9 @@ String albumYearLabel(Album album) {
 }
 
 String albumGenresLabel(Album album) {
-  final genres = _cleanGenres(album.genres).take(5).toList(growable: false);
+  final genres = displayGenres(album.genres).take(5).toList(growable: false);
   if (genres.isEmpty) {
     return 'UNKNOWN GENRE';
   }
-  return genres.map((g) => g.toUpperCase()).join(' / ');
-}
-
-Iterable<String> _cleanGenres(Iterable<String> genres) sync* {
-  for (final raw in genres) {
-    final genre = raw.trim();
-    if (genre.isNotEmpty) {
-      yield genre;
-    }
-  }
+  return genres.join(' / ');
 }

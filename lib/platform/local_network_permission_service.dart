@@ -42,4 +42,6 @@ class LocalNetworkPermissionService {
   Future<void> openAppSettings() async {
     await _channel.invokeMethod('openAppSettings');
   }
+
+  void dispose() => _channel.setMethodCallHandler(null);
 }

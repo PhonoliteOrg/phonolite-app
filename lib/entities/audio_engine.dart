@@ -9,7 +9,12 @@ import 'dart:ui' show IsolateNameServer, RootIsolateToken;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'models.dart';
+import 'listening_recorder.dart';
+import 'pcm_ring_buffer.dart';
+import 'encoded_audio_cache.dart';
+import 'raw_opus_stream.dart';
 import 'server_connection.dart';
 import 'package:phonolite_local_audio/phonolite_local_audio.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
@@ -32,6 +37,41 @@ class StreamSettings {
   final int frameMs;
 }
 
+/// Creates an audio backend; tests can supply an implementation without workers.
+typedef AudioEngineFactory =
+    AudioEngine Function({
+      void Function(String message)? onMessage,
+      void Function(
+        Duration position,
+        Duration bufferedAhead,
+        double? bitrateKbps,
+        int? rttMs,
+        bool isLocalPlayback,
+      )?
+      onStats,
+      void Function()? onComplete,
+      void Function()? onStarted,
+      void Function(bool active, bool paused)? onState,
+    });
+
+/// Injectable worker startup for tests that do not create a native audio worker.
+typedef AudioWorkerSpawner =
+    Future<AudioWorkerHandle> Function(
+      SendPort messagePort,
+      RootIsolateToken? rootIsolateToken,
+    );
+
+abstract class AudioWorkerHandle {
+  void kill();
+}
+
+class _IsolateAudioWorker implements AudioWorkerHandle {
+  _IsolateAudioWorker(this.isolate);
+  final Isolate isolate;
+  @override
+  void kill() => isolate.kill(priority: Isolate.immediate);
+}
+
 class AudioEngine {
   AudioEngine({
     void Function(String message)? onMessage,
@@ -46,13 +86,16 @@ class AudioEngine {
     void Function()? onComplete,
     void Function()? onStarted,
     void Function(bool active, bool paused)? onState,
+    AudioWorkerSpawner? workerSpawner,
   }) : _onMessage = onMessage,
        _onStats = onStats,
        _onComplete = onComplete,
        _onStarted = onStarted,
-       _onState = onState {
-    _shutdownPreviousWorker();
-    _spawnWorker();
+       _onState = onState,
+       _workerSpawner = workerSpawner ?? _spawnNativeWorker,
+       _usesNativeWorker = workerSpawner == null {
+    if (_usesNativeWorker) _shutdownPreviousWorker();
+    unawaited(_spawnWorker());
   }
 
   final void Function(String message)? _onMessage;
@@ -67,15 +110,43 @@ class AudioEngine {
   final void Function()? _onComplete;
   final void Function()? _onStarted;
   final void Function(bool active, bool paused)? _onState;
-  final ReceivePort _receivePort = ReceivePort();
+  final AudioWorkerSpawner _workerSpawner;
+  final bool _usesNativeWorker;
+  ReceivePort? _receivePort;
   SendPort? _workerPort;
-  final Completer<void> _ready = Completer<void>();
-  Isolate? _isolate;
+  Completer<void> _ready = Completer<void>();
+  int _workerGeneration = 0;
+  AudioWorkerHandle? _isolate;
+  bool _disposed = false;
+  bool _workerFailed = false;
   bool _active = false;
   bool _paused = false;
   int _playbackId = 0;
+  Map<String, dynamic>? _listeningContext;
+  void Function(Map<String, dynamic>)? onListeningSegment;
+  Completer<void>? _listeningFlush;
+  int _listeningFlushRequestId = 0;
+  Future<void>? _stopInFlight;
+
+  void configureListening(
+    Map<String, dynamic>? context, {
+    bool updateActive = false,
+    bool discardPending = true,
+  }) {
+    _listeningContext = context == null ? null : Map.of(context);
+    if (updateActive || context == null) {
+      _sendCmd({
+        'cmd': 'listening_context',
+        'context': _listeningContext,
+        'discard_pending': discardPending,
+      });
+    }
+  }
+
   int _outputDeviceId = kDefaultOutputDeviceId;
   double _volume = 1.0;
+  int _seekRequestId = 0;
+  final Map<int, Completer<bool>> _seekRequests = {};
   final RootIsolateToken? _rootIsolateToken = RootIsolateToken.instance;
 
   static void _shutdownPreviousWorker() {
@@ -86,17 +157,93 @@ class AudioEngine {
     }
   }
 
-  Future<void> _spawnWorker() async {
-    _isolate = await Isolate.spawn<_AudioWorkerInit>(
+  static Future<AudioWorkerHandle> _spawnNativeWorker(
+    SendPort messagePort,
+    RootIsolateToken? rootIsolateToken,
+  ) async => _IsolateAudioWorker(
+    await Isolate.spawn<_AudioWorkerInit>(
       _audioWorkerMain,
-      _AudioWorkerInit(_receivePort.sendPort, _rootIsolateToken),
-    );
-    _receivePort.listen(_handleWorkerMessage);
+      _AudioWorkerInit(messagePort, rootIsolateToken),
+      onError: messagePort,
+      onExit: messagePort,
+    ),
+  );
+
+  Future<void> _spawnWorker() async {
+    final generation = ++_workerGeneration;
+    final previousReady = _ready;
+    if (!previousReady.isCompleted) previousReady.complete();
+    _receivePort?.close();
+    _isolate?.kill();
+    _isolate = null;
+    _workerPort = null;
+    _workerFailed = false;
+    final ready = Completer<void>();
+    _ready = ready;
+    final receivePort = ReceivePort();
+    _receivePort = receivePort;
+    receivePort.listen((message) {
+      if (_disposed || generation != _workerGeneration || _workerFailed) return;
+      _handleWorkerMessage(message);
+    });
+    AudioWorkerHandle isolate;
+    try {
+      isolate = await _workerSpawner(receivePort.sendPort, _rootIsolateToken);
+    } catch (error) {
+      if (!_disposed && generation == _workerGeneration) {
+        _failWorker('Audio worker failed to start: $error');
+      }
+      if (!ready.isCompleted) ready.complete();
+      return;
+    }
+    if (_disposed || generation != _workerGeneration || _workerFailed) {
+      isolate.kill();
+      if (!ready.isCompleted) ready.complete();
+      return;
+    }
+    _isolate = isolate;
+  }
+
+  void _failWorker(String message) {
+    if (_disposed || _workerFailed) return;
+    _workerFailed = true;
+    _workerPort = null;
+    _receivePort?.close();
+    _receivePort = null;
+    _isolate?.kill();
+    _isolate = null;
+    if (!_ready.isCompleted) _ready.complete();
+    _cancelPendingSeeks();
+    _active = false;
+    _paused = false;
+    _onMessage?.call(message);
+    _onState?.call(false, false);
+  }
+
+  void _ensureWorkerForPlayback() {
+    if (_disposed || !_workerFailed) return;
+    if (_usesNativeWorker) _shutdownPreviousWorker();
+    unawaited(_spawnWorker());
   }
 
   void _handleWorkerMessage(dynamic message) {
+    if (!_disposed && (message == null || message is List)) {
+      final workerError = message is List && message.isNotEmpty
+          ? message.first.toString()
+          : 'Unknown worker error';
+      _failWorker(
+        message == null
+            ? 'Audio worker exited unexpectedly.'
+            : 'Audio worker failed: $workerError',
+      );
+      return;
+    }
     if (message is SendPort) {
       _workerPort = message;
+      // Configuration precedes playback queued while this worker was starting.
+      message.send({'cmd': 'volume', 'value': _volume});
+      message.send({'cmd': 'device', 'device_id': _outputDeviceId});
+      message.send({'cmd': 'listening_context', 'context': _listeningContext});
       if (!_ready.isCompleted) {
         _ready.complete();
       }
@@ -105,12 +252,38 @@ class AudioEngine {
     if (message is! Map) {
       return;
     }
+    // Listening records belong to their captured session even after the UI
+    // changes track. Never discard the previous track's final checkpoint.
+    if (message['type'] == 'listening_segment') {
+      final event = message['event'];
+      if (event is Map) {
+        onListeningSegment?.call(Map<String, dynamic>.from(event));
+      }
+      return;
+    }
+    if (message['type'] == 'listening_flushed') {
+      final pending = _listeningFlush;
+      if (message['flush_request_id'] == _listeningFlushRequestId &&
+          pending != null &&
+          !pending.isCompleted) {
+        pending.complete();
+      }
+      return;
+    }
     final messagePlaybackId = (message['playback_id'] as num?)?.toInt();
     if (messagePlaybackId != null && messagePlaybackId != _playbackId) {
       return;
     }
     final type = message['type'];
     switch (type) {
+      case 'seek_ready':
+      case 'seek_failed':
+        final requestId = (message['request_id'] as num?)?.toInt();
+        final request = _seekRequests.remove(requestId);
+        if (request != null && !request.isCompleted) {
+          request.complete(type == 'seek_ready');
+        }
+        break;
       case 'message':
         final text = message['text']?.toString();
         if (text != null) {
@@ -160,20 +333,50 @@ class AudioEngine {
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
     await stop();
+    _disposed = true;
     if (_ready.isCompleted) {
       _workerPort?.send({'cmd': 'dispose'});
     }
-    _receivePort.close();
-    _isolate?.kill(priority: Isolate.immediate);
+    _workerGeneration++;
+    if (!_ready.isCompleted) _ready.complete();
+    _receivePort?.close();
+    _receivePort = null;
+    _isolate?.kill();
     _isolate = null;
+    _workerPort = null;
   }
 
-  Future<void> stop() async {
+  Future<void> stop() {
+    final previous = _stopInFlight;
+    if (previous != null) return previous;
+    final stopping = _stopAndFlush();
+    _stopInFlight = stopping;
+    return stopping.whenComplete(() {
+      if (identical(_stopInFlight, stopping)) _stopInFlight = null;
+    });
+  }
+
+  Future<void> _stopAndFlush() async {
+    _cancelPendingSeeks();
     _playbackId++;
     _active = false;
     _paused = false;
-    _sendCmd({'cmd': 'stop'});
+    final waitForListening =
+        _listeningContext != null && _workerPort != null && !_workerFailed;
+    final flush = waitForListening ? Completer<void>() : null;
+    _listeningFlush = flush;
+    _sendCmd({'cmd': 'stop', 'flush_request_id': ++_listeningFlushRequestId});
+    if (flush != null) {
+      try {
+        await flush.future.timeout(const Duration(seconds: 2));
+      } on TimeoutException {
+        // A terminated worker cannot provide its uncheckpointed tail.
+      } finally {
+        if (identical(_listeningFlush, flush)) _listeningFlush = null;
+      }
+    }
   }
 
   void setVolume(double value) {
@@ -278,16 +481,22 @@ class AudioEngine {
     List<String> queueTrackIds = const [],
     int? quicPort,
     bool quickStart = true,
+    bool initialPaused = false,
   }) async {
+    if (_disposed) return;
+    _cancelPendingSeeks();
+    _ensureWorkerForPlayback();
     final playbackId = ++_playbackId;
     _active = true;
-    _paused = false;
+    _paused = initialPaused;
     _sendCmd({
       'cmd': 'play',
       'playback_id': playbackId,
       'track_id': track.id,
       'track_title': track.title,
+      'listening_context': _listeningContext,
       'base_url': connection.baseUrl,
+      'server_pin': connection.trust?.spki ?? '',
       'token': connection.token ?? '',
       'mode': settings.mode,
       'quality': settings.quality,
@@ -297,12 +506,31 @@ class AudioEngine {
       'device_id': _outputDeviceId,
       'quic_port': quicPort,
       'quick_start': quickStart,
+      'initial_paused': initialPaused,
     });
   }
 
   void _sendCmd(Map<String, dynamic> message) {
+    if (_disposed || _workerFailed) return;
+    final generation = _workerGeneration;
     if (!_ready.isCompleted) {
-      _ready.future.then((_) => _workerPort?.send(message));
+      // The handshake sends current configuration before queued playback.
+      final command = message['cmd'];
+      if (command == 'volume' ||
+          command == 'device' ||
+          command == 'listening_context') {
+        return;
+      }
+      _ready.future.then((_) {
+        if (_disposed || _workerFailed || generation != _workerGeneration) {
+          return;
+        }
+        final playbackId = message['playback_id'];
+        if (playbackId != null && playbackId != _playbackId) {
+          return;
+        }
+        _workerPort?.send(message);
+      });
       return;
     }
     _workerPort?.send(message);
@@ -312,12 +540,27 @@ class AudioEngine {
     if (!_active) {
       return false;
     }
+    _seekRequestId++;
+    for (final request in _seekRequests.values) {
+      if (!request.isCompleted) request.complete(false);
+    }
+    _seekRequests.clear();
+    final requestId = _seekRequestId;
+    final ready = Completer<bool>();
+    _seekRequests[requestId] = ready;
     _sendCmd({
       'cmd': 'seek',
       'playback_id': _playbackId,
       'position_ms': position.inMilliseconds,
+      'request_id': _seekRequestId,
     });
-    return true;
+    try {
+      return await ready.future.timeout(const Duration(seconds: 6));
+    } on TimeoutException {
+      return false;
+    } finally {
+      _seekRequests.remove(requestId);
+    }
   }
 
   Future<void> playLocalFile({
@@ -325,21 +568,34 @@ class AudioEngine {
     required String filePath,
     String? contentType,
     Duration startOffset = Duration.zero,
+    bool initialPaused = false,
   }) async {
+    if (_disposed) return;
+    _cancelPendingSeeks();
+    _ensureWorkerForPlayback();
     _sendCmd({'cmd': 'stop'});
     final playbackId = ++_playbackId;
     _active = true;
-    _paused = false;
+    _paused = initialPaused;
     _sendCmd({
       'cmd': 'play_local',
       'playback_id': playbackId,
       'track_id': track.id,
       'track_title': track.title,
       'file_path': filePath,
+      'listening_context': _listeningContext,
       'content_type': contentType ?? '',
       'start_ms': startOffset.inMilliseconds,
+      'initial_paused': initialPaused,
       'device_id': _outputDeviceId,
     });
+  }
+
+  void _cancelPendingSeeks() {
+    for (final request in _seekRequests.values) {
+      if (!request.isCompleted) request.complete(false);
+    }
+    _seekRequests.clear();
   }
 }
 
@@ -351,17 +607,72 @@ class _AudioWorkerEngine {
   final void Function(Map<String, dynamic> message) _send;
   int _playbackId = 0;
   _PlaybackSession? _session;
+  int _startGeneration = 0;
+  int _listeningRevision = 0;
+  Map<String, dynamic>? _latestListeningContext;
+  Future<void>? _stopInFlight;
+  QuicClient? _idleConnection;
+  String? _idleConnectionKey;
+  String? _idleTrackId;
+
   double _volume = 1.0;
   int _outputDeviceId = kDefaultOutputDeviceId;
 
-  void dispose() {
-    stop();
+  void configureListening(
+    Map<String, dynamic>? context, {
+    bool discardPending = true,
+  }) {
+    _listeningRevision++;
+    _latestListeningContext = context;
+    final session = _session;
+    if (session != null) {
+      unawaited(
+        session.configureListening(context, discardPending: discardPending),
+      );
+    }
   }
 
-  void stop({bool notify = true}) {
-    _session?.requestStop();
+  Future<void> dispose() async {
+    await stop();
+  }
+
+  Future<void> stop({bool notify = true}) {
+    if (notify) _startGeneration++;
+    final previous = _stopInFlight;
+    if (previous != null) return previous;
+    final stopping = _stopSession(notify);
+    _stopInFlight = stopping;
+    return stopping.whenComplete(() {
+      if (identical(_stopInFlight, stopping)) _stopInFlight = null;
+    });
+  }
+
+  Future<void> _stopSession(bool notify) async {
+    final stoppedPlaybackId = _playbackId;
+    _idleConnection?.close();
+    _idleConnection = null;
+    final previous = _session;
     _session = null;
+    await previous?.requestStop(outcome: notify ? 'cancelled' : 'superseded');
     if (notify) {
+      _send({
+        'type': 'state',
+        'active': false,
+        'paused': false,
+        'playback_id': stoppedPlaybackId,
+      });
+    }
+  }
+
+  Future<void> pause({int? playbackId}) async {
+    if (playbackId != null && playbackId != _playbackId) {
+      return;
+    }
+    try {
+      await _session?.pause();
+    } catch (error) {
+      _session?.requestStop(outcome: 'output_error');
+      _send({'type': 'message', 'text': 'Audio pause failed: $error'});
       _send({
         'type': 'state',
         'active': false,
@@ -371,18 +682,22 @@ class _AudioWorkerEngine {
     }
   }
 
-  void pause({int? playbackId}) {
-    if (playbackId != null && playbackId != _playbackId) {
-      return;
-    }
-    _session?.pause();
-  }
-
   void resume({int? playbackId}) {
     if (playbackId != null && playbackId != _playbackId) {
       return;
     }
-    _session?.resume();
+    try {
+      _session?.resume();
+    } catch (error) {
+      _session?.requestStop(outcome: 'output_error');
+      _send({'type': 'message', 'text': 'Audio resume failed: $error'});
+      _send({
+        'type': 'state',
+        'active': false,
+        'paused': false,
+        'playback_id': _playbackId,
+      });
+    }
   }
 
   void setVolume(double value) {
@@ -395,15 +710,29 @@ class _AudioWorkerEngine {
     _session?.setOutputDevice(deviceId);
   }
 
-  Future<void> seekTo(Duration position, {int? playbackId}) async {
+  Future<void> seekTo(
+    Duration position, {
+    int? playbackId,
+    int requestId = 0,
+  }) async {
     if (playbackId != null && playbackId != _playbackId) {
+      _send({
+        'type': 'seek_failed',
+        'request_id': requestId,
+        'playback_id': playbackId,
+      });
       return;
     }
     final session = _session;
     if (session == null) {
+      _send({
+        'type': 'seek_failed',
+        'request_id': requestId,
+        'playback_id': _playbackId,
+      });
       return;
     }
-    await session.seekTo(position);
+    await session.seekTo(position, requestId: requestId);
   }
 
   Future<void> playTrack({
@@ -412,29 +741,59 @@ class _AudioWorkerEngine {
     required String trackTitle,
     required String baseUrl,
     required String token,
+    String serverPin = '',
     required StreamSettings settings,
     Duration startOffset = Duration.zero,
     List<String> queueTrackIds = const [],
     int? quicPort,
     bool quickStart = true,
+    bool initialPaused = false,
+    Map<String, dynamic>? listeningContext,
   }) async {
-    stop(notify: false);
+    final generation = ++_startGeneration;
+    final listeningRevision = _listeningRevision;
+    final key = '$baseUrl|$quicPort|$token|$serverPin';
+    var reusable = _session?.takeConnection(key, trackId);
+    if (reusable == null &&
+        _idleConnectionKey == key &&
+        _idleTrackId != trackId) {
+      reusable = _idleConnection;
+      _idleConnection = null;
+    }
+    await stop(notify: false);
+    if (generation != _startGeneration) return;
     _playbackId = playbackId;
     final session = _PlaybackSession.remote(
       send: _send,
+      reusableConnection: reusable,
+      releaseConnection: (client) {
+        if (_playbackId != playbackId) {
+          client.close();
+          return;
+        }
+        _idleConnection?.close();
+        _idleConnection = client;
+        _idleConnectionKey = key;
+        _idleTrackId = trackId;
+      },
       playbackId: playbackId,
       getPlaybackId: () => _playbackId,
       trackId: trackId,
       trackTitle: trackTitle,
       baseUrl: baseUrl,
       token: token,
+      serverPin: serverPin,
       quicPort: quicPort,
       settings: settings,
       startOffset: startOffset,
       queueTrackIds: queueTrackIds,
       quickStart: quickStart,
+      initialPaused: initialPaused,
       volume: _volume,
       outputDeviceId: _outputDeviceId,
+      listeningContext: listeningRevision == _listeningRevision
+          ? listeningContext
+          : _latestListeningContext,
     );
     _session = session;
     try {
@@ -452,8 +811,13 @@ class _AudioWorkerEngine {
     required String trackTitle,
     required String filePath,
     Duration startOffset = Duration.zero,
+    bool initialPaused = false,
+    Map<String, dynamic>? listeningContext,
   }) async {
-    stop(notify: false);
+    final generation = ++_startGeneration;
+    final listeningRevision = _listeningRevision;
+    await stop(notify: false);
+    if (generation != _startGeneration) return;
     _playbackId = playbackId;
     final session = _PlaybackSession.local(
       send: _send,
@@ -463,8 +827,12 @@ class _AudioWorkerEngine {
       trackTitle: trackTitle,
       filePath: filePath,
       startOffset: startOffset,
+      initialPaused: initialPaused,
       volume: _volume,
       outputDeviceId: _outputDeviceId,
+      listeningContext: listeningRevision == _listeningRevision
+          ? listeningContext
+          : _latestListeningContext,
     );
     _session = session;
     try {
@@ -479,6 +847,8 @@ class _AudioWorkerEngine {
 
 class _PlaybackSession {
   _PlaybackSession.remote({
+    QuicClient? reusableConnection,
+    required void Function(QuicClient) releaseConnection,
     required void Function(Map<String, dynamic> message) send,
     required int playbackId,
     required int Function() getPlaybackId,
@@ -486,19 +856,37 @@ class _PlaybackSession {
     required this.trackTitle,
     required this.baseUrl,
     required this.token,
+    this.serverPin = '',
     required this.quicPort,
     required this.settings,
     required this.startOffset,
     required this.queueTrackIds,
     required this.quickStart,
+    required bool initialPaused,
     required double volume,
     required int outputDeviceId,
+    Map<String, dynamic>? listeningContext,
+    OpusDecoder Function(int sampleRate, int channels)? decoderFactory,
+    AudioPcmOutput Function(int sampleRate, int channels, int deviceId)?
+    outputFactory,
   }) : _send = send,
        _playbackId = playbackId,
        _getPlaybackId = getPlaybackId,
        _volume = volume,
        _outputDeviceId = outputDeviceId,
-       localFilePath = null;
+       localFilePath = null,
+       _decoderFactory = decoderFactory,
+       _outputFactory = outputFactory,
+       _quic = reusableConnection,
+       _releaseConnection = releaseConnection {
+    _userPaused = initialPaused;
+    _paused = initialPaused;
+    _listening = ListeningRecorder(
+      emit: (event) => _send({'type': 'listening_segment', 'event': event}),
+      playbackId: playbackId,
+      context: listeningContext,
+    );
+  }
 
   _PlaybackSession.local({
     required void Function(Map<String, dynamic> message) send,
@@ -508,20 +896,86 @@ class _PlaybackSession {
     required this.trackTitle,
     required String filePath,
     required this.startOffset,
+    required bool initialPaused,
     required double volume,
     required int outputDeviceId,
+    Map<String, dynamic>? listeningContext,
+    AudioPcmOutput Function(int sampleRate, int channels, int deviceId)?
+    outputFactory,
   }) : _send = send,
        _playbackId = playbackId,
        _getPlaybackId = getPlaybackId,
        baseUrl = '',
        token = '',
+       serverPin = '',
        quicPort = null,
        settings = const StreamSettings(mode: 'local', quality: 'source'),
        queueTrackIds = const <String>[],
        quickStart = true,
        _volume = volume,
        _outputDeviceId = outputDeviceId,
-       localFilePath = filePath;
+       localFilePath = filePath,
+       _decoderFactory = null,
+       _outputFactory = outputFactory,
+       _releaseConnection = null {
+    _userPaused = initialPaused;
+    _paused = initialPaused;
+    _listening = ListeningRecorder(
+      emit: (event) => _send({'type': 'listening_segment', 'event': event}),
+      playbackId: playbackId,
+      context: listeningContext,
+    );
+  }
+
+  late final ListeningRecorder _listening;
+  Future<void>? _stopCompletion;
+
+  int _listeningContextRevision = 0;
+
+  Future<void> configureListening(
+    Map<String, dynamic>? context, {
+    bool discardPending = true,
+  }) async {
+    final revision = ++_listeningContextRevision;
+    if (context == null && discardPending) {
+      _listening.setContext(null);
+      return;
+    }
+    final player = _player;
+    if (player != null) {
+      try {
+        // Account changes/re-enabling do not claim audio consumed before the
+        // new context. Keep queue accounting and the previous recorder aligned.
+        final epoch = _outputEpoch;
+        final done = await _collectListeningSamples(player);
+        if (epoch == _outputEpoch && identical(player, _player)) {
+          _playedSamples += done;
+        }
+      } catch (_) {}
+    }
+    if (revision != _listeningContextRevision || _stopRequested) return;
+    if (context == null) _listening.flush(endReason: 'interrupted');
+    _listening.setContext(context);
+  }
+
+  Future<int> _collectListeningSamples(_NativeAudioPlayer player) async {
+    // A replacement header can change the decoder format during the native
+    // call. Convert this output's samples using its captured format.
+    final sampleRate = _playerSampleRate ?? _sampleRate;
+    final channels = _playerChannels ?? _channels;
+    final done = await player.collectDoneSamples();
+    _listening.addSamples(done, sampleRate: sampleRate, channels: channels);
+    return done;
+  }
+
+  Future<void> _disposeReplacedOutput(_NativeAudioPlayer player) async {
+    try {
+      player.pause();
+      if (_listening.enabled) await _collectListeningSamples(player);
+    } catch (_) {}
+    player.dispose();
+    _listening.flush();
+  }
 
   final void Function(Map<String, dynamic> message) _send;
   final int _playbackId;
@@ -530,27 +984,61 @@ class _PlaybackSession {
   final String trackTitle;
   final String baseUrl;
   final String token;
+  final String serverPin;
   final int? quicPort;
   final StreamSettings settings;
   final Duration startOffset;
   final List<String> queueTrackIds;
   final bool quickStart;
   final String? localFilePath;
+  final void Function(QuicClient)? _releaseConnection;
+  final OpusDecoder Function(int sampleRate, int channels)? _decoderFactory;
+  final AudioPcmOutput Function(int sampleRate, int channels, int deviceId)?
+  _outputFactory;
+  QuicClient? takeConnection(String key, String nextTrackId) {
+    if (_isLocalFile ||
+        trackId == nextTrackId ||
+        '$baseUrl|$quicPort|$token|$serverPin' != key) {
+      return null;
+    }
+    final client = _quic;
+    _quic = null;
+    return client;
+  }
+
   double _volume;
   int _outputDeviceId;
   int _baseOffsetMs = 0;
-  int _pendingClientSkipMs = 0;
   int? _pendingSeekMs;
   int? _pendingSeekRequestedAtMs;
   int _nextSeekId = 0;
   int? _pendingSeekId;
   int? _activeSeekId;
-  bool _discardUntilSeekMarker = false;
+  int _seekRequestGeneration = 0;
+  int _seekReadyRequestId = 0;
+  int _outputEpoch = 0;
+  Timer? _seekDeadline;
+  final _encodedCache = EncodedAudioCache();
+  final _rawReader = RawOpusStreamReader();
+  EncodedAudioCursor? _decodeCursor;
+  EncodedAudioSegment? _incomingSegment;
+  EncodedAudioCursor? _cachedSeek;
+  int? _decodedThroughSample;
+  bool _remoteContinuation = false;
+  bool _waitingForHeader = false;
+  int _incomingStartMs = 0;
+  int? _incomingRangeEndMs;
+  bool _incomingEndOfTrack = true;
+  String _sourceVersion = '';
+  int? _transportRequestId;
+  Future<void>? _outputReset;
+  int _lastBufferReportAtMs = 0;
+  int _lastReportedBufferMs = -1;
+  int _lastReportedTargetMs = -1;
   bool _pumpRunning = false;
   bool _pumpSuspended = false;
-  bool _pumpBusy = false;
-  bool _pumpWriting = false;
   bool _quickStart = false;
+  bool _startupBufferFilled = false;
   bool _isLoopbackHost = false;
   int _networkProfileLevel = 0;
   int _stableBufferTicks = 0;
@@ -563,24 +1051,23 @@ class _PlaybackSession {
   bool _reportedStart = false;
   bool _startedPlayback = false;
   bool _streamEnded = false;
+  bool _remotePlaybackComplete = false;
   int _lastQuicStatsLogAtMs = 0;
 
   int _sampleRate = 48000;
   int _channels = 2;
   int _frameSamples = 0;
-  int _preSkipSamples = 0;
-  int _skipSamples = 0;
 
-  double _prebufferSeconds = 6.0;
-  double _rebufferMinSeconds = Platform.isAndroid ? 0.8 : 1.0;
-  double _rebufferTargetSeconds = Platform.isAndroid ? 4.0 : 8.0;
-  static const double _prebufferSecondsLocal = 2.0;
-  static const double _rebufferMinSecondsLocal = 0.4;
-  static const double _rebufferTargetSecondsLocal = 2.0;
+  double _prebufferSeconds = 0.3;
+  double _rebufferMinSeconds = 0.08;
+  double _rebufferTargetSeconds = 0.3;
+  static const double _prebufferSecondsLocal = 0.1;
+  static const double _rebufferMinSecondsLocal = 0.04;
+  static const double _rebufferTargetSecondsLocal = 0.15;
   static const double _seekStartSeconds = 0.05;
   static const double _seekCatchupMinSeconds = 0.2;
   static const double _seekCatchupTargetSeconds = 0.4;
-  static const int _pumpChunkMs = 200;
+  static const int _pumpChunkMs = 40;
   static const bool _serverBackpressureEnabled = true;
 
   int _prebufferTargetSamples = 0;
@@ -595,12 +1082,10 @@ class _PlaybackSession {
   int? _playerSampleRate;
   int? _playerChannels;
   int? _playerDeviceId;
-  _PcmRingBuffer? _buffer;
+  PcmRingBuffer? _buffer;
   Timer? _statsTimer;
   bool _statsCollectionInFlight = false;
-  static const int _playbackReportIntervalMs = 1000;
   static const int _quicStatsLogIntervalMs = 2000;
-  int _lastPlaybackReportAt = 0;
 
   int _queuedToPlayerSamples = 0;
   int _playedSamples = 0;
@@ -616,7 +1101,12 @@ class _PlaybackSession {
 
   bool get _isActive => !_stopRequested && _playbackId == _getPlaybackId();
 
-  void requestStop() {
+  Future<void> requestStop({String outcome = 'cancelled'}) =>
+      _stopCompletion ??= _stopPlayback(outcome);
+
+  Future<void> _stopPlayback(String outcome) async {
+    _outputEpoch++;
+    _failSeek(outcome);
     _stopRequested = true;
     _stopStats();
     _pumpSuspended = true;
@@ -626,8 +1116,24 @@ class _PlaybackSession {
     _decoder = null;
     _localDecoder?.close();
     _localDecoder = null;
-    _player?.dispose();
+    final player = _player;
     _player = null;
+    if (player != null) {
+      try {
+        player.pause();
+        if (_listening.enabled) {
+          await _collectListeningSamples(player);
+        }
+      } catch (_) {}
+      player.dispose();
+    }
+    _listening.flush(
+      endReason: outcome == 'superseded'
+          ? 'skipped'
+          : outcome == 'cancelled'
+          ? 'stopped'
+          : 'interrupted',
+    );
     _playerSampleRate = null;
     _playerChannels = null;
     _playerDeviceId = null;
@@ -635,8 +1141,9 @@ class _PlaybackSession {
     _quic = null;
   }
 
-  void pause() {
+  Future<void> pause() async {
     _userPaused = true;
+    _reportBuffer(force: true);
     if (_paused) {
       return;
     }
@@ -644,11 +1151,18 @@ class _PlaybackSession {
     final player = _player;
     if (player != null) {
       player.pause();
+      try {
+        final done = await _collectListeningSamples(player);
+        _playedSamples += done;
+      } catch (_) {}
+      _listening.flush();
       _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': true});
     }
   }
 
   void resume() {
+    _userPaused = false;
+    _reportBuffer(force: true);
     if (!_paused) {
       return;
     }
@@ -671,54 +1185,167 @@ class _PlaybackSession {
     _outputDeviceId = deviceId;
   }
 
-  Future<void> seekTo(Duration position) async {
+  Future<void> seekTo(Duration position, {int requestId = 0}) async {
+    final output = _player;
+    if (output != null) {
+      try {
+        final done = await _collectListeningSamples(output);
+        _playedSamples += done;
+      } catch (_) {}
+    }
+    _listening.flush();
+    _seekRequestGeneration++;
+    final generation = _seekRequestGeneration;
+    _failSeek('superseded');
+    _seekReadyRequestId = requestId;
+    final ms = math.max(0, position.inMilliseconds);
+    _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _quickStart = true;
+    _streamEnded = false;
+    _remotePlaybackComplete = false;
+    _seekDeadline = Timer(const Duration(seconds: 5), () {
+      if (!_isActive || _seekReadyRequestId != requestId) return;
+      _failSeek('timeout');
+      requestStop(outcome: 'seek_timeout');
+      _sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
+    });
     if (_isLocalFile) {
-      _quickStart = true;
-      _pendingSeekMs = position.inMilliseconds < 0
-          ? 0
-          : position.inMilliseconds;
-      _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
-      _streamEnded = false;
+      _pendingSeekMs = ms;
       return;
     }
     final quic = _quic;
     if (quic == null) {
-      _log('Seek ignored: QUIC client not ready.');
+      _failSeek('unavailable');
       return;
     }
-    _quickStart = true;
-    final ms = position.inMilliseconds;
-    final previousBaseOffset = _baseOffsetMs;
-    final previousPendingSeekMs = _pendingSeekMs;
-    final previousPendingSeekId = _pendingSeekId;
-    final previousPendingSeekRequestedAtMs = _pendingSeekRequestedAtMs;
-    final seekId = _allocateSeekId();
-    _pendingSeekMs = ms;
-    _pendingSeekId = seekId;
-    _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
-    _streamEnded = false;
-    _discardUntilSeekMarker = true;
-    _log(
-      'Sending QUIC seek to ${ms}ms (seek_id=$seekId, active_seek=${_activeSeekId ?? 0})',
-    );
-    try {
-      quic.seek(trackId: trackId, positionMs: ms, seekId: seekId);
-    } catch (err) {
-      _pendingSeekMs = previousPendingSeekMs;
-      _pendingSeekId = previousPendingSeekId;
-      _pendingSeekRequestedAtMs = previousPendingSeekRequestedAtMs;
-      _discardUntilSeekMarker = previousPendingSeekId != null;
-      _baseOffsetMs = previousBaseOffset;
-      _log('QUIC seek failed: $err');
+    final cached = _encodedCache.seek(ms);
+    _decodeCursor = null;
+    _decodedThroughSample = null;
+    _cachedSeek = null;
+    _incomingSegment = null;
+    _rawReader.reset();
+    _outputReset = _resetOutputForSeek(ms).catchError((Object error) {
+      if (generation != _seekRequestGeneration || !_isActive) return;
+      _log('Unable to flush audio output: $error');
+      _failSeek('output_error');
+      requestStop(outcome: 'output_error');
+      _sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
+    });
+    if (cached != null) {
+      // A cached seek requires neither server transcoding nor retransmission.
+      quic.suspendAudio();
+      _waitingForHeader = false;
+      _pendingSeekId = null;
+      _cachedSeek = cached;
+      _remoteContinuation = false;
+      _reportBuffer(force: true, suspended: true);
       return;
     }
-    if (_serverBackpressureEnabled) {
+    _requestRemoteRange(ms, continuation: false);
+  }
+
+  void _failSeek(String outcome) {
+    _seekDeadline?.cancel();
+    _seekDeadline = null;
+    final requestId = _seekReadyRequestId;
+    if (requestId != 0) {
+      _sendPlaybackMessage({
+        'type': 'seek_failed',
+        'request_id': requestId,
+        'outcome': outcome,
+      });
+      _seekReadyRequestId = 0;
+    }
+  }
+
+  void _markSeekReady() {
+    _seekDeadline?.cancel();
+    _seekDeadline = null;
+    final requestId = _seekReadyRequestId;
+    if (requestId != 0) {
+      _sendPlaybackMessage({'type': 'seek_ready', 'request_id': requestId});
+      _seekReadyRequestId = 0;
+    }
+  }
+
+  Future<void> _resetOutputForSeek(int ms) async {
+    final epoch = ++_outputEpoch;
+    _pumpSuspended = true;
+    _buffer = null;
+    final player = _player;
+    if (player != null) {
+      player.pause();
       try {
-        quic.sendBufferStats(bufferMs: 0, targetMs: _serverBufferTargetMs());
-      } catch (_) {
-        // Ignore closed/failed QUIC stats updates.
+        await _collectListeningSamples(player);
+        _listening.flush();
+      } catch (_) {}
+      await player.flush();
+      if (!_isActive || epoch != _outputEpoch || !identical(player, _player)) {
+        return;
       }
     }
+    _baseOffsetMs = ms;
+    _queuedToPlayerSamples = 0;
+    _playedSamples = 0;
+    _startedPlayback = false;
+    _reportedStart = false;
+    _startupBufferFilled = false;
+    _autoPaused = false;
+    _paused = _userPaused;
+    _pumpSuspended = false;
+  }
+
+  void _requestRemoteRange(int ms, {required bool continuation}) {
+    final quic = _quic;
+    if (quic == null || !_isActive) return;
+    _rawReader.reset();
+    _incomingSegment = null;
+    _incomingStartMs = ms;
+    _incomingRangeEndMs = null;
+    _incomingEndOfTrack = true;
+    _remoteContinuation = continuation;
+    _pendingSeekMs = ms;
+    _pendingSeekId = _allocateSeekId();
+    _waitingForHeader = true;
+    try {
+      _transportRequestId = quic.seek(
+        trackId: trackId,
+        positionMs: ms,
+        seekId: _pendingSeekId!,
+      );
+      _reportBuffer(force: true);
+    } catch (error) {
+      _waitingForHeader = false;
+      _failSeek('error');
+      throw Exception('Unable to request audio range: $error');
+    }
+  }
+
+  int get _positionMs =>
+      _baseOffsetMs +
+      _playedSamples * 1000 ~/ math.max(1, _sampleRate * _channels);
+
+  void _reportBuffer({bool force = false, bool suspended = false}) {
+    final quic = _quic;
+    if (quic == null || !_serverBackpressureEnabled) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final targetMs = _userPaused ? 2000 : (_isLoopbackHost ? 3000 : 8000);
+    final bufferedMs = suspended
+        ? targetMs
+        : _waitingForHeader
+        ? 0
+        : _encodedCache.bufferedAheadMs(_positionMs);
+    // Refresh below the server's stale-report deadline; avoid per-tick chatter.
+    if (!force &&
+        now - _lastBufferReportAtMs < 1000 &&
+        (bufferedMs - _lastReportedBufferMs).abs() < 500 &&
+        targetMs == _lastReportedTargetMs) {
+      return;
+    }
+    _lastBufferReportAtMs = now;
+    _lastReportedBufferMs = bufferedMs;
+    _lastReportedTargetMs = targetMs;
+    quic.sendBufferStats(bufferMs: bufferedMs, targetMs: targetMs, force: true);
   }
 
   int _allocateSeekId() {
@@ -756,18 +1383,18 @@ class _PlaybackSession {
       rebufferMinSeconds = _rebufferMinSecondsLocal;
       rebufferTargetSeconds = _rebufferTargetSecondsLocal;
     } else {
-      prebufferSeconds = 6.0;
-      rebufferMinSeconds = Platform.isAndroid ? 0.8 : 1.0;
-      rebufferTargetSeconds = Platform.isAndroid ? 4.0 : 8.0;
+      prebufferSeconds = 0.12;
+      rebufferMinSeconds = 0.08;
+      rebufferTargetSeconds = 0.3;
       if (_networkProfileLevel >= 1) {
-        prebufferSeconds = math.max(prebufferSeconds, 8.0);
-        rebufferMinSeconds = math.max(rebufferMinSeconds, 1.2);
-        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 6.0);
+        prebufferSeconds = math.max(prebufferSeconds, 0.2);
+        rebufferMinSeconds = math.max(rebufferMinSeconds, 0.12);
+        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 0.5);
       }
       if (_networkProfileLevel >= 2) {
-        prebufferSeconds = math.max(prebufferSeconds, 12.0);
-        rebufferMinSeconds = math.max(rebufferMinSeconds, 1.8);
-        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 8.0);
+        prebufferSeconds = math.max(prebufferSeconds, 0.3);
+        rebufferMinSeconds = math.max(rebufferMinSeconds, 0.2);
+        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 0.8);
       }
     }
 
@@ -810,6 +1437,7 @@ class _PlaybackSession {
           .round();
       _rebufferTargetSamples =
           (_sampleRate * _channels * _seekCatchupTargetSeconds).round();
+      _ensureBufferCapacity();
       return;
     }
 
@@ -819,13 +1447,26 @@ class _PlaybackSession {
         .round();
     _rebufferTargetSamples = (_sampleRate * _channels * _rebufferTargetSeconds)
         .round();
+    _ensureBufferCapacity();
+  }
+
+  void _ensureBufferCapacity() {
+    // Profiles can change during playback and after the short seek-start gate.
+    // The refill target must fit, even while output is paused for buffering.
+    final minimumSamples = math.max(
+      math.max(_prebufferTargetSamples, _rebufferTargetSamples) * 2,
+      _pumpChunkSamples * 4,
+    );
+    _buffer?.ensureCapacity(minimumSamples);
   }
 
   int _serverBufferTargetMs() {
     final targetSeconds = _quickStart
         ? _seekCatchupTargetSeconds
         : _rebufferTargetSeconds;
-    final targetMs = (targetSeconds * 1000).round();
+    // Backpressure must never stop delivery before the startup gate opens.
+    final startupSeconds = !_startedPlayback ? _prebufferSeconds : 0.0;
+    final targetMs = (math.max(targetSeconds, startupSeconds) * 1000).ceil();
     return targetMs > 0 ? targetMs : 1;
   }
 
@@ -865,12 +1506,16 @@ class _PlaybackSession {
   }
 
   Future<void> run() async {
+    var completed = false;
     try {
       await _runPlayback();
+      completed = _isActive;
     } catch (err) {
       _log('Playback failed: $err');
       _sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
     } finally {
+      if (_stopCompletion != null) await _stopCompletion;
+      _listening.flush(endReason: completed ? 'finished' : 'interrupted');
       _stopStats();
       _decoder?.dispose();
       _decoder = null;
@@ -881,65 +1526,14 @@ class _PlaybackSession {
       _playerSampleRate = null;
       _playerChannels = null;
       _playerDeviceId = null;
-      _quic?.close();
+      final connection = _quic;
+      if (completed && connection != null && _releaseConnection != null) {
+        _releaseConnection(connection);
+      } else {
+        connection?.close();
+      }
       _quic = null;
     }
-  }
-
-  bool _openTrackSafe(
-    QuicClient quic, {
-    required String trackId,
-    required StreamSettings settings,
-    required List<String> queueTrackIds,
-  }) {
-    try {
-      quic.openTrack(
-        trackId: trackId,
-        mode: settings.mode,
-        quality: settings.quality,
-        frameMs: settings.frameMs,
-        queue: queueTrackIds,
-      );
-      return true;
-    } catch (err) {
-      _log('QUIC open failed: $err');
-      return false;
-    }
-  }
-
-  bool _requestInitialServerSeek(QuicClient quic, int positionMs) {
-    if (positionMs <= 0) {
-      return false;
-    }
-    final seekId = _allocateSeekId();
-    final previousPendingSeekMs = _pendingSeekMs;
-    final previousPendingSeekId = _pendingSeekId;
-    final previousPendingSeekRequestedAtMs = _pendingSeekRequestedAtMs;
-    final previousDiscardUntilSeekMarker = _discardUntilSeekMarker;
-    _pendingSeekMs = positionMs;
-    _pendingSeekId = seekId;
-    _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
-    _discardUntilSeekMarker = true;
-    _log('Requesting initial QUIC seek to ${positionMs}ms (seek_id=$seekId).');
-    try {
-      quic.seek(trackId: trackId, positionMs: positionMs, seekId: seekId);
-    } catch (err) {
-      _pendingSeekMs = previousPendingSeekMs;
-      _pendingSeekId = previousPendingSeekId;
-      _pendingSeekRequestedAtMs = previousPendingSeekRequestedAtMs;
-      _discardUntilSeekMarker = previousDiscardUntilSeekMarker;
-      _log('Initial QUIC seek failed; falling back to client skip: $err');
-      return false;
-    }
-    _pendingClientSkipMs = 0;
-    if (_serverBackpressureEnabled) {
-      try {
-        quic.sendBufferStats(bufferMs: 0, targetMs: _serverBufferTargetMs());
-      } catch (_) {
-        // Ignore closed/failed QUIC stats updates.
-      }
-    }
-    return true;
   }
 
   Future<void> _runLocalFilePlayback(String filePath) async {
@@ -951,12 +1545,11 @@ class _PlaybackSession {
     _sampleRate = decoder.sampleRate;
     _channels = decoder.channels;
     _baseOffsetMs = startOffset.inMilliseconds;
-    _pendingClientSkipMs = 0;
     _quickStart = quickStart && startOffset.inMilliseconds > 0;
     _log(
       'Local decoder: $_sampleRate Hz, ${_channels}ch, duration=${decoder.duration.inMilliseconds} ms',
     );
-    _createLocalPcmOutput();
+    await _createLocalPcmOutput();
     _startStats();
 
     Future<void>? pumpTask;
@@ -980,6 +1573,26 @@ class _PlaybackSession {
         continue;
       }
 
+      if (!_pumpRunning) pumpTask = _runPump();
+      if (_streamEnded) {
+        if (_autoPaused && !_userPaused) _resumeFromAutoPause();
+        if (!_paused && (_buffer?.length ?? 0) == 0) {
+          final generation = _seekRequestGeneration;
+          final epoch = _outputEpoch;
+          final player = _player!;
+          final idle = await player.isIdle();
+          if (!_isActive ||
+              generation != _seekRequestGeneration ||
+              epoch != _outputEpoch ||
+              !identical(player, _player)) {
+            continue;
+          }
+          if (idle && !_paused && (_buffer?.length ?? 0) == 0) break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        continue;
+      }
+
       final buffer = _buffer;
       if (buffer != null && !_streamEnded) {
         final minFree = _pumpChunkSamples > 0 ? _pumpChunkSamples : _channels;
@@ -992,7 +1605,7 @@ class _PlaybackSession {
       final read = decoder.readInto(readBuffer);
       if (read == 0) {
         _streamEnded = true;
-        break;
+        continue;
       }
       await _writeToBuffer(Int16List.fromList(readBuffer.sublist(0, read)));
     }
@@ -1006,6 +1619,7 @@ class _PlaybackSession {
       await pumpTask;
     }
     if (_isActive) {
+      _listening.flush(endReason: 'finished');
       _sendPlaybackMessage({'type': 'complete'});
     }
   }
@@ -1015,31 +1629,20 @@ class _PlaybackSession {
     int requestedMs,
   ) async {
     final seekId = _allocateSeekId();
-    _pumpSuspended = true;
-    await _waitForPumpIdle();
-    if (!_isActive) {
-      return;
-    }
-    _streamEnded = false;
-    _startedPlayback = false;
-    _reportedStart = false;
-    _autoPaused = false;
-    _queuedToPlayerSamples = 0;
-    _playedSamples = 0;
-    _bytesReceived = 0;
-    _lastBitrateBytes = 0;
-    _lastBitrateAt = null;
-    _buffer = null;
-    _player?.dispose();
-    _player = null;
-    _playerSampleRate = null;
-    _playerChannels = null;
-    _playerDeviceId = null;
+    final requestGeneration = _seekRequestGeneration;
+    // Container seeking needs a position inside the final packet. FLAC can
+    // reject an exact EOF timestamp before the pump can acknowledge readiness.
+    final durationMs = decoder.duration.inMilliseconds;
+    final targetMs = math.max(
+      0,
+      durationMs > 0 ? math.min(requestedMs, durationMs - 1) : requestedMs,
+    );
+    await _resetOutputForSeek(targetMs);
+    if (!_isActive || requestGeneration != _seekRequestGeneration) return;
     _pendingSeekMs = null;
     _pendingSeekId = null;
     _activeSeekId = seekId;
-
-    final actual = decoder.seek(Duration(milliseconds: requestedMs));
+    final actual = decoder.seek(Duration(milliseconds: targetMs));
     if (!_isActive) {
       return;
     }
@@ -1050,11 +1653,11 @@ class _PlaybackSession {
       _log('Local seek accepted after ${latencyMs}ms (seek_id=$seekId).');
     }
     _pendingSeekRequestedAtMs = null;
-    _createLocalPcmOutput();
+    await _createLocalPcmOutput();
     _pumpSuspended = false;
   }
 
-  void _createLocalPcmOutput() {
+  Future<void> _createLocalPcmOutput() async {
     _frameSamples = (_sampleRate * 20 / 1000).round();
     _pumpChunkSamples = ((_sampleRate * _channels * _pumpChunkMs) / 1000)
         .round();
@@ -1079,23 +1682,30 @@ class _PlaybackSession {
     if (minPumpCapacity > finalCapacity) {
       finalCapacity = minPumpCapacity;
     }
-    _buffer = _PcmRingBuffer(finalCapacity);
+    _buffer = PcmRingBuffer(finalCapacity);
 
-    final createdPlayer = _createPlayer(
-      sampleRate: _sampleRate,
-      channels: _channels,
-      deviceId: _outputDeviceId,
-    );
-    _player = createdPlayer;
-    _playerSampleRate = _sampleRate;
-    _playerChannels = _channels;
-    _playerDeviceId = _outputDeviceId;
-    createdPlayer.setVolume(_volume);
-    if (_paused) {
-      createdPlayer.pause();
-    } else {
-      createdPlayer.resume();
+    if (_player == null ||
+        _playerSampleRate != _sampleRate ||
+        _playerChannels != _channels ||
+        _playerDeviceId != _outputDeviceId) {
+      final epoch = ++_outputEpoch;
+      final previous = _player;
+      _player = null;
+      if (previous != null) await _disposeReplacedOutput(previous);
+      if (!_isActive || epoch != _outputEpoch) return;
+      _player =
+          _outputFactory?.call(_sampleRate, _channels, _outputDeviceId) ??
+          _createPlayer(
+            sampleRate: _sampleRate,
+            channels: _channels,
+            deviceId: _outputDeviceId,
+          );
+      _playerSampleRate = _sampleRate;
+      _playerChannels = _channels;
+      _playerDeviceId = _outputDeviceId;
     }
+    _player!.setVolume(_volume);
+    if (_paused) _player!.pause();
     _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': _paused});
   }
 
@@ -1104,611 +1714,398 @@ class _PlaybackSession {
         Platform.isMacOS ||
         Platform.isIOS ||
         Platform.isAndroid)) {
-      throw Exception(
-        'Audio playback is only implemented for Windows, Apple platforms, and Android right now.',
-      );
+      throw Exception('Audio output is unavailable on this platform.');
     }
-
+    _baseOffsetMs = startOffset.inMilliseconds;
     _queuedToPlayerSamples = 0;
     _playedSamples = 0;
     _bytesReceived = 0;
     _lastBitrateBytes = 0;
-    _lastBitrateAt = null;
     _reportedStart = false;
     _startedPlayback = false;
+    _startupBufferFilled = false;
     _streamEnded = false;
-    _lastQuicStatsLogAtMs = 0;
-    _baseOffsetMs = startOffset.inMilliseconds;
-    _pendingClientSkipMs = startOffset.inMilliseconds;
     _quickStart = quickStart && startOffset.inMilliseconds > 0;
-    _pendingSeekMs = null;
-    _pendingSeekId = null;
-    _activeSeekId = null;
-    _nextSeekId = 0;
-    _pumpRunning = false;
-
     final localPath = localFilePath;
     if (localPath != null) {
       await _runLocalFilePlayback(localPath);
       return;
     }
-
     final uri = Uri.parse(baseUrl);
-    var host = uri.host.isNotEmpty ? uri.host : '127.0.0.1';
+    final host = uri.host.isEmpty ? '127.0.0.1' : uri.host;
     _configureBufferProfile(host);
-    if (host == 'localhost' || host == '127.0.0.1' || host == '::1') {
-      host = '127.0.0.1';
-    }
-
     final httpPort = uri.hasPort
         ? uri.port
         : (uri.scheme == 'https' ? 443 : 80);
-    final resolvedQuicPort = (quicPort != null && quicPort! > 0)
-        ? quicPort!
-        : httpPort + 1;
-    _log(
-      'QUIC config: base_url=$baseUrl host=$host http_port=$httpPort '
-      'quic_port=$resolvedQuicPort token_len=${token.length} platform=${Platform.operatingSystem}',
-    );
-    if (Platform.isIOS &&
-        (host == '127.0.0.1' || host == 'localhost' || host == '::1')) {
-      _log(
-        'Warning: QUIC host is loopback on iOS. Use a LAN IP/hostname to reach the server.',
-      );
-    }
-    _log('Opening QUIC stream: $host:$resolvedQuicPort');
-    var quic = QuicClient.connect(
-      host: host,
-      port: resolvedQuicPort,
-      token: token,
-    );
+    final port = quicPort != null && quicPort! > 0 ? quicPort! : httpPort + 1;
+    var quic =
+        _quic ??
+        QuicClient.connect(
+          host: host == 'localhost' ? '127.0.0.1' : host,
+          port: port,
+          token: token,
+          serverPin: serverPin,
+        );
     _quic = quic;
-    if (!_openTrackSafe(
-      quic,
-      trackId: trackId,
-      settings: settings,
-      queueTrackIds: queueTrackIds,
-    )) {
-      _log('QUIC open failed; reconnecting.');
-      quic.close();
-      quic = QuicClient.connect(
-        host: host,
-        port: resolvedQuicPort,
-        token: token,
-      );
-      _quic = quic;
-      if (!_openTrackSafe(
-        quic,
+    try {
+      _transportRequestId = quic.openTrack(
         trackId: trackId,
-        settings: settings,
-        queueTrackIds: queueTrackIds,
+        mode: settings.mode,
+        quality: settings.quality,
+        frameMs: settings.frameMs,
+        queue: queueTrackIds,
+        startMs: startOffset.inMilliseconds,
+      );
+    } catch (_) {
+      quic.close();
+      quic = QuicClient.connect(host: host, port: port, token: token, serverPin:serverPin);
+      _quic = quic;
+      _transportRequestId = quic.openTrack(
+        trackId: trackId,
+        mode: settings.mode,
+        quality: settings.quality,
+        frameMs: settings.frameMs,
+        queue: queueTrackIds,
+        startMs: startOffset.inMilliseconds,
+      );
+    }
+    _incomingStartMs = startOffset.inMilliseconds;
+    _waitingForHeader = true;
+    _startStats();
+    // Receive/cache and decode/output are independent asynchronous loops. A
+    // paused or full PCM queue cannot prevent a new range header from arriving.
+    final receiveTask = _receiveRemoteAudio(quic);
+    final decodeTask = _decodeRemoteAudio();
+    try {
+      await Future.wait([receiveTask, decodeTask], eagerError: true);
+    } catch (_) {
+      requestStop(outcome: 'error');
+      rethrow;
+    }
+    if (_isActive) {
+      _listening.flush(endReason: 'finished');
+      _sendPlaybackMessage({'type': 'complete'});
+    }
+  }
+
+  void _pollTransportEvents(QuicClient quic) {
+    Map<String, Object?>? event;
+    while ((event = quic.pollEvent()) != null) {
+      final requestId = (event!['request_id'] as num?)?.toInt();
+      if (requestId != null && requestId != _transportRequestId) continue;
+      if (event['type'] == 'error') {
+        _failSeek('server_error');
+        throw Exception('Audio range request failed: ${event['message']}');
+      }
+      if (event['type'] != 'stream') continue;
+      final version = event['source_version']?.toString() ?? '';
+      if (_sourceVersion.isNotEmpty &&
+          version.isNotEmpty &&
+          _sourceVersion != version) {
+        throw Exception('The audio source changed during playback.');
+      }
+      _sourceVersion = version;
+      _incomingStartMs =
+          (event['position_ms'] as num?)?.toInt() ?? _incomingStartMs;
+      _incomingRangeEndMs = (event['range_end_ms'] as num?)?.toInt();
+      _incomingEndOfTrack = event['end_of_track'] != false;
+    }
+  }
+
+  Future<void> _receiveRemoteAudio(QuicClient quic) async {
+    final data = Uint8List(64 * 1024);
+    while (_isActive && !_remotePlaybackComplete) {
+      _pollTransportEvents(quic);
+      if (_streamEnded && !_waitingForHeader) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        continue;
+      }
+      final segment = _incomingSegment;
+      final cursor = _decodeCursor;
+      if (!_waitingForHeader &&
+          segment != null &&
+          segment.complete &&
+          !segment.endOfTrack &&
+          cursor != null &&
+          segment.rangeEndMs - _positionMs <= (_userPaused ? 2000 : 8000)) {
+        final next = _encodedCache.seek(segment.rangeEndMs);
+        if (next == null) {
+          _requestRemoteRange(segment.rangeEndMs, continuation: true);
+        }
+      }
+      // Limit encoded read-ahead by playback time, independently of PCM space.
+      // Control events are still consumed every iteration, including while paused.
+      final ahead = _encodedCache.bufferedAheadMs(_positionMs);
+      final horizon = _userPaused ? 2000 : (_isLoopbackHost ? 3000 : 8000);
+      if (!_waitingForHeader && ahead >= horizon + 1000) {
+        _reportBuffer();
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        continue;
+      }
+      final read = quic.read(data);
+      _pollTransportEvents(quic);
+      if (read == -5) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        continue;
+      }
+      if (read <= 0) {
+        throw Exception(
+          'QUIC audio connection failed: ${quic.lastError() ?? read}',
+        );
+      }
+      _bytesReceived += read;
+      for (final event in _rawReader.add(
+        Uint8List.sublistView(data, 0, read),
       )) {
-        _log('QUIC open failed after retry; aborting playback.');
-        _sendPlaybackMessage({
-          'type': 'state',
-          'active': false,
-          'paused': false,
-        });
-        return;
+        if (event is RawOpusSeekMarker) {
+          if (_pendingSeekId != event.seekId) {
+            throw Exception('Unexpected audio seek generation.');
+          }
+          _activeSeekId = event.seekId;
+          _pendingSeekId = null;
+        } else if (event is RawOpusStreamHeader) {
+          final headerTrack = _extractHeaderTrackId(event.bytes);
+          if (headerTrack != null && headerTrack != trackId) {
+            throw Exception('Audio range belongs to a different track.');
+          }
+          final header = event.header;
+          final incoming = EncodedAudioSegment(
+            header: header,
+            startMs: _incomingStartMs,
+            rangeEndMs: _incomingRangeEndMs ?? header.durationMs,
+            endOfTrack: _incomingEndOfTrack,
+            sourceVersion: _sourceVersion,
+          );
+          if (!_encodedCache.addSegment(
+            incoming,
+            pinned: _decodeCursor?.segment,
+          )) {
+            throw Exception('Encoded audio cache exceeded its memory budget.');
+          }
+          _incomingSegment = incoming;
+          _waitingForHeader = false;
+          _pendingSeekMs = null;
+          if (!_remoteContinuation && _decodeCursor == null) {
+            _decodeCursor = incoming.cursorAt(incoming.startMs);
+          }
+        } else if (event is RawOpusPacket) {
+          final incoming = _incomingSegment;
+          if (incoming == null) {
+            throw Exception('Audio packet without a range header.');
+          }
+          if (!_encodedCache.append(
+            incoming,
+            event.bytes,
+            pinned: _decodeCursor?.segment,
+          )) {
+            throw Exception('Encoded audio cache exceeded its memory budget.');
+          }
+        } else if (event is RawOpusEnd) {
+          final incoming = _incomingSegment;
+          if (incoming == null) {
+            throw Exception('Audio range ended before its header.');
+          }
+          incoming.complete = true;
+        }
       }
+      _reportBuffer();
     }
-    _requestInitialServerSeek(quic, startOffset.inMilliseconds);
+  }
 
-    final reader = _ByteQueue();
-    RawOpusHeader? header;
-    OpusDecoder? decoder;
-    int? maxFrameSize;
-    int? pendingFrameLen;
-    int? headerLen;
-    var headerBuilder = BytesBuilder();
-    var bytesReceived = 0;
-    var framesDecoded = 0;
-    var lastLogTime = DateTime.now();
-    const logInterval = Duration(seconds: 5);
-    var lastFrameLen = 0;
-    var decodeErrors = 0;
-    var debugFramesLogged = 0;
-    final playbackStartedAt = DateTime.now();
-    var noBytesWarned = false;
-    Future<void>? pumpTask;
-    var pendingSeekMarkerPayload = false;
-    var discardingStaleSeekHeader = false;
-    var discardingStaleSeekFrames = false;
-
-    Future<void> resetForSeek(int seekId) async {
-      _pumpSuspended = true;
-      await _waitForPumpIdle();
-      _streamEnded = false;
-      _startedPlayback = false;
-      _reportedStart = false;
-      _autoPaused = false;
-      _discardUntilSeekMarker = false;
-      pendingSeekMarkerPayload = false;
-      discardingStaleSeekHeader = false;
-      discardingStaleSeekFrames = false;
-      _queuedToPlayerSamples = 0;
-      _playedSamples = 0;
-      _bytesReceived = 0;
-      _lastBitrateBytes = 0;
-      _lastBitrateAt = null;
-      bytesReceived = 0;
-      framesDecoded = 0;
-      lastFrameLen = 0;
-      decodeErrors = 0;
-      debugFramesLogged = 0;
-      header = null;
-      headerLen = null;
-      headerBuilder = BytesBuilder();
-      pendingFrameLen = null;
-      decoder?.dispose();
-      decoder = null;
-      _decoder = null;
-      _player?.dispose();
+  Future<void> _configureRemoteOutput(
+    RawOpusHeader header, {
+    required int generation,
+    required EncodedAudioCursor cursor,
+  }) async {
+    final reset = _outputReset;
+    if (reset != null) {
+      await reset;
+      if (identical(reset, _outputReset)) _outputReset = null;
+    }
+    if (!_isActive ||
+        generation != _seekRequestGeneration ||
+        !identical(cursor, _decodeCursor)) {
+      return;
+    }
+    _sampleRate = header.sampleRate;
+    _channels = header.channels;
+    _frameSamples = _sampleRate * header.frameMs ~/ 1000;
+    _pumpChunkSamples = _sampleRate * _channels * _pumpChunkMs ~/ 1000;
+    _refreshBufferTargets();
+    _buffer ??= PcmRingBuffer(
+      math.max(_sampleRate * _channels, _rebufferTargetSamples * 2),
+    );
+    _ensureBufferCapacity();
+    if (_player == null ||
+        _playerSampleRate != _sampleRate ||
+        _playerChannels != _channels ||
+        _playerDeviceId != _outputDeviceId) {
+      final epoch = ++_outputEpoch;
+      final previous = _player;
       _player = null;
-      _buffer = null;
-      maxFrameSize = null;
-      _preSkipSamples = 0;
-      _skipSamples = 0;
-      _frameSamples = 0;
-      _pendingClientSkipMs = 0;
-      if (_pendingSeekMs != null) {
-        _baseOffsetMs = _pendingSeekMs!;
-      }
-      final requestedAtMs = _pendingSeekRequestedAtMs;
-      if (requestedAtMs != null) {
-        final latencyMs = DateTime.now().millisecondsSinceEpoch - requestedAtMs;
-        _log('Seek marker accepted after ${latencyMs}ms (seek_id=$seekId).');
-      }
-      _pendingSeekRequestedAtMs = null;
-      _pendingSeekMs = null;
-      _activeSeekId = seekId;
-      _pendingSeekId = null;
-      _pumpSuspended = false;
+      if (previous != null) await _disposeReplacedOutput(previous);
+      if (!_isActive || epoch != _outputEpoch) return;
+      _player =
+          _outputFactory?.call(_sampleRate, _channels, _outputDeviceId) ??
+          _createPlayer(
+            sampleRate: _sampleRate,
+            channels: _channels,
+            deviceId: _outputDeviceId,
+          );
+      _playerSampleRate = _sampleRate;
+      _playerChannels = _channels;
+      _playerDeviceId = _outputDeviceId;
     }
+    _player!.setVolume(_volume);
+    if (_paused) _player!.pause();
+    _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': _paused});
+  }
 
-    final readBuffer = Uint8List(64 * 1024);
-
-    while (_isActive) {
-      final buffer = _buffer;
-      if (buffer != null && !_streamEnded) {
-        final minFree = _pumpChunkSamples > 0 ? _pumpChunkSamples : 1;
-        if (buffer.free < minFree) {
+  Future<void> _decodeRemoteAudio() async {
+    EncodedAudioCursor? configured;
+    int configuredGeneration = -1;
+    Future<void>? pump;
+    try {
+      while (_isActive) {
+        final cachedSeek = _cachedSeek;
+        if (cachedSeek != null) {
+          _cachedSeek = null;
+          _decodeCursor = cachedSeek;
+        }
+        final cursor = _decodeCursor;
+        if (cursor == null) {
           await Future<void>.delayed(const Duration(milliseconds: 5));
           continue;
         }
-      }
-      final read = quic.read(readBuffer);
-      if (read < 0 && read != -5) {
-        final detail = quic.lastError();
-        throw Exception(
-          'QUIC read failed: $read${detail == null ? '' : ' ($detail)'}',
-        );
-      }
-      if (read == 0) {
-        final detail = quic.lastError();
-        throw Exception(
-          'QUIC transport closed before stream EOS${detail == null ? '' : ': $detail'}',
-        );
-      } else if (read > 0) {
-        final data = Uint8List.fromList(readBuffer.sublist(0, read));
-        bytesReceived += data.length;
-        _bytesReceived = bytesReceived;
-        reader.add(data);
-      }
-
-      while (_isActive) {
-        if (pendingSeekMarkerPayload) {
-          final markerBytes = reader.read(4);
-          if (markerBytes == null) {
-            break;
-          }
-          pendingSeekMarkerPayload = false;
-          final markerSeekId = _readU32Le(markerBytes, 0);
-          final expectedSeekId = _pendingSeekId;
-          if (expectedSeekId == null) {
-            _log('Ignoring unexpected seek marker (seek_id=$markerSeekId).');
-            discardingStaleSeekHeader = true;
-            discardingStaleSeekFrames = false;
-            continue;
-          }
-          if (markerSeekId != expectedSeekId) {
-            _log(
-              'Ignoring stale seek marker (seek_id=$markerSeekId expected=$expectedSeekId).',
-            );
-            discardingStaleSeekHeader = true;
-            discardingStaleSeekFrames = false;
-            continue;
-          }
-          _log(
-            'Accepted seek marker (seek_id=$markerSeekId); resetting decoder.',
+        final generation = _seekRequestGeneration;
+        if (!identical(cursor, configured) ||
+            generation != configuredGeneration) {
+          _decoder?.dispose();
+          _decoder = null;
+          await _configureRemoteOutput(
+            cursor.segment.header,
+            generation: generation,
+            cursor: cursor,
           );
-          pendingFrameLen = null;
-          await resetForSeek(markerSeekId);
-          continue;
+          if (!_isActive ||
+              generation != _seekRequestGeneration ||
+              !identical(cursor, _decodeCursor)) {
+            continue;
+          }
+          if (generation != configuredGeneration) {
+            // Use the server's accepted position (including endpoint clamping).
+            _baseOffsetMs = cursor.positionMs;
+            _decodedThroughSample = cursor.positionMs * _sampleRate ~/ 1000;
+          }
+          _decoder =
+              _decoderFactory?.call(_sampleRate, _channels) ??
+              OpusDecoder(sampleRate: _sampleRate, channels: _channels);
+          configured = cursor;
+          configuredGeneration = generation;
+          if (!_pumpRunning) pump = _runPump();
         }
-
-        if (discardingStaleSeekHeader) {
-          final markerPrefix = reader.peek(2);
-          if (markerPrefix == null) {
-            break;
-          }
-          final marker = markerPrefix[0] | (markerPrefix[1] << 8);
-          if (marker == _rawSeekMarker) {
-            reader.discard(2);
-            pendingSeekMarkerPayload = true;
-            discardingStaleSeekHeader = false;
-            continue;
-          }
-          final prefix = reader.peek(12);
-          if (prefix == null) {
-            break;
-          }
-          if (!_hasRawHeaderMagic(prefix)) {
-            _resyncSeekBoundary(reader);
-            continue;
-          }
-          if (prefix[8] != 1) {
-            reader.discard(1);
-            continue;
-          }
-          final length = prefix[10] | (prefix[11] << 8);
-          if (length < _rawHeaderMinLen) {
-            reader.discard(1);
-            continue;
-          }
-          final staleHeader = reader.read(length);
-          if (staleHeader == null) {
-            break;
-          }
-          _log('Discarded stale seek header (${staleHeader.length} bytes).');
-          discardingStaleSeekHeader = false;
-          discardingStaleSeekFrames = true;
-          continue;
+        if (_player != null && _buffer != null && !_pumpRunning) {
+          pump = _runPump();
         }
-
-        if (discardingStaleSeekFrames) {
-          if (pendingFrameLen == null) {
-            final lenBytes = reader.read(2);
-            if (lenBytes == null) {
-              break;
-            }
-            pendingFrameLen = lenBytes[0] | (lenBytes[1] << 8);
-            if (pendingFrameLen == _rawSeekMarker) {
-              pendingFrameLen = null;
-              pendingSeekMarkerPayload = true;
-              discardingStaleSeekFrames = false;
-              continue;
-            }
-            if (pendingFrameLen == 0) {
-              pendingFrameLen = null;
-              continue;
-            }
-          }
-          final discard = reader.read(pendingFrameLen!);
-          if (discard == null) {
-            break;
-          }
-          pendingFrameLen = null;
-          continue;
-        }
-
-        if (header == null) {
-          if (headerLen == null) {
-            final prefix = reader.peek(12);
-            if (prefix == null) {
-              break;
-            }
-            if (!_hasRawHeaderMagic(prefix)) {
-              _resyncRawHeader(reader);
-              continue;
-            }
-            if (prefix[8] != 1) {
-              reader.discard(1);
-              continue;
-            }
-            final length = prefix[10] | (prefix[11] << 8);
-            if (length < _rawHeaderMinLen) {
-              reader.discard(1);
-              continue;
-            }
-            headerLen = length;
-            headerBuilder = BytesBuilder();
-            final consumed = reader.read(12);
-            if (consumed == null) {
-              headerLen = null;
-              break;
-            }
-            headerBuilder.add(consumed);
-            _log('Raw header length: $headerLen');
-          }
-          final remaining = headerLen! - headerBuilder.length;
-          if (remaining > 0) {
-            final rest = reader.read(remaining);
-            if (rest == null) {
-              break;
-            }
-            headerBuilder.add(rest);
-          }
-          final headerBytes = headerBuilder.takeBytes();
-          _log('Raw header bytes read: ${headerBytes.length}');
-          try {
-            header = RawOpusHeader.parse(headerBytes);
-          } catch (err) {
-            _log('Raw header parse failed; resyncing. ($err)');
-            header = null;
-            headerLen = null;
-            headerBuilder = BytesBuilder();
-            continue;
-          }
-          final headerTrackId = _extractHeaderTrackId(headerBytes);
-          if (headerTrackId != null && headerTrackId != trackId) {
-            _log(
-              'Raw header track mismatch; resyncing (got $headerTrackId expected $trackId).',
-            );
-            header = null;
-            headerLen = null;
-            headerBuilder = BytesBuilder();
-            continue;
-          }
-          final parsedHeader = header;
-          if (parsedHeader == null) {
-            headerLen = null;
-            headerBuilder = BytesBuilder();
-            continue;
-          }
-          _log(
-            'Opus header: ${parsedHeader.sampleRate} Hz, ${parsedHeader.channels}ch, frame ${parsedHeader.frameMs}ms',
-          );
-          _log('Opus duration: ${parsedHeader.durationMs} ms');
-          _frameSamples =
-              (parsedHeader.sampleRate * parsedHeader.frameMs / 1000).round();
-          _log('Opus frame samples per channel: $_frameSamples');
-          final createdDecoder = OpusDecoder(
-            sampleRate: parsedHeader.sampleRate,
-            channels: parsedHeader.channels,
-          );
-          decoder = createdDecoder;
-          _decoder = createdDecoder;
-          maxFrameSize = createdDecoder.maxFrameSize;
-          _log('Opus max frame size: $maxFrameSize');
-          _sampleRate = parsedHeader.sampleRate;
-          _channels = parsedHeader.channels;
-          _preSkipSamples = parsedHeader.preSkip * parsedHeader.channels;
-          final skipMs = _pendingClientSkipMs;
-          _pendingClientSkipMs = 0;
-          _skipSamples =
-              (skipMs * parsedHeader.sampleRate ~/ 1000) *
-              parsedHeader.channels;
-
-          _pumpChunkSamples = ((_sampleRate * _channels * _pumpChunkMs) / 1000)
-              .round();
-          if (_pumpChunkSamples <= 0) {
-            _pumpChunkSamples = _frameSamples * _channels;
-          }
-          _refreshBufferTargets();
-
-          final targetSeconds = _quickStart
-              ? _seekCatchupTargetSeconds
-              : (_prebufferSeconds > _rebufferTargetSeconds
-                    ? _prebufferSeconds
-                    : _rebufferTargetSeconds);
-          final capacitySeconds = targetSeconds * 4.0;
-          final capacitySamples = (capacitySeconds * _sampleRate * _channels)
-              .round();
-          final minCapacitySamples = _rebufferTargetSamples * 2;
-          var finalCapacity = capacitySamples;
-          if (minCapacitySamples > finalCapacity) {
-            finalCapacity = minCapacitySamples;
-          }
-          final minPumpCapacity = _pumpChunkSamples * 4;
-          if (minPumpCapacity > finalCapacity) {
-            finalCapacity = minPumpCapacity;
-          }
-          _buffer = _PcmRingBuffer(finalCapacity);
-
-          final existingPlayer = _player;
-          final reuseExistingPlayer =
-              Platform.isAndroid &&
-              existingPlayer != null &&
-              _playerSampleRate == parsedHeader.sampleRate &&
-              _playerChannels == parsedHeader.channels &&
-              _playerDeviceId == _outputDeviceId;
-          if (!reuseExistingPlayer) {
-            existingPlayer?.dispose();
-            final createdPlayer = _createPlayer(
-              sampleRate: parsedHeader.sampleRate,
-              channels: parsedHeader.channels,
-              deviceId: _outputDeviceId,
-            );
-            _player = createdPlayer;
-            _playerSampleRate = parsedHeader.sampleRate;
-            _playerChannels = parsedHeader.channels;
-            _playerDeviceId = _outputDeviceId;
-          }
-
-          final activePlayer = _player;
-          activePlayer?.setVolume(_volume);
-          if (_paused) {
-            activePlayer?.pause();
-          } else {
-            activePlayer?.resume();
-          }
-          _sendPlaybackMessage({
-            'type': 'state',
-            'active': true,
-            'paused': _paused,
-          });
-          _startStats();
-          if (!_pumpRunning) {
-            pumpTask = _runPump();
-          }
-          continue;
-        }
-        if (pendingFrameLen == null) {
-          final lenBytes = reader.read(2);
-          if (lenBytes == null) {
-            break;
-          }
-          pendingFrameLen = lenBytes[0] | (lenBytes[1] << 8);
-          if (pendingFrameLen == _rawSeekMarker) {
-            pendingFrameLen = null;
-            pendingSeekMarkerPayload = true;
-            continue;
-          }
-          if (pendingFrameLen == 0) {
-            if (_discardUntilSeekMarker) {
-              // Ignore EOS from the old position while waiting for the seek marker.
-              pendingFrameLen = null;
-              continue;
-            }
+        final segment = cursor.segment;
+        if (cursor.packetIndex >= segment.packets.length) {
+          final atEnd =
+              segment.complete && segment.availableEndMs >= segment.rangeEndMs;
+          if (atEnd && segment.endOfTrack) {
             _streamEnded = true;
-            break;
-          }
-        }
-
-        if (_discardUntilSeekMarker) {
-          if (pendingFrameLen == 0) {
-            pendingFrameLen = null;
+            if (_autoPaused && !_userPaused) _resumeFromAutoPause();
+            if (!_paused && (_buffer?.length ?? 0) == 0) {
+              final player = _player!;
+              final epoch = _outputEpoch;
+              final idle = await player.isIdle();
+              if (!_isActive ||
+                  generation != _seekRequestGeneration ||
+                  epoch != _outputEpoch ||
+                  !identical(cursor, _decodeCursor) ||
+                  !identical(player, _player)) {
+                continue;
+              }
+              if (idle && !_paused && (_buffer?.length ?? 0) == 0) {
+                _remotePlaybackComplete = true;
+                break;
+              }
+            }
+            await Future<void>.delayed(const Duration(milliseconds: 5));
             continue;
           }
-          final discard = reader.read(pendingFrameLen!);
-          if (discard == null) {
-            break;
-          }
-          pendingFrameLen = null;
-          continue;
-        }
-
-        final packet = reader.read(pendingFrameLen!);
-        if (packet == null) {
-          break;
-        }
-        pendingFrameLen = null;
-
-        final activeHeader = header;
-        if (activeHeader == null) {
-          _log('Opus header missing during decode.');
-          return;
-        }
-        final frameHint =
-            (activeHeader.sampleRate * activeHeader.frameMs / 1000).round();
-        final frameSize = maxFrameSize == null
-            ? frameHint
-            : frameHint.clamp(1, maxFrameSize!);
-        lastFrameLen = packet.length;
-
-        Int16List samples;
-        try {
-          final activeDecoder = decoder;
-          if (activeDecoder == null) {
-            _log('Opus decoder missing during decode.');
-            return;
-          }
-          samples = activeDecoder.decode(packet, frameSize: frameSize);
-        } catch (err) {
-          decodeErrors++;
-          _log('Decode error (${decodeErrors}): $err');
-          continue;
-        }
-
-        if (samples.isEmpty) {
-          continue;
-        }
-        framesDecoded++;
-
-        if (debugFramesLogged < 5) {
-          debugFramesLogged++;
-          final sampleCount = samples.length;
-          var min = samples.first;
-          var max = samples.first;
-          var sum = 0;
-          for (final v in samples) {
-            if (v < min) min = v;
-            if (v > max) max = v;
-            sum += v;
-          }
-          final avg = sum / sampleCount;
-          _log(
-            'Frame ${framesDecoded}: packet=${packet.length} bytes, samples=$sampleCount, '
-            'min=$min max=$max avg=${avg.toStringAsFixed(1)}',
-          );
-          if (sampleCount % activeHeader.channels != 0) {
-            _log(
-              'Warning: samples not multiple of channels (${activeHeader.channels}).',
+          if (segment.complete && !atEnd) {
+            throw Exception(
+              'Encoded audio range ended before its advertised boundary.',
             );
           }
-          final expected = frameHint * activeHeader.channels;
-          if (sampleCount != expected) {
-            _log('Warning: samples != expected (${expected}).');
-          }
-        }
-
-        if (_preSkipSamples > 0) {
-          if (samples.length <= _preSkipSamples) {
-            _preSkipSamples -= samples.length;
+          final nextMs = atEnd ? segment.rangeEndMs : segment.availableEndMs;
+          final next = _encodedCache.seek(nextMs);
+          if (next != null && !identical(next.segment, segment)) {
+            // Range requests use milliseconds, but an incomplete packet cache
+            // can finish between milliseconds. Drop any overlap already queued.
+            final overlap = math.max(
+              0,
+              (_decodedThroughSample ?? 0) - nextMs * _sampleRate ~/ 1000,
+            );
+            next.skipSamplesPerChannel += overlap;
+            _decodeCursor = next;
             continue;
           }
-          samples = samples.sublist(_preSkipSamples);
-          _preSkipSamples = 0;
-        }
-
-        if (_skipSamples > 0) {
-          if (samples.length <= _skipSamples) {
-            _skipSamples -= samples.length;
-            continue;
+          final incoming = _incomingSegment;
+          // A retained partial range may have been abandoned by an earlier seek.
+          // Wait only for its live producer or a replacement covering the gap;
+          // a replacement header can arrive before its first audio packet.
+          final receivingMissingAudio =
+              incoming != null &&
+              !incoming.complete &&
+              (identical(incoming, segment) ||
+                  (incoming.startMs <= nextMs && nextMs < incoming.rangeEndMs));
+          if (!_waitingForHeader && !receivingMissingAudio) {
+            _requestRemoteRange(nextMs, continuation: true);
           }
-          samples = samples.sublist(_skipSamples);
-          _skipSamples = 0;
-        }
-
-        if (samples.isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
           continue;
         }
-
-        await _writeToBuffer(samples);
-      }
-
-      if (!noBytesWarned &&
-          bytesReceived == 0 &&
-          DateTime.now().difference(playbackStartedAt) >
-              const Duration(seconds: 3)) {
-        final detail = quic.lastError();
-        _log(
-          'QUIC waiting for data (0 bytes received). '
-          'last_error=${detail ?? 'none'}',
+        final packet = segment.packets[cursor.packetIndex];
+        var samples = _decoder!.decode(
+          packet,
+          frameSize: segment.header.sampleRate * segment.header.frameMs ~/ 1000,
         );
-        noBytesWarned = true;
-      }
-
-      if (_streamEnded) {
-        break;
-      }
-      if (read == -5) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-
-      final now = DateTime.now();
-      if (now.difference(lastLogTime) >= logInterval) {
-        lastLogTime = now;
-        _log(
-          'Stream stats: bytes=${bytesReceived}, frames=${framesDecoded}, '
-          'buffered=${reader.available} bytes, last_frame=${lastFrameLen}, '
-          'decode_errors=${decodeErrors}, pcm_buffered=${_bufferedAudioMs()}ms, '
-          'target=${_serverBufferTargetMs()}ms',
+        cursor.packetIndex++;
+        final skip = math.min(
+          samples.length,
+          cursor.skipSamplesPerChannel * _channels,
+        );
+        cursor.skipSamplesPerChannel -= skip ~/ _channels;
+        if (skip > 0) samples = samples.sublist(skip);
+        final endSamples =
+            (segment.rangeEndMs - segment.startMs) * _sampleRate ~/ 1000;
+        final packetEndSamples =
+            cursor.packetIndex * segment.frameSamples - segment.header.preSkip;
+        final excessSamples =
+            math.max(0, packetEndSamples - endSamples) * _channels;
+        if (excessSamples > 0) {
+          samples = samples.sublist(
+            0,
+            math.max(0, samples.length - excessSamples),
+          );
+        }
+        cursor.positionMs = math.min(
+          segment.rangeEndMs,
+          segment.startMs + math.max(0, packetEndSamples) * 1000 ~/ _sampleRate,
+        );
+        if (samples.isNotEmpty) await _writeToBuffer(samples);
+        if (generation != _seekRequestGeneration) continue;
+        _decodedThroughSample = math.max(
+          _decodedThroughSample ?? 0,
+          segment.startMs * _sampleRate ~/ 1000 +
+              math.min(math.max(0, packetEndSamples), endSamples),
         );
       }
-    }
-
-    _streamEnded = true;
-    _log('Stream ended.');
-    if (_autoPaused && !_userPaused) {
-      _resumeFromAutoPause();
-    }
-    if (pumpTask != null) {
-      await pumpTask;
-    }
-    if (_isActive) {
-      _sendPlaybackMessage({'type': 'complete'});
+      if (pump != null) await pump;
+    } catch (_) {
+      requestStop(outcome: 'decode_error');
+      rethrow;
     }
   }
 
@@ -1718,81 +2115,63 @@ class _PlaybackSession {
       while (_isActive) {
         final player = _player;
         final buffer = _buffer;
-        if (player == null || buffer == null) {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
+        if (player == null || buffer == null || _pumpSuspended) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
           continue;
         }
-        if (_pumpSuspended) {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-          continue;
-        }
-
         if (!_startedPlayback) {
           if (buffer.length == 0 && _streamEnded) {
+            _markSeekReady();
             return;
           }
           if (!_streamEnded && buffer.length < _prebufferTargetSamples) {
-            await Future<void>.delayed(const Duration(milliseconds: 10));
-            continue;
-          }
-          _startedPlayback = true;
-          _reportStarted();
-        }
-
-        if (_paused) {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-          continue;
-        }
-
-        _pumpBusy = true;
-        try {
-          final chunk = buffer.read(_pumpChunkSamples);
-          if (chunk == null || chunk.isEmpty) {
-            if (_streamEnded) {
-              await _drainPlayer(player);
-              return;
-            }
             await Future<void>.delayed(const Duration(milliseconds: 5));
             continue;
           }
-
-          if (_pumpSuspended ||
-              !identical(player, _player) ||
-              !identical(buffer, _buffer)) {
-            continue;
-          }
-
-          _pumpWriting = true;
-          try {
-            await _writeSamples(player, chunk);
-          } catch (err) {
-            _pumpWriting = false;
-            _log('Audio write error: $err');
-            if (_pumpSuspended || !_isActive || !identical(player, _player)) {
-              return;
-            }
-            rethrow;
-          } finally {
-            _pumpWriting = false;
-          }
-        } finally {
-          _pumpBusy = false;
+          _startedPlayback = true;
+          _markSeekReady();
+          if (!_paused) player.resume();
+          _reportStarted();
         }
+        if (_paused) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          continue;
+        }
+        final chunk = buffer.read(_pumpChunkSamples);
+        if (chunk == null || chunk.isEmpty) {
+          if (_streamEnded) {
+            await _drainPlayer(player);
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          continue;
+        }
+        if (_pumpSuspended ||
+            !identical(player, _player) ||
+            !identical(buffer, _buffer)) {
+          continue;
+        }
+        final epoch = _outputEpoch;
+        try {
+          await _writeSamples(player, chunk);
+        } catch (error) {
+          if (!_isActive) return;
+          if (epoch != _outputEpoch || !identical(player, _player)) continue;
+          rethrow;
+        }
+      }
+    } catch (error) {
+      if (_isActive) {
+        _log('Audio output failed: $error');
+        requestStop(outcome: 'output_error');
+        _sendPlaybackMessage({
+          'type': 'state',
+          'active': false,
+          'paused': false,
+        });
       }
     } finally {
       _pumpRunning = false;
-    }
-  }
-
-  Future<void> _waitForPumpIdle() async {
-    if (!_pumpRunning) {
-      return;
-    }
-    for (var i = 0; i < 80; i++) {
-      if (!_pumpBusy && !_pumpWriting) {
-        return;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 5));
     }
   }
 
@@ -1801,8 +2180,14 @@ class _PlaybackSession {
     if (buffer == null) {
       return;
     }
+    final epoch = _outputEpoch;
+    final generation = _seekRequestGeneration;
     var offset = 0;
-    while (offset < samples.length && _isActive) {
+    while (offset < samples.length &&
+        _isActive &&
+        epoch == _outputEpoch &&
+        generation == _seekRequestGeneration &&
+        identical(buffer, _buffer)) {
       final written = buffer.write(samples, offset);
       if (written == 0) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -1816,31 +2201,38 @@ class _PlaybackSession {
     _NativeAudioPlayer player,
     Int16List samples,
   ) async {
+    final epoch = _outputEpoch;
     await player.write(samples);
-    if (!identical(player, _player)) {
+    if (epoch != _outputEpoch || !identical(player, _player)) {
       return;
     }
     _queuedToPlayerSamples += samples.length;
   }
 
   Future<void> _drainPlayer(_NativeAudioPlayer player) async {
+    final epoch = _outputEpoch;
     while (_isActive) {
       bool idle;
       try {
+        final done = await _collectListeningSamples(player);
+        if (epoch != _outputEpoch || !identical(player, _player)) return;
+        _playedSamples += done;
         idle = await player.isIdle();
+        if (epoch != _outputEpoch || !identical(player, _player)) return;
       } catch (_) {
         return;
       }
       if (idle) {
+        try {
+          final tail = await _collectListeningSamples(player);
+          if (epoch == _outputEpoch && identical(player, _player)) {
+            _playedSamples += tail;
+          }
+        } catch (_) {}
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 10));
       if (!identical(player, _player)) {
-        return;
-      }
-      try {
-        _playedSamples += await player.collectDoneSamples();
-      } catch (_) {
         return;
       }
     }
@@ -1883,12 +2275,16 @@ class _PlaybackSession {
     try {
       final player = _player;
       if (player != null) {
+        final epoch = _outputEpoch;
         try {
-          _playedSamples += await player.collectDoneSamples();
+          final done = await _collectListeningSamples(player);
+          if (epoch != _outputEpoch || !identical(player, _player)) return;
+          _playedSamples += done;
         } catch (_) {
           return;
         }
       }
+      if (!_isActive) return;
       final buffer = _buffer;
       final bufferSamples = buffer?.length ?? 0;
       final queuedInPlayer = _queuedToPlayerSamples > _playedSamples
@@ -1899,9 +2295,6 @@ class _PlaybackSession {
       final bufferedMs = samplesPerSecond == 0
           ? 0
           : (bufferedSamples * 1000 ~/ samplesPerSecond);
-      final bufferOnlyMs = samplesPerSecond == 0
-          ? 0
-          : (bufferSamples * 1000 ~/ samplesPerSecond);
 
       final quic = _quic;
       if (quic != null) {
@@ -1929,13 +2322,10 @@ class _PlaybackSession {
 
       _updateAdaptiveBufferProfile(bufferedMs: bufferedMs, rttMs: rttMs);
 
-      if (quic != null && _serverBackpressureEnabled) {
-        final targetMs = _serverBufferTargetMs();
+      if (quic != null) {
         try {
-          quic.sendBufferStats(bufferMs: bufferOnlyMs, targetMs: targetMs);
-        } catch (_) {
-          // Ignore closed/failed QUIC stats updates.
-        }
+          _reportBuffer();
+        } catch (_) {}
       }
 
       final playedMs = samplesPerSecond == 0
@@ -1943,38 +2333,21 @@ class _PlaybackSession {
           : (_playedSamples * 1000 ~/ samplesPerSecond);
       final position = Duration(milliseconds: _baseOffsetMs + playedMs);
       _maybeRebuffer(bufferedSamples);
-      _maybeReportPlayback(quic, position);
       _sendPlaybackMessage({
         'type': 'stats',
         'position_ms': position.inMilliseconds,
-        'buffered_ms': bufferedMs,
+        'buffered_ms': _isLocalFile
+            ? bufferedMs
+            : math.max(
+                bufferedMs,
+                _encodedCache.bufferedAheadMs(position.inMilliseconds),
+              ),
         'bitrate_kbps': _isLocalFile ? null : _currentBitrateKbps(),
         'rtt_ms': _isLocalFile ? null : rttMs,
         'local': _isLocalFile,
       });
     } finally {
       _statsCollectionInFlight = false;
-    }
-  }
-
-  void _maybeReportPlayback(QuicClient? quic, Duration position) {
-    if (quic == null || !_reportedStart) {
-      return;
-    }
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (nowMs - _lastPlaybackReportAt < _playbackReportIntervalMs) {
-      return;
-    }
-    _lastPlaybackReportAt = nowMs;
-    final playing = !_paused && !_autoPaused && !_streamEnded;
-    try {
-      quic.sendPlayback(
-        trackId: trackId,
-        positionMs: position.inMilliseconds,
-        playing: playing,
-      );
-    } catch (_) {
-      // Ignore playback stat errors from closed/failed QUIC sessions.
     }
   }
 
@@ -2006,8 +2379,17 @@ class _PlaybackSession {
       }
       return;
     }
-    if (_userPaused) {
+    if (_userPaused || !_startedPlayback) {
       return;
+    }
+    // Let a short startup buffer grow without immediately auto-pausing.
+    // Once enough audio has accumulated, use the steady-state thresholds.
+    if (!_startupBufferFilled) {
+      if (bufferedSamples >= _rebufferMinSamples) {
+        _startupBufferFilled = true;
+      } else if (bufferedSamples > _sampleRate * _channels ~/ 20) {
+        return;
+      }
     }
     if (!_autoPaused && bufferedSamples <= _rebufferMinSamples) {
       _stableBufferTicks = 0;
@@ -2051,6 +2433,7 @@ class _PlaybackSession {
       'Buffer low: buffered=${bufferedMs}ms target=${_serverBufferTargetMs()}ms; refilling.',
     );
     player.pause();
+    _listening.flush();
     _paused = true;
     _autoPaused = true;
     _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': true});
@@ -2078,68 +2461,116 @@ class _PlaybackSession {
   }
 }
 
-class _PcmRingBuffer {
-  _PcmRingBuffer(int capacitySamples)
-    : _buffer = Int16List(capacitySamples),
-      _capacity = capacitySamples;
-
-  final Int16List _buffer;
-  final int _capacity;
-  int _readIndex = 0;
-  int _writeIndex = 0;
-  int _length = 0;
-
-  int get length => _length;
-
-  int get capacity => _capacity;
-
-  int get free => _capacity - _length;
-
-  int write(Int16List data, int offset) {
-    if (offset >= data.length || _length >= _capacity) {
-      return 0;
-    }
-    final available = _capacity - _length;
-    final remaining = data.length - offset;
-    final toWrite = remaining < available ? remaining : available;
-
-    final firstPart = toWrite < (_capacity - _writeIndex)
-        ? toWrite
-        : (_capacity - _writeIndex);
-    _buffer.setRange(_writeIndex, _writeIndex + firstPart, data, offset);
-    final leftover = toWrite - firstPart;
-    if (leftover > 0) {
-      _buffer.setRange(0, leftover, data, offset + firstPart);
-    }
-    _writeIndex = (_writeIndex + toWrite) % _capacity;
-    _length += toWrite;
-    return toWrite;
+/// Runs the production receiver/cache/decoder/pump with in-memory test adapters.
+/// Construction never starts an isolate, device, socket, or server.
+@visibleForTesting
+class AudioPlaybackHarness {
+  AudioPlaybackHarness.local({
+    required String filePath,
+    required AudioPcmOutput Function(int sampleRate, int channels, int deviceId)
+    outputFactory,
+    bool initialPaused = false,
+    Duration startOffset = Duration.zero,
+    Map<String, dynamic>? listeningContext,
+  }) {
+    _session = _PlaybackSession.local(
+      send: (event) {
+        messages.add(event);
+        _events.add(event);
+      },
+      playbackId: 1,
+      getPlaybackId: () => 1,
+      trackId: 'track',
+      trackTitle: 'Test',
+      filePath: filePath,
+      startOffset: startOffset,
+      initialPaused: initialPaused,
+      volume: 1,
+      outputDeviceId: -1,
+      outputFactory: outputFactory,
+      listeningContext: listeningContext,
+    );
   }
 
-  Int16List? read(int count) {
-    if (_length == 0 || count <= 0) {
-      return null;
-    }
-    final toRead = count < _length ? count : _length;
-    final out = Int16List(toRead);
-    final firstPart = toRead < (_capacity - _readIndex)
-        ? toRead
-        : (_capacity - _readIndex);
-    out.setRange(0, firstPart, _buffer, _readIndex);
-    final leftover = toRead - firstPart;
-    if (leftover > 0) {
-      out.setRange(firstPart, toRead, _buffer, 0);
-    }
-    _readIndex = (_readIndex + toRead) % _capacity;
-    _length -= toRead;
-    return out;
+  AudioPlaybackHarness({
+    required QuicClient transport,
+    required OpusDecoder Function(int sampleRate, int channels) decoderFactory,
+    required AudioPcmOutput Function(int sampleRate, int channels, int deviceId)
+    outputFactory,
+    bool initialPaused = false,
+    Duration startOffset = Duration.zero,
+    Map<String, dynamic>? listeningContext,
+  }) {
+    _session = _PlaybackSession.remote(
+      reusableConnection: transport,
+      releaseConnection: (_) {},
+      send: (event) {
+        messages.add(event);
+        _events.add(event);
+      },
+      playbackId: 1,
+      getPlaybackId: () => 1,
+      trackId: 'track',
+      trackTitle: 'Test',
+      baseUrl: 'http://test.local:3000',
+      token: '',
+      quicPort: null,
+      settings: const StreamSettings(mode: 'fixed', quality: 'high'),
+      startOffset: startOffset,
+      queueTrackIds: const [],
+      quickStart: true,
+      initialPaused: initialPaused,
+      volume: 1,
+      outputDeviceId: -1,
+      decoderFactory: decoderFactory,
+      outputFactory: outputFactory,
+      listeningContext: listeningContext,
+    );
+  }
+
+  late final _PlaybackSession _session;
+  final messages = <Map<String, dynamic>>[];
+  final _events = StreamController<Map<String, dynamic>>.broadcast();
+  Future<void>? _run;
+  int _requestId = 0;
+  Stream<Map<String, dynamic>> get events => _events.stream;
+  int get cachedBytes => _session._encodedCache.bytes;
+  int cachedAheadMilliseconds(int positionMs) =>
+      _session._encodedCache.bufferedAheadMs(positionMs);
+  bool get paused => _session._paused;
+  bool get autoPaused => _session._autoPaused;
+  void start() {
+    _run = _session.run();
+  }
+
+  Future<void> pause() => _session.pause();
+  Future<void> configureListening(
+    Map<String, dynamic>? context, {
+    bool discardPending = true,
+  }) => _session.configureListening(context, discardPending: discardPending);
+  void resume() => _session.resume();
+
+  Future<bool> seek(Duration position) async {
+    final requestId = ++_requestId;
+    final result = events.firstWhere(
+      (event) =>
+          event['request_id'] == requestId &&
+          (event['type'] == 'seek_ready' || event['type'] == 'seek_failed'),
+    );
+    await _session.seekTo(position, requestId: requestId);
+    return (await result.timeout(const Duration(seconds: 6)))['type'] ==
+        'seek_ready';
+  }
+
+  Future<void> close() async {
+    _session.requestStop();
+    await _run;
+    await _events.close();
   }
 }
 
 const List<int> _rawHeaderMagic = [79, 80, 85, 83, 82, 48, 49, 0];
-const List<int> _rawSeekMarkerBytes = [255, 255];
 const int _rawHeaderMinLen = 40;
-const int _rawSeekMarker = 0xFFFF;
 
 bool _hasRawHeaderMagic(Uint8List prefix) {
   if (prefix.length < _rawHeaderMagic.length) {
@@ -2151,13 +2582,6 @@ bool _hasRawHeaderMagic(Uint8List prefix) {
     }
   }
   return true;
-}
-
-int _readU32Le(Uint8List data, int offset) {
-  return data[offset] |
-      (data[offset + 1] << 8) |
-      (data[offset + 2] << 16) |
-      (data[offset + 3] << 24);
 }
 
 String? _extractHeaderTrackId(Uint8List headerBytes) {
@@ -2214,46 +2638,6 @@ String? _extractHeaderTrackId(Uint8List headerBytes) {
   return utf8.decode(headerBytes.sublist(idx, end), allowMalformed: true);
 }
 
-void _resyncRawHeader(_ByteQueue reader) {
-  final idx = reader.indexOf(_rawHeaderMagic);
-  if (idx == 0) {
-    return;
-  }
-  if (idx > 0) {
-    reader.discard(idx);
-    return;
-  }
-  final keep = _rawHeaderMagic.length - 1;
-  final discard = reader.available - keep;
-  if (discard > 0) {
-    reader.discard(discard);
-  }
-}
-
-void _resyncSeekBoundary(_ByteQueue reader) {
-  final headerIdx = reader.indexOf(_rawHeaderMagic);
-  final markerIdx = reader.indexOf(_rawSeekMarkerBytes);
-  var idx = -1;
-  if (headerIdx >= 0) {
-    idx = headerIdx;
-  }
-  if (markerIdx >= 0 && (idx < 0 || markerIdx < idx)) {
-    idx = markerIdx;
-  }
-  if (idx == 0) {
-    return;
-  }
-  if (idx > 0) {
-    reader.discard(idx);
-    return;
-  }
-  final keep = math.max(_rawHeaderMagic.length, _rawSeekMarkerBytes.length) - 1;
-  final discard = reader.available - keep;
-  if (discard > 0) {
-    reader.discard(discard);
-  }
-}
-
 class _AudioWorkerInit {
   _AudioWorkerInit(this.sendPort, this.rootIsolateToken);
 
@@ -2285,6 +2669,13 @@ void _audioWorkerMain(_AudioWorkerInit init) {
     }
     final cmd = message['cmd'];
     switch (cmd) {
+      case 'listening_context':
+        final context = message['context'];
+        engine.configureListening(
+          context is Map ? Map<String, dynamic>.from(context) : null,
+          discardPending: message['discard_pending'] != false,
+        );
+        break;
       case 'play':
         final rawQueue = message['queue'];
         final queue = rawQueue is List
@@ -2294,12 +2685,14 @@ void _audioWorkerMain(_AudioWorkerInit init) {
         if (playbackId <= 0) {
           break;
         }
+        final context = message['listening_context'];
         await engine.playTrack(
           playbackId: playbackId,
           trackId: message['track_id']?.toString() ?? '',
           trackTitle: message['track_title']?.toString() ?? '',
           baseUrl: message['base_url']?.toString() ?? '',
           token: message['token']?.toString() ?? '',
+          serverPin: message['server_pin']?.toString() ?? '',
           quicPort: (message['quic_port'] as num?)?.toInt(),
           settings: StreamSettings(
             mode: message['mode']?.toString() ?? 'auto',
@@ -2311,6 +2704,10 @@ void _audioWorkerMain(_AudioWorkerInit init) {
           ),
           queueTrackIds: queue,
           quickStart: message['quick_start'] != false,
+          initialPaused: message['initial_paused'] == true,
+          listeningContext: context is Map
+              ? Map<String, dynamic>.from(context)
+              : null,
         );
         break;
       case 'play_local':
@@ -2318,6 +2715,7 @@ void _audioWorkerMain(_AudioWorkerInit init) {
         if (playbackId <= 0) {
           break;
         }
+        final context = message['listening_context'];
         await engine.playLocalFile(
           playbackId: playbackId,
           trackId: message['track_id']?.toString() ?? '',
@@ -2326,13 +2724,23 @@ void _audioWorkerMain(_AudioWorkerInit init) {
           startOffset: Duration(
             milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0,
           ),
+          initialPaused: message['initial_paused'] == true,
+          listeningContext: context is Map
+              ? Map<String, dynamic>.from(context)
+              : null,
         );
         break;
       case 'stop':
-        engine.stop();
+        await engine.stop();
+        init.sendPort.send({
+          'type': 'listening_flushed',
+          'flush_request_id': message['flush_request_id'],
+        });
         break;
       case 'pause':
-        engine.pause(playbackId: (message['playback_id'] as num?)?.toInt());
+        await engine.pause(
+          playbackId: (message['playback_id'] as num?)?.toInt(),
+        );
         break;
       case 'resume':
         engine.resume(playbackId: (message['playback_id'] as num?)?.toInt());
@@ -2351,10 +2759,11 @@ void _audioWorkerMain(_AudioWorkerInit init) {
         await engine.seekTo(
           Duration(milliseconds: ms),
           playbackId: (message['playback_id'] as num?)?.toInt(),
+          requestId: (message['request_id'] as num?)?.toInt() ?? 0,
         );
         break;
       case 'dispose':
-        engine.dispose();
+        await engine.dispose();
         receivePort.close();
         Isolate.exit();
       default:
@@ -2363,84 +2772,12 @@ void _audioWorkerMain(_AudioWorkerInit init) {
   });
 }
 
-class _ByteQueue {
-  Uint8List _buffer = Uint8List(0);
-  int _offset = 0;
+typedef _NativeAudioPlayer = AudioPcmOutput;
 
-  int get available => _buffer.length - _offset;
-
-  Uint8List? peek(int length) {
-    if (available < length) {
-      return null;
-    }
-    return _buffer.sublist(_offset, _offset + length);
-  }
-
-  void discard(int length) {
-    if (length <= 0) {
-      return;
-    }
-    if (length >= available) {
-      _buffer = Uint8List(0);
-      _offset = 0;
-      return;
-    }
-    _offset += length;
-    if (_offset == _buffer.length) {
-      _buffer = Uint8List(0);
-      _offset = 0;
-    }
-  }
-
-  int indexOf(List<int> pattern) {
-    if (pattern.isEmpty) {
-      return 0;
-    }
-    final maxStart = _buffer.length - pattern.length;
-    for (var i = _offset; i <= maxStart; i++) {
-      var matched = true;
-      for (var j = 0; j < pattern.length; j++) {
-        if (_buffer[i + j] != pattern[j]) {
-          matched = false;
-          break;
-        }
-      }
-      if (matched) {
-        return i - _offset;
-      }
-    }
-    return -1;
-  }
-
-  void add(Uint8List data) {
-    if (_offset == _buffer.length) {
-      _buffer = data;
-      _offset = 0;
-      return;
-    }
-    final builder = BytesBuilder();
-    builder.add(_buffer.sublist(_offset));
-    builder.add(data);
-    _buffer = builder.takeBytes();
-    _offset = 0;
-  }
-
-  Uint8List? read(int length) {
-    if (available < length) {
-      return null;
-    }
-    final out = Uint8List.fromList(_buffer.sublist(_offset, _offset + length));
-    _offset += length;
-    if (_offset == _buffer.length) {
-      _buffer = Uint8List(0);
-      _offset = 0;
-    }
-    return out;
-  }
-}
-
-abstract class _NativeAudioPlayer {
+/// Small, cancellable device queue. flush invalidates every pending write.
+abstract class AudioPcmOutput {
   Future<void> write(Int16List samples);
+  Future<void> flush();
   void dispose();
   void setVolume(double value);
   void pause();
@@ -2499,6 +2836,7 @@ class _AndroidChannelPlayer implements _NativeAudioPlayer {
   double _pendingVolume = 1.0;
   bool _pendingPaused = false;
   bool _disposed = false;
+  int _writeEpoch = 0;
 
   Future<void> _open() async {
     final handle = await _androidAudioOutputChannel.invokeMethod<int>('open', {
@@ -2537,6 +2875,7 @@ class _AndroidChannelPlayer implements _NativeAudioPlayer {
     if (samples.isEmpty) {
       return;
     }
+    final epoch = _writeEpoch;
     final handle = await _handle();
     if (handle == null) {
       return;
@@ -2547,10 +2886,12 @@ class _AndroidChannelPlayer implements _NativeAudioPlayer {
       samples.lengthInBytes,
     );
     while (true) {
+      if (_disposed || epoch != _writeEpoch || handle != _handleId) return;
       final result = await _androidAudioOutputChannel.invokeMethod<int>(
         'write',
         {'id': handle, 'pcm': bytes},
       );
+      if (_disposed || epoch != _writeEpoch || handle != _handleId) return;
       if (result == null || result == 0) {
         return;
       }
@@ -2562,8 +2903,10 @@ class _AndroidChannelPlayer implements _NativeAudioPlayer {
     }
   }
 
+  @override
   Future<void> flush() async {
-    final handle = _handleId;
+    _writeEpoch++;
+    final handle = await _handle();
     if (handle == null) {
       return;
     }
@@ -2574,6 +2917,7 @@ class _AndroidChannelPlayer implements _NativeAudioPlayer {
 
   @override
   void dispose() {
+    _writeEpoch++;
     _disposed = true;
     final handle = _handleId;
     _handleId = null;
@@ -2673,8 +3017,9 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
   final int _deviceId;
   ffi.Pointer<ffi.Pointer<ffi.Void>>? _handle;
   final List<_WaveBuffer> _inFlight = [];
-  static const int _maxInFlight = 24;
+  static const int _maxInFlight = 5;
   int _completedSamples = 0;
+  int _writeEpoch = 0;
 
   void _open() {
     final handle = calloc<ffi.Pointer<ffi.Void>>();
@@ -2710,6 +3055,7 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
   @override
   Future<void> write(Int16List samples) async {
     final handle = _handle;
+    final epoch = _writeEpoch;
     if (handle == null) {
       return;
     }
@@ -2755,12 +3101,12 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
       _WaveBuffer(header: header, data: dataPtr, sampleCount: samples.length),
     );
     _collectDone(handle.value);
-    while (_inFlight.length > _maxInFlight) {
-      if (!identical(_handle, handle)) {
+    while (_inFlight.length >= _maxInFlight) {
+      if (!identical(_handle, handle) || epoch != _writeEpoch) {
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 2));
-      if (!identical(_handle, handle)) {
+      if (!identical(_handle, handle) || epoch != _writeEpoch) {
         return;
       }
       _collectDone(handle.value);
@@ -2768,7 +3114,21 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
   }
 
   @override
+  Future<void> flush() async {
+    _writeEpoch++;
+    final handle = _handle;
+    if (handle == null) return;
+    final result = _WaveOutBindings().waveOutReset(handle.value);
+    if (result != MMSYSERR_NOERROR) {
+      throw Exception('waveOutReset failed: $result');
+    }
+    _collectAll(handle.value);
+    _completedSamples = 0;
+  }
+
+  @override
   void dispose() {
+    _writeEpoch++;
     final handle = _handle;
     _handle = null;
     if (handle == null) {
@@ -2799,7 +3159,10 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
     if (handle == null) {
       return;
     }
-    _WaveOutBindings().waveOutPause(handle.value);
+    final result = _WaveOutBindings().waveOutPause(handle.value);
+    if (result != MMSYSERR_NOERROR) {
+      throw Exception('waveOutPause failed: $result');
+    }
   }
 
   @override
@@ -2808,7 +3171,10 @@ class _WaveOutPlayer implements _NativeAudioPlayer {
     if (handle == null) {
       return;
     }
-    _WaveOutBindings().waveOutRestart(handle.value);
+    final result = _WaveOutBindings().waveOutRestart(handle.value);
+    if (result != MMSYSERR_NOERROR) {
+      throw Exception('waveOutRestart failed: $result');
+    }
   }
 
   void _collectDone(ffi.Pointer<ffi.Void> handle) {
@@ -2878,6 +3244,7 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
   final int _deviceId;
   final _CoreAudioBindings _bindings = _CoreAudioBindings();
   ffi.Pointer<ffi.Void> _handle = ffi.nullptr;
+  int _writeEpoch = 0;
 
   void _open() {
     final handle = _bindings.open(_sampleRate, _channels, _deviceId);
@@ -2892,10 +3259,12 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
     if (samples.isEmpty) {
       return;
     }
+    final epoch = _writeEpoch;
     final dataPtr = calloc<ffi.Int16>(samples.length);
     try {
       dataPtr.asTypedList(samples.length).setAll(0, samples);
       while (true) {
+        if (epoch != _writeEpoch) return;
         final handle = _handle;
         if (handle == ffi.nullptr) {
           return;
@@ -2916,7 +3285,17 @@ class _CoreAudioPlayer implements _NativeAudioPlayer {
   }
 
   @override
+  Future<void> flush() async {
+    _writeEpoch++;
+    final handle = _handle;
+    if (handle == ffi.nullptr) return;
+    final result = _bindings.flush(handle);
+    if (result != 0) throw Exception('CoreAudio reset failed: $result');
+  }
+
+  @override
   void dispose() {
+    _writeEpoch++;
     final handle = _handle;
     _handle = ffi.nullptr;
     if (handle == ffi.nullptr) {
@@ -3226,6 +3605,11 @@ class _CoreAudioBindings {
           'phonolite_audio_resume',
         )
         .asFunction();
+    flush = lib
+        .lookup<ffi.NativeFunction<_CoreAudioIsIdleNative>>(
+          'phonolite_audio_flush',
+        )
+        .asFunction();
     collectDoneSamples = lib
         .lookup<ffi.NativeFunction<_CoreAudioCollectDoneNative>>(
           'phonolite_audio_collect_done_samples',
@@ -3260,6 +3644,7 @@ class _CoreAudioBindings {
   late final _CoreAudioSetVolumeDart setVolume;
   late final _CoreAudioPauseDart pause;
   late final _CoreAudioResumeDart resume;
+  late final _CoreAudioIsIdleDart flush;
   late final _CoreAudioCollectDoneDart collectDoneSamples;
   late final _CoreAudioIsIdleDart isIdle;
   late final _CoreAudioDeviceCountDart getOutputDeviceCount;

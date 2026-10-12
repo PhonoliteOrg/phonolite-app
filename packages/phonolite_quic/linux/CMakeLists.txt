@@ -13,6 +13,7 @@ endif()
 
 set(CARGO_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo")
 set(OUTPUT_SO "${CMAKE_CURRENT_BINARY_DIR}/libphonolite_quic.so")
+file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS "${RUST_ROOT}/src/*.rs")
 
 add_custom_command(
   OUTPUT "${OUTPUT_SO}"
@@ -22,6 +23,7 @@ add_custom_command(
     "${CARGO_TARGET_DIR}/${CARGO_PROFILE}/libphonolite_quic.so"
     "${OUTPUT_SO}"
   COMMENT "Building phonolite_quic (Rust)"
+  DEPENDS ${RUST_SOURCES} "${RUST_ROOT}/Cargo.toml" "${RUST_ROOT}/Cargo.lock"
 )
 
 add_custom_target(phonolite_quic_build ALL DEPENDS "${OUTPUT_SO}")

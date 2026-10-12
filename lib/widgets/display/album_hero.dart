@@ -18,11 +18,13 @@ class AlbumHero extends StatelessWidget {
     required this.album,
     required this.coverUrl,
     required this.headers,
+    this.actions,
   });
 
   final Album album;
   final String coverUrl;
   final Map<String, String> headers;
+  final Widget? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -65,83 +67,94 @@ class AlbumHero extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: Container(width: s(2), color: accentGold),
-            ),
             Padding(
               padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: s(170),
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: AlbumArt(
-                        title: album.title,
-                        size: s(150),
-                        imageUrl: coverUrl,
-                        headers: headers,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: s(170),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: AlbumArt(
+                            title: album.title,
+                            size: s(150),
+                            imageUrl: coverUrl,
+                            headers: headers,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  SizedBox(width: s(24)),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          album.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.rajdhani(
-                            color: Colors.white,
-                            fontSize: s(42),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: s(1.4),
-                            height: 1.05,
-                          ),
-                        ),
-                        SizedBox(height: s(6)),
-                        Text(
-                          album.artist,
-                          style: GoogleFonts.poppins(
-                            color: Colors.white70,
-                            fontSize: s(14),
-                          ),
-                        ),
-                        SizedBox(height: s(6)),
-                        Text(
-                          detailsLine,
-                          style: GoogleFonts.rajdhani(
-                            color: Colors.white54,
-                            fontSize: s(12),
-                            letterSpacing: s(1.4),
-                          ),
-                        ),
-                        if (summary != null && summary.isNotEmpty) ...[
-                          SizedBox(height: s(10)),
-                          ExpandableSummaryText(
-                            text: summary,
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: s(12),
-                              height: 1.35,
+                      SizedBox(width: s(24)),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    album.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.rajdhani(
+                                      color: Colors.white,
+                                      fontSize: s(42),
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: s(1.4),
+                                      height: 1.05,
+                                    ),
+                                  ),
+                                ),
+                                if (actions != null) ...[
+                                  SizedBox(width: s(12)),
+                                  actions!,
+                                ],
+                              ],
                             ),
-                            toggleColor: accentGold,
-                            collapsedMaxHeight: s(60),
-                            togglePadding: EdgeInsets.symmetric(
-                              horizontal: 0,
-                              vertical: s(4),
+                            SizedBox(height: s(6)),
+                            Text(
+                              album.artist,
+                              style: GoogleFonts.poppins(
+                                color: Colors.white70,
+                                fontSize: s(14),
+                              ),
                             ),
-                          ),
-                        ],
-                      ],
-                    ),
+                            SizedBox(height: s(6)),
+                            Text(
+                              detailsLine,
+                              style: GoogleFonts.rajdhani(
+                                color: Colors.white54,
+                                fontSize: s(12),
+                                letterSpacing: s(1.4),
+                              ),
+                            ),
+                            if (summary != null && summary.isNotEmpty) ...[
+                              SizedBox(height: s(10)),
+                              ExpandableSummaryText(
+                                text: summary,
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white70,
+                                  fontSize: s(12),
+                                  height: 1.35,
+                                ),
+                                toggleColor: accentGold,
+                                collapsedMaxHeight: s(60),
+                                togglePadding: EdgeInsets.symmetric(
+                                  horizontal: 0,
+                                  vertical: s(4),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

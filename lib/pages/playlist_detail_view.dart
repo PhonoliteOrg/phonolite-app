@@ -1,16 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../widgets/ui/edit_icon.dart';
+import '../widgets/ui/playlist_edit_icon.dart';
+import '../widgets/ui/phonolite_icons.dart';
+import '../widgets/ui/responsive_breakpoints.dart';
+import '../widgets/ui/tech_button.dart';
 import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../widgets/display/album_hero.dart';
+import '../widgets/display/banner_playback_button.dart';
 import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
-import '../widgets/modals/confirmation_modal.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/playlist_editor_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
@@ -133,29 +140,29 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                                     crossAxisAlignment:
                                         WrapCrossAlignment.center,
                                     children: [
-                                      Tooltip(
-                                        message: 'Play playlist',
-                                        child: ObsidianHudIconButton(
-                                          icon: Icons.play_arrow_rounded,
-                                          onPressed:
+                                      if (!widget.isLocal)
+                                        TechButton(
+                                          label: 'Download playlist',
+                                          icon: PhonoliteIcons.download,
+                                          chrome: TechButtonChrome.borderless,
+                                          iconOnly: isCompactListWidth(context),
+                                          tooltip: 'Download playlist',
+                                          onTap:
                                               _tracksLoading ||
                                                   displayedTracks.isEmpty
                                               ? null
-                                              : () => widget.isLocal
-                                                    ? controller
-                                                          .playLocalPlaylistFromTop(
-                                                            widget.playlistId,
-                                                          )
-                                                    : controller
-                                                          .playPlaylistFromTop(
-                                                            widget.playlistId,
-                                                          ),
+                                              : () => _openDownload(
+                                                  controller,
+                                                  playlist,
+                                                  List.unmodifiable(
+                                                    displayedTracks,
+                                                  ),
+                                                ),
                                         ),
-                                      ),
                                       Tooltip(
                                         message: 'Edit details',
                                         child: ObsidianHudIconButton(
-                                          icon: Icons.edit_note_rounded,
+                                          iconWidget: const EditIcon(),
                                           onPressed: () =>
                                               _openRename(controller, playlist),
                                         ),
@@ -163,7 +170,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                                       Tooltip(
                                         message: 'Edit tracks',
                                         child: ObsidianHudIconButton(
-                                          icon: Icons.playlist_remove_rounded,
+                                          iconWidget: const PlaylistEditIcon(),
                                           onPressed: removableTracks.isEmpty
                                               ? null
                                               : _startSelection,
@@ -181,6 +188,10 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                             album: playlistAlbum,
                             coverUrl: playlistCoverUrl,
                             headers: playlistHeaders,
+                            actions: _playlistPlaybackButton(
+                              controller,
+                              displayedTracks,
+                            ),
                           ),
                         ),
                       ),
@@ -230,8 +241,6 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                                 onTrackLike: widget.isLocal
                                     ? controller.toggleLocalLike
                                     : controller.toggleLike,
-                                onTrackDelete: (track) =>
-                                    _removeTrack(controller, playlist, track),
                                 selectionMode: _selectionMode,
                                 canSelectTrack: (track) =>
                                     _canRemoveTrack(controller, track),
@@ -247,6 +256,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                             },
                           ),
                         ),
+                      const SliverPlaybackInset(),
                     ],
                   ),
                 );
@@ -255,6 +265,18 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
           },
         );
       },
+    );
+  }
+
+  Widget _playlistPlaybackButton(AppController controller, List<Track> tracks) {
+    return BannerPlaybackButton(
+      message: 'Play playlist',
+      visible: !_selectionMode,
+      onPressed: _tracksLoading || tracks.isEmpty
+          ? null
+          : () => widget.isLocal
+                ? controller.playLocalPlaylistFromTop(widget.playlistId)
+                : controller.playPlaylistFromTop(widget.playlistId),
     );
   }
 
@@ -327,6 +349,31 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     );
   }
 
+  void _openDownload(
+    AppController controller,
+    Playlist playlist,
+    List<Track> tracks,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => PlaylistEditorModal(
+        title: 'Download playlist',
+        initialValue: playlist.name,
+        initialDescription: playlist.description ?? '',
+        initialImageUrl: _serverPlaylistCoverUrl(controller, playlist),
+        imageHeaders: authHeaders(controller),
+        onSubmit: (value, description, imageEdit, _) =>
+            controller.downloadPlaylist(
+              playlist,
+              tracks,
+              name: value,
+              description: description,
+              imageEdit: imageEdit,
+            ),
+      ),
+    );
+  }
+
   String? _serverPlaylistCoverUrl(AppController controller, Playlist playlist) {
     final imageRef = playlist.imageRef?.trim();
     if (imageRef == null || imageRef.isEmpty) {
@@ -347,26 +394,6 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
       trackCount: playlist.trackIds.length,
       summary: playlist.description,
     );
-  }
-
-  Future<void> _removeTrack(
-    AppController controller,
-    Playlist playlist,
-    Track track,
-  ) async {
-    final confirmed = await ConfirmationModal.show(
-      context,
-      title: 'Remove song from playlist',
-      message: 'Are you sure you want to remove this song from this playlist?',
-    );
-    if (!confirmed) {
-      return;
-    }
-    if (widget.isLocal) {
-      await controller.removeTrackFromLocalPlaylist(playlist, track);
-    } else {
-      await controller.removeTrackFromPlaylist(playlist, track);
-    }
   }
 
   Future<void> _removeDownloads(

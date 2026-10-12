@@ -1,0 +1,30 @@
+Tabler Icons
+Source: https://github.com/tabler/tabler-icons
+License: MIT; see LICENSE.
+
+These SVGs contain the app's Tabler icons and Phonolite variants.
+Flutter loads the files through lib/widgets/ui/svg_asset_icon.dart. Edit the SVG
+to change the icon; no Dart path generation or asset generation step is needed.
+
+playlist.svg                Playlists navigation
+playlist-add.svg            Add to playlist
+playlist-edit.svg           Track editing in playlists and Liked songs
+brand-google-analytics.svg  Stats navigation and settings
+stats-reset-device.svg      Device-only listening history reset
+stats-reset-account.svg     Account-wide listening history reset
+cloud.svg                   Server settings and source selection
+reload.svg                  Library and server refresh
+edit.svg                    Playlist metadata and management; collection/settings editing
+
+playlist-edit.svg is a Phonolite variant matching the playlist-add linework,
+with a pencil in place of the add symbol.
+playlist.svg uses the same list with a compact filled eighth note, sized to
+match the plus and pencil symbols.
+The playlist, playlist-add, and playlist-edit artwork fills the same area as
+the other icons. All three use identical bars at y=3, 9, and 15 with a 2-unit
+stroke and round caps. The note, plus, and pencil are approximately 10 units
+tall and occupy the same lower-right area.
+
+The Stats variants keep the tallest bar in the middle. The reset variants use
+a small monitor or account symbol over the chart's lower-right corner, with
+a transparent gap around the symbol to keep the linework separate.

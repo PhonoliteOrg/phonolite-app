@@ -4,6 +4,67 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('apple platform source contracts', () {
+    test('ios primes output before starting and reports native failures', () {
+      final source = readProjectFile('ios/Runner/phonolite_audio.m');
+      final open = source.substring(
+        source.indexOf(
+          'PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open',
+        ),
+        source.indexOf('PHONOLITE_EXPORT void phonolite_audio_close'),
+      );
+      expect(open, isNot(contains('AudioQueueStart(')));
+      expect(source, isNot(contains('setPreferredSampleRate:')));
+      expect(
+        source,
+        isNot(contains('AVAudioSessionCategoryOptionAllowAirPlay')),
+      );
+      expectContainsAll(source, const [
+        'if (!phonolite_audio_prepare_session())',
+        'player->paused || player->started || atomic_load(&player->in_flight) == 0',
+        'return (int32_t)phonolite_audio_start_if_ready(player);',
+        'player->output_error = status;',
+        'phonolite_audio_flush',
+        'AudioQueueReset',
+      ]);
+      final engine = readProjectFile('lib/entities/audio_engine.dart');
+      expectContainsAll(engine, const [
+        'Audio output failed:',
+        "requestStop(outcome: 'error');",
+      ]);
+    });
+
+    test(
+      'ios artwork fallback is authenticated and invalidates stale requests',
+      () {
+        final controller = readProjectFile('lib/entities/app_controller.dart');
+        final source = readProjectFile(
+          'ios/Runner/NowPlayingCoordinator.swift',
+        );
+        final channels = readProjectFile(
+          'ios/Runner/AppDelegate+Channels.swift',
+        );
+        expectContainsAll(controller, const [
+          "if (artworkUrl != null) 'artworkUrl': artworkUrl",
+          "if (artworkUrl != null) 'token': token",
+          "if (localArtworkPath != null) 'artworkPath': localArtworkPath",
+        ]);
+        expectContainsAll(source, const [
+          'artworkTask?.cancel()',
+          'self.artworkGeneration == generation',
+          '(200..<300).contains(response.statusCode)',
+          'self.artworkLoading = false',
+          'URL(fileURLWithPath: localPath)',
+          'typedData.data != currentArtworkData',
+          'info[MPMediaItemPropertyArtwork] = artwork',
+        ]);
+        expectContainsAll(channels, const [
+          'guard Thread.isMainThread else',
+          'DispatchQueue.main.async',
+          'nowPlayingCoordinator.isPlaying ? "pause" : "play"',
+        ]);
+      },
+    );
+
     test('ios preserves audio session now playing and local network setup', () {
       final appDelegate = readProjectFile('ios/Runner/AppDelegate.swift');
       final audioSession = readProjectFile(
@@ -40,8 +101,7 @@ void main() {
         'applicationDidEnterBackground',
       ]);
       expectContainsAll(audioSession, const [
-        '.allowAirPlay',
-        '.allowBluetoothA2DP',
+        'session.setCategory(.playback, mode: .default, options: [])',
         'handleAudioSessionInterruption',
         'handleAudioSessionRouteChange',
         'nowPlayingCoordinator.isPlaying',
@@ -58,7 +118,7 @@ void main() {
         'nowPlayingCoordinator.clear(',
         'nowPlayingCoordinator.refreshForCarPlay(',
         'MPRemoteCommandCenter.shared()',
-        'nowPlayingCoordinator.isPlaying',
+        'sendRemoteCommandToFlutter("toggle")',
         '"play"',
         '"pause"',
         '"next"',
@@ -73,6 +133,13 @@ void main() {
         'fetchArtwork(',
         'artworkKey: normalizedArtworkKey',
         'self.currentArtworkKey == artworkKey',
+        'args["serverPin"]',
+        'final class PinnedArtworkSession',
+        'tlsMinimumSupportedProtocolVersion = .TLSv13',
+        'phonolite_security_spki(',
+        'actual == pin',
+        'completionHandler(.cancelAuthenticationChallenge, nil)',
+        'completionHandler(nil)',
       ]);
       expectContainsAll(permissions, const [
         '"getLocalNetworkPermission"',
@@ -148,13 +215,19 @@ void main() {
         r'text: "\(sourceName) Playlists"',
         r'text: "\(sourceName) Liked Songs"',
         r'text: "\(sourceName) Shuffle"',
-        'carPlaySymbol(named:',
+        'carPlayIcon(named:',
+        'UIImage(named: imageName)',
+        '"LucideAntenna"',
+        '"LucideHeartFilled"',
         'withRenderingMode(.alwaysTemplate)',
         '"startShuffle"',
         'updateNowPlayingButtons(liked: Bool, available: Bool)',
         'func updateNowPlayingVisibility(hasTrack _: Bool) {}',
         'sendRemoteCommandToFlutter("toggleLike")',
+        'PinnedArtworkSession.make(url: url, pin: serverPin)',
+        'serverPin: entry.serverPin',
       ]);
+      expect(source, isNot(contains('URLSession.shared')));
       expect(source, isNot(contains('title: "Listen"')));
       expect(source, isNot(contains('getListenActions')));
       expect(source, isNot(contains('CPBarButton(image:')));
@@ -200,11 +273,14 @@ void main() {
         'RegisterGeneratedPlugins(registry: flutterViewController)',
       ]);
       expectContainsAll(audioHeader, const [
+        'phonolite_audio_flush',
         'phonolite_audio_get_output_device_count',
         'phonolite_audio_get_output_device_id',
         'phonolite_audio_get_output_device_name',
       ]);
       expectContainsAll(audioSource, const [
+        'phonolite_audio_flush',
+        'AudioQueueReset',
         'kAudioQueueProperty_CurrentDevice',
         'phonolite_audio_get_output_device_count',
         'phonolite_audio_get_output_device_id',

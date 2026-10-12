@@ -2,14 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
+import '../persistence/settings_files.dart';
 
 import 'app_log.dart';
 
 class PlaybackPreferencesStorage {
-  const PlaybackPreferencesStorage();
+  const PlaybackPreferencesStorage({
+    SettingsFiles files = const SettingsFiles(),
+  }) : _files = files;
 
   static const String _fileName = 'playback_prefs.json';
+  // Serialize read-modify-write operations across instances targeting one file.
+  static final Map<String, Future<void>> _writes = {};
+
   static const String _volumeKey = 'volume';
   static const String _collectionListModeKey = 'collection_list_mode';
 
@@ -49,12 +54,12 @@ class PlaybackPreferencesStorage {
     await _writePreference(_collectionListModeKey, value);
   }
 
-  Future<Map<String, dynamic>?> _readPreferences() async {
+  Future<Map<String, dynamic>?> _readPreferences({File? source}) async {
     if (kIsWeb) {
       return null;
     }
     try {
-      final file = await _resolveFile();
+      final file = source ?? await _resolveFile();
       if (!await file.exists()) {
         return null;
       }
@@ -75,42 +80,33 @@ class PlaybackPreferencesStorage {
       return;
     }
     try {
-      final payload = await _readPreferences() ?? <String, dynamic>{};
-      payload[key] = value;
       final file = await _resolveFile(createDir: true);
-      await file.writeAsString(jsonEncode(payload));
+      final path = file.absolute.path;
+      final keyPath = Platform.isWindows ? path.toLowerCase() : path;
+      final previous = _writes[keyPath] ?? Future<void>.value();
+      final next = previous.then((_) async {
+        try {
+          final payload =
+              await _readPreferences(source: file) ?? <String, dynamic>{};
+          payload[key] = value;
+          await file.writeAsString(jsonEncode(payload));
+        } catch (err) {
+          AppLogger.warning('Failed to persist playback prefs: $err');
+        }
+      });
+      _writes[keyPath] = next;
+      try {
+        await next;
+      } finally {
+        if (identical(_writes[keyPath], next)) _writes.remove(keyPath);
+      }
     } catch (err) {
       AppLogger.warning('Failed to persist playback prefs: $err');
     }
   }
 
-  Future<File> _resolveFile({bool createDir = false}) async {
-    final dir = await _resolveDirectory();
-    if (createDir) {
-      await dir.create(recursive: true);
-    }
-    return File(_join(dir.path, _fileName));
-  }
+  final SettingsFiles _files;
 
-  Future<Directory> _resolveDirectory() async {
-    if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      if (appData != null && appData.trim().isNotEmpty) {
-        return Directory(_join(appData, 'Phonolite'));
-      }
-    }
-    final supportDir = await getApplicationSupportDirectory();
-    return Directory(_join(supportDir.path, 'Phonolite'));
-  }
-
-  String _join(String left, String right) {
-    if (left.isEmpty) {
-      return right;
-    }
-    final separator = Platform.pathSeparator;
-    if (left.endsWith(separator)) {
-      return '$left$right';
-    }
-    return '$left$separator$right';
-  }
+  Future<File> _resolveFile({bool createDir = false}) =>
+      _files.resolve(_fileName, createDirectory: createDir);
 }

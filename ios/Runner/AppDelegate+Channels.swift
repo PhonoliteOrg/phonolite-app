@@ -41,12 +41,21 @@ extension AppDelegate {
   }
 
   func sendRemoteCommandToFlutter(_ type: String, arguments: [String: Any] = [:]) {
+    // MediaPlayer and audio-session callbacks need not arrive on Flutter's
+    // platform thread. Serialize delivery with channel and metadata updates.
+    guard Thread.isMainThread else {
+      DispatchQueue.main.async { [weak self] in
+        self?.sendRemoteCommandToFlutter(type, arguments: arguments)
+      }
+      return
+    }
     configureNowPlayingChannel()
     guard let channel = nowPlayingChannel else {
       return
     }
     var payload = arguments
-    payload["type"] = type
+    payload["type"] = type == "toggle"
+      ? (nowPlayingCoordinator.isPlaying ? "pause" : "play") : type
     channel.invokeMethod("remoteCommand", arguments: payload)
   }
 

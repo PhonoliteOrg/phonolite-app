@@ -1,19 +1,294 @@
 import 'dart:typed_data';
 
+/// One identified contributor. Names and joining words are preserved verbatim.
+class ArtistCredit {
+  const ArtistCredit({
+    required this.artistId,
+    required this.name,
+    this.creditedName,
+    this.role = 'primary',
+    this.joinPhrase = '',
+  });
+
+  final String artistId;
+  final String name;
+  final String? creditedName;
+  final String role;
+  final String joinPhrase;
+  String get displayName => _nonEmptyString(creditedName) ?? name;
+  bool get isAlbumArtist => const {
+    'primary',
+    'album_artist',
+    'main',
+    'joint',
+  }.contains(role.toLowerCase());
+  bool get isPerformingArtist =>
+      isAlbumArtist ||
+      const {
+        'track_artist',
+        'featured_artist',
+        'featured',
+        'guest',
+      }.contains(role.toLowerCase());
+
+  factory ArtistCredit.fromJson(Map<String, dynamic> json) => ArtistCredit(
+    artistId: (json['artist_id'] ?? json['id']) as String? ?? '',
+    name: (json['name'] ?? json['artist_name']) as String? ?? '',
+    creditedName: json['credited_name'] as String?,
+    role: json['role'] as String? ?? 'primary',
+    joinPhrase: json['join_phrase'] as String? ?? '',
+  );
+  Map<String, dynamic> toJson() => {
+    'artist_id': artistId,
+    'name': name,
+    'credited_name': creditedName,
+    'role': role,
+    'join_phrase': joinPhrase,
+  };
+}
+
+List<ArtistCredit> _creditsFromJson(Object? value) => value is List
+    ? [
+        for (final item in value)
+          if (item is Map)
+            ArtistCredit.fromJson(Map<String, dynamic>.from(item)),
+      ]
+    : const [];
+
+List<ArtistCredit> _effectiveCredits(
+  List<ArtistCredit> credits,
+  List<String> ids,
+  List<String> names,
+  String? primaryId,
+  String primaryName,
+) {
+  if (credits.isNotEmpty) return credits;
+  if (ids.isNotEmpty) {
+    return [
+      for (var i = 0; i < ids.length; i++)
+        ArtistCredit(
+          artistId: ids[i],
+          name: i < names.length ? names[i] : primaryName,
+        ),
+    ];
+  }
+  if (primaryId?.isNotEmpty != true) return const [];
+  return [ArtistCredit(artistId: primaryId!, name: primaryName)];
+}
+
+class ArtistReleaseContribution {
+  const ArtistReleaseContribution({
+    required this.album,
+    this.trackIds = const [],
+    this.trackTitles = const [],
+    this.roles = const [],
+  });
+  final Album album;
+  final List<String> trackIds;
+  final List<String> trackTitles;
+  final List<String> roles;
+  bool get isAlbumArtist => roles.any(
+    (role) => const {
+      'primary',
+      'album_artist',
+      'main',
+      'joint',
+    }.contains(role.toLowerCase()),
+  );
+  bool get isPerformingArtist =>
+      isAlbumArtist ||
+      roles.any(
+        (role) => const {
+          'track_artist',
+          'featured_artist',
+          'featured',
+          'guest',
+        }.contains(role.toLowerCase()),
+      );
+  factory ArtistReleaseContribution.fromJson(Map<String, dynamic> json) =>
+      ArtistReleaseContribution(
+        album: Album.fromJson(Map<String, dynamic>.from(json['album'] as Map)),
+        trackIds: _stringsFromJson(json['track_ids']),
+        trackTitles: _stringsFromJson(json['track_titles']),
+        roles: _stringsFromJson(json['roles']),
+      );
+}
+
+class ArtistReleases {
+  const ArtistReleases({
+    List<Album> albums = const [],
+    List<ArtistReleaseContribution> collabAlbums = const [],
+    List<ArtistReleaseContribution> appearsOn = const [],
+    List<ArtistReleaseContribution> otherCredits = const [],
+  }) : _albums = albums,
+       _collabAlbums = collabAlbums,
+       _appearsOn = appearsOn,
+       _otherCredits = otherCredits;
+  final List<Album> _albums;
+  final List<ArtistReleaseContribution> _collabAlbums;
+  List<Album> get albums =>
+      _albums.where((album) => !album.isCollaboration).toList();
+  List<ArtistReleaseContribution> get collabAlbums {
+    final soloIds = albums.map((album) => album.id).toSet();
+    return _mergeReleaseContributions(
+      [
+        ..._collabAlbums.where((entry) => entry.isAlbumArtist),
+        for (final album in _albums)
+          if (album.isCollaboration)
+            ArtistReleaseContribution(
+              album: album,
+              roles: album.credits
+                  .where((credit) => credit.isAlbumArtist)
+                  .map((credit) => credit.role)
+                  .toSet()
+                  .toList(),
+            ),
+      ].where((entry) => !soloIds.contains(entry.album.id)),
+    );
+  }
+
+  List<Album> get headlineAlbums => <String, Album>{
+    for (final album in albums) album.id: album,
+    for (final entry in collabAlbums)
+      if (entry.isAlbumArtist) entry.album.id: entry.album,
+  }.values.toList();
+  // Older servers put song guests and supporting roles in collab_albums.
+  // Recover their song scope without presenting them as joint album artists.
+  List<ArtistReleaseContribution> get appearsOn => _mergeReleaseContributions([
+    ..._appearsOn,
+    for (final entry in _collabAlbums)
+      if (!entry.isAlbumArtist &&
+          entry.isPerformingArtist &&
+          !_appearsOn.any(
+            (appearance) => appearance.album.id == entry.album.id,
+          ))
+        ArtistReleaseContribution(
+          album: entry.album,
+          trackIds: entry.trackIds,
+          trackTitles: entry.trackTitles,
+          roles: entry.roles
+              .where(
+                (role) => const {
+                  'track_artist',
+                  'featured_artist',
+                  'featured',
+                  'guest',
+                }.contains(role.toLowerCase()),
+              )
+              .toList(),
+        ),
+  ]);
+  final List<ArtistReleaseContribution> _appearsOn;
+  final List<ArtistReleaseContribution> _otherCredits;
+  List<ArtistReleaseContribution> get otherCredits =>
+      _mergeReleaseContributions([
+        ..._otherCredits,
+        ..._collabAlbums.where(
+          (entry) =>
+              !entry.isPerformingArtist &&
+              !_otherCredits.any((credit) => credit.album.id == entry.album.id),
+        ),
+      ]);
+  int get releaseCount => {
+    for (final album in _albums) album.id,
+    for (final entry in collabAlbums) entry.album.id,
+    for (final entry in appearsOn) entry.album.id,
+  }.length;
+  factory ArtistReleases.fromJson(Map<String, dynamic> json) => ArtistReleases(
+    albums: [
+      for (final item in json['albums'] as List? ?? const [])
+        Album.fromJson(Map<String, dynamic>.from(item as Map)),
+    ],
+    collabAlbums: [
+      for (final item in json['collab_albums'] as List? ?? const [])
+        ArtistReleaseContribution.fromJson(
+          Map<String, dynamic>.from(item as Map),
+        ),
+    ],
+    appearsOn: [
+      for (final item in json['appears_on'] as List? ?? const [])
+        ArtistReleaseContribution.fromJson(
+          Map<String, dynamic>.from(item as Map),
+        ),
+    ],
+    otherCredits: [
+      for (final item in json['other_credits'] as List? ?? const [])
+        ArtistReleaseContribution.fromJson(
+          Map<String, dynamic>.from(item as Map),
+        ),
+    ],
+  );
+}
+
+List<ArtistReleaseContribution> _mergeReleaseContributions(
+  Iterable<ArtistReleaseContribution> entries,
+) {
+  final byAlbum = <String, ArtistReleaseContribution>{};
+  for (final entry in entries) {
+    final previous = byAlbum[entry.album.id];
+    if (previous == null) {
+      byAlbum[entry.album.id] = entry;
+      continue;
+    }
+    final titles = <String, String>{};
+    for (final contribution in [previous, entry]) {
+      for (var index = 0; index < contribution.trackIds.length; index++) {
+        final id = contribution.trackIds[index];
+        final title = index < contribution.trackTitles.length
+            ? contribution.trackTitles[index]
+            : '';
+        if (titles[id]?.isNotEmpty != true) titles[id] = title;
+      }
+    }
+    byAlbum[entry.album.id] = ArtistReleaseContribution(
+      album: previous.album,
+      trackIds: titles.keys.toList(),
+      trackTitles: titles.values.toList(),
+      roles: {...previous.roles, ...entry.roles}.toList(),
+    );
+  }
+  return byAlbum.values.toList();
+}
+
+List<String> _stringsFromJson(Object? value) =>
+    value is List ? value.map((item) => item.toString()).toList() : const [];
+
 class Artist {
   Artist({
     required this.id,
     required this.name,
     required this.albumCount,
+    this.collabAlbumCount = 0,
+    this.appearanceCount = 0,
+    this.otherCreditCount = 0,
+    int? releaseCount,
     this.genres = const [],
     this.summary,
     this.logoRef,
     this.bannerRef,
-  });
+  }) : _releaseCount = releaseCount;
 
   final String id;
   final String name;
   final int albumCount;
+  final int collabAlbumCount;
+  final int appearanceCount;
+  final int otherCreditCount;
+  final int? _releaseCount;
+
+  /// Unique albums across headline releases and billed song appearances.
+  int get releaseCount {
+    if (_releaseCount != null) return _releaseCount;
+    // Older servers include appearances and other credits in collaborations.
+    // Taking the largest count also handles older responses that omit collabs,
+    // without counting overlapping credit categories twice.
+    final contributions = [
+      collabAlbumCount,
+      appearanceCount,
+    ].reduce((a, b) => a > b ? a : b);
+    return albumCount + contributions;
+  }
+
   final List<String> genres;
   final String? summary;
   final String? logoRef;
@@ -24,6 +299,10 @@ class Artist {
       id: json['id'] as String,
       name: json['name'] as String,
       albumCount: _intFromJson(json, const ['album_count', 'albumCount']),
+      collabAlbumCount: _intFromJson(json, const ['collab_album_count']),
+      appearanceCount: _intFromJson(json, const ['appearance_count']),
+      otherCreditCount: _intFromJson(json, const ['other_credit_count']),
+      releaseCount: _nullableIntFromJson(json['release_count']),
       genres:
           (json['genres'] as List?)?.map((item) => item.toString()).toList() ??
           const [],
@@ -37,6 +316,10 @@ class Artist {
     'id': id,
     'name': name,
     'album_count': albumCount,
+    'collab_album_count': collabAlbumCount,
+    'appearance_count': appearanceCount,
+    'other_credit_count': otherCreditCount,
+    if (_releaseCount != null) 'release_count': _releaseCount,
     'genres': genres,
     'summary': summary,
     'logo_ref': logoRef,
@@ -47,6 +330,10 @@ class Artist {
     String? id,
     String? name,
     int? albumCount,
+    int? collabAlbumCount,
+    int? appearanceCount,
+    int? otherCreditCount,
+    Object? releaseCount = _artistUnset,
     List<String>? genres,
     Object? summary = _artistUnset,
     Object? logoRef = _artistUnset,
@@ -56,6 +343,12 @@ class Artist {
       id: id ?? this.id,
       name: name ?? this.name,
       albumCount: albumCount ?? this.albumCount,
+      collabAlbumCount: collabAlbumCount ?? this.collabAlbumCount,
+      appearanceCount: appearanceCount ?? this.appearanceCount,
+      otherCreditCount: otherCreditCount ?? this.otherCreditCount,
+      releaseCount: releaseCount == _artistUnset
+          ? _releaseCount
+          : releaseCount as int?,
       genres: genres ?? this.genres,
       summary: summary == _artistUnset ? this.summary : summary as String?,
       logoRef: logoRef == _artistUnset ? this.logoRef : logoRef as String?,
@@ -75,6 +368,9 @@ class Album {
     required this.artist,
     required this.artistId,
     required this.trackCount,
+    this.artistIds = const [],
+    this.artistNames = const [],
+    this.artistCredits = const [],
     this.year,
     this.genres = const [],
     this.summary,
@@ -84,6 +380,24 @@ class Album {
   final String title;
   final String artist;
   final String artistId;
+  final List<String> artistIds;
+  final List<String> artistNames;
+  final List<ArtistCredit> artistCredits;
+  List<ArtistCredit> get credits => _effectiveCredits(
+    artistCredits,
+    artistIds,
+    artistNames,
+    artistId,
+    artist,
+  );
+  bool get isCollaboration =>
+      credits
+          .where((credit) => credit.isAlbumArtist)
+          .map((credit) => credit.artistId)
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .length >
+      1;
   final int trackCount;
   final int? year;
   final List<String> genres;
@@ -95,6 +409,9 @@ class Album {
       title: json['title'] as String,
       artist: _albumArtistName(json),
       artistId: json['artist_id'] as String? ?? '',
+      artistIds: _stringsFromJson(json['artist_ids']),
+      artistNames: _stringsFromJson(json['artist_names']),
+      artistCredits: _creditsFromJson(json['artist_credits']),
       trackCount: _intFromJson(json, const [
         'track_count',
         'trackCount',
@@ -115,6 +432,9 @@ class Album {
     'title': title,
     'artist': artist,
     'artist_id': artistId,
+    'artist_ids': artistIds,
+    'artist_names': artistNames,
+    'artist_credits': artistCredits.map((credit) => credit.toJson()).toList(),
     'track_count': trackCount,
     'year': year,
     'genres': genres,
@@ -126,6 +446,9 @@ class Album {
     String? title,
     String? artist,
     String? artistId,
+    List<String>? artistIds,
+    List<String>? artistNames,
+    List<ArtistCredit>? artistCredits,
     int? trackCount,
     Object? year = _albumUnset,
     List<String>? genres,
@@ -136,6 +459,9 @@ class Album {
       title: title ?? this.title,
       artist: artist ?? this.artist,
       artistId: artistId ?? this.artistId,
+      artistIds: artistIds ?? this.artistIds,
+      artistNames: artistNames ?? this.artistNames,
+      artistCredits: artistCredits ?? this.artistCredits,
       trackCount: trackCount ?? this.trackCount,
       year: year == _albumUnset ? this.year : year as int?,
       genres: genres ?? this.genres,
@@ -202,6 +528,9 @@ class Track {
     required this.liked,
     required this.inPlaylists,
     this.artistId,
+    this.artistIds = const [],
+    this.artistNames = const [],
+    this.artistCredits = const [],
     this.albumId,
     this.localId,
     this.serverBaseUrl,
@@ -211,7 +540,9 @@ class Track {
     this.artistBannerPath,
     this.offlineAlbum,
     this.offlineArtist,
+    this.offlineArtists = const [],
     this.genres = const [],
+    this.listeningGenres = const [],
     this.trackNo,
     this.discNo,
   });
@@ -220,6 +551,16 @@ class Track {
   final String title;
   final String artist;
   final String? artistId;
+  final List<String> artistIds;
+  final List<String> artistNames;
+  final List<ArtistCredit> artistCredits;
+  List<ArtistCredit> get credits => _effectiveCredits(
+    artistCredits,
+    artistIds,
+    artistNames,
+    artistId,
+    artist,
+  );
   final String album;
   final String? albumId;
   final String? localId;
@@ -230,7 +571,11 @@ class Track {
   final String? artistBannerPath;
   final Album? offlineAlbum;
   final Artist? offlineArtist;
+  final List<Artist> offlineArtists;
   final List<String> genres;
+
+  /// Album-first genre projection for statistics, separate from song tags.
+  final List<String> listeningGenres;
   final int durationMs;
   final bool liked;
   final bool inPlaylists;
@@ -243,6 +588,9 @@ class Track {
       title: json['title'] as String,
       artist: json['artist'] as String? ?? '',
       artistId: json['artist_id'] as String?,
+      artistIds: _stringsFromJson(json['artist_ids']),
+      artistNames: _stringsFromJson(json['artist_names']),
+      artistCredits: _creditsFromJson(json['artist_credits']),
       album: json['album'] as String? ?? '',
       albumId: json['album_id'] as String?,
       localId: json['local_id'] as String?,
@@ -255,8 +603,14 @@ class Track {
           (json['artist_banner_path'] ?? json['artistBannerPath']) as String?,
       offlineAlbum: _offlineAlbumFromJson(json['offline_album']),
       offlineArtist: _offlineArtistFromJson(json['offline_artist']),
+      offlineArtists: _artistsFromJson(json['offline_artists']),
       genres:
           (json['genres'] as List?)?.map((item) => item.toString()).toList() ??
+          const [],
+      listeningGenres:
+          (json['listening_genres'] as List?)
+              ?.map((item) => item.toString())
+              .toList() ??
           const [],
       durationMs: (json['duration_ms'] as num?)?.toInt() ?? 0,
       liked: json['liked'] as bool? ?? false,
@@ -271,6 +625,9 @@ class Track {
     String? title,
     String? artist,
     Object? artistId = _trackUnset,
+    List<String>? artistIds,
+    List<String>? artistNames,
+    List<ArtistCredit>? artistCredits,
     String? album,
     Object? albumId = _trackUnset,
     Object? localId = _trackUnset,
@@ -281,7 +638,9 @@ class Track {
     Object? artistBannerPath = _trackUnset,
     Object? offlineAlbum = _trackUnset,
     Object? offlineArtist = _trackUnset,
+    List<Artist>? offlineArtists,
     List<String>? genres,
+    List<String>? listeningGenres,
     int? durationMs,
     bool? liked,
     bool? inPlaylists,
@@ -293,6 +652,9 @@ class Track {
       title: title ?? this.title,
       artist: artist ?? this.artist,
       artistId: artistId == _trackUnset ? this.artistId : artistId as String?,
+      artistIds: artistIds ?? this.artistIds,
+      artistNames: artistNames ?? this.artistNames,
+      artistCredits: artistCredits ?? this.artistCredits,
       album: album ?? this.album,
       albumId: albumId == _trackUnset ? this.albumId : albumId as String?,
       localId: localId == _trackUnset ? this.localId : localId as String?,
@@ -317,7 +679,9 @@ class Track {
       offlineArtist: offlineArtist == _trackUnset
           ? this.offlineArtist
           : offlineArtist as Artist?,
+      offlineArtists: offlineArtists ?? this.offlineArtists,
       genres: genres ?? this.genres,
+      listeningGenres: listeningGenres ?? this.listeningGenres,
       durationMs: durationMs ?? this.durationMs,
       liked: liked ?? this.liked,
       inPlaylists: inPlaylists ?? this.inPlaylists,
@@ -331,6 +695,9 @@ class Track {
     'title': title,
     'artist': artist,
     'artist_id': artistId,
+    'artist_ids': artistIds,
+    'artist_names': artistNames,
+    'artist_credits': artistCredits.map((credit) => credit.toJson()).toList(),
     'album': album,
     'album_id': albumId,
     'local_id': localId,
@@ -339,7 +706,12 @@ class Track {
     'album_art_path': albumArtPath,
     'artist_art_path': artistArtPath,
     'artist_banner_path': artistBannerPath,
+    if (offlineArtists.isNotEmpty)
+      'offline_artists': offlineArtists
+          .map((artist) => artist.toJson())
+          .toList(),
     'genres': genres,
+    'listening_genres': listeningGenres,
     'duration_ms': durationMs,
     'liked': liked,
     'in_playlists': inPlaylists,
@@ -363,6 +735,13 @@ Artist? _offlineArtistFromJson(Object? value) {
   }
   return null;
 }
+
+List<Artist> _artistsFromJson(Object? value) => value is List
+    ? [
+        for (final item in value)
+          if (item is Map) Artist.fromJson(Map<String, dynamic>.from(item)),
+      ]
+    : const [];
 
 enum PlaylistImageEditKind { keep, clear, replace }
 
@@ -491,11 +870,23 @@ class StatsResponse {
     required this.topArtists,
     required this.topTracks,
     required this.topGenres,
+    this.totalListeningMs = 0,
+    this.totalPlays = 0,
+    this.uniqueTracks = 0,
+    this.uniqueArtists = 0,
+    this.otherGenreListeningMs = 0,
+    this.unclassifiedListeningMs = 0,
   });
 
   final int year;
   final int? month;
   final int totalMinutes;
+  final int totalListeningMs;
+  final int totalPlays;
+  final int uniqueTracks;
+  final int uniqueArtists;
+  final int otherGenreListeningMs;
+  final int unclassifiedListeningMs;
   final List<StatsItem> topArtists;
   final List<StatsTrack> topTracks;
   final List<StatsItem> topGenres;
@@ -505,6 +896,16 @@ class StatsResponse {
       year: (json['year'] as num?)?.toInt() ?? DateTime.now().year,
       month: (json['month'] as num?)?.toInt(),
       totalMinutes: (json['total_minutes'] as num?)?.toInt() ?? 0,
+      totalListeningMs:
+          (json['total_listening_ms'] as num?)?.toInt() ??
+          ((json['total_minutes'] as num?)?.toInt() ?? 0) * 60000,
+      totalPlays: (json['total_plays'] as num?)?.toInt() ?? 0,
+      uniqueTracks: (json['unique_tracks'] as num?)?.toInt() ?? 0,
+      uniqueArtists: (json['unique_artists'] as num?)?.toInt() ?? 0,
+      otherGenreListeningMs:
+          (json['other_genre_listening_ms'] as num?)?.toInt() ?? 0,
+      unclassifiedListeningMs:
+          (json['unclassified_listening_ms'] as num?)?.toInt() ?? 0,
       topArtists:
           (json['top_artists'] as List?)?.map(StatsItem.parse).toList() ??
           <StatsItem>[],
@@ -519,17 +920,24 @@ class StatsResponse {
 }
 
 class StatsItem {
-  StatsItem({required this.id, required this.name, required this.minutes});
+  StatsItem({
+    required this.id,
+    required this.name,
+    required this.minutes,
+    int? listeningMs,
+  }) : listeningMs = listeningMs ?? minutes * 60000;
 
   final String id;
   final String name;
   final int minutes;
+  final int listeningMs;
 
   factory StatsItem.fromJson(Map<String, dynamic> json) {
     return StatsItem(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       minutes: (json['minutes'] as num?)?.toInt() ?? 0,
+      listeningMs: (json['listening_ms'] as num?)?.toInt(),
     );
   }
 
@@ -583,6 +991,8 @@ class SearchResult {
     required this.title,
     this.subtitle,
     this.score,
+    this.albumId,
+    this.artworkPath,
   });
 
   final String kind;
@@ -590,6 +1000,8 @@ class SearchResult {
   final String title;
   final String? subtitle;
   final int? score;
+  final String? albumId;
+  final String? artworkPath;
 
   factory SearchResult.fromJson(Map<String, dynamic> json) {
     return SearchResult(
@@ -598,24 +1010,32 @@ class SearchResult {
       title: json['title'] as String? ?? json['name'] as String? ?? '',
       subtitle: json['subtitle'] as String? ?? json['artist'] as String?,
       score: (json['score'] as num?)?.toInt(),
+      albumId: json['album_id'] as String?,
     );
   }
 }
 
 class OfflineTrackMetadata {
-  static const int currentSchemaVersion = 4;
+  static const int currentSchemaVersion = 6;
 
   OfflineTrackMetadata({
     required this.schemaVersion,
     required this.track,
     required this.album,
     required this.artist,
+    this.artists = const [],
   });
 
   final int schemaVersion;
   final Track track;
   final Album album;
   final Artist artist;
+  final List<Artist> artists;
+  List<Artist> get allArtists => <String, Artist>{
+    artist.id: artist,
+    for (final artist in track.offlineArtists) artist.id: artist,
+    for (final artist in artists) artist.id: artist,
+  }.values.toList();
 
   factory OfflineTrackMetadata.fromJson(Map<String, dynamic> json) {
     return OfflineTrackMetadata(
@@ -629,15 +1049,22 @@ class OfflineTrackMetadata {
       artist: Artist.fromJson(
         Map<String, dynamic>.from(json['artist'] as Map? ?? const {}),
       ),
+      artists: _artistsFromJson(json['artists']),
     );
   }
 
-  OfflineTrackMetadata copyWith({Track? track, Album? album, Artist? artist}) {
+  OfflineTrackMetadata copyWith({
+    Track? track,
+    Album? album,
+    Artist? artist,
+    List<Artist>? artists,
+  }) {
     return OfflineTrackMetadata(
       schemaVersion: schemaVersion,
       track: track ?? this.track,
       album: album ?? this.album,
       artist: artist ?? this.artist,
+      artists: artists ?? this.artists,
     );
   }
 
@@ -646,6 +1073,7 @@ class OfflineTrackMetadata {
     'track': track.toJson(),
     'album': album.toJson(),
     'artist': artist.toJson(),
+    'artists': allArtists.map((artist) => artist.toJson()).toList(),
   };
 }
 

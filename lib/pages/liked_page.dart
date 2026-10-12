@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/playlist_edit_icon.dart';
+
 import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
 import '../entities/models.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/track_row_tile.dart';
 import '../widgets/layout/library_header.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/ui/obsidian_theme.dart';
@@ -142,9 +145,10 @@ class _LikedPageState extends State<LikedPage> {
                                                 ),
                                         )
                                       : Tooltip(
-                                          message: 'Edit',
+                                          message: 'Edit tracks',
                                           child: ObsidianHudIconButton(
-                                            icon: Icons.edit_rounded,
+                                            iconWidget:
+                                                const PlaylistEditIcon(),
                                             size: _headerActionIconSize(
                                               context,
                                             ),
@@ -230,6 +234,7 @@ class _LikedPageState extends State<LikedPage> {
                                       local: false,
                                     ),
                               ),
+                            const SliverPlaybackInset(),
                           ],
                         );
                       },
