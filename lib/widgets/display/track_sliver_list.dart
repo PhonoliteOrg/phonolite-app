@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/models.dart';
-import '../../entities/offline_library.dart';
+import '../../entities/offline_models.dart';
 import 'track_row_tile.dart';
 
 class TrackSliverList extends StatelessWidget {
@@ -23,6 +23,7 @@ class TrackSliverList extends StatelessWidget {
     this.onTrackSelectionModeRequested,
     this.offlineDownloadForTrack,
     this.showAlbumArt = false,
+    this.useAlbumTrackNumbers = false,
   });
 
   final List<Track> tracks;
@@ -42,6 +43,10 @@ class TrackSliverList extends StatelessWidget {
   final OfflineTrackDownload? Function(Track track)? offlineDownloadForTrack;
   final bool showAlbumArt;
 
+  /// Album views retain metadata numbering, including gaps in downloaded albums.
+  /// Playlists use their list position instead.
+  final bool useAlbumTrackNumbers;
+
   @override
   Widget build(BuildContext context) {
     final itemCount = tracks.isEmpty ? 0 : tracks.length * 2 - 1;
@@ -51,13 +56,16 @@ class TrackSliverList extends StatelessWidget {
           return const Divider(height: 1);
         }
         final track = tracks[index ~/ 2];
+        final albumTrackNumber = useAlbumTrackNumbers ? track.trackNo : null;
         final offlineDownload = offlineDownloadForTrack?.call(track);
         final isDeleting =
             offlineDownload?.status == OfflineDownloadStatus.removing;
         final selectable = (canSelectTrack?.call(track) ?? true) && !isDeleting;
         return TrackRowTile(
           track: track,
-          index: index ~/ 2 + 1,
+          index: albumTrackNumber != null && albumTrackNumber > 0
+              ? albumTrackNumber
+              : index ~/ 2 + 1,
           showAlbumArt: showAlbumArt,
           isPlaying: isPlayingTrack(track),
           onTap: onTrackTap == null ? null : () => onTrackTap!(track),

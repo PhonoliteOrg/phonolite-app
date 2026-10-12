@@ -2,14 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../entities/app_controller.dart';
+import 'artwork_errors.dart';
 
-Map<String, String> authHeaders(AppController controller) {
-  final token = controller.connection.token;
-  if (token == null || token.isEmpty) {
-    return const {};
-  }
-  return {'Authorization': 'Bearer $token'};
-}
+Map<String, String> authHeaders(AppController controller) =>
+    controller.artworkHeaders;
 
 Future<void> precacheImages(
   BuildContext context,
@@ -21,8 +17,14 @@ Future<void> precacheImages(
   }
   for (final url in urls) {
     try {
-      await precacheImage(NetworkImage(url, headers: headers), context);
-    } catch (_) {}
+      await precacheImage(
+        NetworkImage(url, headers: headers),
+        context,
+        onError: (error, _) => ArtworkErrors.instance.report(url, error),
+      );
+    } catch (error) {
+      ArtworkErrors.instance.report(url, error);
+    }
   }
 }
 

@@ -6,8 +6,10 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
+import 'package:phonolite_quic/phonolite_quic.dart';
 
 import 'models.dart';
+import 'server_trust.dart';
 
 class ApiException implements Exception {
   ApiException(this.statusCode, this.body);
@@ -66,19 +68,40 @@ class ServerConnection {
 
   ServerConnection({required String baseUrl, http.Client? client})
     : _baseUrl = _sanitizeBaseUrl(baseUrl),
-      _client = client ?? http.Client();
+      _injectedClient = client != null {
+    _client = client ?? pinnedApiClient(() => _baseUrl);
+  }
 
   String _baseUrl;
-  final http.Client _client;
+  late final http.Client _client;
+  final bool _injectedClient;
   final Random _retryJitter = Random();
+  final Map<String, Future<Map<String, dynamic>>> _metadataRequests = {};
+  int _sessionRevision = 0;
   String? _token;
   void Function(Object error)? onTransportFailure;
 
   String get baseUrl => _baseUrl;
   String? get token => _token;
+  ServerTrust? get trust => ServerTrustRegistry.lookup(_baseUrl);
+  bool get hasTrustedTransport => _injectedClient || trust != null;
+  void setTrust(ServerTrust value) =>
+      ServerTrustRegistry.register(_baseUrl, value);
+  int get sessionRevision => _sessionRevision;
+
+  /// A fresh header map; callers cannot mutate connection authentication state.
+  Map<String, String> get authorizationHeaders => {
+    if (_token != null && _token!.isNotEmpty) 'Authorization': 'Bearer $_token',
+  };
 
   void setBaseUrl(String baseUrl) {
-    _baseUrl = _sanitizeBaseUrl(baseUrl);
+    final sanitized = _sanitizeBaseUrl(baseUrl);
+    if (_baseUrl == sanitized) {
+      return;
+    }
+    _baseUrl = sanitized;
+    _token = null;
+    _invalidateMetadataRequests();
   }
 
   Future<String> resolveBaseUrl(String input) async {
@@ -86,41 +109,81 @@ class ServerConnection {
     if (trimmed.isEmpty) {
       throw Exception('Server URL is required');
     }
-    final hasScheme =
-        trimmed.startsWith('http://') || trimmed.startsWith('https://');
-    final candidates = hasScheme
-        ? <String>[trimmed]
-        : <String>['http://$trimmed', 'https://$trimmed'];
-
-    for (final candidate in candidates) {
-      final baseUrl = _ensureApiBase(candidate);
-      final rootUrl = _ensureRoot(baseUrl);
-      final ok = await _checkHealth(rootUrl) || await _checkHealth(baseUrl);
-      if (ok) {
-        return baseUrl;
-      }
+    final candidate = trimmed.contains('://') ? trimmed : 'https://$trimmed';
+    final uri = Uri.tryParse(candidate);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        (uri.path.isNotEmpty && uri.path != '/' && uri.path != '/api/v1')) {
+      throw Exception('Enter the server IP and HTTPS port');
     }
-
-    throw Exception('Unable to reach server');
+    return _ensureApiBase(candidate);
   }
 
   void setToken(String? token) {
+    if (token != null && token.isNotEmpty && !hasTrustedTransport) {
+      throw StateError('Authenticate the server before using a saved token');
+    }
+    if (_token == token) {
+      return;
+    }
     _token = token;
+    _invalidateMetadataRequests();
+  }
+
+  void _invalidateMetadataRequests() {
+    _sessionRevision++;
+    invalidateMetadataReads();
+  }
+
+  /// A metadata event supersedes reads that began before that update, without
+  /// changing the authenticated session or cancelling unrelated repair work.
+  void invalidateMetadataReads() {
+    _metadataRequests.clear();
   }
 
   Future<String> login({
     required String username,
     required String password,
   }) async {
-    final response = await _post('/auth/login', {
-      'username': username,
-      'password': password,
-    });
+    final url = _baseUrl;
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'https' ||
+        uri.path != '/api/v1' ||
+        uri.userInfo.isNotEmpty) {
+      throw StateError('HTTPS /api/v1 is required');
+    }
+    setToken(null);
+    final revision = _sessionRevision;
+    final existing = trust ?? await ServerTrustStore.read(url);
+    final response = await authenticateServer(
+      host: uri.host,
+      port: uri.port,
+      username: username,
+      password: password,
+      expectedSpki: existing?.spki,
+      expectedOpaque: existing?.opaqueKey,
+    );
+    if (_baseUrl != url || _sessionRevision != revision) {
+      throw StateError('Sign-in cancelled');
+    }
+    final authenticated = ServerTrust(
+      spki: response['spki_sha256'] as String,
+      opaqueKey: response['opaque_key'] as String,
+    );
+    await ServerTrustStore.write(url, authenticated);
+    if (_baseUrl != url || _sessionRevision != revision) {
+      throw StateError('Sign-in cancelled');
+    }
+    setTrust(authenticated);
     final token = response['token'] as String?;
     if (token == null || token.isEmpty) {
       throw Exception('Missing token in login response');
     }
-    _token = token;
+    setToken(token);
     return token;
   }
 
@@ -131,20 +194,26 @@ class ServerConnection {
   Future<List<Artist>> fetchArtistsPage({
     int limit = ServerConnection.artistsPageSize,
     int offset = 0,
+    bool includeContributors = false,
   }) async {
     final response = await _getList(
-      '/browse/artists?limit=$limit&offset=$offset',
+      '/browse/artists?limit=$limit&offset=$offset&include_contributors=$includeContributors',
     );
     return response.map((item) => Artist.fromJson(item)).toList();
   }
 
   Future<List<Artist>> fetchArtists({
     int limit = ServerConnection.artistsPageSize,
+    bool includeContributors = false,
   }) async {
     var offset = 0;
     final artists = <Artist>[];
     while (true) {
-      final page = await fetchArtistsPage(limit: limit, offset: offset);
+      final page = await fetchArtistsPage(
+        limit: limit,
+        offset: offset,
+        includeContributors: includeContributors,
+      );
       artists.addAll(page);
       if (page.length < limit) {
         break;
@@ -158,6 +227,12 @@ class ServerConnection {
     final encoded = _encodePathSegment(artistId);
     final response = await _getList('/browse/artists/$encoded/albums');
     return response.map((item) => Album.fromJson(item)).toList();
+  }
+
+  Future<ArtistReleases> fetchArtistReleases(String artistId) async {
+    final encoded = _encodePathSegment(artistId);
+    final response = await _get('/browse/artists/$encoded/releases');
+    return ArtistReleases.fromJson(response);
   }
 
   Future<List<Track>> fetchTracks(String albumId) async {
@@ -221,6 +296,71 @@ class ServerConnection {
     return StatsResponse.fromJson(response);
   }
 
+  /// Legacy migration queue only; new listening uses the v2 counter endpoints.
+  Future<Map<String, dynamic>> fetchListeningChanges({
+    required String deviceId,
+    int after = 0,
+    int limit = 200,
+  }) => _get(
+    '/stats/sync?device_id=${Uri.encodeQueryComponent(deviceId)}&after=$after&limit=$limit',
+    retryable: false,
+  );
+
+  Future<Map<String, dynamic>> updateListeningPreference({
+    required String deviceId,
+    required bool enabled,
+    required int revision,
+  }) => _post('/stats/preferences', {
+    'device_id': deviceId,
+    'enabled': enabled,
+    'revision': revision,
+  });
+
+  Future<Map<String, dynamic>> uploadListeningEvents({
+    required String deviceId,
+    required int historyGeneration,
+    required List<Map<String, dynamic>> events,
+  }) => _post('/stats/events', {
+    'device_id': deviceId,
+    'history_generation': historyGeneration,
+    'events': events,
+  });
+
+  Future<Map<String, dynamic>> resetListeningHistory({
+    required int historyGeneration,
+  }) => _post('/stats/reset', {'history_generation': historyGeneration});
+
+  Future<Map<String, dynamic>> fetchListeningCounterState({
+    required String deviceId,
+  }) => _get(
+    '/stats/v2/state?device_id=${Uri.encodeQueryComponent(deviceId)}',
+    retryable: false,
+  );
+
+  Future<Map<String, dynamic>> activateListeningCounters({
+    required String deviceId,
+    required int historyGeneration,
+  }) => _post('/stats/v2/activate', {
+    'device_id': deviceId,
+    'history_generation': historyGeneration,
+  });
+
+  Future<Map<String, dynamic>> uploadListeningCounters(
+    Map<String, dynamic> batch,
+  ) => _post('/stats/v2/batch', batch);
+
+  Future<Map<String, dynamic>> fetchListeningCounterSnapshot({
+    required String deviceId,
+    required int year,
+    required int month,
+    int? revision,
+    String after = '',
+  }) => _get(
+    '/stats/v2/snapshot?device_id=${Uri.encodeQueryComponent(deviceId)}&year=$year&month=$month'
+    '&after=${Uri.encodeQueryComponent(after)}${revision == null ? '' : '&revision=$revision'}',
+    retryable: false,
+  );
+
   Future<List<SearchResult>> search(
     String query, {
     String filter = 'all',
@@ -239,25 +379,27 @@ class ServerConnection {
 
   Future<Album> fetchAlbumById(String albumId) async {
     final encoded = _encodePathSegment(albumId);
-    final response = await _get('/library/albums/$encoded');
+    final response = await _getMetadata('/library/albums/$encoded');
     return Album.fromJson(response);
   }
 
   Future<Artist> fetchArtistById(String artistId) async {
     final encoded = _encodePathSegment(artistId);
-    final response = await _get('/browse/artists/$encoded');
+    final response = await _getMetadata('/browse/artists/$encoded');
     return Artist.fromJson(response);
   }
 
   Future<Track> fetchTrackById(String trackId) async {
     final encoded = _encodePathSegment(trackId);
-    final response = await _get('/browse/tracks/$encoded');
+    final response = await _getMetadata('/browse/tracks/$encoded');
     return Track.fromJson(response);
   }
 
   Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) async {
     final encoded = _encodePathSegment(trackId);
-    final response = await _get('/library/tracks/$encoded/offline-metadata');
+    final response = await _getMetadata(
+      '/library/tracks/$encoded/offline-metadata',
+    );
     return OfflineTrackMetadata.fromJson(response);
   }
 
@@ -535,11 +677,15 @@ class ServerConnection {
     return '$_baseUrl/library/albums/$encoded/cover';
   }
 
-  String buildArtistCoverUrl(String artistId, {String? kind}) {
+  String buildArtistCoverUrl(String artistId, {String? kind, String? ref}) {
     final encoded = _encodePathSegment(artistId);
     var path = '/library/artists/$encoded/cover';
     if (kind != null && kind.isNotEmpty) {
       path = '$path?kind=${Uri.encodeComponent(kind)}';
+    }
+    if (ref != null && ref.trim().isNotEmpty) {
+      path =
+          '$path${path.contains('?') ? '&' : '?'}v=${Uri.encodeComponent(ref)}';
     }
     return '$_baseUrl$path';
   }
@@ -549,6 +695,17 @@ class ServerConnection {
     Duration timeout = _defaultRequestTimeout,
   }) {
     return _fetchArtworkUrl(buildAlbumCoverUrl(albumId), timeout: timeout);
+  }
+
+  Future<ServerArtwork?> fetchPlaylistCoverBytes(
+    String playlistId, {
+    String? imageRef,
+    Duration timeout = _defaultRequestTimeout,
+  }) {
+    return _fetchArtworkUrl(
+      buildPlaylistCoverUrl(playlistId, imageRef: imageRef),
+      timeout: timeout,
+    );
   }
 
   Future<ServerArtwork?> fetchArtistCoverBytes(
@@ -692,15 +849,14 @@ class ServerConnection {
     return Uri.encodeComponent(value);
   }
 
-  Future<bool> _checkHealth(String url) async {
-    final healthUrl = _buildHealthUrl(url);
+  Future<int?> _probeHealthMs(String url, {required Duration timeout}) async {
+    final stopwatch = Stopwatch()..start();
     try {
-      final response = await _client
-          .get(healthUrl)
-          .timeout(_healthRequestTimeout);
-      return response.statusCode >= 200 && response.statusCode < 300;
+      final response = await _client.get(_buildHealthUrl(url)).timeout(timeout);
+      final success = response.statusCode >= 200 && response.statusCode < 300;
+      return success ? stopwatch.elapsedMilliseconds : null;
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
@@ -708,16 +864,8 @@ class ServerConnection {
     Duration timeout = const Duration(seconds: 3),
   }) async {
     for (final url in _healthProbeBaseUrls(_baseUrl)) {
-      final healthUrl = _buildHealthUrl(url);
-      final start = DateTime.now();
-      try {
-        final response = await _client.get(healthUrl).timeout(timeout);
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          return DateTime.now().difference(start).inMilliseconds;
-        }
-      } catch (_) {
-        // Try the next health endpoint candidate.
-      }
+      final elapsedMs = await _probeHealthMs(url, timeout: timeout);
+      if (elapsedMs != null) return elapsedMs;
     }
     return null;
   }
@@ -739,13 +887,44 @@ class ServerConnection {
     );
   }
 
+  // Only coalesce reads that overlap. Completed metadata is never cached;
+  // metadata events invalidate pending reads before requesting fresh data.
+  Future<Map<String, dynamic>> _getMetadata(String path) {
+    final existing = _metadataRequests[path];
+    if (existing != null) {
+      return existing;
+    }
+    late final Future<Map<String, dynamic>> pending;
+    void removePending() {
+      if (identical(_metadataRequests[path], pending)) {
+        _metadataRequests.remove(path);
+      }
+    }
+
+    pending = _get(path).then(
+      (response) {
+        removePending();
+        return response;
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        removePending();
+        Error.throwWithStackTrace(error, stackTrace);
+      },
+    );
+    _metadataRequests[path] = pending;
+    return pending;
+  }
+
   Future<Map<String, dynamic>> _get(
     String path, {
     Duration timeout = _defaultRequestTimeout,
     bool retryable = true,
   }) async {
+    // Retried reads belong to the server and credentials that started them.
+    final uri = Uri.parse('$_baseUrl$path');
+    final headers = _headers();
     final response = await _executeRequest(
-      () => _client.get(Uri.parse('$_baseUrl$path'), headers: _headers()),
+      () => _client.get(uri, headers: headers),
       label: 'GET $path',
       retryable: retryable,
       timeout: timeout,
@@ -781,11 +960,12 @@ class ServerConnection {
     String path,
     Map<String, dynamic> payload,
   ) async {
+    final body = jsonEncode(payload);
     final response = await _executeRequest(
       () => _client.post(
         Uri.parse('$_baseUrl$path'),
         headers: _headers(contentType: true),
-        body: jsonEncode(payload),
+        body: body,
       ),
       label: 'POST $path',
     );
@@ -796,11 +976,12 @@ class ServerConnection {
     String path,
     Map<String, dynamic> payload,
   ) async {
+    final body = jsonEncode(payload);
     final response = await _executeRequest(
       () => _client.post(
         Uri.parse('$_baseUrl$path'),
         headers: _headers(contentType: true),
-        body: jsonEncode(payload),
+        body: body,
       ),
       label: 'POST $path',
     );
@@ -822,11 +1003,12 @@ class ServerConnection {
     Map<String, dynamic> payload, {
     Duration timeout = _defaultRequestTimeout,
   }) async {
+    final body = jsonEncode(payload);
     final response = await _executeRequest(
       () => _client.post(
         Uri.parse('$_baseUrl$path'),
         headers: _headers(contentType: true),
-        body: jsonEncode(payload),
+        body: body,
       ),
       label: 'POST $path',
       timeout: timeout,
@@ -850,14 +1032,11 @@ class ServerConnection {
     bool contentType = false,
     String? contentTypeValue,
   }) {
-    final headers = <String, String>{};
+    final headers = authorizationHeaders;
     if (contentTypeValue != null && contentTypeValue.isNotEmpty) {
       headers['Content-Type'] = contentTypeValue;
     } else if (contentType) {
       headers['Content-Type'] = 'application/json';
-    }
-    if (_token != null && _token!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $_token';
     }
     return headers;
   }
@@ -868,10 +1047,14 @@ class ServerConnection {
     Duration timeout = _defaultRequestTimeout,
     String label = 'request',
   }) async {
+    final safeLabel = _safeRequestLabel(label);
     final maxAttempts = retryable ? _maxGetAttempts : 1;
     Object? lastError;
     StackTrace? lastStackTrace;
     final stopwatch = Stopwatch()..start();
+
+    Future<void> backoff(int attempt) =>
+        Future<void>.delayed(_retryDelay(attempt));
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -880,15 +1063,15 @@ class ServerConnection {
             response.statusCode >= 500 && response.statusCode < 600;
         if (retryable && retryableStatus && attempt < maxAttempts) {
           developer.log(
-            '$label attempt $attempt failed with ${response.statusCode}; retrying after ${stopwatch.elapsedMilliseconds}ms',
+            '$safeLabel attempt $attempt failed with ${response.statusCode}; retrying after ${stopwatch.elapsedMilliseconds}ms',
             name: 'ServerConnection',
           );
-          await Future<void>.delayed(_retryDelay(attempt));
+          await backoff(attempt);
           continue;
         }
         if (attempt > 1 || stopwatch.elapsed >= _slowRequestThreshold) {
           developer.log(
-            '$label completed in ${stopwatch.elapsedMilliseconds}ms after $attempt attempt(s) with ${response.statusCode}',
+            '$safeLabel completed in ${stopwatch.elapsedMilliseconds}ms after $attempt attempt(s) with ${response.statusCode}',
             name: 'ServerConnection',
           );
         }
@@ -898,10 +1081,10 @@ class ServerConnection {
         lastStackTrace = stackTrace;
         if (attempt < maxAttempts) {
           developer.log(
-            '$label attempt $attempt timed out after ${timeout.inMilliseconds}ms; retrying',
+            '$safeLabel attempt $attempt timed out after ${timeout.inMilliseconds}ms; retrying',
             name: 'ServerConnection',
           );
-          await Future<void>.delayed(_retryDelay(attempt));
+          await backoff(attempt);
           continue;
         }
       } on SocketException catch (err, stackTrace) {
@@ -909,10 +1092,10 @@ class ServerConnection {
         lastStackTrace = stackTrace;
         if (retryable && attempt < maxAttempts) {
           developer.log(
-            '$label attempt $attempt hit socket error "$err"; retrying',
+            '$safeLabel attempt $attempt hit socket error; retrying',
             name: 'ServerConnection',
           );
-          await Future<void>.delayed(_retryDelay(attempt));
+          await backoff(attempt);
           continue;
         }
       } on http.ClientException catch (err, stackTrace) {
@@ -920,10 +1103,10 @@ class ServerConnection {
         lastStackTrace = stackTrace;
         if (retryable && attempt < maxAttempts) {
           developer.log(
-            '$label attempt $attempt hit client error "$err"; retrying',
+            '$safeLabel attempt $attempt hit client error; retrying',
             name: 'ServerConnection',
           );
-          await Future<void>.delayed(_retryDelay(attempt));
+          await backoff(attempt);
           continue;
         }
       }
@@ -934,7 +1117,7 @@ class ServerConnection {
         onTransportFailure?.call(lastError);
       } catch (_) {}
       developer.log(
-        '$label failed after ${stopwatch.elapsedMilliseconds}ms',
+        '$safeLabel failed after ${stopwatch.elapsedMilliseconds}ms',
         name: 'ServerConnection',
         error: lastError,
         stackTrace: lastStackTrace,
@@ -996,12 +1179,68 @@ MetadataUpdateEvent? _metadataEventFromSseFrame(String frame) {
   return null;
 }
 
-Future<dynamic> _decodeJson(String body) {
-  if (body.length < 64 * 1024) {
-    return Future<dynamic>.value(jsonDecode(body));
+/// Keep only route templates. Never persist query values, resource IDs,
+/// credentials, or a configured server address in request logs.
+String _safeRequestLabel(String label) {
+  if (label == 'GET artwork' ||
+      label == 'PUT playlist cover' ||
+      label == 'DELETE playlist cover') {
+    return label;
   }
-  return Isolate.run<dynamic>(() => jsonDecode(body));
+  final separator = label.indexOf(' ');
+  if (separator < 0) return 'request';
+  final method = label.substring(0, separator);
+  if (!const ['GET', 'POST', 'PUT', 'DELETE'].contains(method)) {
+    return 'request';
+  }
+  final path = label.substring(separator + 1).split('?').first;
+  const staticRoutes = {
+    '/auth/opaque/start',
+    '/auth/opaque/finish',
+    '/auth/logout',
+    '/browse/artists',
+    '/browse/likes',
+    '/library/playlists',
+    '/library/shuffle',
+    '/library/search',
+    '/library/match-tracks',
+    '/library/likes/batch',
+    '/stats',
+    '/download/batches',
+    '/download/v2/jobs',
+    '/server/capabilities',
+    '/server/ports',
+    '/player/settings',
+  };
+  if (staticRoutes.contains(path)) return '$method $path';
+  const dynamicRoutes = {
+    '/browse/artists/:id/albums',
+    '/browse/artists/:id/releases',
+    '/browse/artists/:id',
+    '/browse/albums/:id/tracks',
+    '/browse/playlists/:id/tracks',
+    '/browse/tracks/:id',
+    '/library/albums/:id',
+    '/library/tracks/:id/offline-metadata',
+    '/library/likes/:id',
+    '/library/playlists/:id',
+    '/download/v2/jobs/:id/actions',
+  };
+  for (final route in dynamicRoutes) {
+    final pattern = RegExp('^${route.replaceAll(':id', '[^/]+')}\$');
+    if (pattern.hasMatch(path)) return '$method $route';
+  }
+  return '$method /unknown';
 }
+
+Future<dynamic> _decodeJson(String body) async {
+  return body.length >= 64 * 1024
+      ? await _decodeLargeJson(body)
+      : jsonDecode(body);
+}
+
+Future<dynamic> _decodeLargeJson(String body) =>
+    Isolate.run<dynamic>(() => jsonDecode(body));
 
 class PlaybackSettingsResponse {
   PlaybackSettingsResponse({required this.repeatMode});

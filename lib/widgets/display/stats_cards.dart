@@ -1,15 +1,33 @@
 import 'package:flutter/material.dart';
+
+import '../ui/phonolite_icons.dart';
+import '../ui/reload_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../entities/models.dart';
+import 'artist_row_tile.dart';
+import 'genre_text.dart';
+import '../layout/library_header.dart';
 import '../layouts/obsidian_scale.dart';
-import '../ui/chamfer_clipper.dart';
+import '../layouts/playback_content_inset.dart';
+import '../ui/obsidian_glass_surface.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 
 double _scaled(BuildContext context, double value) =>
     value * ObsidianScale.of(context);
+
+String _listeningDuration(int milliseconds) {
+  if (milliseconds <= 0) return '0m';
+  if (milliseconds < 1000) return '<1s';
+  final seconds = milliseconds ~/ 1000;
+  if (seconds < 60) return '${seconds}s';
+  if (seconds >= 3600) {
+    return '${seconds ~/ 3600}h ${(seconds ~/ 60) % 60}m ${seconds % 60}s';
+  }
+  return '${seconds ~/ 60}m ${seconds % 60}s';
+}
 
 class StatsCards extends StatelessWidget {
   const StatsCards({
@@ -18,18 +36,29 @@ class StatsCards extends StatelessWidget {
     required this.onYearChanged,
     required this.onMonthChanged,
     this.onRefresh,
+    this.historyStatus,
+    this.artistCoverUrl,
+    this.artistImageHeaders = const {},
   });
 
   final StatsResponse stats;
   final ValueChanged<int> onYearChanged;
   final ValueChanged<int?> onMonthChanged;
   final VoidCallback? onRefresh;
+  final Widget? historyStatus;
+  final String? Function(StatsItem)? artistCoverUrl;
+  final Map<String, String> artistImageHeaders;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     return SingleChildScrollView(
-      padding: EdgeInsets.all(s(20)),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        s(20) + PlaybackContentInset.bottomOf(context),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -38,16 +67,177 @@ class StatsCards extends StatelessWidget {
             onYearChanged: onYearChanged,
             onMonthChanged: onMonthChanged,
             onRefresh: onRefresh,
+            historyStatus: historyStatus,
           ),
           SizedBox(height: s(20)),
           _KpiGrid(stats: stats),
+          if (stats.topTracks.isEmpty &&
+              stats.totalMinutes == 0 &&
+              stats.totalListeningMs == 0) ...[
+            SizedBox(height: s(12)),
+            _emptyText('No listening in this period yet.'),
+          ],
           SizedBox(height: s(28)),
-          _AnalysisSection(stats: stats, totalMinutes: stats.totalMinutes),
+          _AnalysisSection(
+            stats: stats,
+            artistCoverUrl: artistCoverUrl,
+            artistImageHeaders: artistImageHeaders,
+          ),
           SizedBox(height: s(28)),
           _TopTracksSection(tracks: stats.topTracks),
         ],
       ),
     );
+  }
+}
+
+/// Describes which listening history is visible and whether account sync is
+/// available. All listening totals remain visible when collection is off.
+class StatsHistoryStatus extends StatelessWidget {
+  const StatsHistoryStatus({
+    super.key,
+    required this.collectionEnabled,
+    required this.hasAccount,
+    required this.connected,
+    required this.serverEnabled,
+    this.syncing = false,
+    this.pendingCount = 0,
+    this.lastSyncedAt,
+    this.message,
+    this.onImport,
+  });
+
+  final bool collectionEnabled;
+  final bool hasAccount;
+  final bool connected;
+  final bool serverEnabled;
+  final bool syncing;
+  final int pendingCount;
+  final DateTime? lastSyncedAt;
+  final String? message;
+  final VoidCallback? onImport;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = (double value) => _scaled(context, value);
+    final iconSize = MediaQuery.sizeOf(context).width < 640 ? 22.0 : 26.0;
+    final statusIcon = !collectionEnabled
+        ? PhonoliteIcons.circlePause
+        : !hasAccount
+        ? PhonoliteIcons.database
+        : !connected || !serverEnabled
+        ? PhonoliteIcons.cloudOff
+        : syncing
+        ? PhonoliteIcons.cloudSync
+        : PhonoliteIcons.cloudCheck;
+    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: ObsidianPalette.textMuted,
+      height: 1.4,
+    );
+    return PopupMenuButton<String>(
+      tooltip: 'Listening history status',
+      position: PopupMenuPosition.under,
+      color: ObsidianPalette.obsidianElevated,
+      surfaceTintColor: Colors.transparent,
+      constraints: const BoxConstraints(minWidth: 200, maxWidth: 320),
+      onSelected: (_) => onImport?.call(),
+      itemBuilder: (context) => [
+        PopupMenuItem<String>(
+          enabled: false,
+          padding: EdgeInsets.all(s(16)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                hasAccount ? 'Account history' : 'This device',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: ObsidianPalette.textPrimary,
+                ),
+              ),
+              SizedBox(height: s(8)),
+              Text(_statusText(), style: muted),
+              if (collectionEnabled && hasAccount && pendingCount > 0) ...[
+                SizedBox(height: s(8)),
+                Text(
+                  '$pendingCount listening '
+                  '${pendingCount == 1 ? 'update' : 'updates'} waiting to sync.',
+                  style: muted,
+                ),
+              ],
+              if (hasAccount && lastSyncedAt != null) ...[
+                SizedBox(height: s(8)),
+                Text(_lastSyncText(context), style: muted),
+              ],
+              if (onImport != null) ...[
+                SizedBox(height: s(8)),
+                Text(
+                  'Listening recorded before signing in stays on this device until you add it to your account.',
+                  style: muted,
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (onImport != null)
+          PopupMenuItem<String>(
+            value: 'import',
+            child: Row(
+              children: [
+                const Icon(
+                  PhonoliteIcons.cloud,
+                  size: 18,
+                  color: ObsidianPalette.gold,
+                ),
+                SizedBox(width: s(8)),
+                const Expanded(child: Text('ADD LOCAL HISTORY')),
+              ],
+            ),
+          ),
+      ],
+      style: const ButtonStyle(
+        backgroundColor: WidgetStatePropertyAll(Colors.transparent),
+        overlayColor: WidgetStatePropertyAll(Colors.transparent),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          statusIcon,
+          size: iconSize,
+          color: ObsidianPalette.textMuted,
+        ),
+      ),
+    );
+  }
+
+  String _statusText() {
+    if (!collectionEnabled) {
+      return 'Collection is off on this device. New listening and uploads are stopped; existing history is kept.';
+    }
+    final providedMessage = message?.trim();
+    if (providedMessage != null && providedMessage.isNotEmpty) {
+      return providedMessage;
+    }
+    if (!hasAccount) return 'Listening is saved on this device, even offline.';
+    if (!serverEnabled) {
+      return 'Server sync is disabled. Listening is saved on this device.';
+    }
+    if (!connected) {
+      return 'Offline. Listening is saved on this device and will sync when connected.';
+    }
+    if (syncing) return 'Syncing listening history across your apps…';
+    return 'Listening is saved on this device and synced across your apps.';
+  }
+
+  String _lastSyncText(BuildContext context) {
+    final local = lastSyncedAt!.toLocal();
+    final labels = MaterialLocalizations.of(context);
+    final date = labels.formatShortDate(local);
+    final time = labels.formatTimeOfDay(
+      TimeOfDay.fromDateTime(local),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    return 'Last synced $date at $time.';
   }
 }
 
@@ -57,42 +247,53 @@ class _StatsHeader extends StatelessWidget {
     required this.onYearChanged,
     required this.onMonthChanged,
     this.onRefresh,
+    this.historyStatus,
   });
 
   final StatsResponse stats;
   final ValueChanged<int> onYearChanged;
   final ValueChanged<int?> onMonthChanged;
   final VoidCallback? onRefresh;
+  final Widget? historyStatus;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final isCompact = MediaQuery.of(context).size.width < 520;
+    final compactHeaderActions = MediaQuery.sizeOf(context).width < 640;
     final selectorScale = isCompact ? 1.3 : 1.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(Icons.bar_chart_rounded, size: 42),
-            const SizedBox(width: 20),
-            const Expanded(
-              child: ObsidianSectionHeader(title: 'Listening Statistics'),
-            ),
-            if (onRefresh != null) ...[
-              SizedBox(width: s(12)),
-              ObsidianIconButton(
-                icon: Icons.refresh_rounded,
-                onPressed: onRefresh,
-                size: s(40),
-                cut: s(10),
-                style: ObsidianButtonStyle.subtle,
-              ),
+        LibraryHeader(
+          title: 'LISTENING STATISTICS',
+          moduleCount: 0,
+          shrinkTitleToFit: true,
+          trailing: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: compactHeaderActions ? 4 : 10,
+            runSpacing: compactHeaderActions ? 4 : 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (historyStatus != null) historyStatus!,
+              if (onRefresh != null) ...[
+                Tooltip(
+                  message: 'Refresh listening history',
+                  child: Semantics(
+                    button: true,
+                    label: 'Refresh listening history',
+                    child: ObsidianHudIconButton(
+                      iconWidget: const ReloadIcon(),
+                      onPressed: onRefresh,
+                      size: compactHeaderActions ? 22 : 26,
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
-        SizedBox(height: s(16)),
+        const SizedBox(height: 12),
         if (isCompact)
           Row(
             children: [
@@ -191,19 +392,15 @@ class _TemporalSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value * scale);
     final iconSize = s(20);
-    return ClipPath(
-      clipper: ChamferClipper(cutSize: s(15)),
+    return ObsidianGlassSurface(
+      backgroundColor: ObsidianPalette.obsidianElevated.withValues(alpha: 0.56),
       child: Container(
         width: width,
         padding: EdgeInsets.symmetric(horizontal: s(10), vertical: s(8)),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.03),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
         child: Row(
           children: [
             _SelectorIconButton(
-              icon: Icons.chevron_left_rounded,
+              icon: PhonoliteIcons.chevronLeft,
               onTap: onPrev,
               size: iconSize,
             ),
@@ -227,7 +424,7 @@ class _TemporalSelector extends StatelessWidget {
             ),
             SizedBox(width: s(6)),
             _SelectorIconButton(
-              icon: Icons.chevron_right_rounded,
+              icon: PhonoliteIcons.chevronRight,
               onTap: onNext,
               size: iconSize,
             ),
@@ -271,51 +468,59 @@ class _KpiGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final minutesLabel = '${stats.totalMinutes}m';
-    final topArtists = stats.topArtists.length;
-    final topTracks = stats.topTracks.length;
-    final cards = [
-      _KpiCard(label: 'TOTAL PLAYTIME', value: minutesLabel),
-      _KpiCard(label: 'TOP ARTISTS', value: '$topArtists'),
-      _KpiCard(label: 'TOP TRACKS', value: '$topTracks'),
+    final values = <(String, String)>[
+      ('TOTAL PLAYTIME', _listeningTime()),
+      ('TOTAL PLAYS', '${stats.totalPlays}'),
+      (
+        'TRACKS LISTENED',
+        _distinctCount(stats.uniqueTracks, stats.topTracks.length),
+      ),
+      (
+        'ARTISTS LISTENED',
+        _distinctCount(stats.uniqueArtists, stats.topArtists.length),
+      ),
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 520;
-        if (isCompact) {
-          final gap = s(12);
-          return Row(
-            children: [
-              Expanded(
+        final columns = isCompact ? 2 : 4;
+        final gap = s(isCompact ? 12 : 16);
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final value in values)
+              SizedBox(
+                width: width,
                 child: _KpiCard(
-                  label: 'TOTAL PLAYTIME',
-                  value: minutesLabel,
-                  compact: true,
+                  label: value.$1,
+                  value: value.$2,
+                  compact: isCompact,
+                  tooltip: value.$1 == 'TOTAL PLAYS'
+                      ? 'A play counts after 30 seconds, or half of a shorter track. '
+                            'Brief listens still contribute to listening time and tracks listened.'
+                      : value.$1 == 'TRACKS LISTENED'
+                      ? 'Distinct tracks with any audio played, including brief listens.'
+                      : null,
                 ),
               ),
-              SizedBox(width: gap),
-              Expanded(
-                child: _KpiCard(
-                  label: 'TOP ARTISTS',
-                  value: '$topArtists',
-                  compact: true,
-                ),
-              ),
-              SizedBox(width: gap),
-              Expanded(
-                child: _KpiCard(
-                  label: 'TOP TRACKS',
-                  value: '$topTracks',
-                  compact: true,
-                ),
-              ),
-            ],
-          );
-        }
-        return Wrap(spacing: s(16), runSpacing: s(16), children: cards);
+          ],
+        );
       },
     );
   }
+
+  String _listeningTime() {
+    final milliseconds = stats.totalListeningMs;
+    if (milliseconds <= 0) return '${stats.totalMinutes}m';
+    return _listeningDuration(milliseconds);
+  }
+
+  // Older server responses expose only rankings. The plus sign makes their
+  // lower bound explicit until complete period counts become available.
+  String _distinctCount(int total, int rankingSize) =>
+      total > 0 || rankingSize == 0 ? '$total' : '$rankingSize+';
 }
 
 class _KpiCard extends StatelessWidget {
@@ -323,11 +528,13 @@ class _KpiCard extends StatelessWidget {
     required this.label,
     required this.value,
     this.compact = false,
+    this.tooltip,
   });
 
   final String label;
   final String value;
   final bool compact;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -335,21 +542,9 @@ class _KpiCard extends StatelessWidget {
     final padding = compact ? EdgeInsets.all(s(12)) : EdgeInsets.all(s(18));
     final labelSize = compact ? s(10) : s(12);
     final valueSize = compact ? s(32) : s(48);
-    return ClipPath(
-      clipper: ChamferClipper(cutSize: s(10)),
-      child: Container(
+    final surface = ObsidianGlassSurface(
+      child: Padding(
         padding: padding,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              ObsidianPalette.gold.withOpacity(0.12),
-              Colors.black.withOpacity(0.8),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -372,12 +567,6 @@ class _KpiCard extends StatelessWidget {
                   fontSize: valueSize,
                   fontWeight: FontWeight.w700,
                   color: ObsidianPalette.gold,
-                  shadows: [
-                    Shadow(
-                      color: ObsidianPalette.gold.withOpacity(0.6),
-                      blurRadius: s(10),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -385,14 +574,22 @@ class _KpiCard extends StatelessWidget {
         ),
       ),
     );
+    return tooltip == null
+        ? surface
+        : Tooltip(message: tooltip!, child: surface);
   }
 }
 
 class _AnalysisSection extends StatelessWidget {
-  const _AnalysisSection({required this.stats, required this.totalMinutes});
+  const _AnalysisSection({
+    required this.stats,
+    required this.artistCoverUrl,
+    required this.artistImageHeaders,
+  });
 
   final StatsResponse stats;
-  final int totalMinutes;
+  final String? Function(StatsItem)? artistCoverUrl;
+  final Map<String, String> artistImageHeaders;
 
   @override
   Widget build(BuildContext context) {
@@ -400,17 +597,28 @@ class _AnalysisSection extends StatelessWidget {
     final isWide = MediaQuery.of(context).size.width >= 900;
     final left = _TopGenresSection(
       genres: stats.topGenres,
-      totalMinutes: totalMinutes,
+      totalListeningMs: stats.totalListeningMs > 0
+          ? stats.totalListeningMs
+          : stats.totalMinutes * 60000,
+      otherListeningMs: stats.otherGenreListeningMs,
+      unclassifiedListeningMs: stats.unclassifiedListeningMs,
+      fillHeight: isWide,
     );
-    final right = _TopArtistsSection(artists: stats.topArtists);
+    final right = _TopArtistsSection(
+      artists: stats.topArtists,
+      coverUrl: artistCoverUrl,
+      headers: artistImageHeaders,
+    );
     if (isWide) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: left),
-          SizedBox(width: s(20)),
-          Expanded(child: right),
-        ],
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: left),
+            SizedBox(width: s(20)),
+            Expanded(child: right),
+          ],
+        ),
       );
     }
     return Column(
@@ -425,27 +633,56 @@ class _AnalysisSection extends StatelessWidget {
 }
 
 class _TopGenresSection extends StatelessWidget {
-  const _TopGenresSection({required this.genres, required this.totalMinutes});
+  const _TopGenresSection({
+    required this.genres,
+    required this.totalListeningMs,
+    required this.otherListeningMs,
+    required this.unclassifiedListeningMs,
+    this.fillHeight = false,
+  });
 
   final List<StatsItem> genres;
-  final int totalMinutes;
+  final int totalListeningMs;
+  final int otherListeningMs;
+  final int unclassifiedListeningMs;
+  final bool fillHeight;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleShell(
       title: 'TOP GENRES',
-      icon: Icons.pie_chart_rounded,
+      expandChild: fillHeight,
+      tooltip:
+          'Listening time is shared evenly between a song’s genres. '
+          'Other genres includes those outside the top five. '
+          'Unclassified means genre metadata is unavailable. '
+          'Displayed durations are rounded down to whole seconds.',
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          if (genres.isEmpty)
+          if (genres.isEmpty &&
+              otherListeningMs == 0 &&
+              unclassifiedListeningMs == 0)
             _emptyText('No genres yet.')
           else
             for (final genre in genres)
               _GenreBar(
                 label: genre.name,
-                minutes: genre.minutes,
-                totalMinutes: totalMinutes,
+                listeningMs: genre.listeningMs,
+                totalListeningMs: totalListeningMs,
               ),
+          if (otherListeningMs > 0)
+            _GenreBar(
+              label: 'Other genres',
+              listeningMs: otherListeningMs,
+              totalListeningMs: totalListeningMs,
+            ),
+          if (unclassifiedListeningMs > 0)
+            _GenreBar(
+              label: 'Unclassified',
+              listeningMs: unclassifiedListeningMs,
+              totalListeningMs: totalListeningMs,
+            ),
         ],
       ),
     );
@@ -455,20 +692,22 @@ class _TopGenresSection extends StatelessWidget {
 class _GenreBar extends StatelessWidget {
   const _GenreBar({
     required this.label,
-    required this.minutes,
-    required this.totalMinutes,
+    required this.listeningMs,
+    required this.totalListeningMs,
   });
 
   final String label;
-  final int minutes;
-  final int totalMinutes;
+  final int listeningMs;
+  final int totalListeningMs;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    final percent = totalMinutes <= 0 ? 0.0 : minutes / totalMinutes;
+    final percent = totalListeningMs <= 0
+        ? 0.0
+        : listeningMs / totalListeningMs;
     final barPercent = percent.clamp(0.0, 1.0);
-    final minutesLabel = '${minutes}m';
+    final timeLabel = _listeningDuration(listeningMs);
     return Padding(
       padding: EdgeInsets.symmetric(vertical: s(10)),
       child: Row(
@@ -476,7 +715,7 @@ class _GenreBar extends StatelessWidget {
           SizedBox(
             width: s(100),
             child: Text(
-              label.toUpperCase(),
+              genreDisplayLabel(label),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -508,12 +747,6 @@ class _GenreBar extends StatelessWidget {
                         ],
                       ),
                       borderRadius: BorderRadius.circular(s(6)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: ObsidianPalette.gold.withOpacity(0.5),
-                          blurRadius: s(10),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -531,7 +764,7 @@ class _GenreBar extends StatelessWidget {
           ),
           SizedBox(width: s(12)),
           Text(
-            minutesLabel,
+            timeLabel,
             style: GoogleFonts.rajdhani(
               fontSize: s(12),
               fontWeight: FontWeight.w700,
@@ -546,115 +779,53 @@ class _GenreBar extends StatelessWidget {
 }
 
 class _TopArtistsSection extends StatelessWidget {
-  const _TopArtistsSection({required this.artists});
+  const _TopArtistsSection({
+    required this.artists,
+    required this.coverUrl,
+    required this.headers,
+  });
 
   final List<StatsItem> artists;
+  final String? Function(StatsItem)? coverUrl;
+  final Map<String, String> headers;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final topArtists = artists.take(5).toList();
     return _ModuleShell(
       title: 'TOP ARTISTS',
-      icon: Icons.groups_rounded,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 420;
-          final columns = isCompact ? 2 : 3;
-          final aspect = isCompact ? 1.0 : 0.9;
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: artists.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              crossAxisSpacing: s(12),
-              mainAxisSpacing: s(16),
-              childAspectRatio: aspect,
-            ),
-            itemBuilder: (context, index) {
-              final artist = artists[index].name;
-              return _ArtistCard(artist: artist, rank: index + 1);
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _ArtistCard extends StatelessWidget {
-  const _ArtistCard({required this.artist, required this.rank});
-
-  final String artist;
-  final int rank;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = (double value) => _scaled(context, value);
-    final initials = artist.isEmpty ? '?' : artist.characters.first;
-    return Column(
-      children: [
-        Stack(
-          children: [
-            Container(
-              width: s(80),
-              height: s(80),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.1),
-                    Colors.white.withOpacity(0.02),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      child: Column(
+        children: [
+          if (topArtists.isEmpty)
+            _emptyText('No artists yet.')
+          else
+            for (var i = 0; i < topArtists.length; i++)
+              ArtistRowTile(
+                artist: Artist(
+                  id: topArtists[i].id,
+                  name: topArtists[i].name,
+                  albumCount: 0,
                 ),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                initials.toUpperCase(),
-                style: GoogleFonts.rajdhani(
-                  fontSize: s(24),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              top: 0,
-              child: ClipPath(
-                clipper: ChamferClipper(cutSize: s(6)),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: s(8),
-                    vertical: s(4),
-                  ),
-                  color: ObsidianPalette.gold.withOpacity(0.2),
+                coverUrl: coverUrl?.call(topArtists[i]),
+                headers: headers,
+                subtitle:
+                    '${_listeningDuration(topArtists[i].listeningMs)} listened',
+                trailing: SizedBox(
+                  width: s(30),
                   child: Text(
-                    '$rank',
+                    '${i + 1}'.padLeft(2, '0'),
+                    textAlign: TextAlign.right,
                     style: GoogleFonts.rajdhani(
-                      fontSize: s(12),
+                      fontSize: s(18),
                       fontWeight: FontWeight.w700,
                       color: ObsidianPalette.gold,
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-        SizedBox(height: s(10)),
-        Text(
-          artist,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(letterSpacing: s(0.8)),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -666,19 +837,19 @@ class _TopTracksSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topTracks = tracks.take(10).toList();
     return _ModuleShell(
       title: 'MOST PLAYED TRACKS',
-      icon: Icons.equalizer_rounded,
       child: Column(
         children: [
-          if (tracks.isEmpty)
+          if (topTracks.isEmpty)
             _emptyText('No tracks yet.')
           else
-            for (var i = 0; i < tracks.length; i++)
+            for (var i = 0; i < topTracks.length; i++)
               _TrackRow(
                 rank: i + 1,
-                title: tracks[i].title,
-                playCount: tracks[i].plays,
+                title: topTracks[i].title,
+                playCount: topTracks[i].plays,
               ),
         ],
       ),
@@ -745,48 +916,42 @@ class _TrackRow extends StatelessWidget {
 class _ModuleShell extends StatelessWidget {
   const _ModuleShell({
     required this.title,
-    required this.icon,
     required this.child,
+    this.tooltip,
+    this.expandChild = false,
   });
 
   final String title;
-  final IconData icon;
   final Widget child;
+  final String? tooltip;
+  final bool expandChild;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
-    return ObsidianChamferPanel(
-      cut: s(12),
-      padding: EdgeInsets.fromLTRB(s(18), s(16), s(18), s(18)),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.02),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.rajdhani(
-                    fontSize: s(14),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: s(1.6),
-                  ),
+    return ObsidianGlassSurface(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(s(18), s(16), s(18), s(18)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Tooltip(
+              message: tooltip ?? '',
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.rajdhani(
+                  fontSize: s(14),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: s(1.6),
                 ),
               ),
-              SizedBox(width: s(8)),
-              Icon(icon, size: s(18), color: ObsidianPalette.gold),
-            ],
-          ),
-          SizedBox(height: s(12)),
-          child,
-        ],
+            ),
+            SizedBox(height: s(12)),
+            if (expandChild) Expanded(child: child) else child,
+          ],
+        ),
       ),
     );
   }

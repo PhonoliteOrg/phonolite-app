@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/edit_icon.dart';
+
 import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../entities/offline_library_views.dart';
 import '../widgets/display/album_hero.dart';
+import '../widgets/display/banner_playback_button.dart';
 import '../widgets/display/download_selection_toolbar.dart';
 import '../widgets/display/empty_state.dart';
 import '../widgets/display/track_sliver_list.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modals/add_to_playlist_modal.dart';
 import '../widgets/modals/remove_download_modal.dart';
 import '../widgets/navigation/detail_action_header.dart';
@@ -97,6 +101,22 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                           album: localAlbum,
                           coverUrl: album.coverPath ?? '',
                           headers: const {},
+                          actions: BannerPlaybackButton(
+                            message: 'Play album',
+                            visible: !_selectionMode,
+                            onPressed: album.tracks.isEmpty
+                                ? null
+                                : () async {
+                                    controller.updateShuffleMode(
+                                      ShuffleMode.off,
+                                      scope: ActionScope.local,
+                                    );
+                                    await controller.playOfflineTrack(
+                                      album.tracks.first.id,
+                                      tracks: album.tracks,
+                                    );
+                                  },
+                          ),
                         ),
                       ),
                     ),
@@ -116,6 +136,7 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                         sliver: TrackSliverList(
                           tracks: album.tracks,
+                          useAlbumTrackNumbers: true,
                           isPlayingTrack: (track) =>
                               playback.isPlaying && playingId == track.id,
                           onTrackTap: (track) => controller.playOfflineTrack(
@@ -139,6 +160,7 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                         ),
                       ),
                     ],
+                    const SliverPlaybackInset(),
                   ],
                 );
               },
@@ -263,7 +285,7 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
     return Tooltip(
       message: 'Edit',
       child: ObsidianHudIconButton(
-        icon: Icons.edit_rounded,
+        iconWidget: const EditIcon(),
         onPressed: onPressed,
       ),
     );

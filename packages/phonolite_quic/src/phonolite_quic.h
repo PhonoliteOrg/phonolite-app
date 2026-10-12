@@ -2,6 +2,7 @@
 #define PHONOLITE_QUIC_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -9,7 +10,9 @@ extern "C" {
 
 typedef struct QuicHandle QuicHandle;
 
-QuicHandle* phonolite_quic_connect(const char* host, uint16_t port, const char* token);
+QuicHandle* phonolite_quic_connect(const char* host, uint16_t port, const char* token, const char* server_pin);
+char* phonolite_security_login(const char* request_json);
+char* phonolite_security_spki(const uint8_t* certificate, size_t length);
 int32_t phonolite_quic_open_track(
     QuicHandle* handle,
     const char* track_id,
@@ -17,6 +20,10 @@ int32_t phonolite_quic_open_track(
     const char* quality,
     uint32_t frame_ms,
     const char* queue_json);
+int32_t phonolite_quic_open_track_at(
+    QuicHandle* handle, const char* track_id, const char* mode,
+    const char* quality, uint32_t frame_ms, const char* queue_json,
+    uint32_t start_ms);
 int32_t phonolite_quic_send_buffer(QuicHandle* handle, uint32_t buffer_ms, uint32_t target_ms);
 int32_t phonolite_quic_send_playback(
     QuicHandle* handle,
@@ -29,7 +36,10 @@ int32_t phonolite_quic_seek(
     uint32_t position_ms,
     uint32_t seek_id);
 int32_t phonolite_quic_advance(QuicHandle* handle);
+int32_t phonolite_quic_suspend_audio(QuicHandle* handle);
+uint64_t phonolite_quic_generation(QuicHandle* handle);
 int32_t phonolite_quic_read(QuicHandle* handle, uint8_t* buffer, uint64_t buffer_len);
+char* phonolite_quic_poll_event(QuicHandle* handle);
 char* phonolite_quic_last_error(QuicHandle* handle);
 char* phonolite_quic_poll_stats(QuicHandle* handle);
 long long phonolite_quic_poll_rtt_ms(QuicHandle* handle);

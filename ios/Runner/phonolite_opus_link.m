@@ -16,6 +16,7 @@ extern int32_t phonolite_audio_write(void *player, const int16_t *samples, int32
 extern void phonolite_audio_set_volume(void *player, float volume);
 extern void phonolite_audio_pause(void *player);
 extern void phonolite_audio_resume(void *player);
+extern int32_t phonolite_audio_flush(void *player);
 extern int64_t phonolite_audio_collect_done_samples(void *player);
 extern int32_t phonolite_audio_is_idle(void *player);
 extern int32_t phonolite_audio_get_output_device_count(void);
@@ -36,6 +37,7 @@ __attribute__((used)) static void *phonolite_opus_keep_symbols[] = {
   (void *)phonolite_audio_set_volume,
   (void *)phonolite_audio_pause,
   (void *)phonolite_audio_resume,
+  (void *)phonolite_audio_flush,
   (void *)phonolite_audio_collect_done_samples,
   (void *)phonolite_audio_is_idle,
   (void *)phonolite_audio_get_output_device_count,

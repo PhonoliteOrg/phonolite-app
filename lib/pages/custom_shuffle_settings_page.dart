@@ -2,15 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/phonolite_icons.dart';
+import '../widgets/ui/server_icon.dart';
+
 import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
-import '../widgets/inputs/obsidian_text_field.dart';
+import '../widgets/display/genre_text.dart';
+import '../widgets/inputs/lucide_checkbox.dart';
+import '../widgets/inputs/obsidian_toggle_option.dart';
+import '../widgets/inputs/search_hud.dart';
+import '../widgets/layout/library_header.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/hover_row.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/obsidian_widgets.dart';
+import '../widgets/ui/responsive_breakpoints.dart';
 import '../widgets/ui/tech_button.dart';
 
 class CustomShuffleSettingsPage extends StatefulWidget {
@@ -257,7 +266,12 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       labels.putIfAbsent(selected, () => selected);
     }
     final options = labels.entries
-        .map((entry) => _GenreOption(key: entry.key, label: entry.value))
+        .map(
+          (entry) => _GenreOption(
+            key: entry.key,
+            label: genreDisplayLabel(entry.value),
+          ),
+        )
         .toList();
     options.sort(
       (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
@@ -327,23 +341,36 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
                     }
                     return ListView(
                       controller: _scrollController,
-                      padding: const EdgeInsets.all(20),
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        20,
+                        20,
+                        20 + PlaybackContentInset.bottomOf(context),
+                      ),
                       children: [
                         CommandLinkButton(
                           label: 'Back to settings',
                           onTap: () => Navigator.of(context).pop(),
                         ),
-                        const SizedBox(height: 12),
-                        const ObsidianSectionHeader(
-                          title: 'Custom Shuffle',
-                          subtitle:
-                              'Pick artists and genres used for library shuffles.',
+                        const SizedBox(height: 16),
+                        const LibraryHeader(
+                          title: 'CUSTOM SHUFFLE',
+                          moduleCount: 0,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Pick artists and genres used for library shuffles.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: ObsidianPalette.textMuted),
+                        ),
+                        const SizedBox(height: 24),
+                        Wrap(
+                          spacing: 32,
+                          runSpacing: 16,
+                          children: [_buildTargetToggle(), _buildViewToggle()],
                         ),
                         const SizedBox(height: 20),
-                        _buildTargetToggle(),
-                        const SizedBox(height: 12),
-                        _buildViewToggle(),
-                        const SizedBox(height: 16),
                         if (showingArtists) ...[
                           _buildSelectionSection(
                             title: 'Artists',
@@ -413,26 +440,31 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     required VoidCallback? onClear,
     required Widget child,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionLabel(title),
-        const SizedBox(height: 12),
-        ObsidianTextField(
-          controller: controller,
-          hintText: hintText,
-          prefixIcon: const Icon(Icons.search_rounded),
-          height: 52,
-        ),
-        const SizedBox(height: 12),
-        _buildSelectionActions(
-          summary: summary,
-          onSelectAll: onSelectAll,
-          onClear: onClear,
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
+    final compact = isCompactListWidth(context);
+    return Padding(
+      padding: EdgeInsets.all(compact ? 12 : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ObsidianSectionHeader(title: title),
+          const SizedBox(height: 16),
+          SearchHud(
+            controller: controller,
+            hintText: hintText,
+            height: 48,
+            onSubmit: () => setState(() {}),
+            onClear: () => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _buildSelectionActions(
+            summary: summary,
+            onSelectAll: onSelectAll,
+            onClear: onClear,
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
     );
   }
 
@@ -451,89 +483,95 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     required VoidCallback? onSelectAll,
     required VoidCallback? onClear,
   }) {
-    return Row(
+    final count = Text(
+      summary,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
+    );
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 4,
       children: [
-        Expanded(
-          child: Text(
-            summary,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
-          ),
-        ),
         TechButton(
           label: 'Select all',
           density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
           onTap: onSelectAll,
         ),
-        const SizedBox(width: 8),
         TechButton(
           label: 'Clear',
           density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
           onTap: onClear,
         ),
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 480) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [count, const SizedBox(height: 8), actions],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: count),
+            const SizedBox(width: 12),
+            actions,
+          ],
+        );
+      },
     );
   }
 
   Widget _buildTargetToggle() {
     final showingServer = _target == _CustomShuffleTarget.server;
-    final theme = Theme.of(context);
-    final borderColor = theme.dividerColor.withValues(alpha: 0.35);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        border: Border.all(color: borderColor),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildToggleOption(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionLabel('LIBRARY'),
+        const SizedBox(height: 6),
+        Wrap(
+          children: [
+            _buildToggleOption(
               label: 'Server',
-              icon: Icons.cloud_queue_rounded,
+              icon: const ServerIcon(),
               isActive: showingServer,
               onTap: () =>
                   setState(() => _target = _CustomShuffleTarget.server),
-              border: Border(right: BorderSide(color: borderColor)),
             ),
-          ),
-          Expanded(
-            child: _buildToggleOption(
+            _buildToggleOption(
               label: 'Local',
-              icon: Icons.download_for_offline_rounded,
+              icon: const Icon(PhonoliteIcons.download),
               isActive: !showingServer,
               onTap: () => setState(() => _target = _CustomShuffleTarget.local),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildViewToggle() {
     final showingArtists = _view == _CustomShuffleView.artists;
-    final theme = Theme.of(context);
-    final borderColor = theme.dividerColor.withValues(alpha: 0.35);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        border: Border.all(color: borderColor),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildToggleOption(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionLabel('FILTER BY'),
+        const SizedBox(height: 6),
+        Wrap(
+          children: [
+            _buildToggleOption(
               label: 'Artists',
-              icon: Icons.people_alt_rounded,
+              icon: const Icon(PhonoliteIcons.usersRound),
               isActive: showingArtists,
               onTap: () => setState(() => _view = _CustomShuffleView.artists),
-              border: Border(right: BorderSide(color: borderColor)),
             ),
-          ),
-          Expanded(
-            child: _buildToggleOption(
+            _buildToggleOption(
               label: 'Genres',
-              icon: Icons.local_offer_rounded,
+              icon: const Icon(PhonoliteIcons.tag),
               isActive: !showingArtists,
               onTap: () {
                 setState(() => _view = _CustomShuffleView.genres);
@@ -545,49 +583,23 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
                 }
               },
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildToggleOption({
     required String label,
-    required IconData icon,
+    required Widget icon,
     required bool isActive,
     required VoidCallback onTap,
-    Border? border,
   }) {
-    final activeColor = ObsidianPalette.gold;
-    final textColor = isActive ? activeColor : ObsidianPalette.textMuted;
-    final fill = isActive
-        ? ObsidianPalette.gold.withValues(alpha: 0.12)
-        : Colors.transparent;
-
-    return Material(
-      color: fill,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(border: border),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: textColor),
-              const SizedBox(width: 8),
-              Text(
-                label.toUpperCase(),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: textColor,
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ObsidianToggleOption(
+      label: label,
+      icon: icon,
+      isActive: isActive,
+      onPressed: onTap,
     );
   }
 
@@ -616,23 +628,15 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
 
     return Column(
       children: [
-        ListView.separated(
+        ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: artists.length,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            color: ObsidianPalette.border.withValues(alpha: 0.35),
-          ),
           itemBuilder: (context, index) {
             final artist = artists[index];
             final selected = _activeArtistSelection.contains(artist.id);
-            final subtitle = artist.genres.isEmpty
-                ? null
-                : artist.genres.join(', ');
             return _buildSelectableRow(
               title: artist.name,
-              subtitle: subtitle,
               selected: selected,
               onTap: () => _toggleArtist(artist.id),
             );
@@ -663,14 +667,10 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       return _buildInlineMessage('No genres match your search.');
     }
 
-    return ListView.separated(
+    return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: genres.length,
-      separatorBuilder: (_, __) => Divider(
-        height: 1,
-        color: ObsidianPalette.border.withValues(alpha: 0.35),
-      ),
       itemBuilder: (context, index) {
         final genre = genres[index];
         final selected = _activeGenreSelection.contains(genre.key);
@@ -692,42 +692,43 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
 
   Widget _buildSelectableRow({
     required String title,
-    String? subtitle,
     required bool selected,
     required VoidCallback onTap,
   }) {
-    return ObsidianHoverRow(
-      isActive: selected,
-      onTap: onTap,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.bodyMedium),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: ObsidianPalette.textMuted,
-                    ),
-                  ),
-                ],
-              ],
+    final compact = isCompactListWidth(context);
+    return MergeSemantics(
+      child: ObsidianHoverRow(
+        isActive: selected,
+        onTap: onTap,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 12,
+          vertical: compact ? 8 : 10,
+        ),
+        child: Row(
+          children: [
+            LucideCheckbox(
+              value: selected,
+              onChanged: (_) => onTap(),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              side: const BorderSide(color: ObsidianPalette.textMuted),
+              activeColor: ObsidianPalette.gold,
             ),
-          ),
-          _buildSelectionIcon(selected),
-        ],
+            SizedBox(width: compact ? 10 : 14),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontSize: compact ? 14.5 : null,
+                  letterSpacing: compact ? 0.2 : 0.6,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
-
-  Widget _buildSelectionIcon(bool selected) {
-    return Icon(
-      selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-      color: selected ? ObsidianPalette.gold : ObsidianPalette.textMuted,
     );
   }
 

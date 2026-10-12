@@ -18,7 +18,7 @@ void main() {
           'android.permission.POST_NOTIFICATIONS',
           'android.permission.FOREGROUND_SERVICE',
           'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
-          'android:usesCleartextTraffic="true"',
+          'android:usesCleartextTraffic="false"',
           '.PhonoliteApplication',
           '.PhonoliteMediaService',
           'android.permission.BIND_MEDIA_BROWSER_SERVICE',
@@ -91,6 +91,9 @@ void main() {
           'NotificationCompat.CATEGORY_TRANSPORT',
         ]);
         expectContainsAll(outputSource, const [
+          '"flush" -> result.success(handleFlush',
+          'fun flush()',
+          'audioTrack.flush()',
           'requestAudioFocus()',
           'ACTION_AUDIO_BECOMING_NOISY',
           'AudioTrack.Builder()',

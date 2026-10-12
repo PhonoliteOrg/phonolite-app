@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/artwork_errors.dart';
 import '../../core/constants.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
@@ -32,6 +33,15 @@ class ArtistHero extends StatelessWidget {
     double s(double value) => value * scale;
     final bannerHeight = s(240);
     final bannerPath = bannerUrl?.trim();
+    Widget onBannerError(
+      BuildContext context,
+      Object error,
+      StackTrace? stack,
+    ) {
+      ArtworkErrors.instance.report(bannerPath!, error);
+      return const SizedBox.shrink();
+    }
+
     final summary = artist.summary?.trim().isNotEmpty == true
         ? artist.summary!
         : 'Bio unavailable. Curate this artist profile with metadata or notes.';
@@ -71,15 +81,13 @@ class ArtistHero extends StatelessWidget {
                             headers: headers,
                             fit: BoxFit.cover,
                             alignment: Alignment.center,
-                            errorBuilder: (_, __, ___) =>
-                                const SizedBox.shrink(),
+                            errorBuilder: onBannerError,
                           )
                         : Image.file(
                             File(bannerPath),
                             fit: BoxFit.cover,
                             alignment: Alignment.center,
-                            errorBuilder: (_, __, ___) =>
-                                const SizedBox.shrink(),
+                            errorBuilder: onBannerError,
                           ),
                   ),
           ),
@@ -96,12 +104,6 @@ class ArtistHero extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(width: s(2), color: accentGold),
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(s(24), s(20), s(20), s(20)),

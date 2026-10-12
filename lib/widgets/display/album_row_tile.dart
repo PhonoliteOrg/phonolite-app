@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../inputs/lucide_checkbox.dart';
+
+import '../ui/phonolite_icons.dart';
+
 import '../../entities/models.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/responsive_breakpoints.dart';
 import 'album_art.dart';
-import 'album_labels.dart';
 
 class AlbumRowTile extends StatelessWidget {
   const AlbumRowTile({
@@ -41,7 +44,7 @@ class AlbumRowTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isCompact = isCompactListWidth(context);
-    final detailText = subtitle ?? albumDetailLabel(album);
+    final detailText = subtitle ?? '';
     final canInteract = selectable && !isDeleting;
     final effectiveOnTap = selectionMode
         ? canInteract
@@ -63,7 +66,7 @@ class AlbumRowTile extends StatelessWidget {
         child: Row(
           children: [
             if (selectionMode) ...[
-              Checkbox(
+              LucideCheckbox(
                 value: selected,
                 onChanged: canInteract && onSelectionToggle != null
                     ? (_) => onSelectionToggle!()
@@ -95,8 +98,8 @@ class AlbumRowTile extends StatelessWidget {
                       letterSpacing: isCompact ? 0.2 : 0.6,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  if (detailText.isNotEmpty)
+                  if (detailText.isNotEmpty) ...[
+                    const SizedBox(height: 2),
                     Text(
                       detailText,
                       maxLines: 1,
@@ -107,6 +110,7 @@ class AlbumRowTile extends StatelessWidget {
                         color: ObsidianPalette.textMuted,
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -121,7 +125,7 @@ class AlbumRowTile extends StatelessWidget {
               trailing!
             else if (!selectionMode)
               Icon(
-                Icons.chevron_right_rounded,
+                PhonoliteIcons.chevronRight,
                 size: isCompact ? 22 : 24,
                 color: Colors.white38,
               ),

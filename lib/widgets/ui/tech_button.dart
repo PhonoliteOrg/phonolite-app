@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'chamfer_clipper.dart';
 import 'obsidian_theme.dart';
+import '../modals/obsidian_modal_scope.dart';
 
 enum TechButtonVariant { standard, danger }
 
@@ -15,16 +16,19 @@ class TechButton extends StatefulWidget {
     super.key,
     required this.label,
     this.icon,
+    this.iconWidget,
     this.onTap,
     this.variant = TechButtonVariant.standard,
     this.density = TechButtonDensity.standard,
     this.chrome = TechButtonChrome.framed,
     this.iconOnly = false,
     this.tooltip,
-  }) : assert(!iconOnly || icon != null);
+  }) : assert(icon == null || iconWidget == null),
+       assert(!iconOnly || icon != null || iconWidget != null);
 
   final String label;
   final IconData? icon;
+  final Widget? iconWidget;
   final VoidCallback? onTap;
   final TechButtonVariant variant;
   final TechButtonDensity density;
@@ -56,6 +60,7 @@ class _TechButtonState extends State<TechButton> {
 
   @override
   Widget build(BuildContext context) {
+    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
     final enabled = widget.onTap != null;
     final isDanger = widget.variant == TechButtonVariant.danger;
     final accent = isDanger ? Colors.redAccent : ObsidianPalette.gold;
@@ -63,12 +68,18 @@ class _TechButtonState extends State<TechButton> {
         ? Colors.red.withValues(alpha: 0.1)
         : ObsidianPalette.gold.withValues(alpha: 0.1);
     final borderColor = enabled ? accent : accent.withValues(alpha: 0.4);
-    final textSize = widget.density == TechButtonDensity.compact ? 12.5 : 14.0;
+    final textSize = touchLayout
+        ? 16.0
+        : widget.density == TechButtonDensity.compact
+        ? 12.5
+        : 14.0;
     final iconSize = widget.density == TechButtonDensity.compact ? 16.0 : 18.0;
     final padding = widget.density == TechButtonDensity.compact
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
         : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
-    final iconOnlySize = widget.density == TechButtonDensity.compact
+    final iconOnlySize = touchLayout
+        ? 48.0
+        : widget.density == TechButtonDensity.compact
         ? 36.0
         : 42.0;
     final iconOnlyGlyphSize = widget.density == TechButtonDensity.compact
@@ -101,22 +112,23 @@ class _TechButtonState extends State<TechButton> {
           ? SizedBox.square(
               dimension: iconOnlySize,
               child: Center(
-                child: Icon(
-                  widget.icon,
+                child: _buildIcon(
                   size: iconOnlyGlyphSize,
                   color: foreground,
                   shadows: shadows,
                 ),
               ),
             )
-          : Padding(
+          : Container(
+              constraints: touchLayout
+                  ? const BoxConstraints(minHeight: 48, minWidth: 48)
+                  : null,
               padding: padding,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (widget.icon != null) ...[
-                    Icon(
-                      widget.icon,
+                  if (widget.icon != null || widget.iconWidget != null) ...[
+                    _buildIcon(
                       size: iconSize,
                       color: foreground,
                       shadows: shadows,
@@ -172,6 +184,9 @@ class _TechButtonState extends State<TechButton> {
         child: InkWell(
           onTap: widget.onTap,
           child: Container(
+            constraints: touchLayout
+                ? const BoxConstraints(minHeight: 48, minWidth: 48)
+                : null,
             padding: widget.iconOnly ? EdgeInsets.zero : padding,
             width: widget.iconOnly ? iconOnlySize : null,
             height: widget.iconOnly ? iconOnlySize : null,
@@ -181,20 +196,12 @@ class _TechButtonState extends State<TechButton> {
               border: Border.all(color: borderColor),
             ),
             child: widget.iconOnly
-                ? Icon(
-                    widget.icon,
-                    size: iconOnlyGlyphSize,
-                    color: textStyle.color,
-                  )
+                ? _buildIcon(size: iconOnlyGlyphSize, color: textStyle.color)
                 : Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (widget.icon != null) ...[
-                        Icon(
-                          widget.icon,
-                          size: iconSize,
-                          color: textStyle.color,
-                        ),
+                      if (widget.icon != null || widget.iconWidget != null) ...[
+                        _buildIcon(size: iconSize, color: textStyle.color),
                         const SizedBox(width: 6),
                       ],
                       Text(widget.label.toUpperCase(), style: textStyle),
@@ -219,5 +226,19 @@ class _TechButtonState extends State<TechButton> {
         child: button,
       ),
     );
+  }
+
+  Widget _buildIcon({
+    required double size,
+    required Color? color,
+    List<Shadow>? shadows,
+  }) {
+    if (widget.iconWidget != null) {
+      return IconTheme.merge(
+        data: IconThemeData(size: size, color: color, shadows: shadows),
+        child: widget.iconWidget!,
+      );
+    }
+    return Icon(widget.icon, size: size, color: color, shadows: shadows);
   }
 }

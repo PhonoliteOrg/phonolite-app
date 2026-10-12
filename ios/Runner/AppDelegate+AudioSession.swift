@@ -5,11 +5,9 @@ extension AppDelegate {
   func configureInitialAudioSession() {
     do {
       let session = AVAudioSession.sharedInstance()
-      try session.setCategory(
-        .playback,
-        mode: .default,
-        options: [.allowAirPlay, .allowBluetoothA2DP]
-      )
+      // Playback already supports AirPlay and Bluetooth A2DP. Explicit
+      // allowAirPlay is only valid for the playAndRecord category.
+      try session.setCategory(.playback, mode: .default, options: [])
       try session.setActive(true)
     } catch {
       NSLog("Failed to activate audio session: %@", "\(error)")

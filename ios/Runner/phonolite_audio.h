@@ -15,6 +15,7 @@ int32_t phonolite_audio_write(PhonoliteAudioPlayer *player, const int16_t *sampl
 void phonolite_audio_set_volume(PhonoliteAudioPlayer *player, float volume);
 void phonolite_audio_pause(PhonoliteAudioPlayer *player);
 void phonolite_audio_resume(PhonoliteAudioPlayer *player);
+int32_t phonolite_audio_flush(PhonoliteAudioPlayer *player);
 int64_t phonolite_audio_collect_done_samples(PhonoliteAudioPlayer *player);
 int32_t phonolite_audio_is_idle(PhonoliteAudioPlayer *player);
 

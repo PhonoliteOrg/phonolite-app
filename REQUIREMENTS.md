@@ -15,7 +15,7 @@
 ## Application Shell and Visual System
 - UI-001: The app shall start from a single Flutter entrypoint that creates a `PhonoliteApp`, disables runtime Google Fonts fetching, and injects a single `AppController` into the widget tree.
 - UI-002: The app shall use a dark "Obsidian" visual language with near-black backgrounds, gold accent highlights, Rajdhani display typography, and Poppins body typography.
-- UI-003: The app shall use chamfered, glass-like, or clipped geometric surfaces across cards, buttons, dialogs, and navigation controls.
+- UI-003: The app shall use chamfered, glass-like, or clipped geometric surfaces across cards, command buttons, and dialogs. Navigation destinations shall use larger standalone icons without tile backgrounds or borders, with gold selection highlights and accessible destination labels.
 - UI-004: The app shall support responsive scale-down through `ObsidianScale`, clamping UI scale between `0.7` and `1.0` based on a `900px` baseline width.
 - UI-005: The app shall preserve hover-specific affordances on desktop-capable targets and avoid hover dependence on touch-first targets.
 - UI-006: The app shall disable backdrop blur on web and Windows, even when glass-styled components remain visible.
@@ -28,6 +28,17 @@
 - UI-013: Empty-state views shall present explicit title and message text rather than silent blank screens.
 - UI-014: Shared command buttons shall use explicit labels such as "Back to library", "Back to artist", or "Back to settings" instead of relying only on gesture navigation.
 - UI-015: The app shall preserve a secondary full-screen search page implementation in code, even though the main navigation currently uses inline library search.
+- UI-016: Genre labels across library, detail, shuffle, and statistics views shall use consistent title case and customary acronym casing, including for cached and offline metadata, without modifying stored tags or lowercase matching keys.
+- UI-017 (constraint): The app shall not display in-app toasts, snackbars, or notification banners. Actions shall complete without success popups; operational failures shall be recorded in Logs, while form validation and permission settings remain part of their relevant screens.
+
+## Artist Collaborations
+- CREDIT-001: Artist browsing, search and custom shuffle selection shall include main album and song artists and explicitly featured guests by default; supporting roles alone shall not qualify an artist for the default list.
+- CREDIT-002: Artist profiles shall separate solo headline Albums, Collab albums with joint album billing, Appears on with billed song appearances, and Other credits with supporting roles; each canonical album shall appear once per section with its appropriate song scope.
+- CREDIT-003: Collab albums, Appears on, and Other credits shall use the same card/list view setting and album presentation as Albums, without role or credited-song descriptions; selecting a release shall open the shared full album.
+- CREDIT-004: Artist downloads and downloaded album removal selection shall operate on solo and joint headline albums; guest and supporting credits shall not select unrelated tracks from a shared album.
+- CREDIT-005: Album and track models shall retain ordered artist identities, names, credited names, roles, and joining phrases through JSON, copyWith, playback hydration, and offline fragments while accepting legacy single-artist payloads.
+- CREDIT-006: Offline artist browsing shall use the same billing rules as the server, derive joint albums and song appearances from downloaded credits, retain existing contributor metadata for detailed inspection, and share canonical album IDs and downloaded track lists across profiles.
+- CREDIT-007: Session and profile changes shall supersede stale in-flight page/relationship replies; metadata events shall refresh visible artist sections, individual profiles and persisted offline credits.
 
 ## Startup, Session, and Authentication
 - AUTH-001: The app shall derive its initial server base URL from the compile-time environment variable `PHONOLITE_URL`, defaulting to `http://127.0.0.1:3000/api/v1`.
@@ -39,7 +50,7 @@
 - AUTH-007: Fresh-login reset shall clear active playback state, clear queues, clear now playing state, and restore the controller to an unauthorized state.
 - AUTH-008: The login flow shall be two-stage: connect to a server first, then show username and password entry after the server probe succeeds.
 - AUTH-009: The login screen shall accept either host-and-port input or a pasted URL and normalize it into the app's `/api/v1` base URL.
-- AUTH-010: The login screen shall provide an explicit HTTP/HTTPS scheme toggle.
+- AUTH-010: The login screen shall provide an explicit HTTP/HTTPS scheme toggle using the same labeled choices and gold selection underline as Custom Shuffle Settings. Its page heading, labeled text fields, and actions shall use the shared page and modal styles, with full-size touch targets on mobile.
 - AUTH-011: The login screen shall validate ports into the range `1..65535`.
 - AUTH-012: The login screen shall offer a "remember me" option controlling whether credentials are persisted.
 - AUTH-013: When saved credentials exist, the login flow shall prefill and normalize the remembered base URL back into host, port, and scheme fields.
@@ -65,12 +76,12 @@
 - LIB-003: The library shall support both card and row-list presentation for collections.
 - LIB-004: The collection list/card preference shall be persisted and reused across library and artist detail contexts.
 - LIB-005: Artist cards shall show artist artwork when available and shall otherwise fall back to avatar initials.
-- LIB-006: Artist rows shall show album counts and up to two genres in the subtitle line.
-- LIB-007: Artist detail views shall load all albums for the selected artist and shall attempt to refresh artist metadata independently of the parent list payload.
+- LIB-006: Artist rows shall show the total distinct album count across headline releases and billed song appearances, a joint album count when present, and up to two genres. Supporting credits shall not inflate these counts. Counts shall be available from the initial browse response and refresh when artist releases load, without per-artist count requests.
+- LIB-007: Artist detail views shall load solo albums and collaborations for the selected individual artist and shall attempt to refresh that artist's metadata independently of the parent list payload.
 - LIB-008: Artist detail headers shall support artist logo, optional artist banner, genre line, and expandable summary text.
 - LIB-009: Album cards and rows shall show cover art, release year when known, track count, and a limited genre summary.
 - LIB-010: Album detail views shall show a hero section with cover art, title, artist, year, genres, and expandable summary text when summary content exists.
-- LIB-011: Album detail views shall load tracks once per album selection and shall show an explicit empty state when no tracks exist.
+- LIB-011: Album detail views shall load tracks once per album selection and shall show an explicit empty state when no tracks exist. Server and downloaded albums shall display each track's original positive album track number, preserving gaps when tracks are missing; tracks without a valid number shall fall back to their list position. Playlist numbering shall follow playlist order.
 - LIB-012: Library search shall be in-page, debounced, and not fire remote requests for effectively empty queries.
 - LIB-013: The primary library search flow shall require a non-trivial query before remote search results are shown.
 - LIB-014: The library search flow shall debounce typing by approximately `450ms` before searching.
@@ -129,6 +140,7 @@
 - FEAT-027: Add-to-playlist actions shall be scoped to the current source: local contexts shall show only local playlists, and server contexts shall show only connected server playlists.
 - FEAT-028: Local playlist actions shall accept only tracks with a completed local download, while server playlist actions shall continue to use server playlist APIs and server track IDs.
 - FEAT-029: The Settings page shall expose separate editable storage locations for the offline metadata database and downloaded audio files.
+- FEAT-030: Server playlist details shall offer Download playlist, opening the playlist editor with the current name, description, and artwork. Saving shall create an independent local copy with optional metadata and artwork changes, queue only missing playlist tracks, and preserve order and repetitions as downloads complete, including after an app restart.
 
 ## Custom Shuffle
 - SHUF-001: Custom shuffle shall support selection by explicit artist IDs and by normalized lowercase genres.
@@ -166,11 +178,11 @@
 - PLAY-020: Volume persistence debounce shall be approximately `350ms`.
 - PLAY-021: Selecting an output device shall restart or rebind playback so that the current track continues on the new output path when possible.
 - PLAY-022: The output-device list shall always include `System Default` as a stable fallback option.
-- PLAY-023: The player shall support seek preview while scrubbing and a debounced seek commit after user input settles.
-- PLAY-024: Seek commit debounce shall be approximately `180ms`.
-- PLAY-025: Seek completion shall guard against indefinite pending state using an `8s` completion guard.
+- PLAY-023: The player shall preview positions while scrubbing and commit the latest target immediately when the user releases the scrubber.
+- PLAY-024: Seek completion and failure shall be acknowledged by the audio worker; superseded acknowledgements shall not replace a newer target or restart its session.
+- PLAY-025: Seek readiness shall have a `5s` worker acknowledgement deadline, a bounded UI fallback deadline, and an `8s` guard against premature auto-advance during recovery.
 - PLAY-026: If inline native seek is not available or not accepted, the controller shall restart the current stream from the target playback position.
-- PLAY-027: If playback has been manually paused for more than `45s`, resume shall restart the stream instead of assuming the old stream is still valid.
+- PLAY-027: Resume shall reuse an active paused session regardless of pause duration and reconnect from the current position only when the session is unavailable. Transport interruptions shall preserve user play intent; a user pause or stop shall cancel automatic playback recovery.
 - PLAY-028: Playback position display shall continue to tick locally at approximately `250ms` intervals while playback is active.
 - PLAY-029: Auto-advance shall be guarded so scrubbing and track transitions do not trigger duplicate next-track behavior.
 - PLAY-030: Stopping playback shall clear active queue state, clear now playing, stop stream monitoring, and shut down the active audio session.
@@ -190,7 +202,7 @@
 - NET-003: Server probing shall accept either the root `/health` endpoint or the `/api/v1/health` endpoint as a successful connection target.
 - NET-004: Server login shall use `POST /auth/login` and shall require a non-empty `token` in the response payload.
 - NET-005: Artist browsing shall use `GET /browse/artists?limit={limit}&offset={offset}`.
-- NET-006: Artist-detail album loading shall use `GET /browse/artists/{artistId}/albums`.
+- NET-006: Artist detail sections shall load through `GET /browse/artists/{artistId}/releases`, accepting solo albums and collaboration contributions; headline album loading shall remain available through `GET /browse/artists/{artistId}/albums`.
 - NET-007: Album-track loading shall use `GET /browse/albums/{albumId}/tracks`.
 - NET-008: Playlist listing shall use `GET /library/playlists`.
 - NET-009: Playlist-track loading shall use `GET /browse/playlists/{playlistId}/tracks`.
@@ -217,7 +229,7 @@
 - NET-030: Retry behavior shall cover timeouts, socket/client transport errors, and retryable `5xx` responses.
 - NET-031: Retry delays shall be backoff-based and jittered rather than fixed.
 - NET-032: Health ping logic shall be able to report round-trip time in milliseconds for diagnostics and UI display.
-- NET-033: Download metadata hydration shall use protected `GET /library/tracks/{trackId}/offline-metadata` and parse track, album, artist, and schema-version fragments.
+- NET-033: Download metadata hydration shall use protected `GET /library/tracks/{trackId}/offline-metadata` and parse track, album, primary artist, individual credited artist profiles, and schema-version fragments.
 - NET-034: Batch download preparation shall use protected `POST /download/batches` with `track_ids` and optional `client_batch_id`.
 - NET-035: Batch download manifests shall parse schema version, batch ID, created timestamp, download items, unavailable track IDs, offline metadata fragments, byte length, content type, ETag, and SHA256 fields.
 - NET-036: Resumed file downloads shall send `Range` and `If-Range` when a partial file and ETag are available.
@@ -258,13 +270,14 @@
 
 ## Diagnostics, Health, and Error Handling
 - DIAG-001: The controller shall log informational, status, warning, error, and debug messages through a shared application logger.
-- DIAG-002: The UI shall expose current log history through a dedicated logs screen.
+- DIAG-002: The UI shall expose current bounded log history through a dedicated logs screen, build log rows lazily, batch live history updates, and format the complete filtered history only when copying. Category changes and clearing shall remain responsive at the 3,000-entry limit.
 - DIAG-003: The controller shall periodically poll server health when not actively playing.
 - DIAG-004: Health-monitor polling cadence shall be approximately `12s` while idle.
 - DIAG-005: Health polling shall update stream-connected state and ping latency in the playback model.
 - DIAG-006: The audio engine shall report QUIC transport stats and RTT when available.
 - DIAG-007: The controller shall warn when iOS playback appears to target loopback hosts that may not be reachable as expected from device runtime conditions.
 - DIAG-008: Native and FFI errors shall be surfaced back into Dart as readable error strings rather than swallowed silently.
+- DIAG-009: Missing artwork (HTTP 404/410) shall use placeholders and log at Info level; other artwork failures shall log at Warning level without repeated stack dumps. Repeated failures for the same image/status shall be rate limited, and unrelated framework errors shall retain their normal handling.
 
 ## Native Audio Engine and Playback Pipeline
 - AUDIO-001: The audio engine shall run playback work in a dedicated isolate worker rather than on the main UI isolate.
@@ -272,7 +285,7 @@
 - AUDIO-003: The playback engine shall support Opus decode and QUIC transport through bundled FFI packages rather than through pure Dart decode/transport.
 - AUDIO-004: The playback engine shall support stream settings for mode, quality, and frame duration.
 - AUDIO-005: The playback engine shall support pause, resume, stop, set-volume, set-output-device, and seek commands from the controller.
-- AUDIO-006: The playback engine shall support inline seek when the native transport/player path can honor it.
+- AUDIO-006: The playback engine shall seek within retained compressed audio locally before requesting a missing range over QUIC, using decoder preroll and sample trimming to reach the target.
 - AUDIO-007: Playback buffering shall adapt based on whether the host appears to be loopback/local versus remote and on measured RTT.
 - AUDIO-008: The playback engine shall report playback progress, buffered ratio, bitrate, and RTT back to the controller.
 - AUDIO-009: The playback engine shall periodically send playback progress and buffer statistics back over QUIC while streaming.
@@ -283,14 +296,20 @@
 - AUDIO-014: The Opus decoder shall expose a maximum frame size of `5760`.
 - AUDIO-015: QUIC transport shall use ALPN `phonolite-quic`.
 - AUDIO-016: QUIC transport shall authenticate immediately after connect by sending a token-bearing control message.
-- AUDIO-017: QUIC transport shall support control messages for open, buffer, playback stats, seek, advance, and ping.
+- AUDIO-017: QUIC transport shall support control messages for open, buffer, playback stats, seek, audio suspension, advance, and ping.
 - AUDIO-018: QUIC transport shall maintain a dedicated control stream and separate audio payload streams.
-- AUDIO-019: QUIC transport shall buffer pending non-active streams temporarily but shall avoid mixing prefetched audio into the active stream.
-- AUDIO-020: QUIC transport shall ping approximately every `500ms` and send ack-eliciting traffic approximately every `200ms`.
+- AUDIO-019: QUIC transport shall reject retired or unrelated audio streams and keep control announcements and errors observable independently of audio delivery capacity.
+- AUDIO-020: QUIC transport shall keep paused connections alive with periodic pings below the `30s` idle timeout, without forced acknowledgement traffic in the normal receive loop.
 - AUDIO-021: QUIC transport shall use a `30s` idle timeout.
 - AUDIO-022: QUIC transport shall currently disable peer certificate verification.
-- AUDIO-023: QUIC transport shall maintain a pending-prefetch cap of roughly `12MB`.
+- AUDIO-023: QUIC transport shall bound its native active-audio delivery queue to `512KiB` and clear it when an open, seek, or audio suspension retires the active generation.
 - AUDIO-024: Local downloaded media playback shall choose platform-specific chunk sizes for desktop, Android, and Apple targets when streaming file bytes into the player backend.
+- AUDIO-025: Remote reception and compressed-packet caching shall run independently of PCM decoding and output, so a full or paused PCM queue cannot block seek metadata or new audio ranges.
+- AUDIO-026: The compressed audio cache shall be scoped to the playback session and source version, retain timestamped seekable ranges, and enforce a `16MiB` budget including estimated packet/segment allocation overhead and a `64`-segment limit with eviction that preserves active decoder and incoming ranges.
+- AUDIO-027: Server stream announcements shall carry the requested position, range end, end-of-track flag, source version, and request generation for canonical five-second ranges; the client shall distinguish a range boundary from track completion.
+- AUDIO-028: Compatible output shall flush queued samples on seek while retaining its output device and format; output completions from a retired epoch shall not advance the new position.
+- AUDIO-029: Cached seeks shall suspend obsolete transport audio, and range continuation shall request only missing audio before the retained range runs out.
+- AUDIO-030: Remote QUIC ranges shall use a stable rendition at the selected starting quality. The legacy `auto` mode shall not change bitrate inside a cached range; PCM buffering may still adapt to RTT.
 
 ## Android Platform Requirements
 - AND-001: Android shall use a shared `FlutterEngine` created at the application level so the main activity and media service can communicate through the same Dart runtime.
@@ -364,3 +383,12 @@
 ## Suggested Next Traceability Layer
 - TRACE-001: Future feature work should link new issues, tests, and design changes back to these requirement IDs.
 - TRACE-002: If this file becomes too large to manage comfortably, the next split should separate shell/auth, library/features, playback/transport, and platform-specific requirements into dedicated documents while preserving the same IDs.
+
+## Playback and Catalog Performance
+- PERF-001: Initial audio buffering shall be separate from recovery buffering: 100ms locally and 300ms remotely at the baseline profile, with larger remote startup targets for degraded networks.
+- PERF-002: Server backpressure targets shall cover the audio required to start playback.
+- PERF-003: Committed seeks shall execute immediately; scrub previews shall not trigger remote seeks.
+- PERF-004: Track display metadata shall hydrate asynchronously without delaying audio, and known album queues shall be reused.
+- PERF-005: Compatible remote track transitions shall reuse the QUIC connection; client audio generations and echoed open request IDs shall reject superseded audio and stream announcements.
+- PERF-006: The offline storage actor shall retain its database connection, close it before reset or path migration, and perform artwork repair on migration/location change rather than each query.
+- PERF-007: PCM submission chunks shall be approximately `40ms`, and compressed read-ahead shall be bounded independently of the PCM queue and continue to accept requested range headers while paused.

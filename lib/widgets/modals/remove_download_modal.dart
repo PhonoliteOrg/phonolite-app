@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/models.dart';
-import '../../entities/offline_library.dart';
+import '../../entities/offline_models.dart';
 import '../ui/tech_button.dart';
 import 'confirmation_modal.dart';
 

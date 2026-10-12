@@ -1,0 +1,409 @@
+{
+  "package": "lucide-static",
+  "version": "1.52.0",
+  "source": "https://registry.npmjs.org/lucide-static/-/lucide-static-1.52.0.tgz",
+  "integrity": "sha512-0zZYihAze4ZmUCcyNa9OkWYqn/Y5f9AdTh02AZIxMtP5ravcTTfoSIAnUPBH6ZvKxt+ZW28JB0ldzLRyD82fcw==",
+  "font_family": "PhonoliteLucide",
+  "branding": "Original Phonolite logo retained",
+  "material_to_lucide": {
+    "add_photo_alternate_outlined": "image-plus",
+    "add_rounded": "plus",
+    "album_rounded": "disc-3",
+    "bar_chart": "chart-no-axes-column",
+    "bar_chart_rounded": "chart-no-axes-column",
+    "cancel_outlined": "circle-x",
+    "check_rounded": "check",
+    "chevron_left": "chevron-left",
+    "chevron_left_rounded": "chevron-left",
+    "chevron_right": "chevron-right",
+    "chevron_right_rounded": "chevron-right",
+    "clear_all_rounded": "list-x",
+    "close_rounded": "x",
+    "cloud_done_rounded": "cloud-check",
+    "cloud_off_rounded": "cloud-off",
+    "cloud_queue_rounded": "cloud",
+    "cloud_sync_rounded": "cloud-sync",
+    "copy_all_rounded": "copy-check",
+    "copy_rounded": "copy",
+    "delete_forever_rounded": "trash",
+    "delete_outline_rounded": "trash-2",
+    "delete_sweep_rounded": "trash-2",
+    "download_for_offline_outlined": "download",
+    "download_for_offline_rounded": "download",
+    "downloading_rounded": "download",
+    "edit_note_rounded": "notebook-pen",
+    "edit_rounded": "pencil",
+    "equalizer_rounded": "audio-lines",
+    "error_outline_rounded": "circle-alert",
+    "favorite": "heart",
+    "favorite_border_rounded": "heart",
+    "favorite_rounded": "heart",
+    "folder_rounded": "folder",
+    "groups_rounded": "users",
+    "hourglass_top_rounded": "hourglass",
+    "inbox_rounded": "inbox",
+    "library_music": "disc-3",
+    "local_offer_rounded": "tag",
+    "lock_outline_rounded": "lock-keyhole",
+    "login_rounded": "log-in",
+    "logout_rounded": "log-out",
+    "more_vert_rounded": "ellipsis-vertical",
+    "music_note_rounded": "music",
+    "network_ping": "activity",
+    "offline_pin_rounded": "circle-check",
+    "pause": "pause",
+    "pause_circle_outline_rounded": "circle-pause",
+    "pause_rounded": "pause",
+    "people_alt_rounded": "users-round",
+    "person_rounded": "user-round",
+    "pie_chart_rounded": "chart-pie",
+    "play_arrow": "play",
+    "play_arrow_rounded": "play",
+    "playlist_add": "list-plus",
+    "playlist_add_rounded": "list-plus",
+    "playlist_remove_rounded": "list-minus",
+    "queue_music": "list-music",
+    "radio_button_checked": "circle-dot",
+    "radio_button_unchecked": "circle",
+    "receipt_long_rounded": "receipt-text",
+    "refresh_rounded": "refresh-cw",
+    "repeat_rounded": "repeat",
+    "restore_rounded": "rotate-ccw",
+    "save_alt_rounded": "download",
+    "schedule_rounded": "clock",
+    "search_rounded": "search",
+    "settings": "settings",
+    "shuffle_on_rounded": "shuffle",
+    "shuffle_rounded": "shuffle",
+    "signal_wifi_connected_no_internet_4": "wifi-off",
+    "skip_next": "skip-forward",
+    "skip_previous": "skip-back",
+    "speaker_rounded": "speaker",
+    "speed_rounded": "gauge",
+    "stop_rounded": "square",
+    "storage_rounded": "database",
+    "swap_horiz_rounded": "arrow-left-right",
+    "sync_rounded": "refresh-cw",
+    "view_agenda_rounded": "rows-3",
+    "volume_up": "volume-2",
+    "wifi_off_rounded": "wifi-off"
+  },
+  "icons": {
+    "activity": {
+      "dart": "activity",
+      "codepoint": 57400
+    },
+    "antenna": {
+      "dart": "antenna",
+      "codepoint": 58594
+    },
+    "arrow-left-right": {
+      "dart": "arrowLeftRight",
+      "codepoint": 57930
+    },
+    "audio-lines": {
+      "dart": "audioLines",
+      "codepoint": 58714
+    },
+    "bookmark": {
+      "dart": "bookmark",
+      "codepoint": 57440
+    },
+    "chart-no-axes-column": {
+      "dart": "chartNoAxesColumn",
+      "codepoint": 57448
+    },
+    "chart-pie": {
+      "dart": "chartPie",
+      "codepoint": 57451
+    },
+    "check": {
+      "dart": "check",
+      "codepoint": 57452
+    },
+    "chevron-down": {
+      "dart": "chevronDown",
+      "codepoint": 57453
+    },
+    "chevron-left": {
+      "dart": "chevronLeft",
+      "codepoint": 57454
+    },
+    "chevron-right": {
+      "dart": "chevronRight",
+      "codepoint": 57455
+    },
+    "circle": {
+      "dart": "circle",
+      "codepoint": 57462
+    },
+    "circle-alert": {
+      "dart": "circleAlert",
+      "codepoint": 57463
+    },
+    "circle-check": {
+      "dart": "circleCheck",
+      "codepoint": 57894
+    },
+    "circle-dot": {
+      "dart": "circleDot",
+      "codepoint": 58181
+    },
+    "circle-pause": {
+      "dart": "circlePause",
+      "codepoint": 57471
+    },
+    "circle-x": {
+      "dart": "circleX",
+      "codepoint": 57476
+    },
+    "clock": {
+      "dart": "clock",
+      "codepoint": 57479
+    },
+    "cloud": {
+      "dart": "cloud",
+      "codepoint": 57480
+    },
+    "cloud-check": {
+      "dart": "cloudCheck",
+      "codepoint": 58990
+    },
+    "cloud-off": {
+      "dart": "cloudOff",
+      "codepoint": 57485
+    },
+    "cloud-sync": {
+      "dart": "cloudSync",
+      "codepoint": 59107
+    },
+    "copy": {
+      "dart": "copy",
+      "codepoint": 57502
+    },
+    "copy-check": {
+      "dart": "copyCheck",
+      "codepoint": 58363
+    },
+    "database": {
+      "dart": "database",
+      "codepoint": 57517
+    },
+    "disc-3": {
+      "dart": "disc3",
+      "codepoint": 58516
+    },
+    "download": {
+      "dart": "download",
+      "codepoint": 57522
+    },
+    "ellipsis": {
+      "dart": "ellipsis",
+      "codepoint": 57526
+    },
+    "ellipsis-vertical": {
+      "dart": "ellipsisVertical",
+      "codepoint": 57527
+    },
+    "folder": {
+      "dart": "folder",
+      "codepoint": 57559
+    },
+    "gauge": {
+      "dart": "gauge",
+      "codepoint": 57791
+    },
+    "heart": {
+      "dart": "heart",
+      "codepoint": 57586
+    },
+    "hourglass": {
+      "dart": "hourglass",
+      "codepoint": 58006
+    },
+    "image-plus": {
+      "dart": "imagePlus",
+      "codepoint": 57847
+    },
+    "inbox": {
+      "dart": "inbox",
+      "codepoint": 57591
+    },
+    "list-minus": {
+      "dart": "listMinus",
+      "codepoint": 57918
+    },
+    "list-music": {
+      "dart": "listMusic",
+      "codepoint": 58080
+    },
+    "list-plus": {
+      "dart": "listPlus",
+      "codepoint": 57919
+    },
+    "list-x": {
+      "dart": "listX",
+      "codepoint": 57920
+    },
+    "lock-keyhole": {
+      "dart": "lockKeyhole",
+      "codepoint": 58673
+    },
+    "log-in": {
+      "dart": "logIn",
+      "codepoint": 57613
+    },
+    "log-out": {
+      "dart": "logOut",
+      "codepoint": 57614
+    },
+    "mic-vocal": {
+      "dart": "micVocal",
+      "codepoint": 58185
+    },
+    "music": {
+      "dart": "music",
+      "codepoint": 57634
+    },
+    "notebook-pen": {
+      "dart": "notebookPen",
+      "codepoint": 58774
+    },
+    "pause": {
+      "dart": "pause",
+      "codepoint": 57646
+    },
+    "pencil": {
+      "dart": "pencil",
+      "codepoint": 57849
+    },
+    "play": {
+      "dart": "play",
+      "codepoint": 57660
+    },
+    "plus": {
+      "dart": "plus",
+      "codepoint": 57661
+    },
+    "receipt-text": {
+      "dart": "receiptText",
+      "codepoint": 58796
+    },
+    "refresh-cw": {
+      "dart": "refreshCw",
+      "codepoint": 57669
+    },
+    "repeat": {
+      "dart": "repeat",
+      "codepoint": 57670
+    },
+    "rotate-ccw": {
+      "dart": "rotateCcw",
+      "codepoint": 57672
+    },
+    "rows-3": {
+      "dart": "rows3",
+      "codepoint": 58762
+    },
+    "search": {
+      "dart": "search",
+      "codepoint": 57681
+    },
+    "settings": {
+      "dart": "settings",
+      "codepoint": 57684
+    },
+    "shuffle": {
+      "dart": "shuffle",
+      "codepoint": 57694
+    },
+    "skip-back": {
+      "dart": "skipBack",
+      "codepoint": 57695
+    },
+    "skip-forward": {
+      "dart": "skipForward",
+      "codepoint": 57696
+    },
+    "speaker": {
+      "dart": "speaker",
+      "codepoint": 57702
+    },
+    "square": {
+      "dart": "square",
+      "codepoint": 57703
+    },
+    "square-check": {
+      "dart": "squareCheck",
+      "codepoint": 58713
+    },
+    "star": {
+      "dart": "star",
+      "codepoint": 57718
+    },
+    "tag": {
+      "dart": "tag",
+      "codepoint": 57727
+    },
+    "trash": {
+      "dart": "trash",
+      "codepoint": 57741
+    },
+    "trash-2": {
+      "dart": "trash2",
+      "codepoint": 57742
+    },
+    "user-round": {
+      "dart": "userRound",
+      "codepoint": 58472
+    },
+    "users": {
+      "dart": "users",
+      "codepoint": 57764
+    },
+    "users-round": {
+      "dart": "usersRound",
+      "codepoint": 58478
+    },
+    "volume-2": {
+      "dart": "volume2",
+      "codepoint": 57771
+    },
+    "wifi-off": {
+      "dart": "wifiOff",
+      "codepoint": 57775
+    },
+    "x": {
+      "dart": "x",
+      "codepoint": 57778
+    }
+  },
+  "ios_assets": {
+    "LucideAntenna": "antenna",
+    "LucideDownload": "download",
+    "LucideMicVocal": "mic-vocal",
+    "LucideListMusic": "list-music",
+    "LucideHeart": "heart",
+    "LucideHeartFilled": "heart",
+    "LucideShuffle": "shuffle",
+    "LucideEllipsis": "ellipsis",
+    "LucideBookmark": "bookmark"
+  },
+  "android_drawables": {
+    "ic_lucide_play": "play",
+    "ic_lucide_pause": "pause",
+    "ic_lucide_skip_back": "skip-back",
+    "ic_lucide_skip_forward": "skip-forward",
+    "ic_lucide_star": "star",
+    "ic_lucide_star_selected": "star",
+    "ic_lucide_audio_lines": "audio-lines"
+  },
+  "notes": [
+    "Lucide uses outline icons. Existing active colors distinguish liked, shuffle and selected navigation states.",
+    "Native liked star and heart variants use the same Lucide path with a filled interior.",
+    "Checkboxes retain Flutter interaction/semantics, with local square/square-check glyphs.",
+    "Font glyphs are centered in square advance cells with zero line gap.",
+    "The main player retains its original filled Material play/pause icons.",
+    "The now-playing indicator retains its original independently animated bars."
+  ]
+}

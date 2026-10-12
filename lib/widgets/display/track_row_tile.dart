@@ -2,10 +2,16 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../inputs/lucide_checkbox.dart';
+
+import '../ui/phonolite_icons.dart';
+import '../ui/playlist_add_icon.dart';
+import '../ui/reload_icon.dart';
+
 import '../../core/library_helpers.dart';
 import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
-import '../../entities/offline_library.dart';
+import '../../entities/offline_models.dart';
 import '../layouts/app_scope.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
@@ -143,18 +149,22 @@ class _TrackRowTileState extends State<TrackRowTile>
     final selectionMode = widget.selectionMode;
     final isDeleting =
         widget.offlineDownload?.status == OfflineDownloadStatus.removing;
+    final showDownloadStatus =
+        widget.offlineDownload?.status == OfflineDownloadStatus.downloaded
+        ? widget.onRemoveDownload != null
+        : widget.onDownload != null || widget.offlineDownload != null;
     final overflowActions = isCompact && !selectionMode
         ? <ObsidianMenuAction>[
             if (widget.onAddToPlaylist != null)
               ObsidianMenuAction(
                 label: 'Add to playlist',
-                icon: Icons.playlist_add_rounded,
+                iconWidget: const PlaylistAddIcon(),
                 onTap: isDeleting ? null : widget.onAddToPlaylist,
               ),
             if (widget.onDelete != null)
               ObsidianMenuAction(
                 label: 'Delete',
-                icon: Icons.delete_outline_rounded,
+                icon: PhonoliteIcons.trash2,
                 variant: TechButtonVariant.danger,
                 onTap: isDeleting ? null : widget.onDelete,
               ),
@@ -198,7 +208,7 @@ class _TrackRowTileState extends State<TrackRowTile>
               width: leadingWidth,
               child: Center(
                 child: selectionMode
-                    ? Checkbox(
+                    ? LucideCheckbox(
                         value: widget.selected,
                         onChanged:
                             widget.onSelectionToggle == null || isDeleting
@@ -270,9 +280,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                 ),
                 const SizedBox(width: 8),
               ],
-              if (!selectionMode &&
-                  (widget.onDownload != null ||
-                      widget.offlineDownload != null)) ...[
+              if (!selectionMode && showDownloadStatus) ...[
                 _DownloadStatusButton(
                   download: widget.offlineDownload,
                   onDownload: widget.onDownload,
@@ -284,7 +292,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                   !isCompact &&
                   widget.onAddToPlaylist != null) ...[
                 ObsidianHudIconButton(
-                  icon: Icons.playlist_add_rounded,
+                  iconWidget: const PlaylistAddIcon(),
                   onPressed: isDeleting ? null : widget.onAddToPlaylist,
                   size: 22,
                 ),
@@ -299,7 +307,7 @@ class _TrackRowTileState extends State<TrackRowTile>
               if (!selectionMode && !isCompact && widget.onDelete != null) ...[
                 SizedBox(width: actionGap),
                 ObsidianHudIconButton(
-                  icon: Icons.delete_outline_rounded,
+                  icon: PhonoliteIcons.trash2,
                   onPressed: isDeleting ? null : widget.onDelete,
                   size: 22,
                 ),
@@ -436,24 +444,27 @@ class _DownloadStatusButton extends StatelessWidget {
                       ),
                     ),
                   )
+                : preparing
+                ? IconTheme.merge(
+                    data: IconThemeData(color: color, size: 22),
+                    child: const ReloadIcon(),
+                  )
                 : Icon(
                     downloaded
                         ? onRemoveDownload == null
-                              ? Icons.offline_pin_rounded
-                              : Icons.delete_outline_rounded
+                              ? PhonoliteIcons.circleCheck
+                              : PhonoliteIcons.trash2
                         : removing
-                        ? Icons.delete_sweep_rounded
+                        ? PhonoliteIcons.trash2
                         : validating
-                        ? Icons.downloading_rounded
-                        : preparing
-                        ? Icons.sync_rounded
+                        ? PhonoliteIcons.download
                         : queued
-                        ? Icons.schedule_rounded
+                        ? PhonoliteIcons.clock
                         : downloading
-                        ? Icons.downloading_rounded
+                        ? PhonoliteIcons.download
                         : failed
-                        ? Icons.download_for_offline_rounded
-                        : Icons.download_for_offline_outlined,
+                        ? PhonoliteIcons.download
+                        : PhonoliteIcons.download,
                     color: color,
                     size: 22,
                   ),

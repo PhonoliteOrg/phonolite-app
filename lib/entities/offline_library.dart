@@ -9,102 +9,10 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'app_log.dart';
 import 'models.dart';
+import 'offline_models.dart';
 import 'offline_storage_settings.dart';
 
-enum OfflineDownloadStatus {
-  queued,
-  preparing,
-  downloading,
-  paused,
-  validating,
-  downloaded,
-  removing,
-  failed,
-  corrupt,
-  canceled,
-}
-
-const Object _offlineUnset = Object();
-
-enum OfflineDeletionScopeKind { track, album, artist }
-
-@immutable
-class OfflineDeletionScope {
-  const OfflineDeletionScope.track({this.id, this.label})
-    : kind = OfflineDeletionScopeKind.track;
-
-  const OfflineDeletionScope.album({this.id, this.label})
-    : kind = OfflineDeletionScopeKind.album;
-
-  const OfflineDeletionScope.artist({this.id, this.label})
-    : kind = OfflineDeletionScopeKind.artist;
-
-  final OfflineDeletionScopeKind kind;
-  final String? id;
-  final String? label;
-}
-
-@immutable
-class OfflineDeletionRequest {
-  const OfflineDeletionRequest({required this.scope, required this.downloads});
-
-  factory OfflineDeletionRequest.tracks(
-    Iterable<OfflineTrackDownload> downloads,
-  ) {
-    return OfflineDeletionRequest(
-      scope: const OfflineDeletionScope.track(),
-      downloads: downloads.toList(growable: false),
-    );
-  }
-
-  final OfflineDeletionScope scope;
-  final List<OfflineTrackDownload> downloads;
-}
-
-@immutable
-class OfflineDeletionResult {
-  const OfflineDeletionResult({
-    required this.scope,
-    this.removedSourceCount = 0,
-    this.removedLocalTrackCount = 0,
-    this.removedMetadataFragmentCount = 0,
-    this.clearedJobMetadataCount = 0,
-    this.pendingFileDeleteCount = 0,
-    this.pendingArtworkDeleteCount = 0,
-  });
-
-  final OfflineDeletionScope scope;
-  final int removedSourceCount;
-  final int removedLocalTrackCount;
-  final int removedMetadataFragmentCount;
-  final int clearedJobMetadataCount;
-  final int pendingFileDeleteCount;
-  final int pendingArtworkDeleteCount;
-
-  OfflineDeletionResult copyWith({
-    int? removedSourceCount,
-    int? removedLocalTrackCount,
-    int? removedMetadataFragmentCount,
-    int? clearedJobMetadataCount,
-    int? pendingFileDeleteCount,
-    int? pendingArtworkDeleteCount,
-  }) {
-    return OfflineDeletionResult(
-      scope: scope,
-      removedSourceCount: removedSourceCount ?? this.removedSourceCount,
-      removedLocalTrackCount:
-          removedLocalTrackCount ?? this.removedLocalTrackCount,
-      removedMetadataFragmentCount:
-          removedMetadataFragmentCount ?? this.removedMetadataFragmentCount,
-      clearedJobMetadataCount:
-          clearedJobMetadataCount ?? this.clearedJobMetadataCount,
-      pendingFileDeleteCount:
-          pendingFileDeleteCount ?? this.pendingFileDeleteCount,
-      pendingArtworkDeleteCount:
-          pendingArtworkDeleteCount ?? this.pendingArtworkDeleteCount,
-    );
-  }
-}
+export 'offline_models.dart';
 
 class _OfflineDeletionDraft {
   _OfflineDeletionDraft({required this.scope});
@@ -132,486 +40,21 @@ class _OfflineDeletionDraft {
   }
 }
 
-@immutable
-class OfflineDownloadBatch {
-  const OfflineDownloadBatch({
-    required this.batchId,
-    required this.serverBaseUrl,
-    required this.status,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.totalCount,
-    this.completedCount = 0,
-    this.failedCount = 0,
-    this.label,
-  });
-
-  final String batchId;
-  final String serverBaseUrl;
-  final OfflineDownloadStatus status;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int totalCount;
-  final int completedCount;
-  final int failedCount;
-  final String? label;
-
-  OfflineDownloadBatch copyWith({
-    OfflineDownloadStatus? status,
-    DateTime? updatedAt,
-    int? totalCount,
-    int? completedCount,
-    int? failedCount,
-    Object? label = _offlineUnset,
-  }) {
-    return OfflineDownloadBatch(
-      batchId: batchId,
-      serverBaseUrl: serverBaseUrl,
-      status: status ?? this.status,
-      createdAt: createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      totalCount: totalCount ?? this.totalCount,
-      completedCount: completedCount ?? this.completedCount,
-      failedCount: failedCount ?? this.failedCount,
-      label: label == _offlineUnset ? this.label : label as String?,
-    );
-  }
-}
-
-@immutable
-class OfflineDownloadJob {
-  const OfflineDownloadJob({
-    required this.jobId,
-    required this.kind,
-    required this.serverBaseUrl,
-    required this.status,
-    required this.createdAt,
-    required this.updatedAt,
-    this.totalCount = 0,
-    this.discoveredCount = 0,
-    this.completedCount = 0,
-    this.failedCount = 0,
-    this.materializedCount = 0,
-    this.sourceCursor = 0,
-    this.label,
-    this.sourceId,
-    this.error,
-  });
-
-  final String jobId;
-  final String kind;
-  final String serverBaseUrl;
-  final OfflineDownloadStatus status;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int totalCount;
-  final int discoveredCount;
-  final int completedCount;
-  final int failedCount;
-  final int materializedCount;
-  final int sourceCursor;
-  final String? label;
-  final String? sourceId;
-  final String? error;
-
-  OfflineDownloadJob copyWith({
-    OfflineDownloadStatus? status,
-    DateTime? updatedAt,
-    int? totalCount,
-    int? discoveredCount,
-    int? completedCount,
-    int? failedCount,
-    int? materializedCount,
-    int? sourceCursor,
-    Object? label = _offlineUnset,
-    Object? sourceId = _offlineUnset,
-    Object? error = _offlineUnset,
-  }) {
-    return OfflineDownloadJob(
-      jobId: jobId,
-      kind: kind,
-      serverBaseUrl: serverBaseUrl,
-      status: status ?? this.status,
-      createdAt: createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      totalCount: totalCount ?? this.totalCount,
-      discoveredCount: discoveredCount ?? this.discoveredCount,
-      completedCount: completedCount ?? this.completedCount,
-      failedCount: failedCount ?? this.failedCount,
-      materializedCount: materializedCount ?? this.materializedCount,
-      sourceCursor: sourceCursor ?? this.sourceCursor,
-      label: label == _offlineUnset ? this.label : label as String?,
-      sourceId: sourceId == _offlineUnset ? this.sourceId : sourceId as String?,
-      error: error == _offlineUnset ? this.error : error as String?,
-    );
-  }
-}
-
-@immutable
-class OfflineDownloadJobItem {
-  const OfflineDownloadJobItem({
-    required this.jobId,
-    required this.position,
-    required this.serverTrackId,
-    required this.status,
-    required this.materialized,
-    required this.createdAt,
-    required this.updatedAt,
-    this.track,
-    this.offlineMetadata,
-    this.error,
-  });
-
-  final String jobId;
-  final int position;
-  final String serverTrackId;
-  final OfflineDownloadStatus status;
-  final bool materialized;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final Track? track;
-  final OfflineTrackMetadata? offlineMetadata;
-  final String? error;
-
-  OfflineDownloadJobItem copyWith({
-    OfflineDownloadStatus? status,
-    bool? materialized,
-    DateTime? updatedAt,
-    Object? track = _offlineUnset,
-    Object? offlineMetadata = _offlineUnset,
-    Object? error = _offlineUnset,
-  }) {
-    return OfflineDownloadJobItem(
-      jobId: jobId,
-      position: position,
-      serverTrackId: serverTrackId,
-      status: status ?? this.status,
-      materialized: materialized ?? this.materialized,
-      createdAt: createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      track: track == _offlineUnset ? this.track : track as Track?,
-      offlineMetadata: offlineMetadata == _offlineUnset
-          ? this.offlineMetadata
-          : offlineMetadata as OfflineTrackMetadata?,
-      error: error == _offlineUnset ? this.error : error as String?,
-    );
-  }
-}
-
-@immutable
-class OfflineDownloadJobSource {
-  const OfflineDownloadJobSource({
-    required this.jobId,
-    required this.position,
-    required this.sourceId,
-    required this.status,
-    required this.createdAt,
-    required this.updatedAt,
-    this.label,
-    this.error,
-  });
-
-  final String jobId;
-  final int position;
-  final String sourceId;
-  final OfflineDownloadStatus status;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final String? label;
-  final String? error;
-
-  OfflineDownloadJobSource copyWith({
-    OfflineDownloadStatus? status,
-    DateTime? updatedAt,
-    Object? label = _offlineUnset,
-    Object? error = _offlineUnset,
-  }) {
-    return OfflineDownloadJobSource(
-      jobId: jobId,
-      position: position,
-      sourceId: sourceId,
-      status: status ?? this.status,
-      createdAt: createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      label: label == _offlineUnset ? this.label : label as String?,
-      error: error == _offlineUnset ? this.error : error as String?,
-    );
-  }
-}
-
-@immutable
-class LocalLikeState {
-  const LocalLikeState({
-    required this.localTrackId,
-    required this.liked,
-    required this.updatedAt,
-  });
-
-  final String localTrackId;
-  final bool liked;
-  final int updatedAt;
-}
-
-@immutable
-class ServerLikeSync {
-  const ServerLikeSync({
-    required this.localTrackId,
-    required this.serverBaseUrl,
-    required this.serverTrackId,
-    required this.matchConfidence,
-    required this.matchKind,
-    required this.lastLocalLiked,
-    required this.lastLocalUpdatedAt,
-    required this.lastServerLiked,
-    required this.lastServerUpdatedAt,
-    required this.syncedAt,
-  });
-
-  final String localTrackId;
-  final String serverBaseUrl;
-  final String serverTrackId;
-  final double matchConfidence;
-  final String matchKind;
-  final bool lastLocalLiked;
-  final int lastLocalUpdatedAt;
-  final bool lastServerLiked;
-  final int lastServerUpdatedAt;
-  final int syncedAt;
-}
-
-@immutable
-class OfflineMetadataRepairRequest {
-  const OfflineMetadataRepairRequest({
-    required this.serverBaseUrl,
-    required this.serverTrackId,
-  });
-
-  final String serverBaseUrl;
-  final String serverTrackId;
-}
-
-@immutable
-class OfflineTrackDownload {
-  const OfflineTrackDownload({
-    required this.serverBaseUrl,
-    required this.track,
-    required this.status,
-    required this.createdAt,
-    required this.updatedAt,
-    this.offlineMetadata,
-    this.batchId,
-    this.localTrackId,
-    this.downloadUrl,
-    this.filePath,
-    this.partialPath,
-    this.bytesDownloaded = 0,
-    this.bytesTotal,
-    this.etag,
-    this.expectedSha256,
-    this.contentType,
-    this.error,
-    this.retryCount = 0,
-    this.priority = 0,
-  });
-
-  final String serverBaseUrl;
-  final String? batchId;
-  final String? localTrackId;
-  final Track track;
-  final OfflineTrackMetadata? offlineMetadata;
-  final OfflineDownloadStatus status;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final String? downloadUrl;
-  final String? filePath;
-  final String? partialPath;
-  final int bytesDownloaded;
-  final int? bytesTotal;
-  final String? etag;
-  final String? expectedSha256;
-  final String? contentType;
-  final String? error;
-  final int retryCount;
-  final int priority;
-
-  bool get isDownloaded => status == OfflineDownloadStatus.downloaded;
-
-  bool get isRemoving => status == OfflineDownloadStatus.removing;
-
-  double? get progress {
-    final total = bytesTotal;
-    if (total == null || total <= 0) {
-      return null;
-    }
-    return (bytesDownloaded / total).clamp(0.0, 1.0);
-  }
-
-  OfflineTrackDownload copyWith({
-    OfflineDownloadStatus? status,
-    DateTime? updatedAt,
-    Object? batchId = _offlineUnset,
-    Object? localTrackId = _offlineUnset,
-    Object? downloadUrl = _offlineUnset,
-    Object? filePath = _offlineUnset,
-    Object? partialPath = _offlineUnset,
-    int? bytesDownloaded,
-    Object? bytesTotal = _offlineUnset,
-    Object? etag = _offlineUnset,
-    Object? expectedSha256 = _offlineUnset,
-    Object? contentType = _offlineUnset,
-    Object? error = _offlineUnset,
-    Object? offlineMetadata = _offlineUnset,
-    int? retryCount,
-    int? priority,
-    Track? track,
-  }) {
-    return OfflineTrackDownload(
-      serverBaseUrl: serverBaseUrl,
-      batchId: batchId == _offlineUnset ? this.batchId : batchId as String?,
-      localTrackId: localTrackId == _offlineUnset
-          ? this.localTrackId
-          : localTrackId as String?,
-      track: track ?? this.track,
-      offlineMetadata: offlineMetadata == _offlineUnset
-          ? this.offlineMetadata
-          : offlineMetadata as OfflineTrackMetadata?,
-      status: status ?? this.status,
-      createdAt: createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      downloadUrl: downloadUrl == _offlineUnset
-          ? this.downloadUrl
-          : downloadUrl as String?,
-      filePath: filePath == _offlineUnset ? this.filePath : filePath as String?,
-      partialPath: partialPath == _offlineUnset
-          ? this.partialPath
-          : partialPath as String?,
-      bytesDownloaded: bytesDownloaded ?? this.bytesDownloaded,
-      bytesTotal: bytesTotal == _offlineUnset
-          ? this.bytesTotal
-          : bytesTotal as int?,
-      etag: etag == _offlineUnset ? this.etag : etag as String?,
-      expectedSha256: expectedSha256 == _offlineUnset
-          ? this.expectedSha256
-          : expectedSha256 as String?,
-      contentType: contentType == _offlineUnset
-          ? this.contentType
-          : contentType as String?,
-      error: error == _offlineUnset ? this.error : error as String?,
-      retryCount: retryCount ?? this.retryCount,
-      priority: priority ?? this.priority,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'serverBaseUrl': serverBaseUrl,
-    'batchId': batchId,
-    'localTrackId': localTrackId,
-    'downloadUrl': downloadUrl,
-    'track': _trackToJson(track),
-    'offlineMetadata': offlineMetadata?.toJson(),
-    'status': status.name,
-    'createdAt': createdAt.millisecondsSinceEpoch,
-    'updatedAt': updatedAt.millisecondsSinceEpoch,
-    'filePath': filePath,
-    'partialPath': partialPath,
-    'bytesDownloaded': bytesDownloaded,
-    'bytesTotal': bytesTotal,
-    'etag': etag,
-    'expectedSha256': expectedSha256,
-    'contentType': contentType,
-    'error': error,
-    'retryCount': retryCount,
-    'priority': priority,
-  };
-
-  static OfflineTrackDownload? fromJson(Map<String, dynamic> json) {
-    final serverBaseUrl = json['serverBaseUrl']?.toString() ?? '';
-    final rawTrack = json['track'];
-    if (serverBaseUrl.trim().isEmpty || rawTrack is! Map) {
-      return null;
-    }
-    final track = Track.fromJson(Map<String, dynamic>.from(rawTrack));
-    final rawMetadata = json['offlineMetadata'] ?? json['offline_metadata'];
-    return OfflineTrackDownload(
-      serverBaseUrl: serverBaseUrl,
-      batchId: _optionalString(json['batchId']),
-      localTrackId: _optionalString(json['localTrackId']),
-      track: track,
-      offlineMetadata: rawMetadata is Map
-          ? OfflineTrackMetadata.fromJson(
-              Map<String, dynamic>.from(rawMetadata),
-            )
-          : null,
-      status: _parseStatus(json['status']),
-      createdAt: _parseDate(json['createdAt']),
-      updatedAt: _parseDate(json['updatedAt']),
-      downloadUrl: _optionalString(json['downloadUrl']),
-      filePath: _optionalString(json['filePath']),
-      partialPath: _optionalString(json['partialPath']),
-      bytesDownloaded: _parseInt(json['bytesDownloaded']),
-      bytesTotal: _parseNullableInt(json['bytesTotal']),
-      etag: _optionalString(json['etag']),
-      expectedSha256: _optionalString(json['expectedSha256']),
-      contentType: _optionalString(json['contentType']),
-      error: _optionalString(json['error']),
-      retryCount: _parseInt(json['retryCount']),
-      priority: _parseInt(json['priority']),
-    );
-  }
-
-  static OfflineDownloadStatus _parseStatus(Object? value) {
-    final text = value?.toString();
-    for (final status in OfflineDownloadStatus.values) {
-      if (status.name == text) {
-        return status;
-      }
-    }
-    return OfflineDownloadStatus.queued;
-  }
-
-  static DateTime _parseDate(Object? value) {
-    final ms = _parseInt(value);
-    if (ms <= 0) {
-      return DateTime.fromMillisecondsSinceEpoch(0);
-    }
-    return DateTime.fromMillisecondsSinceEpoch(ms);
-  }
-
-  static int _parseInt(Object? value) {
-    if (value is num) {
-      return value.toInt();
-    }
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  static int? _parseNullableInt(Object? value) {
-    if (value == null) {
-      return null;
-    }
-    final parsed = _parseInt(value);
-    return parsed <= 0 ? null : parsed;
-  }
-
-  static String? _optionalString(Object? value) {
-    final text = value?.toString().trim();
-    if (text == null || text.isEmpty) {
-      return null;
-    }
-    return text;
-  }
-
-  static Map<String, dynamic> _trackToJson(Track track) => track.toJson();
-}
-
 class OfflineLibraryStorage {
   const OfflineLibraryStorage({
     this.baseDirectory,
+    this.defaultDirectoryProvider,
+    this.keepDatabaseOpen = false,
     this.metadataDirectory,
     this.downloadsDirectory,
     this.settingsStorage = const OfflineStorageSettingsStorage(),
   });
 
+  final bool keepDatabaseOpen;
+  static final Map<String, Future<Database>> _openDatabases = {};
+
   final Directory? baseDirectory;
+  final Future<Directory> Function()? defaultDirectoryProvider;
   final Directory? metadataDirectory;
   final Directory? downloadsDirectory;
   final OfflineStorageSettingsStorage settingsStorage;
@@ -625,7 +68,7 @@ class OfflineLibraryStorage {
   static const String _indexFileName = 'offline_library.json';
   static const String _databaseFileName = 'phonolite_offline.sqlite';
   static const String _partialExtension = 'part';
-  static const int _schemaVersion = 10;
+  static const int _schemaVersion = 11;
   static const Object _storageUnset = Object();
 
   bool get _usesManagedStoragePaths =>
@@ -678,6 +121,7 @@ class OfflineLibraryStorage {
       return;
     }
     final current = await settingsStorage.read();
+    await close();
     final currentLocations = await resolveStorageLocations();
     var next = current;
     if (metadataDirectory != _storageUnset) {
@@ -757,6 +201,7 @@ class OfflineLibraryStorage {
       return;
     }
     try {
+      await close();
       final locations = await resolveStorageLocations();
       final metadataDir = Directory(locations.metadataDirectory);
       final downloadsDir = Directory(locations.downloadsDirectory);
@@ -780,7 +225,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read offline library: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -823,7 +268,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read offline download batches: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -839,7 +284,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read offline download jobs: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -857,7 +302,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read offline download job items: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -877,7 +322,7 @@ class OfflineLibraryStorage {
       return const [];
     } finally {
       developer.Timeline.finishSync();
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -907,7 +352,7 @@ class OfflineLibraryStorage {
       return const [];
     } finally {
       developer.Timeline.finishSync();
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -925,7 +370,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read offline download job sources: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -940,7 +385,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to persist offline download batch: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -955,7 +400,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to persist offline download job: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -974,7 +419,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to persist offline download jobs: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -995,7 +440,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to persist offline download job items: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1016,7 +461,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to persist offline download job sources: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1031,7 +476,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to delete offline download batch: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1064,7 +509,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to delete offline download job: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1094,7 +539,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to record pending file deletes: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1124,7 +569,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read pending file deletes: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1153,7 +598,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to clear pending file deletes: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1213,7 +658,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to remove offline downloads: $err');
       return OfflineDeletionResult(scope: request.scope);
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1400,7 +845,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to persist offline library: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1419,7 +864,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to prepare offline metadata: $err');
       return download;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1442,7 +887,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to prepare offline metadata batch: $err');
       return downloads;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1460,7 +905,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to upsert offline download: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1469,6 +914,7 @@ class OfflineLibraryStorage {
     String? albumArtPath,
     String? artistArtPath,
     String? artistBannerPath,
+    Track? artworkSource,
   }) async {
     if (kIsWeb) {
       return;
@@ -1481,18 +927,35 @@ class OfflineLibraryStorage {
     Database? db;
     try {
       db = await _openDatabase();
+      final artistIdentity = artworkSource == null
+          ? null
+          : _artistArtworkIdentity(artworkSource);
       db.execute(
         '''
         UPDATE tracks
         SET album_art_path = COALESCE(?, album_art_path),
-            artist_art_path = COALESCE(?, artist_art_path),
-            artist_banner_path = COALESCE(?, artist_banner_path),
+            artist_art_path = CASE
+              WHEN ? IS NULL OR COALESCE(
+                'id:' || NULLIF(TRIM(artist_id), ''),
+                'name:' || LOWER(TRIM(artist))
+              ) = ? THEN COALESCE(?, artist_art_path)
+              ELSE artist_art_path END,
+            artist_banner_path = CASE
+              WHEN ? IS NULL OR COALESCE(
+                'id:' || NULLIF(TRIM(artist_id), ''),
+                'name:' || LOWER(TRIM(artist))
+              ) = ? THEN COALESCE(?, artist_banner_path)
+              ELSE artist_banner_path END,
             updated_at = ?
         WHERE id = ?
       ''',
         [
           albumArtPath,
+          artistIdentity,
+          artistIdentity,
           artistArtPath,
+          artistIdentity,
+          artistIdentity,
           artistBannerPath,
           DateTime.now().millisecondsSinceEpoch,
           localTrackId,
@@ -1501,7 +964,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to update offline artwork metadata: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1521,7 +984,7 @@ class OfflineLibraryStorage {
     } catch (err) {
       AppLogger.warning('Failed to upsert offline downloads: $err');
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1537,7 +1000,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read local downloaded tracks: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1583,7 +1046,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read local liked tracks: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1620,7 +1083,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read local like states: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1644,7 +1107,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read server like syncs: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1697,7 +1160,7 @@ class OfflineLibraryStorage {
         }
       });
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1756,7 +1219,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read offline metadata repair queue: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1765,44 +1228,66 @@ class OfflineLibraryStorage {
     String serverTrackId,
     OfflineTrackMetadata metadata,
   ) async {
-    if (kIsWeb) {
-      return;
+    await upsertOfflineMetadataFragments(serverBaseUrl, {
+      serverTrackId: metadata,
+    });
+  }
+
+  /// Persist one fetched chunk atomically, retaining each server's source IDs.
+  /// The guard runs after opening the database and immediately before writes.
+  Future<Set<String>> upsertOfflineMetadataFragments(
+    String serverBaseUrl,
+    Map<String, OfflineTrackMetadata> metadataByTrackId, {
+    bool Function()? shouldPersist,
+  }) async {
+    if (kIsWeb || metadataByTrackId.isEmpty) {
+      return const <String>{};
     }
     Database? db;
     try {
       db = await _openDatabase();
-      final rows = db.select(
-        '''
-        SELECT local_track_id
-        FROM source_tracks
-        WHERE server_base_url = ?
-          AND server_track_id = ?
-        LIMIT 1
-      ''',
-        [serverBaseUrl, serverTrackId],
-      );
-      if (rows.isEmpty) {
-        return;
+      if (shouldPersist != null && !shouldPersist()) {
+        return const <String>{};
       }
-      final localTrackId = _readString(rows.first, 'local_track_id');
-      final track = metadata.track.copyWith(
-        id: serverTrackId,
-        localId: localTrackId,
-        serverBaseUrl: serverBaseUrl,
-        serverTrackId: serverTrackId,
-      );
+      final persisted = <String>{};
       _transaction(db, () {
-        _upsertTrack(db!, localTrackId, track);
-        _upsertOfflineMetadataFragmentRaw(
-          db,
-          serverBaseUrl: serverBaseUrl,
-          serverTrackId: serverTrackId,
-          localTrackId: localTrackId,
-          metadata: metadata.copyWith(track: track),
-        );
+        for (final entry in metadataByTrackId.entries) {
+          final serverTrackId = entry.key;
+          final metadata = entry.value;
+          final rows = db!.select(
+            '''
+            SELECT local_track_id
+            FROM source_tracks
+            WHERE server_base_url = ?
+              AND server_track_id = ?
+            LIMIT 1
+          ''',
+            [serverBaseUrl, serverTrackId],
+          );
+          if (rows.isEmpty) {
+            continue;
+          }
+          final localTrackId = _readString(rows.first, 'local_track_id');
+          final track = metadata.track.copyWith(
+            id: serverTrackId,
+            localId: localTrackId,
+            serverBaseUrl: serverBaseUrl,
+            serverTrackId: serverTrackId,
+          );
+          _upsertTrack(db, localTrackId, track);
+          _upsertOfflineMetadataFragmentRaw(
+            db,
+            serverBaseUrl: serverBaseUrl,
+            serverTrackId: serverTrackId,
+            localTrackId: localTrackId,
+            metadata: metadata.copyWith(track: track),
+          );
+          persisted.add(serverTrackId);
+        }
       });
+      return persisted;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1818,7 +1303,7 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read local playlists: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1844,7 +1329,7 @@ class OfflineLibraryStorage {
               AND ds.status = ?
               AND ds.file_path IS NOT NULL
           )
-        GROUP BY t.id
+        GROUP BY pt.rowid
         ORDER BY pt.position, pt.rowid
       ''',
         [
@@ -1866,17 +1351,25 @@ class OfflineLibraryStorage {
       AppLogger.warning('Failed to read local playlist tracks: $err');
       return const [];
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
   Future<Playlist> createLocalPlaylist(
     String name, {
     String? description,
+    String? downloadServerBaseUrl,
+    List<String> downloadTrackIds = const [],
   }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
       throw ArgumentError('name is required');
+    }
+    if (downloadTrackIds.isNotEmpty &&
+        (downloadServerBaseUrl == null ||
+            downloadServerBaseUrl.trim().isEmpty ||
+            downloadTrackIds.any((id) => id.trim().isEmpty))) {
+      throw ArgumentError('Playlist download sources must be specified.');
     }
     final trimmedDescription = _normalizeOptionalText(description);
     Database? db;
@@ -1889,15 +1382,19 @@ class OfflineLibraryStorage {
           'INSERT INTO local_playlists (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
           [id, trimmed, trimmedDescription, now, now],
         );
+        for (var position = 0; position < downloadTrackIds.length; position++) {
+          db.execute(
+            'INSERT INTO pending_playlist_tracks (playlist_id, position, server_base_url, server_track_id) VALUES (?, ?, ?, ?)',
+            [id, position, downloadServerBaseUrl, downloadTrackIds[position]],
+          );
+        }
+        _resolvePendingPlaylistTracks(db);
       });
-      return Playlist(
-        id: id,
-        name: trimmed,
-        trackIds: const [],
-        description: trimmedDescription,
-      );
+      return _readLocalPlaylists(
+        db,
+      ).firstWhere((playlist) => playlist.id == id);
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1929,7 +1426,7 @@ class OfflineLibraryStorage {
       }
       return null;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -1945,7 +1442,7 @@ class OfflineLibraryStorage {
           db,
         ).where((item) => item.id == playlistId).firstOrNull;
       } finally {
-        db?.dispose();
+        _releaseDatabase(db);
       }
     }
 
@@ -1997,7 +1494,7 @@ class OfflineLibraryStorage {
         db,
       ).where((item) => item.id == playlistId).firstOrNull;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -2023,7 +1520,7 @@ class OfflineLibraryStorage {
         await _deleteFileIfExists(File(imagePath));
       }
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -2037,7 +1534,7 @@ class OfflineLibraryStorage {
         _writeLocalLikeState(db!, localTrackId, liked, now);
       });
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -2054,7 +1551,7 @@ class OfflineLibraryStorage {
         _writeLocalLikeState(db!, localTrackId, liked, updatedAt);
       });
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -2066,16 +1563,27 @@ class OfflineLibraryStorage {
     try {
       db = await _openDatabase();
       _requireDownloadedLocalTrack(db, localTrackId);
-      final count =
-          db.select(
-                'SELECT COUNT(*) AS count FROM local_playlist_tracks WHERE playlist_id = ?',
-                [playlistId],
-              ).first['count']
-              as int;
       _transaction(db, () {
-        db!.execute(
+        final exists = db!.select(
+          'SELECT 1 FROM local_playlist_tracks WHERE playlist_id = ? AND local_track_id = ?',
+          [playlistId, localTrackId],
+        );
+        if (exists.isNotEmpty) return;
+        final position =
+            db
+                    .select(
+                      '''SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM (
+            SELECT position FROM local_playlist_tracks WHERE playlist_id = ?
+            UNION ALL
+            SELECT position FROM pending_playlist_tracks WHERE playlist_id = ?
+          )''',
+                      [playlistId, playlistId],
+                    )
+                    .first['next_position']
+                as int;
+        db.execute(
           'INSERT OR IGNORE INTO local_playlist_tracks (playlist_id, local_track_id, position) VALUES (?, ?, ?)',
-          [playlistId, localTrackId, count],
+          [playlistId, localTrackId, position],
         );
         db.execute('UPDATE local_playlists SET updated_at = ? WHERE id = ?', [
           DateTime.now().millisecondsSinceEpoch,
@@ -2086,7 +1594,7 @@ class OfflineLibraryStorage {
         db,
       ).where((item) => item.id == playlistId).firstOrNull;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -2111,7 +1619,7 @@ class OfflineLibraryStorage {
         db,
       ).where((item) => item.id == playlistId).firstOrNull;
     } finally {
-      db?.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -2259,30 +1767,86 @@ class OfflineLibraryStorage {
 
   Future<Database> _openDatabase() async {
     final file = await _databaseFile(createDir: true);
-    final db = sqlite3.open(file.path);
-    db.execute('PRAGMA busy_timeout = 5000');
-    final hadMetadataTable = _metadataTableExists(db);
-    final previousSchemaVersion = hadMetadataTable
-        ? _readStoredSchemaVersion(db)
-        : _schemaVersion;
-    final gcAlreadyRan = hadMetadataTable && _metadataFlag(db, 'orphan_gc_v7');
-    _initSchema(db);
-    await _migrateJsonIndexIfNeeded(db);
-    await _repairCanonicalArtworkPaths(db);
-    if (hadMetadataTable &&
-        (previousSchemaVersion < _schemaVersion || !gcAlreadyRan)) {
-      await _runStartupGarbageCollection(db);
-      db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
-        'orphan_gc_v7',
-        '1',
-      ]);
-    } else if (!hadMetadataTable) {
-      db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
-        'orphan_gc_v7',
-        '1',
-      ]);
+    if (!keepDatabaseOpen) return _initializeDatabase(file);
+    final key = file.absolute.path;
+    final existing = _openDatabases[key];
+    if (existing != null) return existing;
+    final opening = _initializeDatabase(file);
+    _openDatabases[key] = opening;
+    try {
+      return await opening;
+    } catch (_) {
+      _openDatabases.remove(key);
+      rethrow;
     }
-    return db;
+  }
+
+  void _releaseDatabase(Database? db) {
+    if (!keepDatabaseOpen) db?.dispose();
+  }
+
+  Future<void> close() async {
+    if (!keepDatabaseOpen) return;
+    final pending = _openDatabases.values.toList();
+    _openDatabases.clear();
+    for (final opening in pending) {
+      (await opening).dispose();
+    }
+  }
+
+  Future<Database> _initializeDatabase(File file) async {
+    final db = sqlite3.open(file.path);
+    try {
+      db.execute('PRAGMA busy_timeout = 5000');
+      db.execute('PRAGMA foreign_keys = ON');
+      final hadMetadataTable = _metadataTableExists(db);
+      final previousSchemaVersion = hadMetadataTable
+          ? _readStoredSchemaVersion(db)
+          : _schemaVersion;
+      final gcAlreadyRan =
+          hadMetadataTable && _metadataFlag(db, 'orphan_gc_v7');
+      if (!hadMetadataTable || previousSchemaVersion != _schemaVersion) {
+        _initSchema(db);
+      }
+      await _migrateJsonIndexIfNeeded(db);
+      final repairLocation = file.parent.absolute.path;
+      final previousLocation = db.select(
+        'SELECT value FROM metadata WHERE key = ?',
+        ['artwork_repair_location_v1'],
+      );
+      if (!hadMetadataTable ||
+          previousSchemaVersion != _schemaVersion ||
+          !_metadataFlag(db, 'artwork_repair_v1') ||
+          previousLocation.isEmpty ||
+          previousLocation.single['value'] != repairLocation) {
+        await _repairCanonicalArtworkPaths(db);
+        db.execute(
+          'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+          ['artwork_repair_v1', '1'],
+        );
+        db.execute(
+          'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+          ['artwork_repair_location_v1', repairLocation],
+        );
+      }
+      if (hadMetadataTable &&
+          (previousSchemaVersion < _schemaVersion || !gcAlreadyRan)) {
+        await _runStartupGarbageCollection(db);
+        db.execute(
+          'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+          ['orphan_gc_v7', '1'],
+        );
+      } else if (!hadMetadataTable) {
+        db.execute(
+          'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+          ['orphan_gc_v7', '1'],
+        );
+      }
+      return db;
+    } catch (_) {
+      db.dispose();
+      rethrow;
+    }
   }
 
   Future<void> _repairCanonicalArtworkPaths(Database db) async {
@@ -2882,16 +2446,52 @@ class OfflineLibraryStorage {
     ''');
     _ensureColumn(db, 'local_playlists', 'description', 'TEXT');
     _ensureColumn(db, 'local_playlists', 'image_path', 'TEXT');
+    // A position identifies an entry so downloaded copies can retain repetitions.
     db.execute('''
       CREATE TABLE IF NOT EXISTS local_playlist_tracks (
         playlist_id TEXT NOT NULL,
         local_track_id TEXT NOT NULL,
         position INTEGER NOT NULL,
-        PRIMARY KEY (playlist_id, local_track_id),
+        PRIMARY KEY (playlist_id, position),
         FOREIGN KEY (playlist_id) REFERENCES local_playlists(id) ON DELETE CASCADE,
         FOREIGN KEY (local_track_id) REFERENCES tracks(id) ON DELETE CASCADE
       )
     ''');
+    final playlistColumns = db.select(
+      'PRAGMA table_info(local_playlist_tracks)',
+    );
+    if (playlistColumns.any(
+      (row) => row['name'] == 'local_track_id' && row['pk'] != 0,
+    )) {
+      _transaction(db, () {
+        db.execute('''CREATE TABLE local_playlist_tracks_v11 (
+          playlist_id TEXT NOT NULL,
+          local_track_id TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          PRIMARY KEY (playlist_id, position),
+          FOREIGN KEY (playlist_id) REFERENCES local_playlists(id) ON DELETE CASCADE,
+          FOREIGN KEY (local_track_id) REFERENCES tracks(id) ON DELETE CASCADE
+        )''');
+        db.execute('''INSERT INTO local_playlist_tracks_v11
+          SELECT playlist_id, local_track_id,
+            ROW_NUMBER() OVER (PARTITION BY playlist_id ORDER BY position, rowid) - 1
+          FROM local_playlist_tracks''');
+        db.execute('DROP TABLE local_playlist_tracks');
+        db.execute(
+          'ALTER TABLE local_playlist_tracks_v11 RENAME TO local_playlist_tracks',
+        );
+      });
+    }
+    db.execute('''CREATE TABLE IF NOT EXISTS pending_playlist_tracks (
+      playlist_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      server_base_url TEXT NOT NULL,
+      server_track_id TEXT NOT NULL,
+      PRIMARY KEY (playlist_id, position),
+      FOREIGN KEY (playlist_id) REFERENCES local_playlists(id) ON DELETE CASCADE
+    )''');
+    db.execute('''CREATE INDEX IF NOT EXISTS idx_pending_playlist_source
+      ON pending_playlist_tracks(server_base_url, server_track_id)''');
     db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
       'schema_version',
       _schemaVersion.toString(),
@@ -3421,18 +3021,33 @@ class OfflineLibraryStorage {
     required bool inPlaylists,
   }) {
     final source = metadata?.track ?? fallback;
+    final sameArtist =
+        _artistArtworkIdentity(source) == _artistArtworkIdentity(fallback);
     return source.copyWith(
       id: id,
       artist: source.artist.trim().isEmpty ? fallback.artist : source.artist,
       artistId: source.artistId ?? fallback.artistId,
+      artistIds: source.artistIds.isEmpty && sameArtist
+          ? fallback.artistIds
+          : source.artistIds,
+      artistNames: source.artistNames.isEmpty && sameArtist
+          ? fallback.artistNames
+          : source.artistNames,
+      artistCredits: source.artistCredits.isEmpty && sameArtist
+          ? fallback.artistCredits
+          : source.artistCredits,
       album: source.album.trim().isEmpty ? fallback.album : source.album,
       albumId: source.albumId ?? fallback.albumId,
       localId: localId,
       serverBaseUrl: serverBaseUrl,
       serverTrackId: serverTrackId,
       albumArtPath: fallback.albumArtPath ?? source.albumArtPath,
-      artistArtPath: fallback.artistArtPath ?? source.artistArtPath,
-      artistBannerPath: fallback.artistBannerPath ?? source.artistBannerPath,
+      artistArtPath: sameArtist
+          ? fallback.artistArtPath ?? source.artistArtPath
+          : source.artistArtPath,
+      artistBannerPath: sameArtist
+          ? fallback.artistBannerPath ?? source.artistBannerPath
+          : source.artistBannerPath,
       durationMs: source.durationMs > 0
           ? source.durationMs
           : fallback.durationMs,
@@ -3443,7 +3058,15 @@ class OfflineLibraryStorage {
       discNo: source.discNo ?? fallback.discNo,
       offlineAlbum: metadata?.album ?? fallback.offlineAlbum,
       offlineArtist: metadata?.artist ?? fallback.offlineArtist,
+      offlineArtists: metadata?.allArtists ?? fallback.offlineArtists,
     );
+  }
+
+  String _artistArtworkIdentity(Track track) {
+    final id = track.artistId?.trim();
+    return id != null && id.isNotEmpty
+        ? 'id:$id'
+        : 'name:${track.artist.trim().toLowerCase()}';
   }
 
   OfflineTrackDownload _withLocalTrack(
@@ -3451,14 +3074,15 @@ class OfflineLibraryStorage {
     String localTrackId,
   ) {
     final serverTrackId = download.track.serverTrackId ?? download.track.id;
-    final track = download.track.copyWith(
+    final track = _trackWithOfflineMetadata(
+      download.track,
+      download.offlineMetadata,
+      id: download.track.id,
       localId: localTrackId,
       serverBaseUrl: download.serverBaseUrl,
       serverTrackId: serverTrackId,
-      offlineAlbum:
-          download.offlineMetadata?.album ?? download.track.offlineAlbum,
-      offlineArtist:
-          download.offlineMetadata?.artist ?? download.track.offlineArtist,
+      liked: download.track.liked,
+      inPlaylists: download.track.inPlaylists,
     );
     return download.copyWith(
       localTrackId: localTrackId,
@@ -3591,6 +3215,43 @@ class OfflineLibraryStorage {
         normalized.priority,
       ],
     );
+    if (normalized.status == OfflineDownloadStatus.downloaded &&
+        normalized.filePath != null) {
+      _resolvePendingPlaylistTracks(
+        db,
+        serverBaseUrl: normalized.serverBaseUrl,
+        serverTrackId: normalized.track.serverTrackId ?? normalized.track.id,
+      );
+    }
+  }
+
+  void _resolvePendingPlaylistTracks(
+    Database db, {
+    String? serverBaseUrl,
+    String? serverTrackId,
+  }) {
+    final rows = db.select(
+      '''SELECT p.playlist_id, p.position, s.local_track_id
+        FROM pending_playlist_tracks p
+        JOIN source_tracks s ON s.server_base_url = p.server_base_url
+          AND s.server_track_id = p.server_track_id
+        WHERE s.status = ? AND s.file_path IS NOT NULL
+        ${serverBaseUrl == null ? '' : 'AND p.server_base_url = ? AND p.server_track_id = ?'}''',
+      [
+        OfflineDownloadStatus.downloaded.name,
+        if (serverBaseUrl != null) ...[serverBaseUrl, serverTrackId],
+      ],
+    );
+    for (final row in rows) {
+      db.execute(
+        'INSERT OR IGNORE INTO local_playlist_tracks (playlist_id, position, local_track_id) VALUES (?, ?, ?)',
+        [row['playlist_id'], row['position'], row['local_track_id']],
+      );
+      db.execute(
+        'DELETE FROM pending_playlist_tracks WHERE playlist_id = ? AND position = ?',
+        [row['playlist_id'], row['position']],
+      );
+    }
   }
 
   void _upsertOfflineMetadataFragment(
@@ -3603,6 +3264,9 @@ class OfflineLibraryStorage {
       return;
     }
     final serverTrackId = _serverTrackId(download);
+    final sameArtist =
+        _artistArtworkIdentity(download.track) ==
+        _artistArtworkIdentity(metadata.track);
     final track = metadata.track.copyWith(
       id: serverTrackId,
       localId: localTrackId,
@@ -3610,9 +3274,11 @@ class OfflineLibraryStorage {
       serverTrackId: serverTrackId,
       albumArtPath: download.track.albumArtPath ?? metadata.track.albumArtPath,
       artistArtPath:
-          download.track.artistArtPath ?? metadata.track.artistArtPath,
+          (sameArtist ? download.track.artistArtPath : null) ??
+          metadata.track.artistArtPath,
       artistBannerPath:
-          download.track.artistBannerPath ?? metadata.track.artistBannerPath,
+          (sameArtist ? download.track.artistBannerPath : null) ??
+          metadata.track.artistBannerPath,
       liked: download.track.liked,
       inPlaylists: download.track.inPlaylists,
     );
@@ -3660,7 +3326,9 @@ class OfflineLibraryStorage {
         serverTrackId,
         localTrackId,
         metadata.schemaVersion,
-        jsonEncode(metadata.track.toJson()),
+        jsonEncode(
+          metadata.track.copyWith(offlineArtists: metadata.allArtists).toJson(),
+        ),
         jsonEncode(metadata.album.toJson()),
         jsonEncode(metadata.artist.toJson()),
         now,
@@ -3794,9 +3462,7 @@ class OfflineLibraryStorage {
         item.materialized ? 1 : 0,
         item.createdAt.millisecondsSinceEpoch,
         item.updatedAt.millisecondsSinceEpoch,
-        track == null
-            ? null
-            : jsonEncode(OfflineTrackDownload._trackToJson(track)),
+        track == null ? null : jsonEncode(track.toJson()),
         item.offlineMetadata == null
             ? null
             : jsonEncode(item.offlineMetadata!.toJson()),
@@ -3893,11 +3559,24 @@ class OfflineLibraryStorage {
         album = excluded.album,
         album_id = excluded.album_id,
         album_art_path = COALESCE(excluded.album_art_path, album_art_path),
-        artist_art_path = COALESCE(excluded.artist_art_path, artist_art_path),
-        artist_banner_path = COALESCE(
-          excluded.artist_banner_path,
-          artist_banner_path
-        ),
+        artist_art_path = CASE
+          WHEN COALESCE(
+            'id:' || NULLIF(TRIM(artist_id), ''),
+            'name:' || LOWER(TRIM(artist))
+          ) = COALESCE(
+            'id:' || NULLIF(TRIM(excluded.artist_id), ''),
+            'name:' || LOWER(TRIM(excluded.artist))
+          ) THEN COALESCE(excluded.artist_art_path, artist_art_path)
+          ELSE excluded.artist_art_path END,
+        artist_banner_path = CASE
+          WHEN COALESCE(
+            'id:' || NULLIF(TRIM(artist_id), ''),
+            'name:' || LOWER(TRIM(artist))
+          ) = COALESCE(
+            'id:' || NULLIF(TRIM(excluded.artist_id), ''),
+            'name:' || LOWER(TRIM(excluded.artist))
+          ) THEN COALESCE(excluded.artist_banner_path, artist_banner_path)
+          ELSE excluded.artist_banner_path END,
         genres_json = excluded.genres_json,
         duration_ms = excluded.duration_ms,
         track_no = excluded.track_no,
@@ -4107,6 +3786,8 @@ class OfflineLibraryStorage {
     if (override != null) {
       return override;
     }
+    final provider = defaultDirectoryProvider;
+    if (provider != null) return provider();
     if (Platform.isWindows) {
       final localAppData = Platform.environment['LOCALAPPDATA'];
       if (localAppData != null && localAppData.trim().isNotEmpty) {

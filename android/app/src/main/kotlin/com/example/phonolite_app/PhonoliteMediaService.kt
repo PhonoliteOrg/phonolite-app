@@ -612,7 +612,7 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
           PlaybackStateCompat.CustomAction.Builder(
             actionToggleLike,
             if (state.liked) "Unlike" else "Like",
-            if (state.liked) android.R.drawable.btn_star_big_on else android.R.drawable.btn_star_big_off,
+            if (state.liked) R.drawable.ic_lucide_star_selected else R.drawable.ic_lucide_star,
           ).build(),
         )
     return builder.build()
@@ -625,20 +625,20 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
     val playPauseAction =
       if (state.isPlaying) {
         notificationAction(
-          icon = android.R.drawable.ic_media_pause,
+          icon = R.drawable.ic_lucide_pause,
           title = "Pause",
           action = actionPause,
         )
       } else {
         notificationAction(
-          icon = android.R.drawable.ic_media_play,
+          icon = R.drawable.ic_lucide_play,
           title = "Play",
           action = actionPlay,
         )
       }
     val builder =
       NotificationCompat.Builder(this, notificationChannelId)
-        .setSmallIcon(R.mipmap.ic_launcher)
+        .setSmallIcon(R.drawable.ic_lucide_audio_lines)
         .setContentTitle(if (state.title.isBlank()) "Phonolite" else state.title)
         .setContentText(
           listOf(state.artist, state.album)
@@ -660,7 +660,7 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
         )
         .addAction(
           notificationAction(
-            icon = android.R.drawable.ic_media_previous,
+            icon = R.drawable.ic_lucide_skip_back,
             title = "Previous",
             action = actionPrev,
           ),
@@ -668,14 +668,14 @@ class PhonoliteMediaService : MediaBrowserServiceCompat() {
         .addAction(playPauseAction)
         .addAction(
           notificationAction(
-            icon = android.R.drawable.ic_media_next,
+            icon = R.drawable.ic_lucide_skip_forward,
             title = "Next",
             action = actionNext,
           ),
         )
         .addAction(
           notificationAction(
-            icon = if (state.liked) android.R.drawable.btn_star_big_on else android.R.drawable.btn_star_big_off,
+            icon = if (state.liked) R.drawable.ic_lucide_star_selected else R.drawable.ic_lucide_star,
             title = if (state.liked) "Unlike" else "Like",
             action = actionToggleLike,
           ),

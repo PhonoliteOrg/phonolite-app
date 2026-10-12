@@ -1,7 +1,5 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-
-import 'obsidian_shapes.dart';
 
 class ObsidianPalette {
   static const Color obsidian = Color(0xFF050505);
@@ -15,6 +13,19 @@ class ObsidianPalette {
 }
 
 class ObsidianTheme {
+  // Retain one unscaled base and one scaled result, rather than accumulating a
+  // theme for every width encountered during a window drag.
+  static ({ThemeData theme, TextTheme body, TextTheme display})? _base;
+  static double? _cachedScale;
+  static ThemeData? _cachedTheme;
+  static final _navigationIconTheme = WidgetStateProperty.resolveWith(
+    (states) => IconThemeData(
+      color: states.contains(WidgetState.selected)
+          ? ObsidianPalette.gold
+          : ObsidianPalette.textMuted,
+    ),
+  );
+
   static TextStyle? _scaleTextStyle(TextStyle? style, double scale) {
     if (style == null || scale == 1.0) {
       return style;
@@ -58,6 +69,23 @@ class ObsidianTheme {
   }
 
   static ThemeData build({double scale = 1.0}) {
+    final platform = defaultTargetPlatform;
+    if (_base?.theme.platform != platform) {
+      _base = _buildBase();
+      _cachedTheme = null;
+    }
+    if (_cachedTheme != null && _cachedScale == scale) {
+      return _cachedTheme!;
+    }
+    final base = _base!.theme;
+    final scaledBody = _scaleTextTheme(_base!.body, scale);
+    final scaledDisplay = _scaleTextTheme(_base!.display, scale);
+    final theme = _buildScaled(base, scaledBody, scaledDisplay, scale);
+    _cachedScale = scale;
+    return _cachedTheme = theme;
+  }
+
+  static ({ThemeData theme, TextTheme body, TextTheme display}) _buildBase() {
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -80,14 +108,26 @@ class ObsidianTheme {
       canvasColor: ObsidianPalette.obsidian,
     );
 
-    final body = GoogleFonts.poppinsTextTheme(base.textTheme).apply(
+    // ThemeData's font sizes can be null until its Material text geometry is
+    // resolved. Resolve them before scaling, so smaller viewports scale text too.
+    final textTheme = base.typography.englishLike.merge(base.textTheme);
+    // Both families are bundled in pubspec.yaml. Native font matching also
+    // handles intermediate weights without requesting missing font assets.
+    final body = textTheme.apply(
+      fontFamily: 'Poppins',
       bodyColor: ObsidianPalette.textPrimary,
       displayColor: ObsidianPalette.textPrimary,
     );
-    final display = GoogleFonts.rajdhaniTextTheme(body);
-    final scaledBody = _scaleTextTheme(body, scale);
-    final scaledDisplay = _scaleTextTheme(display, scale);
+    final display = body.apply(fontFamily: 'Rajdhani');
+    return (theme: base, body: body, display: display);
+  }
 
+  static ThemeData _buildScaled(
+    ThemeData base,
+    TextTheme scaledBody,
+    TextTheme scaledDisplay,
+    double scale,
+  ) {
     const noOverlay = WidgetStatePropertyAll<Color>(Colors.transparent);
 
     return base.copyWith(
@@ -109,8 +149,7 @@ class ObsidianTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: ObsidianPalette.obsidianElevated.withOpacity(0.9),
         surfaceTintColor: Colors.transparent,
-        shape: const CyberShapeBorder(
-          cut: 18,
+        shape: const RoundedRectangleBorder(
           side: BorderSide(color: ObsidianPalette.border),
         ),
         titleTextStyle: scaledDisplay.titleLarge?.copyWith(
@@ -156,13 +195,7 @@ class ObsidianTheme {
         labelTextStyle: WidgetStatePropertyAll(
           scaledBody.labelSmall?.copyWith(letterSpacing: 1 * scale),
         ),
-        iconTheme: WidgetStateProperty.resolveWith(
-          (states) => IconThemeData(
-            color: states.contains(WidgetState.selected)
-                ? ObsidianPalette.gold
-                : ObsidianPalette.textMuted,
-          ),
-        ),
+        iconTheme: _navigationIconTheme,
       ),
       tabBarTheme: TabBarThemeData(
         labelColor: ObsidianPalette.gold,

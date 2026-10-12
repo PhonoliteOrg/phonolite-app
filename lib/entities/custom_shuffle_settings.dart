@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
+import '../persistence/settings_files.dart';
 
 import 'app_log.dart';
 
@@ -74,7 +74,9 @@ class CustomShuffleSettings {
 }
 
 class CustomShuffleSettingsStorage {
-  const CustomShuffleSettingsStorage();
+  const CustomShuffleSettingsStorage({
+    SettingsFiles files = const SettingsFiles(cacheFirst: true),
+  }) : _files = files;
 
   static const String _fileName = 'shuffle_settings.json';
 
@@ -111,39 +113,8 @@ class CustomShuffleSettingsStorage {
     }
   }
 
-  Future<File> _resolveFile({bool createDir = false}) async {
-    final dir = await _resolveDirectory();
-    if (createDir) {
-      await dir.create(recursive: true);
-    }
-    return File(_join(dir.path, _fileName));
-  }
+  final SettingsFiles _files;
 
-  Future<Directory> _resolveDirectory() async {
-    try {
-      final cacheDir = await getApplicationCacheDirectory();
-      return Directory(_join(cacheDir.path, 'Phonolite'));
-    } catch (_) {
-      // Fall back to support directory when cache isn't available.
-    }
-    if (Platform.isWindows) {
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-      if (localAppData != null && localAppData.trim().isNotEmpty) {
-        return Directory(_join(localAppData, 'Phonolite'));
-      }
-    }
-    final supportDir = await getApplicationSupportDirectory();
-    return Directory(_join(supportDir.path, 'Phonolite'));
-  }
-
-  String _join(String left, String right) {
-    if (left.isEmpty) {
-      return right;
-    }
-    final separator = Platform.pathSeparator;
-    if (left.endsWith(separator)) {
-      return '$left$right';
-    }
-    return '$left$separator$right';
-  }
+  Future<File> _resolveFile({bool createDir = false}) =>
+      _files.resolve(_fileName, createDirectory: createDir);
 }

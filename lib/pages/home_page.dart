@@ -1,16 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../widgets/ui/phonolite_icons.dart';
+import '../widgets/ui/playlist_icon.dart';
+import '../widgets/ui/stats_icon.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../entities/app_controller.dart';
+import '../entities/local_library_selection.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/retained_tab_view.dart';
 import '../widgets/navigation/adaptive_scaffold.dart';
 import 'library_page.dart';
 import 'liked_page.dart';
 import 'settings_page.dart';
 import 'playlists_page.dart';
+import 'playlist_detail_view.dart';
 import 'stats_page.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
+import 'local_album_detail_screen.dart';
+import 'local_artist_detail_screen.dart';
 import 'login_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -22,12 +33,16 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  AppController? _controller;
+  StreamSubscription<bool>? _statsCollectionSubscription;
   late final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
     5,
     (_) => GlobalKey<NavigatorState>(),
   );
   final List<String?> _topRouteNames = List.filled(5, null);
   late final List<NavigatorObserver> _routeObservers;
+  late final List<Widget> _pages;
+  final _tabViewKey = GlobalKey();
 
   @override
   void initState() {
@@ -38,11 +53,45 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         onRouteChanged: (routeName) => _setTopRouteName(index, routeName),
       ),
     );
+    _pages = <Widget>[
+      _buildTabNavigator(0, const LibraryPage()),
+      _buildTabNavigator(1, const PlaylistsPage()),
+      _buildTabNavigator(2, const LikedPage()),
+      _buildTabNavigator(3, const StatsPage()),
+      _buildTabNavigator(4, const SettingsPage()),
+    ];
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = AppScope.of(context);
+    if (identical(controller, _controller)) {
+      return;
+    }
+    _statsCollectionSubscription?.cancel();
+    _controller = controller;
+    if (!controller.statsCollectionEnabled && _selectedIndex == 3) {
+      _selectedIndex = 0;
+    }
+    _statsCollectionSubscription = controller.statsCollectionEnabledStream
+        .distinct()
+        .listen((enabled) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            if (!enabled && _selectedIndex == 3) {
+              _selectedIndex = 0;
+            }
+          });
+        });
+  }
+
+  @override
   void dispose() {
+    _statsCollectionSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -62,14 +111,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    final pages = <Widget>[
-      _buildTabNavigator(0, const LibraryPage()),
-      _buildTabNavigator(1, const PlaylistsPage()),
-      _buildTabNavigator(2, const LikedPage()),
-      _buildTabNavigator(3, const StatsPage()),
-      _buildTabNavigator(4, const SettingsPage()),
-    ];
-
+    final statsEnabled = controller.statsCollectionEnabled;
+    // Keep the retained navigators stable while Stats is hidden from navigation.
+    final visibleTabIndices = [0, 1, 2, if (statsEnabled) 3, 4];
     return WillPopScope(
       onWillPop: () async {
         final navigator = _navigatorKeys[_selectedIndex].currentState;
@@ -85,33 +129,38 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         builder: (context, snapshot) {
           final playback = snapshot.data ?? controller.playbackState;
           return AdaptiveScaffold(
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.library_music),
+            destinations: [
+              const NavigationDestination(
+                icon: Icon(PhonoliteIcons.disc3),
                 label: 'Library',
               ),
-              NavigationDestination(
-                icon: Icon(Icons.queue_music),
+              const NavigationDestination(
+                icon: PlaylistIcon(),
                 label: 'Playlists',
               ),
-              NavigationDestination(icon: Icon(Icons.favorite), label: 'Liked'),
-              NavigationDestination(
-                icon: Icon(Icons.bar_chart),
-                label: 'Stats',
+              const NavigationDestination(
+                icon: Icon(PhonoliteIcons.heart),
+                label: 'Liked',
               ),
-              NavigationDestination(
-                icon: Icon(Icons.settings),
+              if (statsEnabled)
+                const NavigationDestination(icon: StatsIcon(), label: 'Stats'),
+              const NavigationDestination(
+                icon: Icon(PhonoliteIcons.settings),
                 label: 'Settings',
               ),
             ],
-            selectedIndex: _selectedIndex,
+            selectedIndex: visibleTabIndices.indexOf(_selectedIndex),
             onDestinationSelected: (index) =>
-                setState(() => _selectedIndex = index),
-            page: IndexedStack(index: _selectedIndex, children: pages),
+                setState(() => _selectedIndex = visibleTabIndices[index]),
+            page: RetainedTabView(
+              key: _tabViewKey,
+              index: _selectedIndex,
+              children: _pages,
+            ),
             hidePlaybackChrome:
                 _topRouteNames[_selectedIndex] == LoginPage.routeName,
             playbackState: playback,
-            onOpenAlbum: _openCurrentAlbum,
+            onOpenAlbum: _openCurrentPlaybackDetails,
             onPlayPause: () => controller.pause(playback.isPlaying),
             onNext: controller.nextTrack,
             onPrev: controller.prevTrack,
@@ -167,15 +216,71 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     updateRouteName();
   }
 
-  void _openCurrentAlbum() {
+  void _openCurrentPlaybackDetails() {
     () async {
       final controller = AppScope.of(context);
-      final track = controller.playbackState.track;
-      final albumId = track?.albumId;
-      if (track == null ||
-          albumId == null ||
+      final playback = controller.playbackState;
+      final track = playback.track;
+      if (track == null) {
+        return;
+      }
+      if (playback.hasPlaylistSource) {
+        if (_selectedIndex != 1) {
+          setState(() => _selectedIndex = 1);
+        }
+        final navigator = _navigatorKeys[1].currentState;
+        if (navigator == null) {
+          return;
+        }
+        navigator.popUntil((route) => route.isFirst);
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => PlaylistDetailView(
+              playlistId: playback.queueSourcePlaylistId!,
+              isLocal: playback.queueSource == PlaybackQueueSource.offline,
+            ),
+          ),
+        );
+        return;
+      }
+      if (playback.isLocalPlayback ||
+          playback.queueSource == PlaybackQueueSource.offline) {
+        final snapshot = controller.offlineLibrarySnapshot;
+        final selection = LocalLibrarySelection(
+          tracks: snapshot.tracks,
+          artists: snapshot.artistGroups,
+        );
+        final album = selection.albumForTrack(track);
+        if (album == null) {
+          return;
+        }
+        final artist =
+            selection.artist(album.artistId) ?? selection.artistForTrack(track);
+        if (_selectedIndex != 0) {
+          setState(() => _selectedIndex = 0);
+        }
+        final navigator = _navigatorKeys[0].currentState;
+        if (navigator == null) {
+          return;
+        }
+        navigator.popUntil((route) => route.isFirst);
+        if (artist != null) {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => LocalArtistDetailScreen(group: artist),
+            ),
+          );
+        }
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => LocalAlbumDetailScreen(album: album),
+          ),
+        );
+        return;
+      }
+      final albumId = track.albumId;
+      if (albumId == null ||
           albumId.isEmpty ||
-          controller.playbackState.isLocalPlayback ||
           !controller.authState.isAuthorized) {
         return;
       }

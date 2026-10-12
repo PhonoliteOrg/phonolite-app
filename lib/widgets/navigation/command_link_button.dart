@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../ui/phonolite_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
@@ -45,7 +47,7 @@ class CommandLinkButton extends StatelessWidget {
             ),
           ),
         ),
-        icon: const Icon(Icons.chevron_left, size: 18),
+        icon: const Icon(PhonoliteIcons.chevronLeft, size: 18),
         label: Text(label.toUpperCase()),
       ),
     );

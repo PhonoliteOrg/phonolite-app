@@ -1,14 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui/phonolite_icons.dart';
+import '../widgets/ui/edit_icon.dart';
+import '../widgets/ui/reload_icon.dart';
+import '../widgets/ui/server_icon.dart';
+import '../widgets/ui/stats_icon.dart';
+
 import '../entities/app_log.dart';
 import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
 import '../entities/custom_shuffle_settings.dart';
 import '../entities/offline_storage_settings.dart';
+import '../entities/server_connection.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
 import '../widgets/layout/library_header.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modals/confirmation_modal.dart';
+import '../widgets/modals/modal_action_button.dart';
+import '../widgets/modals/obsidian_dialog.dart';
+import '../widgets/modals/obsidian_modal_scope.dart';
 import '../widgets/ui/obsidian_theme.dart';
 import '../widgets/ui/hover_row.dart';
 import '../widgets/ui/obsidian_overflow_action_button.dart';
@@ -30,6 +41,7 @@ class SettingsPage extends StatelessWidget {
       initialData: controller.authState,
       builder: (context, authSnapshot) {
         final authState = authSnapshot.data ?? controller.authState;
+        final sessionRevision = controller.connection.sessionRevision;
         return StreamBuilder<List<LogEntry>>(
           stream: controller.messageStream,
           initialData: controller.messages,
@@ -53,17 +65,11 @@ class SettingsPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const ObsidianSectionHeader(title: 'Session'),
+                        const ObsidianSectionHeader(title: 'General'),
                         const SizedBox(height: 12),
                         _settingsRow(
                           context,
-                          leading: Icon(
-                            authState.isAuthorized
-                                ? Icons.cloud_done_rounded
-                                : authState.hasSession
-                                ? Icons.cloud_sync_rounded
-                                : Icons.cloud_off_rounded,
-                          ),
+                          leading: const ServerIcon(),
                           title: 'Server',
                           subtitle: serverLabel,
                           trailing: _serverActions(
@@ -72,8 +78,6 @@ class SettingsPage extends StatelessWidget {
                             authState: authState,
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        const ObsidianSectionHeader(title: 'Playback'),
                         const SizedBox(height: 12),
                         StreamBuilder<CustomShuffleSettings>(
                           stream: controller.customShuffleSettingsStream,
@@ -96,15 +100,46 @@ class SettingsPage extends StatelessWidget {
                                 'Server: $serverSummary - Local: $localArtistCount artists, $localGenreCount genres';
                             return _settingsRow(
                               context,
-                              leading: const Icon(Icons.shuffle_rounded),
+                              leading: const Icon(PhonoliteIcons.shuffle),
                               title: 'Custom Shuffle',
                               subtitle: summary,
-                              trailing: const Icon(Icons.chevron_right_rounded),
+                              trailing: const Icon(PhonoliteIcons.chevronRight),
                               onTap: () => Navigator.of(
                                 context,
                               ).push(CustomShuffleSettingsPage.route()),
                             );
                           },
+                        ),
+                        const SizedBox(height: 12),
+                        StreamBuilder<bool>(
+                          stream: controller.statsCollectionEnabledStream,
+                          initialData: controller.statsCollectionEnabled,
+                          builder: (context, snapshot) =>
+                              ListeningStatisticsSetting(
+                                enabled:
+                                    snapshot.data ??
+                                    controller.statsCollectionEnabled,
+                                onChanged: controller.setStatsCollectionEnabled,
+                                onResetLocalHistory:
+                                    controller.resetLocalListeningHistory,
+                                onResetAccountHistory: authState.isAuthorized
+                                    ? () async {
+                                        if (!controller
+                                                .authState
+                                                .isAuthorized ||
+                                            controller
+                                                    .connection
+                                                    .sessionRevision !=
+                                                sessionRevision) {
+                                          throw StateError(
+                                            'The signed-in account changed.',
+                                          );
+                                        }
+                                        await controller
+                                            .resetAccountListeningHistory();
+                                      }
+                                    : null,
+                              ),
                         ),
                         const SizedBox(height: 24),
                         const ObsidianSectionHeader(title: 'Offline Storage'),
@@ -164,10 +199,10 @@ class SettingsPage extends StatelessWidget {
                           children: [
                             _settingsRow(
                               context,
-                              leading: const Icon(Icons.receipt_long_rounded),
+                              leading: const Icon(PhonoliteIcons.receiptText),
                               title: 'Logs',
                               subtitle: logLabel,
-                              trailing: const Icon(Icons.chevron_right_rounded),
+                              trailing: const Icon(PhonoliteIcons.chevronRight),
                               onTap: () =>
                                   Navigator.of(context).push(LogsPage.route()),
                             ),
@@ -177,6 +212,7 @@ class SettingsPage extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SliverPlaybackInset(),
               ],
             );
           },
@@ -273,10 +309,10 @@ class SettingsPage extends StatelessWidget {
         : null;
     final retryLabel = authState.isReconnecting ? 'Reconnecting...' : 'Retry';
     final loginIcon = authState.status == SessionStatus.checking
-        ? Icons.hourglass_top_rounded
+        ? PhonoliteIcons.hourglass
         : authState.hasSession
-        ? Icons.swap_horiz_rounded
-        : Icons.login_rounded;
+        ? PhonoliteIcons.arrowLeftRight
+        : PhonoliteIcons.logIn;
 
     if (isCompactListWidth(context)) {
       if (authState.hasSession) {
@@ -286,17 +322,17 @@ class SettingsPage extends StatelessWidget {
             if (canRetry)
               ObsidianMenuAction(
                 label: retryLabel,
-                icon: Icons.sync_rounded,
+                iconWidget: const ReloadIcon(),
                 onTap: retryAction,
               ),
             ObsidianMenuAction(
               label: 'Change server',
-              icon: Icons.swap_horiz_rounded,
+              icon: PhonoliteIcons.arrowLeftRight,
               onTap: loginAction,
             ),
             ObsidianMenuAction(
               label: 'Disconnect',
-              icon: Icons.logout_rounded,
+              icon: PhonoliteIcons.logOut,
               variant: TechButtonVariant.danger,
               onTap: () async => controller.logout(),
             ),
@@ -318,7 +354,7 @@ class SettingsPage extends StatelessWidget {
         if (canRetry)
           TechButton(
             label: retryLabel,
-            icon: Icons.sync_rounded,
+            iconWidget: const ReloadIcon(),
             density: TechButtonDensity.compact,
             chrome: TechButtonChrome.borderless,
             onTap: retryAction,
@@ -333,7 +369,7 @@ class SettingsPage extends StatelessWidget {
         if (authState.hasSession)
           TechButton(
             label: 'Disconnect',
-            icon: Icons.logout_rounded,
+            icon: PhonoliteIcons.logOut,
             variant: TechButtonVariant.danger,
             density: TechButtonDensity.compact,
             chrome: TechButtonChrome.borderless,
@@ -428,6 +464,239 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
+class ListeningStatisticsSetting extends StatefulWidget {
+  const ListeningStatisticsSetting({
+    super.key,
+    required this.enabled,
+    required this.onChanged,
+    this.onResetLocalHistory,
+    this.onResetAccountHistory,
+  });
+
+  final bool enabled;
+  final Future<void> Function(bool) onChanged;
+  final Future<void> Function()? onResetLocalHistory;
+  final Future<void> Function()? onResetAccountHistory;
+
+  @override
+  State<ListeningStatisticsSetting> createState() =>
+      _ListeningStatisticsSettingState();
+}
+
+class _ListeningStatisticsSettingState
+    extends State<ListeningStatisticsSetting> {
+  bool _saving = false;
+  bool _resetting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _collectionTile(context),
+        if (widget.onResetLocalHistory != null) ...[
+          const SizedBox(height: 12),
+          _resetTile(context, account: false),
+        ],
+        if (widget.onResetAccountHistory != null) ...[
+          const SizedBox(height: 12),
+          _resetTile(context, account: true),
+        ],
+      ],
+    );
+  }
+
+  Widget _collectionTile(BuildContext context) {
+    final compact = isCompactListWidth(context);
+    final theme = Theme.of(context);
+    return ObsidianHoverRow(
+      enabled: false,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 12,
+        vertical: compact ? 8 : 10,
+      ),
+      borderColor: Colors.transparent,
+      hoverColor: Colors.transparent,
+      hoverGradient: const LinearGradient(
+        colors: [Colors.transparent, Colors.transparent],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: compact ? 28 : 32,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: StatsIcon(size: compact ? 20 : 24),
+            ),
+          ),
+          SizedBox(width: compact ? 8 : 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Listening statistics',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontSize: compact ? 14.5 : null,
+                    letterSpacing: compact ? 0.2 : 0.6,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.enabled
+                      ? 'Save listening on this device and sync with your account when the server allows it.'
+                      : 'New listening and uploads are stopped on this device. Existing history is kept.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: compact ? 12 : null,
+                    color: ObsidianPalette.textMuted,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This setting applies only to this app on this device.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: compact ? 12 : null,
+                    color: ObsidianPalette.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Semantics(
+            label: 'Collect listening statistics',
+            child: Switch.adaptive(
+              key: const ValueKey('listening-statistics-switch'),
+              value: widget.enabled,
+              activeThumbColor: ObsidianPalette.gold,
+              activeTrackColor: ObsidianPalette.gold.withValues(alpha: 0.3),
+              hoverColor: Colors.transparent,
+              onChanged: _saving || _resetting ? null : _change,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resetTile(BuildContext context, {required bool account}) {
+    final compact = isCompactListWidth(context);
+    final theme = Theme.of(context);
+    final enabled = !_saving && !_resetting;
+    final color = enabled ? theme.colorScheme.error : ObsidianPalette.textMuted;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: ObsidianHoverRow(
+        key: ValueKey(
+          account ? 'reset-account-history' : 'reset-device-only-history',
+        ),
+        enabled: enabled,
+        onTap: () => _resetHistory(account),
+        borderColor: ObsidianPalette.gold,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 12,
+          vertical: compact ? 8 : 10,
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: compact ? 28 : 32,
+              child: IconTheme.merge(
+                data: const IconThemeData(color: ObsidianPalette.textMuted),
+                child: account
+                    ? StatsIcon.accountReset(size: compact ? 20 : 24)
+                    : StatsIcon.deviceReset(size: compact ? 20 : 24),
+              ),
+            ),
+            SizedBox(width: compact ? 8 : 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    account
+                        ? 'Reset account history'
+                        : 'Reset device-only history',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontSize: compact ? 14.5 : null,
+                      letterSpacing: compact ? 0.2 : 0.6,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    account
+                        ? 'Delete this account\'s listening statistics from the server and this app. Device-only history is kept.'
+                        : 'Delete listening statistics recorded while signed out on this device. Account history is kept.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: compact ? 12 : null,
+                      color: ObsidianPalette.textMuted,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: compact ? 6 : 8),
+            Icon(PhonoliteIcons.trash2, size: compact ? 22 : 24, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _change(bool enabled) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await widget.onChanged(enabled);
+    } catch (error) {
+      AppLogger.warning('Could not save the statistics setting: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _resetHistory(bool account) async {
+    if (_saving || _resetting) return;
+    // Capture the action before confirmation so an account change cannot
+    // substitute a different account's callback while the dialog is open.
+    final reset = account
+        ? widget.onResetAccountHistory
+        : widget.onResetLocalHistory;
+    if (reset == null) return;
+    setState(() => _resetting = true);
+    try {
+      final confirmed = await ConfirmationModal.show(
+        context,
+        title: account
+            ? 'Reset account listening history?'
+            : 'Reset device-only listening history?',
+        message: account
+            ? 'Permanently delete all listening statistics for this account on the server and this app? Other devices will clear their copies and old pending uploads when they reconnect. Device-only history recorded while signed out is kept. This cannot be undone.'
+            : 'Permanently delete listening history recorded while signed out on this device? Server account history and its synced copy are kept. This cannot be undone.',
+        confirmLabel: 'Reset history',
+      );
+      if (!confirmed || !mounted) return;
+      await reset();
+    } catch (error) {
+      final message =
+          account &&
+              error is ApiException &&
+              (error.statusCode == 404 || error.statusCode == 405)
+          ? 'This server needs an update to reset account history.'
+          : account
+          ? 'Could not confirm the account reset. Check your connection and statistics before trying again.'
+          : 'Could not reset device-only history. Try again.';
+      AppLogger.warning('$message $error');
+    } finally {
+      if (mounted) setState(() => _resetting = false);
+    }
+  }
+}
+
 class OfflineStorageSection extends StatelessWidget {
   const OfflineStorageSection({
     super.key,
@@ -467,7 +736,7 @@ class OfflineStorageSection extends StatelessWidget {
         ],
         _sectionRow(
           context,
-          leading: const Icon(Icons.storage_rounded),
+          leading: const Icon(PhonoliteIcons.database),
           title: 'Metadata database',
           subtitle: _subtitle(
             locations,
@@ -475,7 +744,7 @@ class OfflineStorageSection extends StatelessWidget {
             managed: usesManagedPaths,
           ),
           trailing: usesManagedPaths
-              ? const Icon(Icons.lock_outline_rounded)
+              ? const Icon(PhonoliteIcons.lockKeyhole)
               : _StorageActions(
                   onChange: onChangeMetadata,
                   onReset: onResetMetadata,
@@ -484,7 +753,7 @@ class OfflineStorageSection extends StatelessWidget {
         const Divider(height: 1),
         _sectionRow(
           context,
-          leading: const Icon(Icons.folder_rounded),
+          leading: const Icon(PhonoliteIcons.folder),
           title: 'Downloaded audio',
           subtitle: _subtitle(
             locations,
@@ -492,7 +761,7 @@ class OfflineStorageSection extends StatelessWidget {
             managed: usesManagedPaths,
           ),
           trailing: usesManagedPaths
-              ? const Icon(Icons.lock_outline_rounded)
+              ? const Icon(PhonoliteIcons.lockKeyhole)
               : _StorageActions(
                   onChange: onChangeDownloads,
                   onReset: onResetDownloads,
@@ -501,10 +770,7 @@ class OfflineStorageSection extends StatelessWidget {
         const Divider(height: 1),
         _sectionRow(
           context,
-          leading: Icon(
-            Icons.delete_forever_rounded,
-            color: theme.colorScheme.error,
-          ),
+          leading: Icon(PhonoliteIcons.trash, color: theme.colorScheme.error),
           title: 'Reset offline data',
           subtitle:
               'Delete local tracks, artwork, metadata, and offline databases',
@@ -539,7 +805,7 @@ class OfflineStorageSection extends StatelessWidget {
     if (isCompactListWidth(context)) {
       return _SettingsIconAction(
         tooltip: 'Full reset',
-        icon: Icons.delete_forever_rounded,
+        icon: PhonoliteIcons.trash,
         variant: TechButtonVariant.danger,
         onPressed: onTap,
       );
@@ -547,7 +813,7 @@ class OfflineStorageSection extends StatelessWidget {
 
     return TechButton(
       label: 'Full reset',
-      icon: Icons.delete_forever_rounded,
+      icon: PhonoliteIcons.trash,
       variant: TechButtonVariant.danger,
       density: TechButtonDensity.compact,
       chrome: TechButtonChrome.borderless,
@@ -654,12 +920,12 @@ class _StorageActions extends StatelessWidget {
         actions: [
           ObsidianMenuAction(
             label: 'Change',
-            icon: Icons.edit_rounded,
+            iconWidget: const EditIcon(),
             onTap: onChange,
           ),
           ObsidianMenuAction(
             label: 'Reset',
-            icon: Icons.restore_rounded,
+            icon: PhonoliteIcons.rotateCcw,
             onTap: onReset,
           ),
         ],
@@ -672,14 +938,14 @@ class _StorageActions extends StatelessWidget {
       children: [
         TechButton(
           label: 'Change',
-          icon: Icons.edit_rounded,
+          iconWidget: const EditIcon(),
           density: TechButtonDensity.compact,
           chrome: TechButtonChrome.borderless,
           onTap: onChange,
         ),
         TechButton(
           label: 'Reset',
-          icon: Icons.restore_rounded,
+          icon: PhonoliteIcons.rotateCcw,
           density: TechButtonDensity.compact,
           chrome: TechButtonChrome.borderless,
           onTap: onReset,
@@ -781,8 +1047,12 @@ class _StoragePathDialogState extends State<_StoragePathDialog> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildDialog);
+
+  Widget _buildDialog(BuildContext context) {
+    return ObsidianAlertDialog(
+      scrollable: true,
       title: Text(widget.title),
       content: SizedBox(
         width: 460,
@@ -793,6 +1063,10 @@ class _StoragePathDialogState extends State<_StoragePathDialog> {
               controller: _controller,
               label: 'Folder path',
               hintText: widget.initialPath,
+              height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
+              startPadding: 24,
+              cut: 0,
+              isDense: true,
               enabled: !_saving,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _save(),
@@ -810,13 +1084,13 @@ class _StoragePathDialogState extends State<_StoragePathDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        ModalActionButton(
+          label: 'Close',
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        TextButton(
+        ModalActionButton(
+          label: _saving ? 'Saving' : 'Save',
           onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'Saving' : 'Save'),
         ),
       ],
     );

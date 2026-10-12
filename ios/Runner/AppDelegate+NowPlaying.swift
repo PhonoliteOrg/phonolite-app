@@ -14,7 +14,7 @@ extension AppDelegate {
     nowPlayingCoordinator.clear(carPlaySceneDelegate: carPlaySceneDelegate)
   }
 
-  func configureRemoteCommands(channel: FlutterMethodChannel) {
+  func configureRemoteCommands(channel _: FlutterMethodChannel) {
     UIApplication.shared.beginReceivingRemoteControlEvents()
     let commandCenter = MPRemoteCommandCenter.shared()
     commandCenter.playCommand.isEnabled = true
@@ -25,25 +25,24 @@ extension AppDelegate {
     commandCenter.changePlaybackPositionCommand.isEnabled = false
     commandCenter.changePlaybackPositionCommand.removeTarget(nil)
 
-    commandCenter.playCommand.addTarget { _ in
-      channel.invokeMethod("remoteCommand", arguments: ["type": "play"])
+    commandCenter.playCommand.addTarget { [weak self] _ in
+      self?.sendRemoteCommandToFlutter("play")
       return .success
     }
-    commandCenter.pauseCommand.addTarget { _ in
-      channel.invokeMethod("remoteCommand", arguments: ["type": "pause"])
+    commandCenter.pauseCommand.addTarget { [weak self] _ in
+      self?.sendRemoteCommandToFlutter("pause")
       return .success
     }
     commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-      let isPlaying = self?.nowPlayingCoordinator.isPlaying ?? false
-      channel.invokeMethod("remoteCommand", arguments: ["type": isPlaying ? "pause" : "play"])
+      self?.sendRemoteCommandToFlutter("toggle")
       return .success
     }
-    commandCenter.nextTrackCommand.addTarget { _ in
-      channel.invokeMethod("remoteCommand", arguments: ["type": "next"])
+    commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+      self?.sendRemoteCommandToFlutter("next")
       return .success
     }
-    commandCenter.previousTrackCommand.addTarget { _ in
-      channel.invokeMethod("remoteCommand", arguments: ["type": "prev"])
+    commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+      self?.sendRemoteCommandToFlutter("prev")
       return .success
     }
     commandCenter.changePlaybackPositionCommand.addTarget { _ in

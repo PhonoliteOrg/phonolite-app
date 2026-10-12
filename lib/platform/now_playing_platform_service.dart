@@ -42,4 +42,6 @@ class NowPlayingPlatformService {
   Future<void> clearNowPlaying() async {
     await _channel.invokeMethod('clearNowPlaying');
   }
+
+  void dispose() => _channel.setMethodCallHandler(null);
 }

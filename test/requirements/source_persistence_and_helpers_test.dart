@@ -4,22 +4,30 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('persistence and helper source contracts', () {
-    test('auth storage persists expected fields and file location rules', () {
-      final source = readProjectFile('lib/entities/auth_storage.dart');
+    test(
+      'auth storage uses only the new authenticated secure-storage schema',
+      () {
+        final source = readProjectFile('lib/entities/auth_storage.dart');
 
-      expectContainsAll(source, const [
-        "static const String _fileName = 'auth.json';",
-        "'baseUrl': baseUrl",
-        "'token': token",
-        "'username': username",
-        "Platform.environment['APPDATA']",
-        "getApplicationSupportDirectory()",
-        "'Phonolite'",
-      ]);
-    });
+        expectContainsAll(source, const [
+          "static const _vaultKey = 'phonolite.auth.session.v1';",
+          "'profile': 'phonolite-opaque-v1'",
+          "'baseUrl': baseUrl",
+          "'token': token",
+          "'username': username",
+          "'trust': trust.toJson()",
+          "final ServerTrust trust;",
+        ]);
+        expect(source, isNot(contains('auth.json')));
+        expect(source, isNot(contains('SettingsFiles')));
+        expect(source, isNot(contains('dart:io')));
+      },
+    );
 
     test('playback preferences persist volume and collection mode', () {
-      final source = readProjectFile('lib/entities/playback_preferences.dart');
+      final source =
+          readProjectFile('lib/entities/playback_preferences.dart') +
+          readProjectFile('lib/persistence/settings_files.dart');
 
       expectContainsAll(source, const [
         "static const String _fileName = 'playback_prefs.json';",
@@ -32,9 +40,9 @@ void main() {
     });
 
     test('custom shuffle settings persist from cache and normalize values', () {
-      final source = readProjectFile(
-        'lib/entities/custom_shuffle_settings.dart',
-      );
+      final source =
+          readProjectFile('lib/entities/custom_shuffle_settings.dart') +
+          readProjectFile('lib/persistence/settings_files.dart');
 
       expectContainsAll(source, const [
         "static const String _fileName = 'shuffle_settings.json';",
@@ -48,7 +56,9 @@ void main() {
     });
 
     test('offline library storage records server downloads and file paths', () {
-      final source = readProjectFile('lib/entities/offline_library.dart');
+      final source =
+          readProjectFile('lib/entities/offline_library.dart') +
+          readProjectFile('lib/entities/offline_models.dart');
 
       expectContainsAll(source, const [
         'enum OfflineDownloadStatus {',
@@ -131,9 +141,9 @@ void main() {
     test(
       'offline storage settings persist separate metadata and download roots',
       () {
-        final source = readProjectFile(
-          'lib/entities/offline_storage_settings.dart',
-        );
+        final source =
+            readProjectFile('lib/entities/offline_storage_settings.dart') +
+            readProjectFile('lib/persistence/settings_files.dart');
 
         expectContainsAll(source, const [
           'class OfflineStorageSettings',
@@ -221,19 +231,18 @@ void main() {
       final source = readProjectFile('lib/core/library_helpers.dart');
 
       expectContainsAll(source, const [
-        "return {'Authorization': 'Bearer \$token'};",
+        'controller.artworkHeaders;',
         'if (kIsWeb) {',
         'return defaultTargetPlatform != TargetPlatform.windows;',
       ]);
     });
 
-    test('application logger preserves buffer size and trim policy', () {
+    test('application logger preserves bounded history and listener API', () {
       final source = readProjectFile('lib/entities/app_log.dart');
 
       expectContainsAll(source, const [
         'enum LogLevel { info, status, warning, error, debug }',
         'static const int _maxBuffer = 3000;',
-        'static const int _trimChunk = 500;',
         'void attach(LogListener listener, {bool includeHistory = true})',
       ]);
     });

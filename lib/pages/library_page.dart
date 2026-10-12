@@ -1,14 +1,21 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../widgets/ui/phonolite_icons.dart';
+import '../widgets/ui/edit_icon.dart';
+import '../widgets/ui/reload_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
+import '../entities/app_log.dart';
 import '../entities/auth_state.dart';
+import '../entities/local_library_search.dart';
+import '../entities/local_library_selection.dart';
 import '../entities/models.dart';
 import '../entities/offline_download_manager.dart';
-import '../entities/offline_library.dart';
+import '../entities/offline_models.dart';
 import '../entities/offline_library_views.dart';
 import '../widgets/display/artist_card.dart';
 import '../widgets/display/artist_row_tile.dart';
@@ -19,6 +26,7 @@ import '../widgets/layout/library_header.dart';
 import '../widgets/layout/safe_sliver_grid.dart';
 import '../widgets/layout/search_results_sliver.dart';
 import '../widgets/layouts/app_scope.dart';
+import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/modal/loading_widgets.dart';
 import '../widgets/modals/download_manager_panel.dart';
 import '../widgets/modals/remove_download_modal.dart';
@@ -26,6 +34,7 @@ import '../widgets/ui/obsidian_widgets.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
 import 'local_artist_detail_screen.dart';
+import 'local_album_detail_screen.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -35,6 +44,7 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  static const double _searchFieldHeight = 48;
   static const double _compactHeaderActionsWidth = 640;
   static const double _compactHeaderActionIconSize = 22;
   static const double _regularHeaderActionIconSize = 26;
@@ -156,11 +166,13 @@ class _LibraryPageState extends State<LibraryPage> {
                                   librarySnapshot.data ??
                                   controller.offlineLibrarySnapshot;
                               final offlineTracks = offlineSnapshot.tracks;
-                              final filteredOfflineTracks =
-                                  _filterOfflineTracks(offlineTracks, query);
-                              final offlineGroups = query.isEmpty
-                                  ? offlineSnapshot.artistGroups
-                                  : offlineArtistGroups(filteredOfflineTracks);
+                              final offlineGroups =
+                                  offlineSnapshot.artistGroups;
+                              final localResults = searchLocalLibrary(
+                                query: query,
+                                tracks: offlineTracks,
+                                artists: offlineGroups,
+                              );
                               final selectedGroups = _selectedOfflineArtists(
                                 offlineGroups,
                               );
@@ -191,25 +203,15 @@ class _LibraryPageState extends State<LibraryPage> {
                                       ),
                                     ]
                                   : <Widget>[
-                                      if (filteredOfflineTracks.isNotEmpty)
-                                        ..._downloadedMusicSlivers(
-                                          controller: controller,
-                                          tracks: filteredOfflineTracks,
-                                          groups: offlineGroups,
-                                          emptyTitle: 'No downloaded results',
-                                          emptyMessage:
-                                              'Try a different downloaded track search.',
-                                          showCollectionList:
-                                              showCollectionList,
-                                          showEmpty: false,
-                                        ),
+                                      ..._localSearchSlivers(
+                                        controller,
+                                        results: localResults,
+                                      ),
                                       ..._connectedSearchSlivers(
                                         controller,
                                         query: query,
                                         results: results,
                                         isSearchLoading: isSearchLoading,
-                                        hasOfflineResults:
-                                            filteredOfflineTracks.isNotEmpty,
                                       ),
                                     ];
 
@@ -276,11 +278,12 @@ class _LibraryPageState extends State<LibraryPage> {
                                       20,
                                       0,
                                       20,
-                                      20,
+                                      12,
                                     ),
                                     sliver: SliverToBoxAdapter(
                                       child: SearchHud(
                                         controller: _searchController,
+                                        height: _searchFieldHeight,
                                         onSubmit: () => _runSearch(controller),
                                         onChanged: () =>
                                             _queueSearch(controller),
@@ -289,6 +292,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                     ),
                                   ),
                                   ...slivers,
+                                  const SliverPlaybackInset(),
                                 ],
                               );
                             },
@@ -319,22 +323,17 @@ class _LibraryPageState extends State<LibraryPage> {
             builder: (context, viewModeSnapshot) {
               final showCollectionList =
                   viewModeSnapshot.data ?? controller.collectionListMode;
-              final query = _searchController.text.trim().toLowerCase();
+              final query = _searchController.text.trim();
               final offlineSnapshot =
                   snapshot.data ?? controller.offlineLibrarySnapshot;
               final tracks = offlineSnapshot.tracks;
-              final filteredTracks = query.isEmpty
-                  ? tracks
-                  : tracks.where((track) {
-                      final target =
-                          '${track.title} ${track.artist} ${track.album}'
-                              .toLowerCase();
-                      return target.contains(query);
-                    }).toList();
-              final filteredGroups = query.isEmpty
-                  ? offlineSnapshot.artistGroups
-                  : offlineArtistGroups(filteredTracks);
-              final selectedGroups = _selectedOfflineArtists(filteredGroups);
+              final groups = offlineSnapshot.artistGroups;
+              final localResults = searchLocalLibrary(
+                query: query,
+                tracks: tracks,
+                artists: groups,
+              );
+              final selectedGroups = _selectedOfflineArtists(groups);
               final useCompactHeaderActions = _useCompactHeaderActions(context);
               final headerActionIconSize = _headerActionIconSize(context);
               final headerActionSpacing = _headerActionSpacing(context);
@@ -350,7 +349,7 @@ class _LibraryPageState extends State<LibraryPage> {
                         trailing: _artistSelectionMode
                             ? _artistSelectionToolbar(
                                 controller: controller,
-                                groups: filteredGroups,
+                                groups: groups,
                                 selectedGroups: selectedGroups,
                               )
                             : Wrap(
@@ -367,7 +366,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                     iconSize: headerActionIconSize,
                                   ),
                                   _editLibraryButton(
-                                    filteredGroups.isNotEmpty
+                                    groups.isNotEmpty
                                         ? _startArtistSelection
                                         : null,
                                     iconSize: headerActionIconSize,
@@ -384,10 +383,11 @@ class _LibraryPageState extends State<LibraryPage> {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                     sliver: SliverToBoxAdapter(
                       child: SearchHud(
                         controller: _searchController,
+                        height: _searchFieldHeight,
                         onSubmit: () => setState(() {}),
                         onChanged: () => setState(() {}),
                         onClear: () {
@@ -397,7 +397,9 @@ class _LibraryPageState extends State<LibraryPage> {
                       ),
                     ),
                   ),
-                  if (tracks.isEmpty)
+                  if (query.isNotEmpty)
+                    ..._localSearchSlivers(controller, results: localResults)
+                  else if (tracks.isEmpty)
                     const SliverFillRemaining(
                       hasScrollBody: false,
                       child: EmptyStateText(
@@ -406,23 +408,16 @@ class _LibraryPageState extends State<LibraryPage> {
                             'Connect to a server and download tracks to listen offline.',
                       ),
                     )
-                  else if (filteredTracks.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: EmptyStateText(
-                        title: 'No offline results',
-                        message: 'Try a different downloaded track search.',
-                      ),
-                    )
                   else
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                       sliver: _offlineArtistCollectionSliver(
                         controller,
-                        filteredGroups,
+                        groups,
                         showCollectionList,
                       ),
                     ),
+                  const SliverPlaybackInset(),
                 ],
               );
             },
@@ -453,7 +448,7 @@ class _LibraryPageState extends State<LibraryPage> {
     return Tooltip(
       message: 'Download Manager',
       child: ObsidianHudIconButton(
-        icon: Icons.download_for_offline_rounded,
+        icon: PhonoliteIcons.download,
         size: iconSize,
         onPressed: enabled
             ? () => unawaited(showDownloadManagerPanel(context))
@@ -469,7 +464,7 @@ class _LibraryPageState extends State<LibraryPage> {
     return Tooltip(
       message: 'Edit',
       child: ObsidianHudIconButton(
-        icon: Icons.edit_rounded,
+        iconWidget: const EditIcon(),
         size: iconSize,
         onPressed: onPressed,
       ),
@@ -488,7 +483,7 @@ class _LibraryPageState extends State<LibraryPage> {
         toggled: isListView,
         label: 'Library collection view',
         child: ObsidianHudIconButton(
-          icon: Icons.view_agenda_rounded,
+          icon: PhonoliteIcons.rows3,
           size: iconSize,
           isActive: isListView,
           onPressed: onPressed,
@@ -504,9 +499,15 @@ class _LibraryPageState extends State<LibraryPage> {
   }) {
     return DownloadSelectionToolbar(
       selectedCount: selectedGroups.length,
-      totalCount: groups.length,
+      totalCount: groups
+          .where((group) => group.tracksForArtist.isNotEmpty)
+          .length,
       onCancel: _clearArtistSelection,
-      onSelectAll: () => _selectAllArtists(groups.map(_artistSelectionKey)),
+      onSelectAll: () => _selectAllArtists(
+        groups
+            .where((group) => group.tracksForArtist.isNotEmpty)
+            .map(_artistSelectionKey),
+      ),
       onDeselectAll: _deselectAllArtists,
       onRemove: selectedGroups.isEmpty
           ? null
@@ -522,9 +523,8 @@ class _LibraryPageState extends State<LibraryPage> {
     return Tooltip(
       message: 'Refresh library',
       child: ObsidianHudIconButton(
-        icon: _refreshingLibrary
-            ? Icons.hourglass_top_rounded
-            : Icons.refresh_rounded,
+        icon: _refreshingLibrary ? PhonoliteIcons.hourglass : null,
+        iconWidget: _refreshingLibrary ? null : const ReloadIcon(),
         size: iconSize,
         onPressed: !enabled || _refreshingLibrary
             ? null
@@ -594,11 +594,10 @@ class _LibraryPageState extends State<LibraryPage> {
     required String emptyTitle,
     required String emptyMessage,
     required bool showCollectionList,
-    bool showEmpty = true,
   }) {
     return [
       _sectionHeaderSliver('Local Library'),
-      if (tracks.isEmpty && showEmpty)
+      if (tracks.isEmpty)
         SliverToBoxAdapter(
           child: EmptyStateText(
             title: emptyTitle,
@@ -695,41 +694,64 @@ class _LibraryPageState extends State<LibraryPage> {
     required String query,
     required List<SearchResult> results,
     required bool isSearchLoading,
-    required bool hasOfflineResults,
   }) {
     if (query.length < 2) {
       return [
+        _sectionHeaderSliver('Server Library Results'),
         _statusTextSliver(
           'Type at least 2 characters to search connected server',
         ),
       ];
     }
     if (isSearchLoading) {
-      return [
-        _sectionHeaderSliver('Connected Server Results'),
-        loadingSliver(),
-      ];
+      return [_sectionHeaderSliver('Server Library Results'), loadingSliver()];
     }
     if (results.isNotEmpty) {
       return [
         _sectionHeaderSliver(
-          'Connected Server Results',
+          'Server Library Results',
           subtitle: '${results.length} server matches',
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           sliver: SearchResultsSliver(
             results: results,
+            connection: controller.connection,
+            headers: authHeaders(controller),
             onSelect: (result) => _handleSearchSelect(controller, result),
           ),
         ),
       ];
     }
-    if (hasOfflineResults) {
-      return [_statusTextSliver('No connected server results')];
-    }
-    return [_statusTextSliver('No Results')];
+    return [
+      _sectionHeaderSliver(
+        'Server Library Results',
+        subtitle: '0 server matches',
+      ),
+      _statusTextSliver('No server results'),
+    ];
   }
+
+  List<Widget> _localSearchSlivers(
+    AppController controller, {
+    required List<SearchResult> results,
+  }) => [
+    _sectionHeaderSliver(
+      'Local Library Results',
+      subtitle: '${results.length} local matches',
+    ),
+    if (results.isEmpty)
+      _statusTextSliver('No local results')
+    else
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        sliver: SearchResultsSliver(
+          results: results,
+          useLocalArtwork: true,
+          onSelect: (result) => _handleLocalSearchSelect(controller, result),
+        ),
+      ),
+  ];
 
   Widget _offlineArtistCollectionSliver(
     AppController controller,
@@ -757,7 +779,7 @@ class _LibraryPageState extends State<LibraryPage> {
                 headers: const {},
                 onTap: () => _openLocalArtistDetail(group),
                 selectionMode: _artistSelectionMode,
-                selectable: !isDeleting,
+                selectable: !isDeleting && group.tracksForArtist.isNotEmpty,
                 isDeleting: isDeleting,
                 selected: _selectedArtistIds.contains(
                   _artistSelectionKey(group),
@@ -785,7 +807,7 @@ class _LibraryPageState extends State<LibraryPage> {
                 headers: const {},
                 onTap: () => _openLocalArtistDetail(group),
                 selectionMode: _artistSelectionMode,
-                selectable: !isDeleting,
+                selectable: !isDeleting && group.tracksForArtist.isNotEmpty,
                 isDeleting: isDeleting,
                 selected: _selectedArtistIds.contains(
                   _artistSelectionKey(group),
@@ -801,11 +823,12 @@ class _LibraryPageState extends State<LibraryPage> {
     List<OfflineArtistGroup> groups,
   ) async {
     final ids = groups.map(_artistSelectionKey).toSet();
-    final tracks = <Track>[
+    final tracks = <String, Track>{
       for (final group in controller.offlineLibrarySnapshot.artistGroups)
         if (ids.contains(_artistSelectionKey(group)))
-          for (final album in group.albums) ...album.tracks,
-    ];
+          for (final track in group.tracksForArtist)
+            (track.localId ?? track.id): track,
+    }.values.toList();
     if (tracks.isEmpty) {
       return;
     }
@@ -831,12 +854,7 @@ class _LibraryPageState extends State<LibraryPage> {
         ),
       );
     } catch (err) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to remove $label: $err')));
+      AppLogger.warning('Failed to remove $label: $err');
     }
   }
 
@@ -845,7 +863,9 @@ class _LibraryPageState extends State<LibraryPage> {
   ) {
     return groups
         .where(
-          (group) => _selectedArtistIds.contains(_artistSelectionKey(group)),
+          (group) =>
+              group.tracksForArtist.isNotEmpty &&
+              _selectedArtistIds.contains(_artistSelectionKey(group)),
         )
         .toList(growable: false);
   }
@@ -977,20 +997,6 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  List<Track> _filterOfflineTracks(List<Track> tracks, String query) {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return tracks;
-    }
-    return tracks
-        .where((track) {
-          final target = '${track.title} ${track.artist} ${track.album}'
-              .toLowerCase();
-          return target.contains(normalized);
-        })
-        .toList(growable: false);
-  }
-
   void _handleArtistScroll() {
     if (!mounted) {
       return;
@@ -1022,7 +1028,11 @@ class _LibraryPageState extends State<LibraryPage> {
     if (artist.logoRef == null || artist.logoRef!.isEmpty) {
       return null;
     }
-    return controller.connection.buildArtistCoverUrl(artist.id, kind: 'logo');
+    return controller.connection.buildArtistCoverUrl(
+      artist.id,
+      kind: 'logo',
+      ref: artist.logoRef,
+    );
   }
 
   void _openArtistDetail(Artist artist) {
@@ -1034,6 +1044,48 @@ class _LibraryPageState extends State<LibraryPage> {
   void _openLocalArtistDetail(OfflineArtistGroup group) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => LocalArtistDetailScreen(group: group)),
+    );
+  }
+
+  Future<void> _handleLocalSearchSelect(
+    AppController controller,
+    SearchResult result,
+  ) async {
+    final snapshot = controller.offlineLibrarySnapshot;
+    final selection = LocalLibrarySelection(
+      tracks: snapshot.tracks,
+      artists: snapshot.artistGroups,
+    );
+    if (result.kind == 'artist') {
+      final artist = selection.artist(result.id);
+      if (artist == null) return;
+      _clearSearch(controller);
+      _openLocalArtistDetail(artist);
+      return;
+    }
+    final track = result.kind == 'track' ? selection.track(result.id) : null;
+    final album = result.kind == 'album'
+        ? selection.album(result.id)
+        : track == null
+        ? null
+        : selection.albumForTrack(track);
+    if (album == null) return;
+    if (track != null) {
+      await controller.playOfflineTrack(track.id, tracks: album.tracks);
+      if (!mounted) return;
+    }
+    _clearSearch(controller);
+    final navigator = Navigator.of(context);
+    final artist = selection.artist(album.artistId);
+    if (artist != null) {
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => LocalArtistDetailScreen(group: artist),
+        ),
+      );
+    }
+    navigator.push(
+      MaterialPageRoute(builder: (_) => LocalAlbumDetailScreen(album: album)),
     );
   }
 

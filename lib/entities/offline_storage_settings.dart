@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
+import '../persistence/settings_files.dart';
 
 import 'app_log.dart';
 
@@ -69,7 +69,9 @@ class OfflineStorageLocations {
 class OfflineStorageSettingsStorage {
   const OfflineStorageSettingsStorage({
     bool Function()? usesManagedStoragePaths,
-  }) : _usesManagedStoragePaths = usesManagedStoragePaths;
+    SettingsFiles files = const SettingsFiles(),
+  }) : _usesManagedStoragePaths = usesManagedStoragePaths,
+       _files = files;
 
   static const String _fileName = 'offline_storage.json';
   final bool Function()? _usesManagedStoragePaths;
@@ -138,35 +140,10 @@ class OfflineStorageSettingsStorage {
     return OfflineStorageSettings.fromJson(Map<String, dynamic>.from(decoded));
   }
 
-  Future<File> _resolveFile({bool createDir = false}) async {
-    final dir = await _resolveDirectory();
-    if (createDir) {
-      await dir.create(recursive: true);
-    }
-    return File(_join(dir.path, _fileName));
-  }
+  final SettingsFiles _files;
 
-  Future<Directory> _resolveDirectory() async {
-    if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      if (appData != null && appData.trim().isNotEmpty) {
-        return Directory(_join(appData, 'Phonolite'));
-      }
-    }
-    final supportDir = await getApplicationSupportDirectory();
-    return Directory(_join(supportDir.path, 'Phonolite'));
-  }
-
-  String _join(String left, String right) {
-    if (left.isEmpty) {
-      return right;
-    }
-    final separator = Platform.pathSeparator;
-    if (left.endsWith(separator)) {
-      return '$left$right';
-    }
-    return '$left$separator$right';
-  }
+  Future<File> _resolveFile({bool createDir = false}) =>
+      _files.resolve(_fileName, createDirectory: createDir);
 }
 
 const Object _offlineStorageUnset = Object();

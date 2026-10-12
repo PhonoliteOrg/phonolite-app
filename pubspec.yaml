@@ -13,6 +13,7 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
+  flutter_svg: ^2.2.3
   google_fonts: ^6.3.0
   ffi: ^2.1.0
   phonolite_opus:
@@ -30,6 +31,7 @@ dependencies:
   sqlite3_flutter_libs: ^0.5.24
   file_selector: ^1.1.0
   image_picker: ^1.2.2
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:
@@ -40,9 +42,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/icons/lucide/
+    - assets/icons/tabler/
     - assets/images/phonolite-logo-nobackground.png
     - assets/images/phonolite-logo.png
   fonts:
+    - family: PhonoliteLucide
+      fonts:
+        - asset: assets/icons/lucide/PhonoliteLucide.ttf
     - family: Poppins
       fonts:
         - asset: assets/fonts/Poppins-Regular.ttf

@@ -1,10 +1,20 @@
 import Flutter
 import MediaPlayer
+import Security
 import UIKit
 
 final class NowPlayingCoordinator {
+  private let injectedArtworkSession: URLSession?
+  private var artworkSession: URLSession?
+  private var artworkTask: URLSessionDataTask?
+  private var artworkGeneration = 0
+  private var artworkLoading = false
+  private var currentArtworkData: Data?
+  private var currentMediaArtwork: MPMediaItemArtwork?
+  private var currentArtworkPath: String?
   private var currentArtworkUrl: String?
   private var currentArtworkToken: String?
+  private var currentArtworkPin: String?
   private var currentArtworkKey: String?
   private var currentDuration: Double?
   private var currentIsPlaying: Bool = false
@@ -17,6 +27,15 @@ final class NowPlayingCoordinator {
   private var currentEpoch: Int = 0
   private var lastReportedPosition: Double = -1
   private let seekBackwardTolerance: Double = 0.75
+
+  init(artworkSession: URLSession? = nil) {
+    self.injectedArtworkSession = artworkSession
+  }
+
+  deinit {
+    artworkTask?.cancel()
+    if injectedArtworkSession == nil { artworkSession?.invalidateAndCancel() }
+  }
 
   var isPlaying: Bool {
     currentIsPlaying
@@ -58,58 +77,57 @@ final class NowPlayingCoordinator {
       _ = applyPosition(position)
     }
 
-    let incomingArtworkKey = (args["artworkKey"] as? String)?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    let normalizedArtworkKey =
-      incomingArtworkKey?.isEmpty == false ? incomingArtworkKey : nil
-    if normalizedArtworkKey != currentArtworkKey {
+    let normalizedArtworkKey = nonEmptyString(args["artworkKey"])
+    let artworkUrl = nonEmptyString(args["artworkUrl"])
+    let artworkPath = nonEmptyString(args["artworkPath"])
+    let token = nonEmptyString(args["token"])
+    let serverPin = nonEmptyString(args["serverPin"])
+    if normalizedArtworkKey != currentArtworkKey ||
+        artworkUrl != currentArtworkUrl || artworkPath != currentArtworkPath ||
+        token != currentArtworkToken || serverPin != currentArtworkPin {
+      cancelArtworkRequest()
       currentArtworkKey = normalizedArtworkKey
-      currentArtworkUrl = nil
-      currentArtworkToken = nil
+      currentArtworkUrl = artworkUrl
+      currentArtworkPath = artworkPath
+      currentArtworkToken = token
+      currentArtworkPin = serverPin
       currentArtwork = nil
+      currentArtworkData = nil
+      currentMediaArtwork = nil
     }
 
-    var artworkImage: UIImage?
-    if let artworkTypedData = args["artworkBytes"] as? FlutterStandardTypedData {
-      let data = artworkTypedData.data
-      if !data.isEmpty, let image = UIImage(data: data) {
-        currentArtworkKey = normalizedArtworkKey
-        currentArtworkUrl = nil
-        currentArtworkToken = nil
-        currentArtwork = image
-        artworkImage = image
-      }
+    if let typedData = args["artworkBytes"] as? FlutterStandardTypedData,
+       typedData.data != currentArtworkData,
+       let image = UIImage(data: typedData.data) {
+      cancelArtworkRequest()
+      installArtwork(image, data: typedData.data)
     }
 
     applyNowPlayingInfo()
     updateCarPlayPresentation(
       carPlaySceneDelegate: carPlaySceneDelegate,
-      artwork: artworkImage ?? currentArtwork
+      artwork: currentArtwork
     )
-
-    let artworkUrl = args["artworkUrl"] as? String
-    let token = args["token"] as? String
-    if let artworkUrl, !artworkUrl.isEmpty {
-      if artworkImage == nil &&
-          (artworkUrl != currentArtworkUrl || token != currentArtworkToken) {
-        currentArtworkUrl = artworkUrl
-        currentArtworkToken = token
-        fetchArtwork(
-          urlString: artworkUrl,
-          token: token,
-          artworkKey: normalizedArtworkKey,
-          carPlaySceneDelegate: carPlaySceneDelegate
-        )
-      }
-    } else {
-      currentArtworkUrl = nil
-      currentArtworkToken = nil
+    if currentArtwork == nil && !artworkLoading {
+      fetchArtwork(
+        urlString: artworkUrl,
+        localPath: artworkPath,
+        token: token,
+        serverPin: serverPin,
+        artworkKey: normalizedArtworkKey,
+        carPlaySceneDelegate: carPlaySceneDelegate
+      )
     }
   }
 
   func clear(carPlaySceneDelegate: CarPlaySceneDelegate?) {
+    cancelArtworkRequest()
+    currentArtworkPath = nil
+    currentArtworkData = nil
+    currentMediaArtwork = nil
     currentArtworkUrl = nil
     currentArtworkToken = nil
+    currentArtworkPin = nil
     currentArtworkKey = nil
     currentTrackId = nil
     currentTitle = nil
@@ -128,8 +146,9 @@ final class NowPlayingCoordinator {
     carPlaySceneDelegate?.updateNowPlayingVisibility(hasTrack: false)
   }
 
-  func refreshForCarPlay(force: Bool, carPlaySceneDelegate: CarPlaySceneDelegate?) {
-    applyNowPlayingInfo(forceRefresh: force)
+  func refreshForCarPlay(force _: Bool, carPlaySceneDelegate: CarPlaySceneDelegate?) {
+    // Republish without briefly telling the system that playback has stopped.
+    applyNowPlayingInfo()
     updateCarPlayPresentation(
       carPlaySceneDelegate: carPlaySceneDelegate,
       artwork: currentArtwork
@@ -153,7 +172,7 @@ final class NowPlayingCoordinator {
     carPlaySceneDelegate?.updateNowPlayingVisibility(hasTrack: currentTrackId != nil)
   }
 
-  private func buildNowPlayingInfo() -> [String: Any] {
+  func buildNowPlayingInfo() -> [String: Any] {
     var info: [String: Any] = [:]
     let title = (currentTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     let artist = (currentArtist ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -181,23 +200,17 @@ final class NowPlayingCoordinator {
     info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
     info[MPNowPlayingInfoPropertyPlaybackRate] = currentIsPlaying ? 1.0 : 0.0
     info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
-    if let artworkImage = currentArtwork {
-      let artwork = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in artworkImage }
+    if let artwork = currentMediaArtwork {
       info[MPMediaItemPropertyArtwork] = artwork
     }
     return info
   }
 
-  private func applyNowPlayingInfo(forceRefresh: Bool = false) {
+  private func applyNowPlayingInfo() {
+    guard currentTrackId != nil else { return }
     let info = buildNowPlayingInfo()
-    if forceRefresh && info.isEmpty {
-      return
-    }
     let playbackState: MPNowPlayingPlaybackState = currentIsPlaying ? .playing : .paused
     let apply = {
-      if forceRefresh {
-        MPNowPlayingInfoCenter.default().playbackState = .stopped
-      }
       MPNowPlayingInfoCenter.default().nowPlayingInfo = info
       MPNowPlayingInfoCenter.default().playbackState = playbackState
     }
@@ -230,39 +243,92 @@ final class NowPlayingCoordinator {
     return nil
   }
 
+  private func nonEmptyString(_ value: Any?) -> String? {
+    guard let value = value as? String else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+
+  private func cancelArtworkRequest() {
+    artworkGeneration += 1
+    artworkTask?.cancel()
+    artworkTask = nil
+    if injectedArtworkSession == nil { artworkSession?.invalidateAndCancel() }
+    artworkSession = nil
+    artworkLoading = false
+  }
+
+  private func installArtwork(_ image: UIImage, data: Data) {
+    currentArtwork = image
+    currentArtworkData = data
+    // Keep the artwork object stable across position-only updates.
+    currentMediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { size in
+      guard size.width > 0, size.height > 0 else { return image }
+      let format = UIGraphicsImageRendererFormat()
+      format.scale = 1
+      return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+        image.draw(in: CGRect(origin: .zero, size: size))
+      }
+    }
+  }
+
   private func fetchArtwork(
-    urlString: String,
+    urlString: String?,
+    localPath: String?,
     token: String?,
+    serverPin: String?,
     artworkKey: String?,
     carPlaySceneDelegate: CarPlaySceneDelegate?
   ) {
-    guard let url = URL(string: urlString) else {
-      return
-    }
-    var request = URLRequest(url: url)
-    if let token, !token.isEmpty {
-      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
-    URLSession.shared.dataTask(with: request) { [weak self, weak carPlaySceneDelegate] data, _, _ in
-      guard let self, let data, let image = UIImage(data: data) else {
-        return
-      }
+    guard localPath != nil || urlString != nil else { return }
+    artworkLoading = true
+    let generation = artworkGeneration
+    let complete: (Data?) -> Void = { [weak self, weak carPlaySceneDelegate] data in
       DispatchQueue.main.async {
-        guard self.currentArtworkUrl == urlString,
-              self.currentArtworkToken == token,
-              self.currentArtworkKey == artworkKey else {
-          return
-        }
-        self.currentArtwork = image
+        guard let self, self.artworkGeneration == generation,
+              self.currentArtworkKey == artworkKey else { return }
+        self.artworkLoading = false
+        self.artworkTask = nil
+        // A failed request may retry on the next metadata update.
+        guard let data, let image = UIImage(data: data) else { return }
+        self.installArtwork(image, data: data)
         self.applyNowPlayingInfo()
-        carPlaySceneDelegate?.updateNowPlayingListItem(
-          title: self.currentTitle,
-          artist: self.currentArtist,
-          album: self.currentAlbum,
+        self.updateCarPlayPresentation(
+          carPlaySceneDelegate: carPlaySceneDelegate,
           artwork: image
         )
       }
-    }.resume()
+    }
+    if let localPath {
+      DispatchQueue.global(qos: .utility).async {
+        complete(try? Data(contentsOf: URL(fileURLWithPath: localPath)))
+      }
+      return
+    }
+    guard let urlString, let url = URL(string: urlString), url.scheme == "https",
+          let serverPin,
+          let session = injectedArtworkSession ?? PinnedArtworkSession.make(url: url, pin: serverPin) else {
+      artworkLoading = false
+      return
+    }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 15
+    if let token {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    artworkSession = session
+    let invalidateSession = injectedArtworkSession == nil
+    let task = session.dataTask(with: request) { data, response, error in
+      if invalidateSession { session.finishTasksAndInvalidate() }
+      guard error == nil, let response = response as? HTTPURLResponse,
+            (200..<300).contains(response.statusCode) else {
+        complete(nil)
+        return
+      }
+      complete(data)
+    }
+    artworkTask = task
+    task.resume()
   }
 
   private func applyPosition(_ incoming: Double) -> Double {
@@ -276,5 +342,73 @@ final class NowPlayingCoordinator {
     }
     lastReportedPosition = clamped
     return clamped
+  }
+}
+
+// Native artwork can load while Dart is suspended. Use the same authenticated
+// SPKI as Dart and QUIC, with no CA fallback or automatic redirects.
+final class PinnedArtworkSession: NSObject, URLSessionTaskDelegate {
+  private let host: String
+  private let port: Int
+  private let pin: String
+
+  private init(host: String, port: Int, pin: String) {
+    self.host = host.lowercased()
+    self.port = port
+    self.pin = pin
+  }
+
+  static func make(url: URL, pin: String) -> URLSession? {
+    guard url.scheme == "https", let host = url.host, url.user == nil, url.password == nil,
+          pin.count == 64, pin.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.tlsMinimumSupportedProtocolVersion = .TLSv13
+    configuration.timeoutIntervalForRequest = 15
+    configuration.timeoutIntervalForResource = 15
+    return URLSession(
+      configuration: configuration,
+      delegate: PinnedArtworkSession(host: host, port: url.port ?? 443, pin: pin),
+      delegateQueue: nil
+    )
+  }
+
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    didReceive challenge: URLAuthenticationChallenge,
+    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+  ) {
+    let space = challenge.protectionSpace
+    guard space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+          space.host.lowercased() == host, space.port == port,
+          let trust = space.serverTrust,
+          let certificate = SecTrustGetCertificateAtIndex(trust, 0) else {
+      completionHandler(.cancelAuthenticationChallenge, nil)
+      return
+    }
+    let der = SecCertificateCopyData(certificate) as Data
+    // The Rust helper checks certificate validity and hashes the complete SPKI.
+    let actual: String? = der.withUnsafeBytes { bytes in
+      guard let value = phonolite_security_spki(
+        bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count
+      ) else { return nil }
+      defer { phonolite_quic_free_string(value) }
+      return String(cString: value)
+    }
+    guard actual == pin else {
+      completionHandler(.cancelAuthenticationChallenge, nil)
+      return
+    }
+    completionHandler(.useCredential, URLCredential(trust: trust))
+  }
+
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest,
+    completionHandler: @escaping (URLRequest?) -> Void
+  ) {
+    completionHandler(nil)
   }
 }

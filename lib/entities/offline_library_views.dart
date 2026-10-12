@@ -1,5 +1,16 @@
 import 'models.dart';
 
+String offlineTrackSearchText(Track track) => [
+  track.title,
+  track.artist,
+  track.album,
+  for (final credit in [
+    ...track.credits,
+    ...track.offlineAlbum?.credits ?? const <ArtistCredit>[],
+  ])
+    '${credit.name} ${credit.displayName}',
+].join(' ').toLowerCase();
+
 class OfflineArtistGroup {
   const OfflineArtistGroup({
     required this.id,
@@ -17,8 +28,109 @@ class OfflineArtistGroup {
   final String? bannerPath;
   final Artist? metadata;
 
-  int get trackCount =>
-      albums.fold(0, (total, album) => total + album.tracks.length);
+  List<OfflineAlbumGroup> get headlineAlbums => albums
+      .where(
+        (album) => album.toAlbum().credits.any(
+          (credit) => credit.artistId == id && credit.isAlbumArtist,
+        ),
+      )
+      .toList();
+
+  List<OfflineAlbumGroup> get soloAlbums => headlineAlbums
+      .where((album) => !album.toAlbum().isCollaboration)
+      .toList();
+
+  List<OfflineAlbumGroup> get collabAlbums {
+    final soloIds = soloAlbums.map((album) => album.id).toSet();
+    return headlineAlbums
+        .where((album) => !soloIds.contains(album.id))
+        .toList();
+  }
+
+  ArtistReleases get releases {
+    final headlines = headlineAlbums;
+    final headlineIds = headlines.map((album) => album.id).toSet();
+    final appearances = <ArtistReleaseContribution>[];
+    final other = <ArtistReleaseContribution>[];
+    final collaborations = <ArtistReleaseContribution>[];
+    final soloIds = soloAlbums.map((album) => album.id).toSet();
+    for (final album in albums) {
+      List<Track> songs(bool performing) => album.tracks
+          .where(
+            (track) => track.credits.any(
+              (credit) =>
+                  credit.artistId == id &&
+                  credit.isPerformingArtist == performing,
+            ),
+          )
+          .toList();
+      ArtistReleaseContribution contribution(
+        List<Track> matches,
+        List<ArtistCredit> credits,
+      ) => ArtistReleaseContribution(
+        album: album.toAlbum(),
+        trackIds: matches.map((track) => track.id).toList(),
+        trackTitles: matches.map((track) => track.title).toList(),
+        roles: credits.map((credit) => credit.role).toSet().toList(),
+      );
+      final performing = songs(true);
+      final performingCredits = [
+        for (final track in performing)
+          ...track.credits.where(
+            (credit) => credit.artistId == id && credit.isPerformingArtist,
+          ),
+      ];
+      if (!headlineIds.contains(album.id) && performing.isNotEmpty) {
+        appearances.add(contribution(performing, performingCredits));
+      }
+      final supporting = songs(false);
+      final supportingCredits = [
+        ...album.toAlbum().credits.where(
+          (credit) =>
+              credit.artistId == id &&
+              !credit.isAlbumArtist &&
+              !credit.isPerformingArtist,
+        ),
+        for (final track in supporting)
+          ...track.credits.where(
+            (credit) => credit.artistId == id && !credit.isPerformingArtist,
+          ),
+      ];
+      if (supportingCredits.isNotEmpty) {
+        other.add(contribution(supporting, supportingCredits));
+      }
+      if (headlineIds.contains(album.id) && !soloIds.contains(album.id)) {
+        final matches = album.tracks;
+        final credits = [
+          ...album.toAlbum().credits.where(
+            (credit) => credit.artistId == id && credit.isAlbumArtist,
+          ),
+        ];
+        collaborations.add(contribution(matches, credits));
+      }
+    }
+    return ArtistReleases(
+      albums: soloAlbums.map((album) => album.toAlbum()).toList(),
+      collabAlbums: collaborations,
+      appearsOn: appearances,
+      otherCredits: other,
+    );
+  }
+
+  List<Track> get tracksForArtist {
+    final headlineIds = headlineAlbums.map((album) => album.id).toSet();
+    return [
+      for (final album in albums)
+        for (final track in album.tracks)
+          if (headlineIds.contains(album.id) ||
+              track.credits.any(
+                (credit) => credit.artistId == id && credit.isPerformingArtist,
+              ))
+            track,
+    ];
+  }
+
+  int get trackCount => tracksForArtist.length;
 
   Artist toArtist() {
     final stored = metadata;
@@ -26,9 +138,13 @@ class OfflineArtistGroup {
       return Artist(
         id: stored.id,
         name: stored.name,
-        albumCount: albums.length,
+        albumCount: soloAlbums.length,
+        collabAlbumCount: collabAlbums.length,
+        appearanceCount: releases.appearsOn.length,
+        otherCreditCount: releases.otherCredits.length,
+        releaseCount: releases.releaseCount,
         genres: stored.genres.isEmpty
-            ? _artistTrackGenres(albums)
+            ? _trackGenres(tracksForArtist)
             : stored.genres,
         summary: stored.summary,
         logoRef: stored.logoRef,
@@ -40,8 +156,12 @@ class OfflineArtistGroup {
     return Artist(
       id: id,
       name: name,
-      albumCount: albums.length,
-      genres: _artistTrackGenres(albums),
+      albumCount: soloAlbums.length,
+      collabAlbumCount: collabAlbums.length,
+      appearanceCount: releases.appearsOn.length,
+      otherCreditCount: releases.otherCredits.length,
+      releaseCount: releases.releaseCount,
+      genres: _trackGenres(tracksForArtist),
       summary:
           '${albums.length} downloaded $albumLabel / '
           '$trackCount downloaded $trackLabel.',
@@ -58,6 +178,7 @@ class OfflineAlbumGroup {
     required this.tracks,
     this.coverPath,
     this.metadata,
+    this.artistCredits = const [],
   });
 
   final String id;
@@ -67,19 +188,14 @@ class OfflineAlbumGroup {
   final List<Track> tracks;
   final String? coverPath;
   final Album? metadata;
+  final List<ArtistCredit> artistCredits;
 
   Album toAlbum() {
     final stored = metadata;
     if (stored != null) {
-      return Album(
-        id: stored.id,
-        title: stored.title,
-        artist: stored.artist,
-        artistId: stored.artistId,
+      return stored.copyWith(
         trackCount: tracks.length,
-        year: stored.year,
         genres: stored.genres.isEmpty ? _trackGenres(tracks) : stored.genres,
-        summary: stored.summary,
       );
     }
     return Album(
@@ -87,67 +203,117 @@ class OfflineAlbumGroup {
       title: title,
       artist: artist,
       artistId: artistId,
+      artistCredits: artistCredits,
       trackCount: tracks.length,
       genres: _trackGenres(tracks),
     );
   }
 }
 
-List<OfflineArtistGroup> offlineArtistGroups(List<Track> tracks) {
+List<OfflineArtistGroup> offlineArtistGroups(
+  List<Track> tracks, {
+  bool includeContributors = false,
+}) {
   final artistBuilders = <String, _OfflineArtistBuilder>{};
+  final albumBuilders = <String, _OfflineAlbumBuilder>{};
   for (final track in tracks) {
-    final artistMetadata = track.offlineArtist;
-    final artistName = _displayName(
-      artistMetadata?.name ?? track.artist,
-      fallback: 'Unknown Artist',
-    );
-    final artistKey =
-        _nonEmpty(artistMetadata?.id) ??
-        _nonEmpty(track.artistId) ??
-        _normalizedGroupKey(artistName);
-    final artistBuilder = artistBuilders.putIfAbsent(
-      artistKey,
-      () => _OfflineArtistBuilder(
-        id: artistKey,
-        name: artistName,
-        metadata: artistMetadata,
-      ),
-    );
-    artistBuilder.metadata ??= artistMetadata;
-    artistBuilder.coverPath ??= _nonEmpty(track.artistArtPath);
-    artistBuilder.bannerPath ??= _nonEmpty(track.artistBannerPath);
     final albumMetadata = track.offlineAlbum;
     final albumTitle = _displayName(
       albumMetadata?.title ?? track.album,
       fallback: 'Unknown Album',
     );
-    final albumKey =
+    final primaryId =
+        _nonEmpty(albumMetadata?.artistId) ??
+        _nonEmpty(track.artistId) ??
+        _normalizedGroupKey(track.artist);
+    final primaryName = _displayName(
+      albumMetadata?.artist ?? track.artist,
+      fallback: 'Unknown Artist',
+    );
+    final fallbackCredits = track.credits
+        .where((credit) => credit.isAlbumArtist)
+        .toList();
+    final albumCredits =
+        albumMetadata?.credits ??
+        (fallbackCredits.isNotEmpty
+            ? fallbackCredits
+            : [
+                ArtistCredit(
+                  artistId: primaryId,
+                  name:
+                      track.credits
+                          .where((credit) => credit.artistId == primaryId)
+                          .map((credit) => credit.name)
+                          .firstOrNull ??
+                      primaryName,
+                ),
+              ]);
+    final albumId =
         _nonEmpty(albumMetadata?.id) ??
         _nonEmpty(track.albumId) ??
-        _normalizedGroupKey(albumTitle);
-    final albumId = _nonEmpty(albumMetadata?.id) ?? '$artistKey::$albumKey';
-    final albumBuilder = artistBuilder.albums.putIfAbsent(
-      albumKey,
+        '$primaryId::${_normalizedGroupKey(albumTitle)}';
+    // Every contributor points at the same album and downloaded song list.
+    final albumBuilder = albumBuilders.putIfAbsent(
+      albumId,
       () => _OfflineAlbumBuilder(
         id: albumId,
         title: albumTitle,
-        artist: albumMetadata?.artist ?? artistBuilder.name,
-        artistId: albumMetadata?.artistId ?? artistBuilder.id,
+        artist: primaryName,
+        artistId: primaryId,
         metadata: albumMetadata,
+        artistCredits: albumCredits,
       ),
     );
     albumBuilder.metadata ??= albumMetadata;
     albumBuilder.coverPath ??= _nonEmpty(track.albumArtPath);
     albumBuilder.tracks.add(track);
+    final credits = <String, ArtistCredit>{
+      for (final credit in [...albumCredits, ...track.credits])
+        if (credit.artistId.isNotEmpty) credit.artistId: credit,
+    };
+    if (credits.isEmpty) {
+      credits[primaryId] = ArtistCredit(artistId: primaryId, name: primaryName);
+    }
+    for (final credit in credits.values) {
+      final artistMetadata = [
+        ...track.offlineArtists,
+        if (track.offlineArtist != null) track.offlineArtist!,
+      ].where((artist) => artist.id == credit.artistId).firstOrNull;
+      final artistBuilder = artistBuilders.putIfAbsent(
+        credit.artistId,
+        () => _OfflineArtistBuilder(
+          id: credit.artistId,
+          name: _displayName(
+            artistMetadata?.name ?? credit.name,
+            fallback: 'Unknown Artist',
+          ),
+          metadata: artistMetadata,
+        ),
+      );
+      artistBuilder.metadata ??= artistMetadata;
+      artistBuilder.isBilled |= [...albumCredits, ...track.credits].any(
+        (candidate) =>
+            candidate.artistId == credit.artistId &&
+            candidate.isPerformingArtist,
+      );
+      if (track.artistId == credit.artistId ||
+          track.offlineArtist?.id == credit.artistId) {
+        artistBuilder.coverPath ??= _nonEmpty(track.artistArtPath);
+        artistBuilder.bannerPath ??= _nonEmpty(track.artistBannerPath);
+      }
+      artistBuilder.albums[albumId] = albumBuilder;
+    }
   }
-
-  final artists = artistBuilders.values.toList(growable: false)
-    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  final artists =
+      artistBuilders.values
+          .where((artist) => includeContributors || artist.isBilled)
+          .toList(growable: false)
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   return [
     for (final artist in artists)
       OfflineArtistGroup(
         id: artist.id,
-        name: artist.name,
+        name: artist.metadata?.name ?? artist.name,
         coverPath: artist.coverPath,
         bannerPath: artist.bannerPath,
         metadata: artist.metadata,
@@ -168,6 +334,7 @@ List<OfflineAlbumGroup> _sortedAlbums(_OfflineArtistBuilder artist) {
         artistId: album.artistId,
         coverPath: album.coverPath,
         metadata: album.metadata,
+        artistCredits: album.artistCredits,
         tracks: List<Track>.from(album.tracks)..sort(_compareOfflineTracks),
       ),
   ];
@@ -223,10 +390,6 @@ String? _nonEmpty(String? value) {
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
 
-List<String> _artistTrackGenres(List<OfflineAlbumGroup> albums) {
-  return _trackGenres([for (final album in albums) ...album.tracks]);
-}
-
 List<String> _trackGenres(Iterable<Track> tracks) {
   final genres = <String>[];
   final seen = <String>{};
@@ -250,6 +413,7 @@ class _OfflineArtistBuilder {
   final String id;
   final String name;
   Artist? metadata;
+  bool isBilled = false;
   String? coverPath;
   String? bannerPath;
   final Map<String, _OfflineAlbumBuilder> albums =
@@ -263,6 +427,7 @@ class _OfflineAlbumBuilder {
     required this.artist,
     required this.artistId,
     this.metadata,
+    required this.artistCredits,
   });
 
   final String id;
@@ -270,6 +435,7 @@ class _OfflineAlbumBuilder {
   final String artist;
   final String artistId;
   Album? metadata;
+  final List<ArtistCredit> artistCredits;
   String? coverPath;
   final List<Track> tracks = <Track>[];
 }

@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'obsidian_dialog.dart';
+import 'obsidian_modal_scope.dart';
+import 'modal_action_button.dart';
+
+import '../ui/phonolite_icons.dart';
+
 import '../../entities/models.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
@@ -65,7 +71,10 @@ class _DevicePickerModalState extends State<DevicePickerModal> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ObsidianModalScope(builder: _buildPicker);
+
+  Widget _buildPicker(BuildContext context) {
     final content = _loading
         ? const Padding(
             padding: EdgeInsets.symmetric(vertical: 20),
@@ -99,7 +108,7 @@ class _DevicePickerModalState extends State<DevicePickerModal> {
                 return ObsidianHoverRow(
                   onTap: () async {
                     await widget.onSelected(device);
-                    if (!mounted) {
+                    if (!context.mounted) {
                       return;
                     }
                     Navigator.of(context).pop();
@@ -111,7 +120,9 @@ class _DevicePickerModalState extends State<DevicePickerModal> {
                       Expanded(
                         child: Text(
                           device.name,
-                          maxLines: 1,
+                          maxLines: ObsidianModalScope.usesTouchTargets(context)
+                              ? 2
+                              : 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(
                             context,
@@ -121,7 +132,7 @@ class _DevicePickerModalState extends State<DevicePickerModal> {
                       const SizedBox(width: 12),
                       isSelected
                           ? const Icon(
-                              Icons.check_rounded,
+                              PhonoliteIcons.check,
                               color: ObsidianPalette.gold,
                             )
                           : const SizedBox.shrink(),
@@ -132,17 +143,17 @@ class _DevicePickerModalState extends State<DevicePickerModal> {
             ),
           );
 
-    return AlertDialog(
+    return ObsidianAlertDialog(
       title: const Text('Select output device'),
       content: SizedBox(width: 320, height: 360, child: content),
       actions: [
-        TextButton(
-          onPressed: _loading ? null : () => _loadDevices(refresh: true),
-          child: const Text('Refresh'),
-        ),
-        TextButton(
+        ModalActionButton(
+          label: 'Close',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+        ),
+        ModalActionButton(
+          label: 'Refresh',
+          onPressed: _loading ? null : () => _loadDevices(refresh: true),
         ),
       ],
     );

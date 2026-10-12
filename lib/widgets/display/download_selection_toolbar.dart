@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../ui/phonolite_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../ui/obsidian_widgets.dart';
@@ -56,7 +58,7 @@ class DownloadSelectionToolbar extends StatelessWidget {
       Tooltip(
         message: 'Remove selected',
         child: ObsidianHudIconButton(
-          icon: Icons.delete_outline_rounded,
+          icon: PhonoliteIcons.trash2,
           size: isCompact ? 22 : 26,
           onPressed: selectedCount > 0 ? onRemove : null,
         ),
@@ -64,7 +66,7 @@ class DownloadSelectionToolbar extends StatelessWidget {
       Tooltip(
         message: 'Cancel',
         child: ObsidianHudIconButton(
-          icon: Icons.close_rounded,
+          icon: PhonoliteIcons.x,
           size: isCompact ? 22 : 26,
           onPressed: onCancel,
         ),
