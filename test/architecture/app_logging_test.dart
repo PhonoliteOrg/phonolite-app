@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_log.dart';
+import 'package:phonolite_app/entities/log_storage_settings.dart';
 import 'package:phonolite_app/persistence/log_files.dart';
+import 'package:phonolite_app/persistence/settings_files.dart';
 
 class BlockingLogFiles extends LogFiles {
   BlockingLogFiles(Directory directory)
@@ -317,6 +319,164 @@ void main() {
     expect(fallback.path, '${temp.path}/app-support/logs');
     expect(supportRequested, isTrue);
   });
+
+  test(
+    'folder changes and reset persist without duplicating bounded history',
+    () async {
+      final defaultFolder = Directory('${temp.path}/default');
+      final customFolder = Directory('${temp.path}/custom logs');
+      final preferences = LogStorageSettingsStorage(
+        files: SettingsFiles(
+          directoryProvider: () async => Directory('${temp.path}/settings'),
+        ),
+        usesManagedStoragePaths: () => false,
+      );
+      LogFiles files() => LogFiles(
+        directoryProvider: () async => defaultFolder,
+        settingsStorage: preferences,
+        maxLines: 3,
+      );
+      final logger = await open(files: files());
+      final locations = <LogStorageLocation>[];
+      final subscription = logger.storageLocationStream.listen(locations.add);
+      addTearDown(subscription.cancel);
+      LogEntry timedEvent(String message, int microseconds) => LogEntry(
+        message: message,
+        level: LogLevel.info,
+        timestamp: DateTime.utc(
+          2026,
+          10,
+          12,
+        ).add(Duration(microseconds: microseconds)),
+      );
+      logger.log(timedEvent('first', 0));
+      logger.log(timedEvent('second', 1));
+      await logger.flush();
+      final unrelated = File('${defaultFolder.path}/notes.txt');
+      await unrelated.writeAsString('keep this');
+      await customFolder.create(recursive: true);
+      await File(
+        '${customFolder.path}/all.log',
+      ).writeAsString('${timedEvent('second', 1).formatForFile()}\n');
+
+      await logger.updateStorageDirectory(customFolder.path);
+      logger.log(timedEvent('third', 1000));
+      logger.log(timedEvent('fourth', 1000));
+      await logger.flush();
+      expect(logger.storageDirectory, customFolder.path);
+      expect(logger.storageLocation!.isDefault, isFalse);
+      expect(await File('${defaultFolder.path}/all.log').exists(), isFalse);
+      expect(await unrelated.readAsString(), 'keep this');
+      expect(await preferences.read(), customFolder.path);
+      final restarted = await open(files: files());
+      expect(restarted.storageDirectory, customFolder.path);
+
+      await logger.updateStorageDirectory(null);
+      await logger.flush();
+      expect(logger.storageDirectory, defaultFolder.path);
+      expect(logger.storageLocation!.isDefault, isTrue);
+      expect(await preferences.read(), isNull);
+      final restored = await open(files: files());
+      expect(restored.storageDirectory, defaultFolder.path);
+      final history = <LogEntry>[];
+      restored.attach(history.add);
+      expect(history.map((entry) => entry.message), [
+        'second',
+        'third',
+        'fourth',
+      ]);
+      expect(locations.map((location) => location.isDefault), [false, true]);
+      expect(await File('${customFolder.path}/all.log').exists(), isFalse);
+    },
+  );
+
+  test(
+    'folder changes wait for active writes and keep events logged during the change',
+    () async {
+      final files = BlockingLogFiles(temp);
+      final logger = await open(files: files);
+      logger.log(event('before change'));
+      await files.writing.future;
+      final target = Directory('${temp.path}/next');
+      final changing = logger.updateStorageDirectory(target.path);
+      logger.log(event('during change', LogLevel.warning));
+      files.release.complete();
+      await changing;
+      await logger.flush();
+      final moved = await File('${target.path}/all.log').readAsLines();
+      expect(moved.map((line) => LogEntry.fromFile(line)!.message), [
+        'before change',
+        'during change',
+      ]);
+      expect(
+        (await File('${target.path}/warnings.log').readAsLines()).single,
+        endsWith('during change'),
+      );
+      await logger.clear();
+      expect(await File('${target.path}/all.log').readAsLines(), isEmpty);
+      logger.log(event('after clear'));
+      await logger.flush();
+      expect(
+        (await File('${target.path}/all.log').readAsLines()).single,
+        endsWith('after clear'),
+      );
+    },
+  );
+
+  test('failed preference saves leave logging in the current folder', () async {
+    final blocker = File('${temp.path}/settings-blocker');
+    await blocker.writeAsString('not a folder');
+    final original = Directory('${temp.path}/original');
+    final logger = await open(
+      files: LogFiles(
+        directoryProvider: () async => original,
+        settingsStorage: LogStorageSettingsStorage(
+          files: SettingsFiles(
+            directoryProvider: () async => Directory(blocker.path),
+          ),
+          usesManagedStoragePaths: () => false,
+        ),
+      ),
+    );
+    logger.log(event('kept'));
+    await logger.flush();
+    await expectLater(
+      logger.updateStorageDirectory('${temp.path}/new-folder'),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(logger.storageDirectory, original.path);
+    expect(logger.storageLocation!.isDefault, isTrue);
+    logger.log(event('still writing'));
+    await logger.flush();
+    expect(
+      (await File('${original.path}/all.log').readAsLines()).last,
+      endsWith('still writing'),
+    );
+  });
+
+  test(
+    'changing folder recovers persisted history after a failed append',
+    () async {
+      final original = Directory('${temp.path}/original');
+      await original.create();
+      await File(
+        '${original.path}/all.log',
+      ).writeAsString('${event('persisted').formatForFile()}\n');
+      final logger = await open(files: FailingLogFiles(original));
+      logger.log(event('write that fails'));
+      await logger.flush();
+      expect(logger.persistenceError, isNotNull);
+      final target = Directory('${temp.path}/recovered');
+      await logger.updateStorageDirectory(target.path);
+      logger.log(event('after recovery'));
+      await logger.flush();
+      final history = await File('${target.path}/all.log').readAsLines();
+      expect(history.map((line) => LogEntry.fromFile(line)!.message), [
+        'persisted',
+        'after recovery',
+      ]);
+    },
+  );
 
   for (final platform in ['android', 'ios', 'macos', 'linux']) {
     test('$platform keeps logs in its application support directory', () async {

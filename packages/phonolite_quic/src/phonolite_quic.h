@@ -12,6 +12,7 @@ typedef struct QuicHandle QuicHandle;
 
 QuicHandle* phonolite_quic_connect(const char* host, uint16_t port, const char* token, const char* server_pin);
 char* phonolite_security_login(const char* request_json);
+char* phonolite_security_probe(const char* request_json);
 char* phonolite_security_spki(const uint8_t* certificate, size_t length);
 int32_t phonolite_quic_open_track(
     QuicHandle* handle,

@@ -8,6 +8,27 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+/// Checks TLS and the public health endpoint without sending credentials or
+/// establishing trust. The native socket closes before this future completes.
+Future<void> probeServerConnection({
+  required String host,
+  required int port,
+  String? expectedSpki,
+}) async {
+  final request = jsonEncode({
+    'host': host,
+    'port': port,
+    'expected_spki': expectedSpki,
+  });
+  await Isolate.run(
+    () => _securityRequest(
+      request,
+      symbol: 'phonolite_security_probe',
+      failure: 'Server connection check failed',
+    ),
+  );
+}
+
 /// Runs the connection-bound password proof off the UI isolate. Only proof
 /// messages cross the network; passwords are never included in HTTP requests.
 Future<Map<String, dynamic>> authenticateServer({
@@ -26,16 +47,26 @@ Future<Map<String, dynamic>> authenticateServer({
     'expected_spki': expectedSpki,
     'expected_opaque': expectedOpaque,
   });
-  return Isolate.run(() => _authenticateServer(request));
+  return Isolate.run(
+    () => _securityRequest(
+      request,
+      symbol: 'phonolite_security_login',
+      failure: 'Sign-in failed',
+    ),
+  );
 }
 
-Map<String, dynamic> _authenticateServer(String request) {
+Map<String, dynamic> _securityRequest(
+  String request, {
+  required String symbol,
+  required String failure,
+}) {
   final library = _loadLibrary();
-  final login = library
+  final invoke = library
       .lookupFunction<
         ffi.Pointer<Utf8> Function(ffi.Pointer<Utf8>),
         ffi.Pointer<Utf8> Function(ffi.Pointer<Utf8>)
-      >('phonolite_security_login');
+      >(symbol);
   final free = library
       .lookupFunction<
         ffi.Void Function(ffi.Pointer<Utf8>),
@@ -43,16 +74,16 @@ Map<String, dynamic> _authenticateServer(String request) {
       >('phonolite_quic_free_string');
   final input = request.toNativeUtf8();
   try {
-    final output = login(input);
+    final output = invoke(input);
     if (output == ffi.nullptr) {
-      throw QuicException('Authentication unavailable');
+      throw QuicException(failure);
     }
     try {
       final response = Map<String, dynamic>.from(
         jsonDecode(output.toDartString()) as Map,
       );
       if (response['ok'] != true) {
-        throw QuicException(response['error']?.toString() ?? 'Sign-in failed');
+        throw QuicException(response['error']?.toString() ?? failure);
       }
       return response;
     } finally {

@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <gio/gio.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -10,9 +11,45 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  FlMethodChannel* directory_channel;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+static void directory_method_call_cb(FlMethodChannel* channel,
+                                     FlMethodCall* method_call,
+                                     gpointer user_data) {
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (g_strcmp0(fl_method_call_get_name(method_call), "openDirectory") != 0) {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  } else {
+    FlValue* args = fl_method_call_get_args(method_call);
+    const gchar* path =
+        args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_STRING
+            ? fl_value_get_string(args)
+            : nullptr;
+    if (path == nullptr || !g_path_is_absolute(path)) {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "invalid_path", "An absolute folder path is required.", nullptr));
+    } else {
+      g_autoptr(GError) error = nullptr;
+      g_autofree gchar* uri = g_filename_to_uri(path, nullptr, &error);
+      if (uri != nullptr &&
+          g_app_info_launch_default_for_uri(uri, nullptr, &error)) {
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+      } else {
+        response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+            "open_failed",
+            error != nullptr ? error->message : "Could not open the folder.",
+            nullptr));
+      }
+    }
+  }
+  g_autoptr(GError) error = nullptr;
+  if (!fl_method_call_respond(method_call, response, &error)) {
+    g_warning("Failed to send folder response: %s", error->message);
+  }
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView *view)
@@ -73,6 +110,14 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  g_autoptr(FlStandardMethodCodec) directory_codec =
+      fl_standard_method_codec_new();
+  self->directory_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "phonolite/directories", FL_METHOD_CODEC(directory_codec));
+  fl_method_channel_set_method_call_handler(
+      self->directory_channel, directory_method_call_cb, nullptr, nullptr);
+
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -117,6 +162,7 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  g_clear_object(&self->directory_channel);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 

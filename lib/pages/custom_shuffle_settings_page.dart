@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../widgets/ui/phonolite_icons.dart';
 import '../widgets/ui/server_icon.dart';
 
-import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../widgets/display/genre_text.dart';
@@ -297,7 +296,6 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     final canUseServerArtists = controller.authState.isAuthorized;
 
     return Scaffold(
-      backgroundColor: bgDark,
       body: SafeArea(
         child: StreamBuilder<Object?>(
           stream: controller.offlineLibrarySnapshotStream,

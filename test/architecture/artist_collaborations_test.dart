@@ -428,58 +428,147 @@ void main() {
     },
   );
 
-  test('supporting credits retain their own song scope on a main release', () {
-    final first = song('first').copyWith(
-      artistCredits: const [
-        ArtistCredit(artistId: 'a', name: 'A', role: 'track_artist'),
-        ArtistCredit(artistId: 'a', name: 'A', role: 'composer'),
-        ArtistCredit(artistId: 'composer', name: 'Composer', role: 'composer'),
-        ArtistCredit(artistId: 'guest', name: 'Guest', role: 'performer'),
-      ],
+  for (final isJoint in [false, true]) {
+    test(
+      'offline ${isJoint ? 'joint' : 'solo'} albums stay out of other credits',
+      () {
+        final mainAlbum = album.copyWith(
+          artistIds: ['a', if (isJoint) 'b'],
+          artistCredits: [
+            ...album.credits.where(
+              (credit) => isJoint || credit.artistId != 'b',
+            ),
+            const ArtistCredit(artistId: 'a', name: 'A', role: 'producer'),
+          ],
+        );
+        final first = song('first').copyWith(
+          offlineAlbum: mainAlbum,
+          artistCredits: const [
+            ArtistCredit(artistId: 'a', name: 'A', role: 'track_artist'),
+            ArtistCredit(artistId: 'a', name: 'A', role: 'composer'),
+            ArtistCredit(
+              artistId: 'composer',
+              name: 'Composer',
+              role: 'composer',
+            ),
+            ArtistCredit(artistId: 'guest', name: 'Guest', role: 'performer'),
+          ],
+        );
+        final second = song(
+          'second',
+          featured: true,
+        ).copyWith(offlineAlbum: mainAlbum);
+        final groups = offlineArtistGroups([
+          first,
+          second,
+        ], includeContributors: true);
+        final main = groups.firstWhere((group) => group.id == 'a');
+        expect(main.releases.albums, hasLength(isJoint ? 0 : 1));
+        expect(main.releases.collabAlbums, hasLength(isJoint ? 1 : 0));
+        expect(main.releases.headlineAlbums.single.id, album.id);
+        expect(main.tracksForArtist.map((track) => track.id), [
+          'first',
+          'second',
+        ]);
+        if (isJoint) {
+          expect(main.releases.collabAlbums.single.trackIds, [
+            'first',
+            'second',
+          ]);
+        }
+        expect(main.releases.appearsOn, isEmpty);
+        expect(main.releases.otherCredits, isEmpty);
+        expect(main.toArtist().otherCreditCount, 0);
+        expect(
+          main.releases.headlineAlbums.single.credits
+              .where((credit) => credit.artistId == 'a')
+              .map((credit) => credit.role),
+          ['album_artist', 'producer'],
+        );
+        expect(
+          main.tracksForArtist.first.credits
+              .where((credit) => credit.artistId == 'a')
+              .map((credit) => credit.role),
+          ['track_artist', 'composer'],
+        );
+        final guest = groups.firstWhere((group) => group.id == 'guest');
+        expect(guest.releases.appearsOn.single.trackIds, ['second']);
+        expect(guest.releases.appearsOn.single.roles, ['featured_artist']);
+        expect(guest.releases.otherCredits.single.trackIds, ['first']);
+        expect(guest.releases.otherCredits.single.roles, ['performer']);
+        expect(guest.tracksForArtist.map((track) => track.id), ['second']);
+        expect(guest.releases.collabAlbums, isEmpty);
+        final composer = groups.firstWhere((group) => group.id == 'composer');
+        expect(composer.releases.otherCredits.single.trackIds, ['first']);
+        expect(composer.tracksForArtist, isEmpty);
+        expect(composer.releases.collabAlbums, isEmpty);
+        final selection = LocalLibrarySelection(
+          tracks: [first, second],
+          artists: groups,
+        );
+        expect(
+          selection.matchesCustomShuffle(
+            first,
+            artistIds: {'composer'},
+            genres: {},
+          ),
+          isFalse,
+        );
+        expect(
+          selection.matchesCustomShuffle(
+            second,
+            artistIds: {'composer'},
+            genres: {},
+          ),
+          isFalse,
+        );
+      },
     );
-    final second = song('second', featured: true);
-    final groups = offlineArtistGroups([
-      first,
-      second,
-    ], includeContributors: true);
-    final main = groups.firstWhere((group) => group.id == 'a');
-    expect(main.releases.albums, isEmpty);
-    expect(main.releases.collabAlbums.single.trackIds, ['first', 'second']);
-    expect(main.releases.appearsOn, isEmpty);
-    expect(main.releases.otherCredits.single.trackIds, ['first']);
-    expect(main.releases.otherCredits.single.roles, ['composer']);
-    final guest = groups.firstWhere((group) => group.id == 'guest');
-    expect(guest.releases.appearsOn.single.trackIds, ['second']);
-    expect(guest.releases.appearsOn.single.roles, ['featured_artist']);
-    expect(guest.releases.otherCredits.single.trackIds, ['first']);
-    expect(guest.releases.otherCredits.single.roles, ['performer']);
-    expect(guest.tracksForArtist.map((track) => track.id), ['second']);
-    expect(guest.releases.collabAlbums, isEmpty);
-    final composer = groups.firstWhere((group) => group.id == 'composer');
-    expect(composer.releases.otherCredits.single.trackIds, ['first']);
-    expect(composer.tracksForArtist, isEmpty);
-    expect(composer.releases.collabAlbums, isEmpty);
-    final selection = LocalLibrarySelection(
-      tracks: [first, second],
-      artists: groups,
+  }
+
+  for (final legacy in [false, true]) {
+    test(
+      '${legacy ? 'legacy' : 'current'} responses exclude headline albums from other credits',
+      () {
+        final solo = album.copyWith(
+          id: 'solo',
+          artistIds: ['a'],
+          artistCredits: const [
+            ArtistCredit(artistId: 'a', name: 'A', role: 'album_artist'),
+          ],
+        );
+        final supporting = album.copyWith(id: 'supporting');
+        Map<String, dynamic> contribution(Album release, String role) => {
+          'album': release.toJson(),
+          'track_ids': ['credited-song'],
+          'track_titles': ['Credited song'],
+          'roles': [role],
+        };
+        final releases = ArtistReleases.fromJson({
+          'albums': [solo.toJson(), if (legacy) album.toJson()],
+          'collab_albums': [
+            if (!legacy) contribution(album, 'album_artist'),
+            if (legacy) ...[
+              contribution(solo, 'producer'),
+              contribution(album, 'composer'),
+              contribution(supporting, 'performer'),
+            ],
+          ],
+          'other_credits': [
+            contribution(solo, 'composer'),
+            contribution(album, 'producer'),
+            if (!legacy) contribution(supporting, 'performer'),
+          ],
+        });
+        expect(releases.albums.single.id, solo.id);
+        expect(releases.collabAlbums.single.album.id, album.id);
+        expect(releases.otherCredits.single.album.id, supporting.id);
+        expect(releases.otherCredits.single.trackIds, ['credited-song']);
+        expect(releases.otherCredits.single.roles, ['performer']);
+        expect(releases.releaseCount, 2);
+      },
     );
-    expect(
-      selection.matchesCustomShuffle(
-        first,
-        artistIds: {'composer'},
-        genres: {},
-      ),
-      isFalse,
-    );
-    expect(
-      selection.matchesCustomShuffle(
-        second,
-        artistIds: {'composer'},
-        genres: {},
-      ),
-      isFalse,
-    );
-  });
+  }
 
   test(
     'legacy collaboration payloads preserve appearances without merging supporting songs',
@@ -541,7 +630,7 @@ void main() {
       );
       final groups = offlineArtistGroups([track]);
       expect(groups.map((group) => group.id), ['a', 'b']);
-      expect(groups.first.releases.otherCredits.single.roles, ['producer']);
+      expect(groups.first.releases.otherCredits, isEmpty);
       expect(track.credits.map((credit) => credit.role), [
         'track_artist',
         'producer',

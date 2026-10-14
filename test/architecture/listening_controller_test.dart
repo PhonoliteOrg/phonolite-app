@@ -33,7 +33,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'device-only reset refreshes statistics and rejects delayed old segments',
+    'offline reset refreshes statistics and rejects delayed old segments',
     () async {
       final harness = _Harness();
       addTearDown(harness.controller.close);
@@ -45,7 +45,7 @@ void main() {
         harness.controller.resetAccountListeningHistory(),
         throwsStateError,
       );
-      await harness.controller.resetLocalListeningHistory();
+      await harness.controller.resetListeningStatistics();
       expect(harness.controller.stats!.totalListeningMs, 0);
       expect(harness.controller.statsCollectionEnabled, isTrue);
       harness.audio.onListeningSegment!({...old, 'event_id': 'late'});
@@ -92,7 +92,7 @@ void main() {
       final started = Completer<void>();
       harness.connection.resetGate = gate;
       harness.connection.resetStarted = started;
-      final resetting = harness.controller.resetAccountListeningHistory();
+      final resetting = harness.controller.resetListeningStatistics();
       await started.future;
       expect(harness.audio.contextChanges.last, isNull);
       final received = harness.history.received.length;

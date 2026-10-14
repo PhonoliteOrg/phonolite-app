@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'obsidian_page_transitions.dart';
+
 class ObsidianPalette {
   static const Color obsidian = Color(0xFF050505);
   static const Color obsidianElevated = Color(0xFF0A0A0D);
@@ -106,6 +108,17 @@ class ObsidianTheme {
       ),
       scaffoldBackgroundColor: Colors.transparent,
       canvasColor: ObsidianPalette.obsidian,
+      // Fade outgoing content early so transparent pages do not overlap.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: ObsidianPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: ObsidianPageTransitionsBuilder(),
+          TargetPlatform.windows: ObsidianPageTransitionsBuilder(),
+          TargetPlatform.linux: ObsidianPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
     );
 
     // ThemeData's font sizes can be null until its Material text geometry is

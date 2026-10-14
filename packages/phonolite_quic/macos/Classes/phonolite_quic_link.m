@@ -3,6 +3,7 @@
 
 extern void *phonolite_quic_connect(const char *host, uint16_t port, const char *token, const char *server_pin);
 extern char *phonolite_security_login(const char *request_json);
+extern char *phonolite_security_probe(const char *request_json);
 extern char *phonolite_security_spki(const uint8_t *certificate, size_t length);
 extern int32_t phonolite_quic_open_track(
     void *handle,
@@ -38,6 +39,7 @@ extern void phonolite_quic_close(void *handle);
 
 __attribute__((used)) static void *phonolite_quic_keep_symbols[] = {
   (void *)phonolite_security_login,
+  (void *)phonolite_security_probe,
   (void *)phonolite_security_spki,
   (void *)phonolite_quic_connect,
   (void *)phonolite_quic_open_track,

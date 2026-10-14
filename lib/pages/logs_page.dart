@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../core/constants.dart';
 import '../entities/app_log.dart';
 import '../widgets/display/message_log.dart';
 import '../widgets/layouts/app_scope.dart';
@@ -47,7 +46,6 @@ class _LogsPageState extends State<LogsPage> {
     final controller = AppScope.of(context);
     final logger = AppLogger.instance;
     return Scaffold(
-      backgroundColor: bgDark,
       body: SafeArea(
         child: StreamBuilder<List<LogEntry>>(
           stream: controller.messageStream,

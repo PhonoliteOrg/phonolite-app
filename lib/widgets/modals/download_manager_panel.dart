@@ -784,20 +784,16 @@ class _DownloadStatusGlyph extends StatelessWidget {
     if (download.status == OfflineDownloadStatus.downloading) {
       return SizedBox.square(
         dimension: 24,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox.square(
-              dimension: 22,
-              child: CircularProgressIndicator(
-                value: download.progress,
-                strokeWidth: 2,
-                color: ObsidianPalette.gold,
-                backgroundColor: ObsidianPalette.border.withValues(alpha: 0.4),
-              ),
+        child: Center(
+          child: SizedBox.square(
+            dimension: 22,
+            child: CircularProgressIndicator(
+              value: download.progress,
+              strokeWidth: 2,
+              color: ObsidianPalette.gold,
+              backgroundColor: ObsidianPalette.border.withValues(alpha: 0.4),
             ),
-            Icon(icon, size: 14, color: ObsidianPalette.gold),
-          ],
+          ),
         ),
       );
     }

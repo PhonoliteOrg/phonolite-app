@@ -33,7 +33,7 @@
 
 ## Artist Collaborations
 - CREDIT-001: Artist browsing, search and custom shuffle selection shall include main album and song artists and explicitly featured guests by default; supporting roles alone shall not qualify an artist for the default list.
-- CREDIT-002: Artist profiles shall separate solo headline Albums, Collab albums with joint album billing, Appears on with billed song appearances, and Other credits with supporting roles; each canonical album shall appear once per section with its appropriate song scope.
+- CREDIT-002: Artist profiles shall separate solo headline Albums, Collab albums with joint album billing, Appears on with billed song appearances, and Other credits with supporting roles; each canonical album shall appear once per section with its appropriate song scope. Albums and Collab albums shall be excluded from Other credits while retaining all detailed album and track credits, including for offline libraries and older server responses.
 - CREDIT-003: Collab albums, Appears on, and Other credits shall use the same card/list view setting and album presentation as Albums, without role or credited-song descriptions; selecting a release shall open the shared full album.
 - CREDIT-004: Artist downloads and downloaded album removal selection shall operate on solo and joint headline albums; guest and supporting credits shall not select unrelated tracks from a shared album.
 - CREDIT-005: Album and track models shall retain ordered artist identities, names, credited names, roles, and joining phrases through JSON, copyWith, playback hydration, and offline fragments while accepting legacy single-artist payloads.

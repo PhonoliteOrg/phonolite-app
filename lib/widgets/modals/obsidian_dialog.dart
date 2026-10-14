@@ -39,7 +39,7 @@ class ObsidianModalActions extends StatelessWidget {
   }
 }
 
-/// The same clipped backdrop blur and translucent tint as the playbar.
+/// A strongly blurred, darkened surface shared by dialogs and modal sheets.
 class ObsidianFrostedSurface extends StatelessWidget {
   const ObsidianFrostedSurface({
     super.key,
@@ -47,14 +47,14 @@ class ObsidianFrostedSurface extends StatelessWidget {
     this.shape = const RoundedRectangleBorder(),
   });
 
-  static final _blur = ImageFilter.blur(sigmaX: 28, sigmaY: 28);
+  static final _blur = ImageFilter.blur(sigmaX: 40, sigmaY: 40);
   static final _gradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
-      const Color(0xFF18181F).withValues(alpha: 0.32),
-      ObsidianPalette.obsidianElevated.withValues(alpha: 0.56),
-      ObsidianPalette.obsidianElevated.withValues(alpha: 0.8),
+      const Color(0xFF18181F).withValues(alpha: 0.68),
+      ObsidianPalette.obsidianElevated.withValues(alpha: 0.82),
+      ObsidianPalette.obsidianElevated.withValues(alpha: 0.92),
     ],
     stops: const [0, 0.5, 1],
   );

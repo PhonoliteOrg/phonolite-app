@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../widgets/ui/phonolite_icons.dart';
 
-import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
@@ -32,6 +31,8 @@ class AlbumDetailScreen extends StatefulWidget {
 
   final Album album;
   final String artistName;
+  static String routeNameFor(String albumId) =>
+      '/library/server/album/$albumId';
 
   @override
   State<AlbumDetailScreen> createState() => AlbumDetailScreenState();
@@ -78,7 +79,6 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final compactHeaderActions = isCompactListWidth(context);
 
     return Scaffold(
-      backgroundColor: bgDark,
       body: SafeArea(
         child: StreamBuilder<bool>(
           stream: controller.tracksLoadingStream,

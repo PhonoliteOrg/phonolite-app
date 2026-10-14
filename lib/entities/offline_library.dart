@@ -252,7 +252,7 @@ class OfflineLibraryStorage {
       );
       return clientId;
     } finally {
-      db.dispose();
+      _releaseDatabase(db);
     }
   }
 
@@ -399,6 +399,61 @@ class OfflineLibraryStorage {
       _upsertDownloadJob(db, job);
     } catch (err) {
       AppLogger.warning('Failed to persist offline download job: $err');
+    } finally {
+      _releaseDatabase(db);
+    }
+  }
+
+  /// Commit the entire collection request before any of its tracks are staged.
+  /// A failed commit must stop queueing, rather than leave only a partial plan.
+  Future<void> saveDownloadPlan({
+    required OfflineDownloadJob job,
+    required OfflineDownloadBatch batch,
+    List<OfflineDownloadJobItem> items = const [],
+    List<OfflineDownloadJobSource> sources = const [],
+  }) async {
+    if (kIsWeb) return;
+    Database? db;
+    try {
+      db = await _openDatabase();
+      _transaction(db, () {
+        _upsertDownloadJob(db!, job);
+        for (final item in items) {
+          _upsertDownloadJobItem(db, item);
+        }
+        for (final source in sources) {
+          _upsertDownloadJobSource(db, source);
+        }
+        _upsertDownloadBatch(db, batch);
+      });
+    } catch (error) {
+      AppLogger.warning('Failed to persist the complete download plan: $error');
+      rethrow;
+    } finally {
+      _releaseDatabase(db);
+    }
+  }
+
+  /// Album discovery and its track IDs must advance together across restarts.
+  Future<void> saveDownloadJobDiscovery({
+    required List<OfflineDownloadJobItem> items,
+    required List<OfflineDownloadJobSource> sources,
+  }) async {
+    if (kIsWeb) return;
+    Database? db;
+    try {
+      db = await _openDatabase();
+      _transaction(db, () {
+        for (final item in items) {
+          _upsertDownloadJobItem(db!, item);
+        }
+        for (final source in sources) {
+          _upsertDownloadJobSource(db!, source);
+        }
+      });
+    } catch (error) {
+      AppLogger.warning('Failed to persist discovered download tracks: $error');
+      rethrow;
     } finally {
       _releaseDatabase(db);
     }
@@ -618,7 +673,7 @@ class OfflineLibraryStorage {
           download;
     }
     final removals = byKey.values.toList(growable: false);
-    if (removals.isEmpty) {
+    if (removals.isEmpty && request.downloadJobIds.isEmpty) {
       return OfflineDeletionResult(scope: request.scope);
     }
 
@@ -634,6 +689,12 @@ class OfflineLibraryStorage {
           removals,
           deleteRoots,
         );
+        for (final jobId in request.downloadJobIds) {
+          db.execute('DELETE FROM download_jobs WHERE job_id = ?', [jobId]);
+          db.execute('DELETE FROM download_batches WHERE batch_id = ?', [
+            jobId,
+          ]);
+        }
       });
       final artworkDeletes = await _unusedArtworkFiles(db, deleteRoots);
       final pendingDeletes = <String>{
@@ -753,6 +814,9 @@ class OfflineLibraryStorage {
         UPDATE download_job_items
         SET track_json = NULL,
             metadata_json = NULL,
+            status = 'canceled',
+            materialized = 1,
+            error = NULL,
             updated_at = ?
         WHERE server_track_id = ?
           AND job_id IN (

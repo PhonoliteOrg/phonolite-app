@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../entities/models.dart';
 import '../layouts/obsidian_scale.dart';
 import '../ui/obsidian_hover_card.dart';
+import '../ui/obsidian_theme.dart';
 import 'album_art.dart';
 import 'card_image_frame.dart';
 
@@ -132,7 +133,7 @@ class AlbumCard extends StatelessWidget {
         decoration: BoxDecoration(
           border: selectionMode
               ? Border.all(
-                  color: selected ? accentGold : Colors.grey,
+                  color: selected ? accentGold : ObsidianPalette.border,
                   width: 1.5,
                 )
               : null,

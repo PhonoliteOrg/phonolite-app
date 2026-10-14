@@ -439,7 +439,12 @@ class _ListeningDatabase {
         _transaction(() {
           _ensureAccount(scope);
           if (args['generation'] != null) {
-            _setGeneration(scope, args['generation'] as int);
+            _setGeneration(
+              scope,
+              args['generation'] as int,
+              preserveLocalStatistics:
+                  args['preserve_local_statistics'] == true,
+            );
           }
         });
         return state(scope);
@@ -447,6 +452,21 @@ class _ListeningDatabase {
         _transaction(() {
           final generation = _account('local')['generation'] as int;
           _setGeneration('local', generation + 1);
+        });
+        return null;
+      case 'reset_device':
+        _transaction(() {
+          for (final account in db.select(
+            'SELECT scope,generation FROM stats_accounts',
+          )) {
+            final scope = account['scope'] as String;
+            final generation = account['generation'] as int;
+            _clearStatistics(scope);
+            db.execute(
+              'UPDATE stats_accounts SET generation=?,cursor=0,synced_at=NULL,pending_count=0 WHERE scope=?',
+              [scope == 'local' ? generation + 1 : generation, scope],
+            );
+          }
         });
         return null;
       case 'record':
@@ -561,27 +581,51 @@ class _ListeningDatabase {
     }
   }
 
-  // History reset generations only advance. Delete all rows belonging to the
-  // old history, including pending uploads and derived metadata.
-  bool _setGeneration(String scope, int generation) {
+  void _clearStatistics(String scope, {bool preserveLocalStatistics = false}) {
+    if (preserveLocalStatistics) {
+      // A reset on another device retires old uploads, but that device cannot
+      // delete this device's local totals. Retain them without uploading them.
+      for (final row in db.select(
+        "SELECT DISTINCT bucket FROM stats_counter_rows WHERE scope=? AND bucket!='private'",
+        [scope],
+      )) {
+        _moveBucket(scope, row['bucket'] as String, 'private');
+      }
+    }
+    for (final table in [
+      if (!preserveLocalStatistics) 'stats_counter_rows',
+      if (!preserveLocalStatistics) 'stats_counter_metadata',
+      'stats_counter_devices',
+      'stats_counter_months',
+      'stats_counter_active',
+      'stats_counter_batch',
+      'stats_counter_stage',
+      'stats_events',
+      'stats_sessions',
+      'stats_daily',
+      if (!preserveLocalStatistics) 'stats_genre_metadata',
+    ]) {
+      db.execute('DELETE FROM $table WHERE scope=?', [scope]);
+    }
+  }
+
+  // Server generations only advance. A reset initiated on this device clears
+  // its copies; learning about another device's reset preserves local totals.
+  bool _setGeneration(
+    String scope,
+    int generation, {
+    bool preserveLocalStatistics = false,
+  }) {
     if (generation < 1) throw ArgumentError('Invalid history generation');
     final current = _account(scope)['generation'] as int;
     if (generation < current) return false;
     if (generation > current) {
-      for (final table in [
-        'stats_counter_rows',
-        'stats_counter_metadata',
-        'stats_counter_devices',
-        'stats_counter_months',
-        'stats_counter_active',
-        'stats_counter_batch',
-        'stats_counter_stage',
-        'stats_events',
-        'stats_sessions',
-        'stats_daily',
-        'stats_genre_metadata',
-      ]) {
-        db.execute('DELETE FROM $table WHERE scope=?', [scope]);
+      _clearStatistics(scope, preserveLocalStatistics: preserveLocalStatistics);
+      if (preserveLocalStatistics) {
+        db.execute(
+          'UPDATE stats_genre_metadata SET generation=? WHERE scope=?',
+          [generation, scope],
+        );
       }
       db.execute(
         'UPDATE stats_accounts SET generation=?,cursor=0,synced_at=NULL,pending_count=0 WHERE scope=?',

@@ -1,4 +1,10 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/auth_state.dart';
@@ -7,17 +13,22 @@ import 'package:phonolite_app/entities/offline_download_manager.dart';
 import 'package:phonolite_app/entities/offline_library_views.dart';
 import 'package:phonolite_app/entities/server_connection.dart';
 import 'package:phonolite_app/pages/home_page.dart';
+import 'package:phonolite_app/pages/album_detail_screen.dart';
+import 'package:phonolite_app/pages/artist_detail_screen.dart';
 import 'package:phonolite_app/pages/library_page.dart';
 import 'package:phonolite_app/pages/local_album_detail_screen.dart';
 import 'package:phonolite_app/pages/local_artist_detail_screen.dart';
 import 'package:phonolite_app/pages/playlist_detail_view.dart';
 import 'package:phonolite_app/pages/playlists_page.dart';
 import 'package:phonolite_app/widgets/display/album_art.dart';
+import 'package:phonolite_app/widgets/display/album_card.dart';
+import 'package:phonolite_app/widgets/display/artist_card.dart';
 import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
 import 'package:phonolite_app/widgets/display/track_row_tile.dart';
 import 'package:phonolite_app/widgets/layouts/app_scope.dart';
 import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
 import 'package:phonolite_app/widgets/navigation/adaptive_scaffold.dart';
+import 'package:phonolite_app/widgets/navigation/desktop_playback_shortcuts.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
 
 import '../support/widget_test_helpers.dart';
@@ -25,20 +36,540 @@ import '../support/widget_test_helpers.dart';
 void main() {
   setUpAll(configureTestFonts);
 
+  for (final width in [430.0, 1280.0]) {
+    for (final connected in [false, true]) {
+      for (final kind in ['artist', 'track']) {
+        testWidgets(
+          'stats $kind opens the library stack (connected: $connected, width: $width)',
+          (tester) async {
+            final controller = (await tester.runAsync(
+              () async => _StatsController(connected: connected),
+            ))!;
+            try {
+              await _pumpHome(tester, controller, width: width);
+              await _selectTab(tester, 3);
+              final tile = find.byKey(
+                ValueKey(
+                  'stats-$kind-${kind == 'artist' ? 'artist' : _track.id}',
+                ),
+              );
+              await tester.ensureVisible(tile);
+              await tester.pumpAndSettle();
+              final statsRoute = ModalRoute.of(tester.element(tile))!;
+              await tester.tap(tile);
+              await tester.pumpAndSettle();
+
+              expect(
+                tester
+                    .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+                    .selectedIndex,
+                0,
+              );
+              final artistType = connected
+                  ? ArtistDetailScreen
+                  : LocalArtistDetailScreen;
+              final albumType = connected
+                  ? AlbumDetailScreen
+                  : LocalAlbumDetailScreen;
+              final destination = find.byType(
+                kind == 'track' ? albumType : artistType,
+              );
+              expect(destination, findsOneWidget);
+              final route = ModalRoute.of(tester.element(destination))!;
+              final source = connected ? 'server' : 'local';
+              expect(
+                route.settings.name,
+                '/library/$source/${kind == 'track' ? 'album/album' : 'artist/artist'}',
+              );
+              expect(route.navigator, isNot(same(statsRoute.navigator)));
+              expect(controller.playbackState.track, isNull);
+
+              if (kind == 'track') {
+                await tester.tap(find.text('BACK TO ARTIST'));
+                await tester.pumpAndSettle();
+                expect(find.byType(artistType), findsOneWidget);
+              }
+              await tester.tap(find.text('BACK TO LIBRARY'));
+              await tester.pumpAndSettle();
+              expect(find.byType(LibraryPage), findsOneWidget);
+              await _selectTab(tester, 3);
+              expect(ModalRoute.of(tester.element(tile)), same(statsRoute));
+              if (!connected) {
+                expect(controller.serverMetadataRequests, isEmpty);
+              }
+              expect(tester.takeException(), isNull);
+            } finally {
+              await _dispose(tester, controller);
+            }
+          },
+        );
+      }
+    }
+  }
+
+  for (final kind in ['artist', 'track']) {
+    testWidgets('stats $kind reports unavailable library items', (
+      tester,
+    ) async {
+      final controller = (await tester.runAsync(
+        () async => _StatsController(connected: true, downloads: []),
+      ))!;
+      (controller.connection as _Connection).metadataUnavailable = true;
+      try {
+        await _pumpHome(tester, controller, width: 1280);
+        await _selectTab(tester, 3);
+        final tile = find.byKey(
+          ValueKey('stats-$kind-${kind == 'artist' ? 'artist' : _track.id}'),
+        );
+        await tester.ensureVisible(tile);
+        await tester.pumpAndSettle();
+        await tester.tap(tile);
+        await tester.pumpAndSettle();
+        expect(
+          find.text('This $kind is not available in the library.'),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+              .selectedIndex,
+          3,
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    });
+  }
+
+  for (final sameServer in [false, true]) {
+    testWidgets(
+      'stats track fallback respects catalog identity ($sameServer)',
+      (tester) async {
+        final controller = (await tester.runAsync(
+          () async => _StatsController(
+            connected: true,
+            downloads: [
+              _track.copyWith(
+                id: 'download-id',
+                serverTrackId: _track.id,
+                serverBaseUrl: sameServer
+                    ? 'http://server.test/api/v1'
+                    : 'http://other.test/api/v1',
+              ),
+            ],
+          ),
+        ))!;
+        (controller.connection as _Connection).metadataUnavailable = true;
+        try {
+          await _pumpHome(tester, controller, width: 1280);
+          await _selectTab(tester, 3);
+          final tile = find.byKey(ValueKey('stats-track-${_track.id}'));
+          await tester.ensureVisible(tile);
+          await tester.pumpAndSettle();
+          await tester.tap(tile);
+          await tester.pumpAndSettle();
+          if (sameServer) {
+            _expectLocalAlbum(tester, 'download-id');
+            await _expectAlbumBackStack(tester);
+          } else {
+            expect(find.byType(LocalAlbumDetailScreen), findsNothing);
+            expect(
+              find.text('This track is not available in the library.'),
+              findsOneWidget,
+            );
+          }
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _dispose(tester, controller);
+        }
+      },
+    );
+  }
+
+  testWidgets(
+    'stats ignores repeated taps and late responses after a tab switch',
+    (tester) async {
+      final controller = (await tester.runAsync(
+        () async => _StatsController(connected: true),
+      ))!;
+      final connection = controller.connection as _Connection;
+      connection.pendingTrack = Completer<Track>();
+      try {
+        await _pumpHome(tester, controller, width: 1280);
+        await _selectTab(tester, 3);
+        final tile = find.byKey(ValueKey('stats-track-${_track.id}'));
+        await tester.ensureVisible(tile);
+        await tester.pumpAndSettle();
+        await tester.tap(tile);
+        await tester.tap(tile);
+        expect(connection.metadataRequests, ['track:${_track.id}']);
+        await _selectTab(tester, 1);
+        connection.pendingTrack!.complete(_track);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+              .selectedIndex,
+          1,
+        );
+        expect(find.byType(AlbumDetailScreen), findsNothing);
+        expect(connection.metadataRequests, ['track:${_track.id}']);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    },
+  );
+
+  testWidgets(
+    'desktop Space toggles the current playback state across all tabs',
+    (tester) async {
+      final controller = (await tester.runAsync(
+        () async => _PlaybackController(),
+      ))!;
+      try {
+        await _pumpHome(tester, controller, width: 1280);
+        // The second press must use the latest controller state even before
+        // the player has rebuilt or received a stream update.
+        await tester.sendKeyEvent(LogicalKeyboardKey.space);
+        await tester.sendKeyEvent(LogicalKeyboardKey.space);
+        expect(controller.pauseRequests, [false, true]);
+        for (var tab = 0; tab < 5; tab++) {
+          tester
+              .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+              .onDestinationSelected(tab);
+          await tester.pumpAndSettle();
+          final wasPlaying = controller.playbackState.isPlaying;
+          await tester.sendKeyEvent(LogicalKeyboardKey.space);
+          expect(controller.pauseRequests.last, wasPlaying);
+          expect(controller.playbackState.isPlaying, !wasPlaying);
+        }
+        expect(controller.pauseRequests, hasLength(7));
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    },
+    variant: const TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.linux,
+    }),
+  );
+
+  for (final origin in [0, 1]) {
+    testWidgets(
+      'album stack replacement transitions from the visible screen in tab $origin',
+      (tester) async {
+        final controller = (await tester.runAsync(
+          () async =>
+              _Controller(connected: false, tracks: [_track], playing: _track),
+        ))!;
+        final boundaryKey = GlobalKey();
+        try {
+          await _pumpHome(
+            tester,
+            controller,
+            width: 1280,
+            boundaryKey: boundaryKey,
+          );
+          tester
+              .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+              .onDestinationSelected(origin);
+          await tester.pumpAndSettle();
+          final navigator = Navigator.of(
+            tester.element(
+              find.byType(origin == 0 ? LibraryPage : PlaylistsPage),
+            ),
+          );
+          navigator.push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(
+                body: Center(
+                  child: ColoredBox(
+                    color: Color(0xFF00FFFF),
+                    child: SizedBox(width: 100, height: 100),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final before = await _cyanPixels(tester, boundaryKey);
+          expect(before, greaterThan(0));
+          await tester.tap(
+            find.descendant(
+              of: find.byType(NowPlayingBar),
+              matching: find.byType(AlbumArt),
+            ),
+          );
+          await tester.pump();
+          expect(
+            await _cyanPixels(tester, boundaryKey),
+            before,
+            reason: 'The first frame must retain the actual outgoing screen',
+          );
+          expect(
+            find.byType(LocalArtistDetailScreen),
+            findsNothing,
+            reason:
+                'The artist is back-stack state, not an intermediate visible page',
+          );
+          await tester.pump(const Duration(milliseconds: 60));
+          expect(await _cyanPixels(tester, boundaryKey), 0);
+          expect(find.byType(LocalArtistDetailScreen), findsNothing);
+          await tester.pumpAndSettle();
+          _expectLocalAlbum(tester, _track.id);
+          await _expectAlbumBackStack(tester);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _dispose(tester, controller);
+        }
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+  }
+
+  for (final isLocal in [true, false]) {
+    testWidgets(
+      '${isLocal ? 'local' : 'server'} player artwork opens the Library artist-album stack with one transition',
+      (tester) async {
+        final controller = (await tester.runAsync(
+          () async => _Controller(
+            connected: !isLocal,
+            tracks: [_track],
+            playing: _track,
+            localPlayback: isLocal,
+          ),
+        ))!;
+        try {
+          await _pumpHome(tester, controller, width: 1280);
+          final oldLibraryRoute = ModalRoute.of(
+            tester.element(find.byType(LibraryPage)),
+          )!;
+          oldLibraryRoute.navigator!.push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  const Scaffold(body: Text('Other Library detail')),
+            ),
+          );
+          await tester.pumpAndSettle();
+          tester
+              .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+              .onDestinationSelected(1);
+          await tester.pumpAndSettle();
+          final rootRoute = ModalRoute.of(
+            tester.element(find.byType(PlaylistsPage)),
+          )!;
+          final previousRoute = MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('Current detail page')),
+          );
+          rootRoute.navigator!.push<void>(previousRoute);
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.descendant(
+              of: find.byType(NowPlayingBar),
+              matching: find.byType(AlbumArt),
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 60));
+          expect(
+            tester
+                .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+                .selectedIndex,
+            0,
+            reason: 'Albums belong to the existing Library navigator',
+          );
+          final albumRoute = ModalRoute.of(
+            tester.element(
+              find.byType(isLocal ? LocalAlbumDetailScreen : AlbumDetailScreen),
+            ),
+          )!;
+          expect(albumRoute, isA<MaterialPageRoute<void>>());
+          expect(
+            albumRoute.animation!.value,
+            1,
+            reason: 'Only the visible stack transition should animate',
+          );
+          final libraryRoute = ModalRoute.of(
+            tester.element(find.byType(LibraryPage, skipOffstage: false)),
+          )!;
+          expect(albumRoute.navigator, same(libraryRoute.navigator));
+          final artistFinder = find.byType(
+            isLocal ? LocalArtistDetailScreen : ArtistDetailScreen,
+            skipOffstage: false,
+          );
+          final artistRoute = ModalRoute.of(tester.element(artistFinder))!;
+          expect(artistRoute.navigator, same(libraryRoute.navigator));
+          expect(artistRoute.animation!.status, AnimationStatus.completed);
+          expect(artistRoute.animation!.value, 1);
+          await tester.pumpAndSettle();
+
+          // Clicking the same cover again must not add duplicate album routes.
+          await _tapDesktopTitle(tester);
+          expect(
+            ModalRoute.of(
+              tester.element(
+                find.byType(
+                  isLocal ? LocalAlbumDetailScreen : AlbumDetailScreen,
+                ),
+              ),
+            ),
+            same(albumRoute),
+          );
+
+          await tester.tap(find.text('BACK TO ARTIST'));
+          await tester.pumpAndSettle();
+          expect(artistRoute.isCurrent, isTrue);
+          expect(
+            find.byType(isLocal ? LocalArtistDetailScreen : ArtistDetailScreen),
+            findsOneWidget,
+          );
+          await tester.tap(find.text('BACK TO LIBRARY'));
+          await tester.pumpAndSettle();
+          expect(libraryRoute.isCurrent, isTrue);
+          expect(find.byType(LibraryPage), findsOneWidget);
+
+          // The other tab keeps its own stack; no album is pushed into it.
+          tester
+              .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+              .onDestinationSelected(1);
+          await tester.pumpAndSettle();
+          expect(previousRoute.isCurrent, isTrue);
+          expect(find.text('Current detail page'), findsOneWidget);
+          previousRoute.navigator!.pop();
+          await tester.pumpAndSettle();
+          expect(rootRoute.isCurrent, isTrue);
+          expect(find.byType(PlaylistsPage), findsOneWidget);
+          expect(
+            controller.serverMetadataRequests,
+            isLocal ? isEmpty : containsAll(['album:album', 'artist:artist']),
+          );
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _dispose(tester, controller);
+        }
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+  }
+
+  testWidgets(
+    'player artwork reuses the normal Library artist and album routes',
+    (tester) async {
+      final controller = (await tester.runAsync(
+        () async =>
+            _Controller(connected: false, tracks: [_track], playing: _track),
+      ))!;
+      try {
+        await _pumpHome(tester, controller, width: 1280);
+        await tester.tap(find.byType(ArtistCard));
+        await tester.pumpAndSettle();
+        final artistRoute = ModalRoute.of(
+          tester.element(find.byType(LocalArtistDetailScreen)),
+        )!;
+        await tester.tap(find.byType(AlbumCard));
+        await tester.pumpAndSettle();
+        final albumRoute = ModalRoute.of(
+          tester.element(find.byType(LocalAlbumDetailScreen)),
+        )!;
+        await _tapDesktopTitle(tester);
+        expect(
+          ModalRoute.of(tester.element(find.byType(LocalAlbumDetailScreen))),
+          same(albumRoute),
+        );
+        await tester.tap(find.text('BACK TO ARTIST'));
+        await tester.pumpAndSettle();
+        expect(artistRoute.isCurrent, isTrue);
+
+        await _tapDesktopTitle(tester);
+        _expectLocalAlbum(tester, _track.id);
+        await tester.tap(find.text('BACK TO ARTIST'));
+        await tester.pumpAndSettle();
+        expect(artistRoute.isCurrent, isTrue);
+        await tester.tap(find.text('BACK TO LIBRARY'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LibraryPage), findsOneWidget);
+        expect(controller.serverMetadataRequests, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets(
+    'desktop side buttons navigate the real album, artist, and library menus',
+    (tester) async {
+      final controller = (await tester.runAsync(
+        () async =>
+            _Controller(connected: false, tracks: [_track], playing: _track),
+      ))!;
+      try {
+        await _pumpHome(tester, controller, width: 1280);
+        await tester.tap(find.byType(ArtistCard));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(AlbumCard));
+        await tester.pumpAndSettle();
+        _expectLocalAlbum(tester, _track.id);
+
+        Future<void> click(int buttons) async {
+          final mouse = await tester.startGesture(
+            const Offset(10, 10),
+            kind: PointerDeviceKind.mouse,
+            buttons: buttons,
+          );
+          await mouse.up();
+          await tester.pumpAndSettle();
+        }
+
+        await click(kBackMouseButton);
+        expect(find.byType(LocalArtistDetailScreen), findsOneWidget);
+        await click(kBackMouseButton);
+        expect(find.byType(LibraryPage), findsOneWidget);
+        await click(kBackMouseButton);
+        expect(find.byType(LibraryPage), findsOneWidget);
+        await click(kForwardMouseButton);
+        expect(find.byType(LocalArtistDetailScreen), findsOneWidget);
+        await click(kForwardMouseButton);
+        _expectLocalAlbum(tester, _track.id);
+
+        // Existing Back buttons feed the same forward history.
+        await tester.tap(find.text('BACK TO ARTIST'));
+        await tester.pumpAndSettle();
+        await click(kForwardMouseButton);
+        _expectLocalAlbum(tester, _track.id);
+        expect(controller.serverMetadataRequests, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    },
+    variant: const TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.linux,
+    }),
+  );
+
   for (final scenario in const [
     (width: 1280.0, connected: false, alias: false),
     (width: 980.0, connected: true, alias: true),
   ]) {
     testWidgets(
-      'local player opens album and artist stack at ${scenario.width}px, connected=${scenario.connected}',
+      'local player opens the Library artist-album stack at ${scenario.width}px, connected=${scenario.connected}',
       (tester) async {
         final downloaded = _track.copyWith(
           albumId: scenario.alias ? null : 'album',
           serverTrackId: scenario.alias ? 'server-track' : null,
           artistId: scenario.alias ? 'artist' : 'guest',
           artist: scenario.alias ? 'Alice' : 'Guest Singer',
-          // The album's headline artist must own the back-stack, even when
-          // this particular song names a different performer.
+          // Downloaded album metadata can name a different main artist.
           offlineAlbum: scenario.alias
               ? null
               : Album(
@@ -60,7 +591,7 @@ void main() {
         ))!;
         try {
           await _pumpHome(tester, controller, width: scenario.width);
-          // Opening the player details also selects Library from another tab.
+          // Player albums use the Library stack even from another tab.
           final scaffold = tester.widget<AdaptiveScaffold>(
             find.byType(AdaptiveScaffold),
           );
@@ -75,10 +606,10 @@ void main() {
             0,
           );
 
-          // Re-entering details resets the stack instead of accumulating routes.
+          // Re-entering the same details does not accumulate duplicate routes.
           await _tapDesktopTitle(tester);
           _expectLocalAlbum(tester, downloaded.id);
-          await _expectBackStack(tester);
+          await _expectAlbumBackStack(tester);
           expect(controller.serverMetadataRequests, isEmpty);
           expect(tester.takeException(), isNull);
         } finally {
@@ -121,7 +652,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.byType(NowPlayingExpandedSheet), findsNothing);
           _expectLocalAlbum(tester, downloaded.id);
-          await _expectBackStack(tester);
+          await _expectAlbumBackStack(tester);
           expect(controller.serverMetadataRequests, isEmpty);
           expect(tester.takeException(), isNull);
         } finally {
@@ -263,6 +794,7 @@ Future<void> _pumpHome(
   WidgetTester tester,
   _Controller controller, {
   required double width,
+  GlobalKey? boundaryKey,
 }) async {
   tester.view.physicalSize = Size(width, 1000);
   tester.view.devicePixelRatio = 1;
@@ -274,6 +806,13 @@ Future<void> _pumpHome(
     AppScope(
       controller: controller,
       child: MaterialApp(
+        builder: (_, child) => DesktopPlaybackShortcuts(
+          onTogglePlayPause: () =>
+              controller.pause(controller.playbackState.isPlaying),
+          child: boundaryKey == null
+              ? child!
+              : RepaintBoundary(key: boundaryKey, child: child!),
+        ),
         theme: ObsidianTheme.build().copyWith(platform: TargetPlatform.windows),
         home: ObsidianScale(
           scale: ObsidianScale.compute(width),
@@ -283,6 +822,31 @@ Future<void> _pumpHome(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Future<int> _cyanPixels(WidgetTester tester, GlobalKey boundaryKey) async {
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+    find.byKey(boundaryKey),
+  );
+  return (await tester.runAsync(() async {
+    final image = await boundary.toImage();
+    try {
+      final bytes = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!;
+      var count = 0;
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        if (bytes.getUint8(i) < 16 &&
+            bytes.getUint8(i + 1) > 40 &&
+            bytes.getUint8(i + 2) > 40) {
+          count++;
+        }
+      }
+      return count;
+    } finally {
+      image.dispose();
+    }
+  }))!;
 }
 
 Future<void> _tapDesktopTitle(WidgetTester tester) async {
@@ -307,7 +871,7 @@ void _expectLocalAlbum(WidgetTester tester, String trackId) {
   );
 }
 
-Future<void> _expectBackStack(WidgetTester tester) async {
+Future<void> _expectAlbumBackStack(WidgetTester tester) async {
   await tester.tap(find.text('BACK TO ARTIST'));
   await tester.pumpAndSettle();
   expect(find.byType(LocalAlbumDetailScreen), findsNothing);
@@ -329,6 +893,41 @@ Future<void> _dispose(WidgetTester tester, _Controller controller) async {
   await tester.runAsync(controller.close);
 }
 
+Future<void> _selectTab(WidgetTester tester, int index) async {
+  tester
+      .widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold))
+      .onDestinationSelected(index);
+  await tester.pumpAndSettle();
+}
+
+class _StatsController extends _Controller {
+  _StatsController({required super.connected, List<Track>? downloads})
+    : super(tracks: downloads ?? [_track], playing: null);
+
+  @override
+  List<Artist> get artists => [
+    Artist(id: 'artist', name: 'Alice', albumCount: 1),
+  ];
+
+  @override
+  StatsResponse get stats => StatsResponse(
+    year: 2026,
+    month: null,
+    totalMinutes: 42,
+    topArtists: [StatsItem(id: 'artist', name: 'Alice', minutes: 42)],
+    topTracks: [
+      StatsTrack(
+        id: _track.id,
+        title: _track.title,
+        artist: 'Alice',
+        minutes: 42,
+        plays: 3,
+      ),
+    ],
+    topGenres: [],
+  );
+}
+
 class _Controller extends AppController {
   _Controller({
     required this.connected,
@@ -343,9 +942,11 @@ class _Controller extends AppController {
       isLocalPlayback: playing != null && localPlayback,
       queueSource: playing == null
           ? PlaybackQueueSource.none
-          : fromPlaylist && !localPlayback
+          : localPlayback
+          ? PlaybackQueueSource.offline
+          : fromPlaylist
           ? PlaybackQueueSource.playlist
-          : PlaybackQueueSource.offline,
+          : PlaybackQueueSource.none,
       queueSourcePlaylistId: fromPlaylist ? 'playlist' : null,
       localPlaybackSource: playing == null || !localPlayback
           ? LocalPlaybackSource.none
@@ -390,6 +991,12 @@ class _Controller extends AppController {
   Future<void> loadArtists({bool refresh = false}) async {}
 
   @override
+  Future<void> loadTracks(String albumId) async {}
+
+  @override
+  Future<void> loadArtistReleases(String artistId) async {}
+
+  @override
   Future<void> loadPlaylists() async {}
 
   @override
@@ -427,20 +1034,55 @@ class _Controller extends AppController {
   Future<void> loadStats({int? year, int? month}) async {}
 }
 
+class _PlaybackController extends _Controller {
+  _PlaybackController()
+    : super(connected: false, tracks: [_track], playing: _track);
+
+  final pauseRequests = <bool>[];
+  bool _isPlaying = false;
+
+  @override
+  PlaybackState get playbackState =>
+      super.playbackState.copyWith(isPlaying: _isPlaying);
+
+  @override
+  Future<void> pause(bool paused) async {
+    pauseRequests.add(paused);
+    _isPlaying = !paused;
+  }
+}
+
 class _Connection extends ServerConnection {
   _Connection() : super(baseUrl: 'http://server.test/api/v1');
 
   final metadataRequests = <String>[];
+  bool metadataUnavailable = false;
+  Completer<Track>? pendingTrack;
+
+  @override
+  Future<Track> fetchTrackById(String trackId) async {
+    metadataRequests.add('track:$trackId');
+    if (metadataUnavailable) throw StateError('Metadata unavailable');
+    return pendingTrack == null ? _track : await pendingTrack!.future;
+  }
 
   @override
   Future<Album> fetchAlbumById(String albumId) async {
     metadataRequests.add('album:$albumId');
-    throw StateError('Local player details must use downloaded metadata');
+    if (metadataUnavailable) throw StateError('Metadata unavailable');
+    return Album(
+      id: albumId,
+      title: 'First Light',
+      artist: 'Alice',
+      artistId: 'artist',
+      trackCount: 1,
+    );
   }
 
   @override
   Future<Artist> fetchArtistById(String artistId) async {
     metadataRequests.add('artist:$artistId');
-    throw StateError('Local player details must use downloaded metadata');
+    if (metadataUnavailable) throw StateError('Metadata unavailable');
+    return Artist(id: artistId, name: 'Alice', albumCount: 1);
   }
 }

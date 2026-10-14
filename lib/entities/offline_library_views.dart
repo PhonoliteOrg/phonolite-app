@@ -96,7 +96,7 @@ class OfflineArtistGroup {
             (credit) => credit.artistId == id && !credit.isPerformingArtist,
           ),
       ];
-      if (supportingCredits.isNotEmpty) {
+      if (!headlineIds.contains(album.id) && supportingCredits.isNotEmpty) {
         other.add(contribution(supporting, supportingCredits));
       }
       if (headlineIds.contains(album.id) && !soloIds.contains(album.id)) {

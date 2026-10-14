@@ -22,22 +22,29 @@ enum OfflineDeletionScopeKind { track, album, artist }
 @immutable
 class OfflineDeletionScope {
   const OfflineDeletionScope.track({this.id, this.label})
-    : kind = OfflineDeletionScopeKind.track;
+    : ids = const [],
+      kind = OfflineDeletionScopeKind.track;
 
   const OfflineDeletionScope.album({this.id, this.label})
-    : kind = OfflineDeletionScopeKind.album;
+    : ids = const [],
+      kind = OfflineDeletionScopeKind.album;
 
-  const OfflineDeletionScope.artist({this.id, this.label})
+  const OfflineDeletionScope.artist({this.id, this.label, this.ids = const []})
     : kind = OfflineDeletionScopeKind.artist;
 
   final OfflineDeletionScopeKind kind;
   final String? id;
   final String? label;
+  final List<String> ids;
 }
 
 @immutable
 class OfflineDeletionRequest {
-  const OfflineDeletionRequest({required this.scope, required this.downloads});
+  const OfflineDeletionRequest({
+    required this.scope,
+    required this.downloads,
+    this.downloadJobIds = const [],
+  });
 
   factory OfflineDeletionRequest.tracks(
     Iterable<OfflineTrackDownload> downloads,
@@ -50,6 +57,7 @@ class OfflineDeletionRequest {
 
   final OfflineDeletionScope scope;
   final List<OfflineTrackDownload> downloads;
+  final List<String> downloadJobIds;
 }
 
 @immutable

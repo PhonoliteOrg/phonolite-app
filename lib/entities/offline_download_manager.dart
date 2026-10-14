@@ -1166,7 +1166,9 @@ class _PlaylistTrackRequest {
 
 void _offlineDownloadActorMain(_OfflineActorInit init) {
   installServerTrustOverrides();
-  if (init.trust != null) ServerTrustRegistry.register(init.baseUrl, init.trust!);
+  if (init.trust != null) {
+    ServerTrustRegistry.register(init.baseUrl, init.trust!);
+  }
   final token = init.rootIsolateToken;
   if (token != null) {
     BackgroundIsolateBinaryMessenger.ensureInitialized(token);
@@ -1657,6 +1659,7 @@ class _OfflineDownloadActorCore {
       <String, OfflineTrackDownload>{};
   List<Track> _localDownloadedTracksCache = const <Track>[];
   Future<void>? _topUpFuture;
+  bool _topUpRequested = false;
   bool _topUpRunning = false;
   final Map<String, Future<void>> _active = <String, Future<void>>{};
   final Map<String, SendPort> _activeCancelPorts = <String, SendPort>{};
@@ -1670,6 +1673,9 @@ class _OfflineDownloadActorCore {
   final Map<String, String?> _albumArtPathById = <String, String?>{};
   final Map<String, String?> _artistArtPathByKey = <String, String?>{};
   Future<void>? _loadFuture;
+  Future<void>? _resetLocalDataFuture;
+  final Set<Future<dynamic>> _pendingStorageOperations = {};
+  int _localDataRevision = 0;
   Future<void>? _metadataRepairFuture;
   Future<void>? _pendingFileCleanupFuture;
   Timer? _localUserDataReloadTimer;
@@ -1701,6 +1707,7 @@ class _OfflineDownloadActorCore {
       List.unmodifiable(_localPlaylistTracks);
 
   Future<void> load() {
+    if (_resettingLocalData) return _resetLocalDataFuture!;
     final existing = _loadFuture;
     if (existing != null) {
       return existing;
@@ -1787,7 +1794,9 @@ class _OfflineDownloadActorCore {
       List.unmodifiable(_localDownloadedTracksCache);
 
   Future<int> downloadTrack(Track track) async {
+    final dataRevision = _localDataRevision;
     await _ensureLoaded();
+    if (!_localDataCurrent(dataRevision)) return 0;
     final baseUrl = connection.baseUrl;
     final serverTrackId = (track.serverTrackId ?? track.id).trim();
     if (serverTrackId.isEmpty) {
@@ -1805,6 +1814,7 @@ class _OfflineDownloadActorCore {
         final manifest = await connection.createDownloadBatch(<String>[
           serverTrackId,
         ]);
+        if (!_localDataCurrent(dataRevision)) return 0;
         batchResponded = true;
         if (manifest.items.isEmpty) {
           String? reason;
@@ -1818,6 +1828,7 @@ class _OfflineDownloadActorCore {
         }
         return queueBatch(manifest, label: track.title);
       } catch (err) {
+        if (!_localDataCurrent(dataRevision)) return 0;
         if (batchResponded) {
           rethrow;
         }
@@ -1829,6 +1840,7 @@ class _OfflineDownloadActorCore {
 
       try {
         final metadata = await connection.fetchOfflineMetadata(serverTrackId);
+        if (!_localDataCurrent(dataRevision)) return 0;
         final now = DateTime.now();
         final hydratedTrack = metadata.track.copyWith(
           id: serverTrackId,
@@ -1853,12 +1865,17 @@ class _OfflineDownloadActorCore {
               createdAt: now,
               updatedAt: now,
             );
-        final queued = await _storage.prepareDownload(initial);
+        final queued = await _storageOperation(
+          () => _storage.prepareDownload(initial),
+        );
+        if (!_localDataCurrent(dataRevision)) return 0;
         _clearObsoleteStopMarkersForQueue(queued);
         await _replace(queued, persist: true);
+        if (!_localDataCurrent(dataRevision)) return 0;
         _schedule();
         return 1;
       } catch (err) {
+        if (!_localDataCurrent(dataRevision)) return 0;
         throw Exception(
           'offline metadata unavailable for ${track.title}: $err; batch error: $batchError',
         );
@@ -1876,7 +1893,9 @@ class _OfflineDownloadActorCore {
     String kind = 'tracks',
     String? sourceId,
   }) async {
+    final dataRevision = _localDataRevision;
     await _ensureLoaded();
+    if (!_localDataCurrent(dataRevision)) return 0;
     final baseUrl = connection.baseUrl;
     final now = DateTime.now();
     final seen = <String>{};
@@ -1931,6 +1950,7 @@ class _OfflineDownloadActorCore {
       label: label,
       sourceId: sourceId,
     );
+    if (!_localDataCurrent(dataRevision)) return 0;
     if (v2Queued != null) {
       return v2Queued;
     }
@@ -1945,6 +1965,7 @@ class _OfflineDownloadActorCore {
       _scheduleTopUp();
       return 0;
     }
+    if (!_localDataCurrent(dataRevision)) return 0;
     final job = OfflineDownloadJob(
       jobId: jobId,
       kind: kind,
@@ -1980,7 +2001,9 @@ class _OfflineDownloadActorCore {
     DownloadBatchManifest manifest, {
     String? label,
   }) async {
+    final dataRevision = _localDataRevision;
     await _ensureLoaded();
+    if (!_localDataCurrent(dataRevision)) return 0;
     if (manifest.items.isEmpty) {
       return 0;
     }
@@ -1999,6 +2022,7 @@ class _OfflineDownloadActorCore {
       label: label,
     );
     await _upsertBatch(batch);
+    if (!_localDataCurrent(dataRevision)) return 0;
 
     final pending = <OfflineTrackDownload>[];
     for (var index = 0; index < manifest.items.length; index += 1) {
@@ -2050,9 +2074,14 @@ class _OfflineDownloadActorCore {
     var queuedCount = 0;
     if (pending.isNotEmpty) {
       for (final chunk in _chunks(pending, _queuePersistChunkSize)) {
-        final prepared = await _storage.prepareDownloads(chunk);
+        if (!_localDataCurrent(dataRevision)) return 0;
+        final prepared = await _storageOperation(
+          () => _storage.prepareDownloads(chunk),
+        );
+        if (!_localDataCurrent(dataRevision)) return 0;
         _replaceManyInMemory(prepared);
-        await _storage.upsertDownloads(prepared);
+        await _storageOperation(() => _storage.upsertDownloads(prepared));
+        if (!_localDataCurrent(dataRevision)) return 0;
         queuedCount += prepared.length;
         await Future<void>.delayed(_queuePersistYieldDelay);
       }
@@ -2070,25 +2099,47 @@ class _OfflineDownloadActorCore {
     required String kind,
     String? label,
     String? sourceId,
+    List<Album> artistAlbums = const [],
+    String? localIntentJobId,
   }) async {
+    final dataRevision = _localDataRevision;
+    bool requestCurrent() =>
+        _localDataCurrent(dataRevision) &&
+        (localIntentJobId == null || _jobById(localIntentJobId) != null);
     try {
       final capabilities = await connection.fetchCapabilities();
+      if (!requestCurrent()) return 0;
       if (!capabilities.downloadJobsV2) {
         return null;
       }
-      final clientId = await _storage.readOrCreateClientId();
+      final clientId = await _storageOperation(_storage.readOrCreateClientId);
+      if (!requestCurrent()) return 0;
+      final attemptRequestId = _queueAttemptRequestId(clientRequestId);
       final serverJob = await connection.createDownloadJob(
         clientId: clientId,
-        clientRequestId: _queueAttemptRequestId(clientRequestId),
+        clientRequestId: attemptRequestId,
         scope: scope,
       );
-      return _ingestV2DownloadJob(
+      if (!requestCurrent()) return 0;
+      // Servers can reuse a job by collection even for a new request ID.
+      // Rebuild locally rather than restoring that older job's failed items.
+      if (serverJob.clientId != clientId ||
+          serverJob.clientRequestId != attemptRequestId) {
+        AppLogger.status(
+          'Rebuilding a fresh download plan after the server returned an older job',
+        );
+        return null;
+      }
+      final queued = await _ingestV2DownloadJob(
         serverJob,
         kind: kind,
         label: label,
         sourceId: sourceId,
+        artistAlbums: artistAlbums,
       );
+      return _localDataCurrent(dataRevision) ? queued : 0;
     } catch (err, stackTrace) {
+      if (!requestCurrent()) return 0;
       AppLogger.warning(
         'Falling back to legacy offline queue after v2 job failure: $err',
       );
@@ -2107,6 +2158,7 @@ class _OfflineDownloadActorCore {
     required String kind,
     String? label,
     String? sourceId,
+    List<Album> artistAlbums = const [],
   }) async {
     final jobId = serverJob.jobId.trim();
     if (jobId.isEmpty) {
@@ -2134,26 +2186,48 @@ class _OfflineDownloadActorCore {
       label: label,
       sourceId: sourceId ?? _v2ScopeSourceId(serverJob.scope, kind),
     );
-    final jobItems = <OfflineDownloadJobItem>[
-      for (final item in serverJob.items)
-        OfflineDownloadJobItem(
-          jobId: jobId,
-          position: item.position,
-          serverTrackId: item.trackId,
-          status: _statusFromV2JobItem(item, freshQueue: true),
-          materialized: false,
-          createdAt: serverJob.createdAt,
-          updatedAt: now,
-          track: item.offlineMetadata?.track.copyWith(
-            id: item.trackId,
-            serverBaseUrl: baseUrl,
+    final jobItems = serverJob.items
+        .map((item) {
+          final existing = find(baseUrl, item.trackId);
+          final available = existing != null && _downloadAvailable(existing);
+          return OfflineDownloadJobItem(
+            jobId: jobId,
+            position: item.position,
             serverTrackId: item.trackId,
+            status: available
+                ? OfflineDownloadStatus.downloaded
+                : item.status == 'complete'
+                ? OfflineDownloadStatus.queued
+                : _statusFromV2JobItem(item, freshQueue: true),
+            materialized: available,
+            createdAt: serverJob.createdAt,
+            updatedAt: now,
+            track: item.offlineMetadata?.track.copyWith(
+              id: item.trackId,
+              serverBaseUrl: baseUrl,
+              serverTrackId: item.trackId,
+            ),
+            offlineMetadata: item.offlineMetadata,
+            error: item.error,
+          );
+        })
+        .toList(growable: false);
+    await _insertRollingJob(
+      job,
+      items: jobItems,
+      sources: [
+        for (var index = 0; index < artistAlbums.length; index++)
+          OfflineDownloadJobSource(
+            jobId: jobId,
+            position: index,
+            sourceId: artistAlbums[index].id,
+            status: OfflineDownloadStatus.queued,
+            createdAt: now,
+            updatedAt: now,
+            label: artistAlbums[index].title,
           ),
-          offlineMetadata: item.offlineMetadata,
-          error: item.error,
-        ),
-    ];
-    await _insertRollingJob(job, items: jobItems);
+      ],
+    );
 
     final downloads = <OfflineTrackDownload>[];
     for (final item in serverJob.items) {
@@ -2289,7 +2363,9 @@ class _OfflineDownloadActorCore {
   }
 
   Future<int> queueArtist(Artist artist, List<Album> albums) async {
+    final dataRevision = _localDataRevision;
     await _ensureLoaded();
+    if (!_localDataCurrent(dataRevision)) return 0;
     final sources = albums
         .where((album) => album.id.trim().isNotEmpty)
         .toList(growable: false);
@@ -2298,34 +2374,28 @@ class _OfflineDownloadActorCore {
     }
     final now = DateTime.now();
     final baseUrl = connection.baseUrl;
-    final jobId = _stableJobId(
+    final collectionId = _stableJobId(
       'artist',
       _rollingJobSignature(
         label: artist.name,
         sourceIds: sources.map((album) => album.id),
       ),
     );
-    final v2Queued = await _tryQueueV2DownloadJob(
-      scope: DownloadJobScopeV2(kind: 'artist', id: artist.id),
-      clientRequestId: jobId,
-      kind: 'artist',
-      label: artist.name,
-      sourceId: artist.id,
-    );
-    if (v2Queued != null) {
-      return v2Queued;
-    }
     final existingJob = await _reuseOrClearRollingJob(
-      jobId: jobId,
+      jobId: collectionId,
       kind: 'artist',
       serverBaseUrl: baseUrl,
       label: artist.name,
       sourceIds: sources.map((album) => album.id),
     );
+    if (!_localDataCurrent(dataRevision)) return 0;
     if (existingJob != null) {
       _scheduleTopUp();
       return 0;
     }
+    // A new intent must not share an ID with a deleted plan: its delayed
+    // discovery or server response may still be in flight.
+    final jobId = _queueAttemptRequestId(collectionId);
     final job = OfflineDownloadJob(
       jobId: jobId,
       kind: 'artist',
@@ -2349,7 +2419,34 @@ class _OfflineDownloadActorCore {
           label: sources[index].title,
         ),
     ];
-    await _insertRollingJob(job, sources: jobSources);
+    await _insertRollingJob(
+      job.copyWith(status: OfflineDownloadStatus.preparing),
+      sources: jobSources,
+    );
+    if (!_localDataCurrent(dataRevision)) return 0;
+    // Persist the artist and every requested album before a network call can
+    // be interrupted. The server manifest enriches this durable local intent.
+    final v2Queued = await _tryQueueV2DownloadJob(
+      scope: DownloadJobScopeV2(kind: 'artist', id: artist.id),
+      clientRequestId: jobId,
+      kind: 'artist',
+      label: artist.name,
+      sourceId: artist.id,
+      artistAlbums: sources,
+      localIntentJobId: jobId,
+    );
+    if (!_localDataCurrent(dataRevision) || _jobById(jobId) == null) return 0;
+    if (v2Queued != null && v2Queued > 0) {
+      // The replacement plan has already committed, including all albums.
+      await _deleteRollingJob(jobId);
+      _scheduleTopUp();
+      return v2Queued;
+    }
+    _jobs = _jobs
+        .map((item) => item.jobId == jobId ? job : item)
+        .toList(growable: false);
+    await _storage.upsertDownloadJob(job);
+    _emitJobs();
     _scheduleTopUp();
     return job.totalCount > 0 ? job.totalCount : sources.length;
   }
@@ -2486,6 +2583,7 @@ class _OfflineDownloadActorCore {
   }
 
   Future<void> resumePausedForCurrentServer() async {
+    await _ensureLoaded();
     if (connection.token == null || connection.token!.isEmpty) {
       return;
     }
@@ -2493,9 +2591,21 @@ class _OfflineDownloadActorCore {
     _pausedServerUrls.remove(baseUrl);
     final now = DateTime.now();
     var changed = false;
+    final retryableJobs = _jobs
+        .where(
+          (job) =>
+              job.serverBaseUrl == baseUrl &&
+              job.status != OfflineDownloadStatus.canceled &&
+              job.status != OfflineDownloadStatus.removing,
+        )
+        .map((job) => job.jobId)
+        .toSet();
     for (final download in _downloads) {
       if (download.serverBaseUrl != baseUrl ||
-          download.status != OfflineDownloadStatus.paused) {
+          (download.status != OfflineDownloadStatus.paused &&
+              !(retryableJobs.contains(download.batchId) &&
+                  (download.status == OfflineDownloadStatus.failed ||
+                      download.status == OfflineDownloadStatus.corrupt)))) {
         continue;
       }
       await _replace(
@@ -2508,16 +2618,58 @@ class _OfflineDownloadActorCore {
       );
       changed = true;
     }
+    for (final jobId in retryableJobs) {
+      final items = _jobItemsByJobId[jobId] ?? const <OfflineDownloadJobItem>[];
+      final retryIds = items
+          .where(
+            (item) =>
+                item.status == OfflineDownloadStatus.failed ||
+                item.status == OfflineDownloadStatus.corrupt ||
+                item.status == OfflineDownloadStatus.paused,
+          )
+          .map((item) => item.serverTrackId)
+          .toList(growable: false);
+      await _markJobItems(jobId, retryIds, OfflineDownloadStatus.queued);
+      final sources =
+          _jobSourcesByJobId[jobId] ?? const <OfflineDownloadJobSource>[];
+      final retriedSources = [
+        for (final source in sources)
+          if (source.status != OfflineDownloadStatus.queued &&
+              source.status != OfflineDownloadStatus.downloaded &&
+              source.status != OfflineDownloadStatus.canceled)
+            source.copyWith(
+              status: OfflineDownloadStatus.queued,
+              updatedAt: now,
+              error: null,
+            ),
+      ];
+      if (retriedSources.isNotEmpty) {
+        await _storage.saveDownloadJobDiscovery(
+          items: const [],
+          sources: retriedSources,
+        );
+        final byId = {
+          for (final source in retriedSources) source.sourceId: source,
+        };
+        _jobSourcesByJobId[jobId] = [
+          for (final source in _jobSourcesByJobId[jobId] ?? sources)
+            byId[source.sourceId] ?? source,
+        ];
+      }
+    }
     final resumedJobs = <OfflineDownloadJob>[];
     _jobs = _jobs
         .map((job) {
           if (job.serverBaseUrl != baseUrl ||
-              job.status != OfflineDownloadStatus.paused) {
+              (job.status != OfflineDownloadStatus.paused &&
+                  job.status != OfflineDownloadStatus.failed &&
+                  job.status != OfflineDownloadStatus.corrupt)) {
             return job;
           }
           final updated = job.copyWith(
             status: OfflineDownloadStatus.queued,
             updatedAt: now,
+            error: null,
           );
           resumedJobs.add(updated);
           return updated;
@@ -2528,10 +2680,15 @@ class _OfflineDownloadActorCore {
       _emitJobs();
       changed = true;
     }
+    for (final jobId in retryableJobs) {
+      await _refreshJobCounts(jobId);
+    }
     if (changed) {
       AppLogger.status('Resuming paused downloads for $baseUrl');
-      _schedule();
     }
+    // Restored queued jobs also need discovery/materialization after sign-in,
+    // even when no staged track happened to be paused at shutdown.
+    _schedule();
   }
 
   Future<void> repairOfflineMetadataFragments() async {
@@ -2674,11 +2831,16 @@ class _OfflineDownloadActorCore {
     for (final download in downloads) {
       byKey[_downloadKey(download)] = download;
     }
+    final removedJobIds = _expandArtistRemoval(byKey, scope);
     if (byKey.isEmpty) {
       return;
     }
 
     final removeKeys = byKey.keys.toSet();
+    final activeRemovals = [
+      for (final key in removeKeys)
+        if (_active[key] case final active?) active,
+    ];
     final currentByKey = <String, OfflineTrackDownload>{};
     for (final download in _downloads) {
       final key = _downloadKey(download);
@@ -2688,12 +2850,32 @@ class _OfflineDownloadActorCore {
       }
     }
     final removals = currentByKey.values.toList(growable: false);
-    if (removals.isEmpty) {
+    if (removals.isEmpty && removedJobIds.isEmpty) {
       return;
     }
 
     final batchIds = <String>{};
     final v2JobIds = <String>{};
+    final removedTrackIdsByServer = <String, Set<String>>{};
+    for (final download in removals) {
+      removedTrackIdsByServer
+          .putIfAbsent(download.serverBaseUrl, () => {})
+          .add(_serverTrackId(download));
+    }
+    for (final job in _jobs) {
+      if (removedJobIds.contains(job.jobId) &&
+          job.serverBaseUrl == connection.baseUrl &&
+          _looksLikeV2DownloadJobId(job.jobId)) {
+        v2JobIds.add(job.jobId);
+      }
+      final removedTrackIds = removedTrackIdsByServer[job.serverBaseUrl];
+      if (removedTrackIds != null &&
+          (_jobItemsByJobId[job.jobId] ?? const <OfflineDownloadJobItem>[]).any(
+            (item) => removedTrackIds.contains(item.serverTrackId),
+          )) {
+        batchIds.add(job.jobId);
+      }
+    }
     final now = DateTime.now();
     for (final download in removals) {
       final key = _downloadKey(download);
@@ -2703,10 +2885,16 @@ class _OfflineDownloadActorCore {
       final batchId = download.batchId;
       if (batchId != null) {
         batchIds.add(batchId);
-        if (_downloadBelongsToV2Job(download)) {
+        if (download.serverBaseUrl == connection.baseUrl &&
+            _downloadBelongsToV2Job(download)) {
           v2JobIds.add(batchId);
         }
       }
+    }
+    // Stop discovery and staging before waiting for file/metadata deletion.
+    // The database removes these plans together with the selected downloads.
+    for (final jobId in removedJobIds) {
+      _forgetRollingJob(jobId);
     }
 
     _downloads = _downloads
@@ -2726,8 +2914,15 @@ class _OfflineDownloadActorCore {
     _emit();
 
     await _storage.removeDownloadsScoped(
-      OfflineDeletionRequest(scope: scope, downloads: removals),
+      OfflineDeletionRequest(
+        scope: scope,
+        downloads: removals,
+        downloadJobIds: removedJobIds.toList(growable: false),
+      ),
     );
+    // Release old workers and file handles before finishing deletion, so an
+    // immediate new download cannot inherit their partial files or stop flags.
+    await Future.wait(activeRemovals);
     await _cleanupPendingFileDeletes();
     _downloads = _downloads
         .where((download) => !removeKeys.contains(_downloadKey(download)))
@@ -2736,11 +2931,13 @@ class _OfflineDownloadActorCore {
     _emit();
     await _loadLocalUserData();
     for (final batchId in batchIds) {
+      if (removedJobIds.contains(batchId)) continue;
       if (_isRollingJob(batchId)) {
+        final job = _jobById(batchId)!;
         await _markJobItems(
           batchId,
           removals
-              .where((download) => download.batchId == batchId)
+              .where((download) => download.serverBaseUrl == job.serverBaseUrl)
               .map(_serverTrackId),
           OfflineDownloadStatus.canceled,
           materialized: true,
@@ -2757,6 +2954,82 @@ class _OfflineDownloadActorCore {
     }
     _schedule();
     unawaited(_cleanupPendingFileDeletes());
+  }
+
+  Set<String> _expandArtistRemoval(
+    Map<String, OfflineTrackDownload> downloads,
+    OfflineDeletionScope scope,
+  ) {
+    if (scope.kind != OfflineDeletionScopeKind.artist) return const {};
+    final artistIds = {
+      ...scope.ids,
+      if (_nonEmpty(scope.id) != null) scope.id!,
+    };
+    if (artistIds.isEmpty) return const {};
+    final servers = downloads.values.map((item) => item.serverBaseUrl).toSet();
+    final artistNames = <String>{};
+    final albumIdsByServer = <String, Set<String>>{};
+    for (final download in downloads.values) {
+      final track = download.track;
+      final album = download.offlineMetadata?.album ?? track.offlineAlbum;
+      albumIdsByServer.putIfAbsent(download.serverBaseUrl, () => {}).addAll([
+        if (_nonEmpty(album?.id) != null) album!.id,
+        if (_nonEmpty(track.albumId) != null) track.albumId!,
+      ]);
+      for (final credit in [...track.credits, ...?album?.credits]) {
+        if (artistIds.contains(credit.artistId)) {
+          artistNames.add(credit.name.trim().toLowerCase());
+        }
+      }
+    }
+    if (artistIds.length == 1 && _nonEmpty(scope.label) != null) {
+      artistNames.add(scope.label!.trim().toLowerCase());
+    }
+    final removedJobIds = <String>{};
+    for (final job in _jobs) {
+      if (!servers.contains(job.serverBaseUrl) || job.kind != 'artist') {
+        continue;
+      }
+      final matches = _nonEmpty(job.sourceId) != null
+          ? artistIds.contains(job.sourceId)
+          : artistNames.contains(_normalizedJobLabel(job.label));
+      if (!matches) continue;
+      removedJobIds.add(job.jobId);
+      albumIdsByServer
+          .putIfAbsent(job.serverBaseUrl, () => {})
+          .addAll(
+            (_jobSourcesByJobId[job.jobId] ??
+                    const <OfflineDownloadJobSource>[])
+                .map((source) => source.sourceId),
+          );
+    }
+    for (final job in _jobs) {
+      if (job.kind == 'album' &&
+          (albumIdsByServer[job.serverBaseUrl]?.contains(job.sourceId) ??
+              false)) {
+        removedJobIds.add(job.jobId);
+      }
+    }
+    for (final download in _downloads) {
+      if (!servers.contains(download.serverBaseUrl)) continue;
+      final track = download.track;
+      final album = download.offlineMetadata?.album ?? track.offlineAlbum;
+      final belongsToArtist =
+          track.credits.any(
+            (credit) =>
+                credit.isPerformingArtist &&
+                artistIds.contains(credit.artistId),
+          ) ||
+          (album?.credits.any(
+                (credit) =>
+                    credit.isAlbumArtist && artistIds.contains(credit.artistId),
+              ) ??
+              false);
+      if (belongsToArtist || removedJobIds.contains(download.batchId)) {
+        downloads[_downloadKey(download)] = download;
+      }
+    }
+    return removedJobIds;
   }
 
   Future<void> clearFailedAndCorrupt() async {
@@ -2782,23 +3055,43 @@ class _OfflineDownloadActorCore {
     }
   }
 
-  Future<void> resetLocalData() async {
+  Future<void> resetLocalData() {
+    final existing = _resetLocalDataFuture;
+    if (existing != null) return existing;
+    final future = _resetLocalData();
+    _resetLocalDataFuture = future.whenComplete(() {
+      _resetLocalDataFuture = null;
+    });
+    return _resetLocalDataFuture!;
+  }
+
+  Future<void> _resetLocalData() async {
     await _ensureLoaded();
     _resettingLocalData = true;
+    _localDataRevision++;
     try {
       _localUserDataReloadTimer?.cancel();
       _localUserDataReloadTimer = null;
       _pendingArtworkHydration.clear();
       _pendingFileCleanupRequested = false;
+      _topUpRequested = false;
       for (final download in _downloads) {
         final key = _downloadKey(download);
         _removedDownloadKeys.add(key);
         _cancelRequested.add(key);
         _activeCancelPorts[key]?.send(null);
       }
+      await _loadFuture;
       await _topUpFuture;
       await Future.wait(_active.values.toList(), eagerError: false);
+      await _localUserDataReloadChain;
       await _pendingFileCleanupFuture;
+      while (_pendingStorageOperations.isNotEmpty) {
+        await Future.wait(
+          _pendingStorageOperations.toList(),
+          eagerError: false,
+        );
+      }
       await _storage.close();
       await _storage.resetLocalData();
       _downloads = const <OfflineTrackDownload>[];
@@ -2814,6 +3107,11 @@ class _OfflineDownloadActorCore {
       _albumArtPathById.clear();
       _artistArtPathByKey.clear();
       _pausedServerUrls.clear();
+      _active.clear();
+      _activeCancelPorts.clear();
+      _lastScheduledQueueGroup = null;
+      _topUpRequested = false;
+      _queueAttemptSequence = 0;
       _rebuildDownloadIndexes();
       _emit();
       _emitBatches();
@@ -2827,6 +3125,19 @@ class _OfflineDownloadActorCore {
       _artHydrationKeys.clear();
       _pendingArtworkHydration.clear();
       _resettingLocalData = false;
+    }
+  }
+
+  bool _localDataCurrent(int revision) =>
+      !_disposed && !_resettingLocalData && revision == _localDataRevision;
+
+  Future<T> _storageOperation<T>(Future<T> Function() operation) async {
+    final pending = operation();
+    _pendingStorageOperations.add(pending);
+    try {
+      return await pending;
+    } finally {
+      _pendingStorageOperations.remove(pending);
     }
   }
 
@@ -2891,7 +3202,15 @@ class _OfflineDownloadActorCore {
   }
 
   Future<Playlist> downloadPlaylist(_DownloadPlaylistRequest request) async {
+    final dataRevision = _localDataRevision;
+    void requireCurrentData() {
+      if (!_localDataCurrent(dataRevision)) {
+        throw StateError('Playlist download canceled by local data reset.');
+      }
+    }
+
     await _ensureLoaded();
+    requireCurrentData();
     final baseUrl = connection.baseUrl;
     if (request.name.trim().isEmpty) {
       throw ArgumentError('Playlist name is required.');
@@ -2911,6 +3230,7 @@ class _OfflineDownloadActorCore {
         request.playlist.id,
         imageRef: imageRef,
       );
+      requireCurrentData();
       if (artwork == null) {
         throw StateError('Playlist artwork could not be downloaded.');
       }
@@ -2928,25 +3248,33 @@ class _OfflineDownloadActorCore {
       kind: 'playlist',
       sourceId: request.playlist.id,
     );
+    requireCurrentData();
     // Persist order separately from the queue, which deduplicates track downloads.
-    var localPlaylist = await _storage.createLocalPlaylist(
-      request.name,
-      description: request.description,
-      downloadServerBaseUrl: baseUrl,
-      downloadTrackIds: orderedTracks.map((track) => track.id).toList(),
+    var localPlaylist = await _storageOperation(
+      () => _storage.createLocalPlaylist(
+        request.name,
+        description: request.description,
+        downloadServerBaseUrl: baseUrl,
+        downloadTrackIds: orderedTracks.map((track) => track.id).toList(),
+      ),
     );
+    requireCurrentData();
     try {
       if (imageEdit.kind == PlaylistImageEditKind.replace) {
         localPlaylist =
-            await _storage.updateLocalPlaylistImage(
-              localPlaylist.id,
-              imageEdit,
+            await _storageOperation(
+              () => _storage.updateLocalPlaylistImage(
+                localPlaylist.id,
+                imageEdit,
+              ),
             ) ??
             localPlaylist;
       }
+      requireCurrentData();
       await _loadLocalUserData();
       return localPlaylist;
     } catch (_) {
+      if (!_localDataCurrent(dataRevision)) rethrow;
       await _storage.deleteLocalPlaylist(localPlaylist.id);
       await _loadLocalUserData();
       rethrow;
@@ -3037,6 +3365,9 @@ class _OfflineDownloadActorCore {
     await _topUpFuture;
     await _localUserDataReloadChain;
     await _pendingFileCleanupFuture;
+    while (_pendingStorageOperations.isNotEmpty) {
+      await Future.wait(_pendingStorageOperations.toList(), eagerError: false);
+    }
     await _controller.close();
     await _batchController.close();
     await _jobController.close();
@@ -3051,15 +3382,25 @@ class _OfflineDownloadActorCore {
   }
 
   void _scheduleTopUp() {
-    if (_resettingLocalData) {
+    if (_resettingLocalData || _disposed) {
       return;
     }
+    _topUpRequested = true;
     if (_topUpFuture != null) {
       return;
     }
-    _topUpFuture = _topUpRollingJobsForCurrentServer().whenComplete(() {
-      _topUpFuture = null;
-    });
+    _topUpFuture =
+        (() async {
+          do {
+            _topUpRequested = false;
+            await _topUpRollingJobsForCurrentServer();
+          } while (_topUpRequested && !_disposed && !_resettingLocalData);
+        })().whenComplete(() {
+          _topUpFuture = null;
+          if (_topUpRequested && !_disposed && !_resettingLocalData) {
+            _scheduleTopUp();
+          }
+        });
     unawaited(_topUpFuture);
   }
 
@@ -3116,6 +3457,7 @@ class _OfflineDownloadActorCore {
 
   void _startQueuedDownload(OfflineTrackDownload download) {
     final key = _downloadKey(download);
+    _clearObsoleteStopMarkersForQueue(download);
     final future = _runDownload(download).whenComplete(() {
       _active.remove(key);
       _activeCancelPorts.remove(key);
@@ -3241,25 +3583,33 @@ class _OfflineDownloadActorCore {
     List<OfflineDownloadJobItem> items = const <OfflineDownloadJobItem>[],
     List<OfflineDownloadJobSource> sources = const <OfflineDownloadJobSource>[],
   }) async {
+    final dataRevision = _localDataRevision;
+    if (!_localDataCurrent(dataRevision)) return;
+    final batch = OfflineDownloadBatch(
+      batchId: job.jobId,
+      serverBaseUrl: job.serverBaseUrl,
+      status: job.status,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      totalCount: job.totalCount > 0 ? job.totalCount : job.discoveredCount,
+      completedCount: job.completedCount,
+      failedCount: job.failedCount,
+      label: job.label,
+    );
+    await _storageOperation(
+      () => _storage.saveDownloadPlan(
+        job: job,
+        items: items,
+        sources: sources,
+        batch: batch,
+      ),
+    );
+    if (!_localDataCurrent(dataRevision)) return;
     _jobs = [job, ..._jobs.where((item) => item.jobId != job.jobId)];
     _jobItemsByJobId[job.jobId] = items;
     _jobSourcesByJobId[job.jobId] = sources;
-    await _storage.upsertDownloadJob(job);
-    await _storage.upsertDownloadJobItems(items);
-    await _storage.upsertDownloadJobSources(sources);
-    await _upsertBatch(
-      OfflineDownloadBatch(
-        batchId: job.jobId,
-        serverBaseUrl: job.serverBaseUrl,
-        status: job.status,
-        createdAt: job.createdAt,
-        updatedAt: job.updatedAt,
-        totalCount: job.totalCount > 0 ? job.totalCount : job.discoveredCount,
-        completedCount: job.completedCount,
-        failedCount: job.failedCount,
-        label: job.label,
-      ),
-    );
+    _batches = [batch, ..._batches.where((item) => item.batchId != job.jobId)];
+    _emitBatches();
     _emitJobs();
   }
 
@@ -3324,31 +3674,37 @@ class _OfflineDownloadActorCore {
       final changed = <OfflineDownloadJobItem>[];
       for (var index = 0; index < items.length; index += 1) {
         final item = items[index];
-        if (!item.materialized || _terminalStatus(item.status)) {
+        if (item.status == OfflineDownloadStatus.canceled) {
           continue;
         }
         final download = find(job.serverBaseUrl, item.serverTrackId);
+        if (!item.materialized && download == null) continue;
         OfflineDownloadJobItem? updated;
         if (download == null) {
           updated = item.copyWith(
-            status: OfflineDownloadStatus.canceled,
+            status: OfflineDownloadStatus.queued,
+            materialized: false,
             updatedAt: DateTime.now(),
-            error: 'download row removed',
+            error: null,
           );
         } else if (download.batchId != job.jobId) {
           updated = item.copyWith(
             status: _downloadAvailable(download)
                 ? OfflineDownloadStatus.downloaded
                 : OfflineDownloadStatus.canceled,
+            materialized: true,
             updatedAt: DateTime.now(),
             track: download.track,
             error: _downloadAvailable(download)
                 ? null
                 : 'download owned by another job',
           );
-        } else if (download.status != item.status || item.track == null) {
+        } else if (!item.materialized ||
+            download.status != item.status ||
+            item.track == null) {
           updated = item.copyWith(
             status: download.status,
+            materialized: true,
             updatedAt: download.updatedAt,
             track: download.track,
             error: download.error,
@@ -3410,6 +3766,15 @@ class _OfflineDownloadActorCore {
               )
               .toList(growable: false)
         : const <OfflineTrackDownload>[];
+    _forgetRollingJob(trimmed);
+    await _storage.deleteDownloadJob(trimmed);
+    if (removePendingDownloads && removableDownloads.isNotEmpty) {
+      await removeDownloads(removableDownloads);
+    }
+  }
+
+  void _forgetRollingJob(String jobId) {
+    final trimmed = jobId.trim();
     final hadJob = _jobs.any((job) => job.jobId == trimmed);
     final hadBatch = _batches.any((batch) => batch.batchId == trimmed);
     _jobs = _jobs.where((job) => job.jobId != trimmed).toList(growable: false);
@@ -3418,17 +3783,11 @@ class _OfflineDownloadActorCore {
         .toList(growable: false);
     _jobItemsByJobId.remove(trimmed);
     _jobSourcesByJobId.remove(trimmed);
-    await _storage.deleteDownloadJob(trimmed);
     if (hadJob) {
       _emitJobs();
     }
     if (hadBatch) {
       _emitBatches();
-    }
-    if (removePendingDownloads) {
-      if (removableDownloads.isNotEmpty) {
-        await removeDownloads(removableDownloads);
-      }
     }
   }
 
@@ -3455,7 +3814,8 @@ class _OfflineDownloadActorCore {
           source.status == OfflineDownloadStatus.downloading ||
           source.status == OfflineDownloadStatus.preparing ||
           source.status == OfflineDownloadStatus.validating ||
-          source.status == OfflineDownloadStatus.paused,
+          source.status == OfflineDownloadStatus.paused ||
+          source.status == OfflineDownloadStatus.failed,
     );
     if (hasPendingSource) {
       return false;
@@ -3491,7 +3851,14 @@ class _OfflineDownloadActorCore {
           )
           .toList(growable: false);
       for (final job in runnable) {
-        await _topUpRollingJob(job);
+        try {
+          await _topUpRollingJob(job);
+        } catch (error) {
+          // Keep the durable request queued so a later reconnect can retry it.
+          AppLogger.warning(
+            'Could not continue download ${job.label ?? job.jobId}: $error',
+          );
+        }
       }
     } finally {
       _topUpRunning = false;
@@ -3573,6 +3940,8 @@ class _OfflineDownloadActorCore {
       _jobSourcesByJobId[job.jobId] ?? const <OfflineDownloadJobSource>[],
     );
     final seen = {for (final item in items) item.serverTrackId};
+    final discoveredItems = <OfflineDownloadJobItem>[];
+    final discoveredSources = <OfflineDownloadJobSource>[];
     var nextPosition = items.isEmpty
         ? 0
         : items.map((item) => item.position).reduce((a, b) => a > b ? a : b) +
@@ -3581,6 +3950,12 @@ class _OfflineDownloadActorCore {
     final now = DateTime.now();
 
     for (var i = 0; i < sources.length; i += 1) {
+      if (connection.baseUrl != job.serverBaseUrl ||
+          connection.token == null ||
+          connection.token!.isEmpty ||
+          _pausedServerUrls.contains(job.serverBaseUrl)) {
+        break;
+      }
       if (unmaterializedCount() >= targetUnmaterialized) {
         break;
       }
@@ -3590,6 +3965,7 @@ class _OfflineDownloadActorCore {
       }
       try {
         final tracks = await connection.fetchTracks(source.sourceId);
+        if (_disposed || _jobById(job.jobId) == null) return;
         for (final rawTrack in tracks) {
           final id = rawTrack.id.trim();
           if (id.isEmpty || !seen.add(id)) {
@@ -3598,7 +3974,7 @@ class _OfflineDownloadActorCore {
           final existing = find(job.serverBaseUrl, id);
           if (existing != null) {
             if (_downloadAvailable(existing)) {
-              items.add(
+              discoveredItems.add(
                 OfflineDownloadJobItem(
                   jobId: job.jobId,
                   position: nextPosition,
@@ -3617,7 +3993,7 @@ class _OfflineDownloadActorCore {
             if (_downloadQueuedOrAvailable(existing)) {
               continue;
             }
-            items.add(
+            discoveredItems.add(
               OfflineDownloadJobItem(
                 jobId: job.jobId,
                 position: nextPosition,
@@ -3638,7 +4014,7 @@ class _OfflineDownloadActorCore {
             changed = true;
             continue;
           }
-          items.add(
+          discoveredItems.add(
             OfflineDownloadJobItem(
               jobId: job.jobId,
               position: nextPosition,
@@ -3663,21 +4039,44 @@ class _OfflineDownloadActorCore {
           error: null,
         );
       } catch (err) {
+        AppLogger.warning(
+          'Could not discover album ${source.label ?? source.sourceId} for '
+          '${job.label ?? job.jobId}; download request retained: $err',
+        );
         sources[i] = source.copyWith(
           status: OfflineDownloadStatus.failed,
           updatedAt: now,
           error: err.toString(),
         );
       }
+      discoveredSources.add(sources[i]);
+      items = [
+        ..._jobItemsByJobId[job.jobId] ?? const <OfflineDownloadJobItem>[],
+        ...discoveredItems,
+      ];
       changed = true;
     }
     if (!changed) {
       return;
     }
-    _jobItemsByJobId[job.jobId] = items;
-    _jobSourcesByJobId[job.jobId] = sources;
-    await _storage.upsertDownloadJobItems(items);
-    await _storage.upsertDownloadJobSources(sources);
+    if (_disposed || _jobById(job.jobId) == null) return;
+    // Existing items can finish while an album lookup is in flight. Persist
+    // only discoveries so an old snapshot cannot undo their progress.
+    await _storage.saveDownloadJobDiscovery(
+      items: discoveredItems,
+      sources: discoveredSources,
+    );
+    _jobItemsByJobId[job.jobId] = [
+      ..._jobItemsByJobId[job.jobId] ?? const <OfflineDownloadJobItem>[],
+      ...discoveredItems,
+    ];
+    final sourcesById = {
+      for (final source in discoveredSources) source.sourceId: source,
+    };
+    _jobSourcesByJobId[job.jobId] = [
+      for (final source in _jobSourcesByJobId[job.jobId] ?? sources)
+        sourcesById[source.sourceId] ?? source,
+    ];
     await _refreshJobCounts(job.jobId);
   }
 
@@ -3686,8 +4085,15 @@ class _OfflineDownloadActorCore {
     List<OfflineDownloadJobItem> items,
   ) async {
     items = await _hydrateMaterializationWindow(job.jobId, items);
+    if (!_canMaterializeJob(job.jobId)) return;
     final ids = items.map((item) => item.serverTrackId).toList(growable: false);
     if (ids.isEmpty) {
+      return;
+    }
+    if ((connection.token == null || connection.token!.isEmpty) &&
+        items.any((item) => item.offlineMetadata == null)) {
+      // Keep the unstaged request intact until the restored session can fetch
+      // its metadata. Loading before sign-in must not consume or fail it.
       return;
     }
     if (connection.token != null && connection.token!.isNotEmpty) {
@@ -3696,6 +4102,7 @@ class _OfflineDownloadActorCore {
           ids,
           clientBatchId: job.jobId,
         );
+        if (!_canMaterializeJob(job.jobId)) return;
         await _materializeManifestItems(job, manifest.items);
         if (manifest.unavailable.isNotEmpty) {
           await _markJobItems(
@@ -3712,6 +4119,8 @@ class _OfflineDownloadActorCore {
         );
       }
     }
+
+    if (!_canMaterializeJob(job.jobId)) return;
 
     final downloads = <OfflineTrackDownload>[];
     final now = DateTime.now();
@@ -3864,10 +4273,11 @@ class _OfflineDownloadActorCore {
     String jobId,
     List<OfflineTrackDownload> downloads,
   ) async {
-    if (downloads.isEmpty) {
+    if (downloads.isEmpty || !_canMaterializeJob(jobId)) {
       return;
     }
     final prepared = await _storage.prepareDownloads(downloads);
+    if (!_canMaterializeJob(jobId)) return;
     for (final download in prepared) {
       _clearObsoleteStopMarkersForQueue(download);
     }
@@ -3889,6 +4299,17 @@ class _OfflineDownloadActorCore {
       },
     );
     await _refreshJobCounts(jobId);
+  }
+
+  bool _canMaterializeJob(String jobId) {
+    final job = _jobById(jobId);
+    return !_disposed &&
+        !_resettingLocalData &&
+        job != null &&
+        job.status != OfflineDownloadStatus.paused &&
+        job.status != OfflineDownloadStatus.canceled &&
+        job.status != OfflineDownloadStatus.removing &&
+        !_pausedServerUrls.contains(job.serverBaseUrl);
   }
 
   Future<void> _markJobItems(
@@ -4408,20 +4829,20 @@ class _OfflineDownloadActorCore {
       return;
     }
     _artHydrationRunning = true;
+    final dataRevision = _localDataRevision;
     final albumArtById = <String, String?>{};
     final artistLogoById = <String, String?>{};
     final artistBannerById = <String, String?>{};
     try {
       while (_pendingArtworkHydration.isNotEmpty &&
-          !_disposed &&
-          !_resettingLocalData) {
+          _localDataCurrent(dataRevision)) {
         final key = _pendingArtworkHydration.keys.first;
         final download = _pendingArtworkHydration.remove(key);
         if (download == null) {
           continue;
         }
         await Future<void>.delayed(_artworkHydrationDelay);
-        if (_disposed || _resettingLocalData) {
+        if (!_localDataCurrent(dataRevision)) {
           break;
         }
         await _hydrateArtworkForDownload(
@@ -4447,6 +4868,7 @@ class _OfflineDownloadActorCore {
     Map<String, String?>? artistLogoById,
     Map<String, String?>? artistBannerById,
   }) async {
+    final dataRevision = _localDataRevision;
     final localTrackId = download.localTrackId ?? download.track.localId;
     if (localTrackId == null || localTrackId.isEmpty) {
       return;
@@ -4465,6 +4887,7 @@ class _OfflineDownloadActorCore {
       }
       final paths = await _fetchAndStoreArtwork(
         download.track,
+        dataRevision: dataRevision,
         albumArtById: albumArtById ?? <String, String?>{},
         artistLogoById: artistLogoById ?? <String, String?>{},
         artistBannerById: artistBannerById ?? <String, String?>{},
@@ -4472,19 +4895,23 @@ class _OfflineDownloadActorCore {
       if (paths.isEmpty) {
         return;
       }
-      if (_disposed || _resettingLocalData) {
+      if (!_localDataCurrent(dataRevision)) {
         return;
       }
-      await _storage.updateTrackArtPaths(
-        localTrackId,
-        albumArtPath: paths.albumArtPath,
-        artistArtPath: paths.artistArtPath,
-        artistBannerPath: paths.artistBannerPath,
-        artworkSource: download.track,
+      await _storageOperation(
+        () => _storage.updateTrackArtPaths(
+          localTrackId,
+          albumArtPath: paths.albumArtPath,
+          artistArtPath: paths.artistArtPath,
+          artistBannerPath: paths.artistBannerPath,
+          artworkSource: download.track,
+        ),
       );
+      if (!_localDataCurrent(dataRevision)) return;
       _applyArtworkPaths(localTrackId, paths, download.track);
       _scheduleLocalUserDataReload();
     } catch (err) {
+      if (!_localDataCurrent(dataRevision)) return;
       AppLogger.warning(
         'Failed to cache offline artwork for ${download.track.title}: $err',
       );
@@ -4495,19 +4922,32 @@ class _OfflineDownloadActorCore {
 
   Future<_ArtworkPaths> _fetchAndStoreArtwork(
     Track track, {
+    required int dataRevision,
     required Map<String, String?> albumArtById,
     required Map<String, String?> artistLogoById,
     required Map<String, String?> artistBannerById,
   }) async {
     final albumArtPath =
         _existingArtworkPath(track.albumArtPath) ??
-        await _fetchAlbumArt(track.albumId, albumArtById);
+        await _fetchAlbumArt(track.albumId, albumArtById, dataRevision);
+    if (!_localDataCurrent(dataRevision)) return const _ArtworkPaths();
     final artistArtPath =
         _existingArtworkPath(track.artistArtPath) ??
-        await _fetchArtistArt(track.artistId, 'logo', artistLogoById);
+        await _fetchArtistArt(
+          track.artistId,
+          'logo',
+          artistLogoById,
+          dataRevision,
+        );
+    if (!_localDataCurrent(dataRevision)) return const _ArtworkPaths();
     final artistBannerPath =
         _existingArtworkPath(track.artistBannerPath) ??
-        await _fetchArtistArt(track.artistId, 'banner', artistBannerById);
+        await _fetchArtistArt(
+          track.artistId,
+          'banner',
+          artistBannerById,
+          dataRevision,
+        );
     return _ArtworkPaths(
       albumArtPath: albumArtPath,
       artistArtPath: artistArtPath,
@@ -4518,7 +4958,9 @@ class _OfflineDownloadActorCore {
   Future<String?> _fetchAlbumArt(
     String? albumId,
     Map<String, String?> albumArtById,
+    int dataRevision,
   ) async {
+    if (!_localDataCurrent(dataRevision)) return null;
     final id = albumId?.trim();
     if (id == null || id.isEmpty) {
       return null;
@@ -4532,7 +4974,11 @@ class _OfflineDownloadActorCore {
       return path;
     }
     final artwork = await connection.fetchAlbumCoverBytes(id);
-    final path = artwork == null ? null : await _storeAlbumArtwork(id, artwork);
+    if (!_localDataCurrent(dataRevision)) return null;
+    final path = artwork == null
+        ? null
+        : await _storageOperation(() => _storeAlbumArtwork(id, artwork));
+    if (!_localDataCurrent(dataRevision)) return null;
     _albumArtPathById[id] = path;
     albumArtById[id] = path;
     return path;
@@ -4542,7 +4988,9 @@ class _OfflineDownloadActorCore {
     String? artistId,
     String kind,
     Map<String, String?> artistArtById,
+    int dataRevision,
   ) async {
+    if (!_localDataCurrent(dataRevision)) return null;
     final id = artistId?.trim();
     if (id == null || id.isEmpty) {
       return null;
@@ -4557,9 +5005,11 @@ class _OfflineDownloadActorCore {
       return path;
     }
     final artwork = await connection.fetchArtistCoverBytes(id, kind: kind);
+    if (!_localDataCurrent(dataRevision)) return null;
     final path = artwork == null
         ? null
-        : await _storeArtistArtwork(id, kind, artwork);
+        : await _storageOperation(() => _storeArtistArtwork(id, kind, artwork));
+    if (!_localDataCurrent(dataRevision)) return null;
     _artistArtPathByKey[key] = path;
     artistArtById[key] = path;
     return path;
@@ -4655,6 +5105,8 @@ class _OfflineDownloadActorCore {
     OfflineTrackDownload download, {
     required bool persist,
   }) async {
+    final dataRevision = _localDataRevision;
+    if (!_localDataCurrent(dataRevision)) return false;
     final key = _downloadKey(download);
     if (_removedDownloadKeys.contains(key)) {
       await _recordPendingDownloadFiles(download);
@@ -4662,8 +5114,9 @@ class _OfflineDownloadActorCore {
       return false;
     }
     final prepared = download.localTrackId == null
-        ? await _storage.prepareDownload(download)
+        ? await _storageOperation(() => _storage.prepareDownload(download))
         : download;
+    if (!_localDataCurrent(dataRevision)) return false;
     if (_removedDownloadKeys.contains(_downloadKey(prepared))) {
       await _recordPendingDownloadFiles(prepared);
       unawaited(_cleanupPendingFileDeletes());
@@ -4689,7 +5142,8 @@ class _OfflineDownloadActorCore {
     _rebuildDownloadIndexes();
     _emit();
     if (persist) {
-      await _storage.upsertDownload(prepared);
+      await _storageOperation(() => _storage.upsertDownload(prepared));
+      if (!_localDataCurrent(dataRevision)) return false;
       await _syncJobItemFromDownload(prepared);
       final batchId = prepared.batchId;
       if (batchId != null && !_isRollingJob(batchId)) {
@@ -4783,6 +5237,7 @@ class _OfflineDownloadActorCore {
   }
 
   Future<void> _upsertBatch(OfflineDownloadBatch batch) async {
+    if (_resettingLocalData || _disposed) return;
     var replaced = false;
     _batches = _batches.map((existing) {
       if (existing.batchId == batch.batchId) {
@@ -4795,7 +5250,7 @@ class _OfflineDownloadActorCore {
       _batches = [batch, ..._batches];
     }
     _emitBatches();
-    await _storage.upsertDownloadBatch(batch);
+    await _storageOperation(() => _storage.upsertDownloadBatch(batch));
   }
 
   Future<void> _refreshBatchCounts(String batchId) async {
@@ -4913,8 +5368,13 @@ class _OfflineDownloadActorCore {
   }
 
   Future<void> _loadLocalUserData() async {
-    _localPlaylists = await _storage.readLocalPlaylists();
-    _localLiked = await _storage.readLocalLikedTracks();
+    final dataRevision = _localDataRevision;
+    if (!_localDataCurrent(dataRevision)) return;
+    final playlists = await _storage.readLocalPlaylists();
+    final liked = await _storage.readLocalLikedTracks();
+    if (!_localDataCurrent(dataRevision)) return;
+    _localPlaylists = playlists;
+    _localLiked = liked;
     final playlistId = _localPlaylistTracksId;
     if (playlistId != null &&
         _localPlaylists.any((playlist) => playlist.id == playlistId)) {
@@ -4942,6 +5402,7 @@ class _OfflineDownloadActorCore {
   }
 
   Future<void> _runOfflineMetadataRepair() async {
+    final dataRevision = _localDataRevision;
     if (_disposed || _resettingLocalData) {
       return;
     }
@@ -4954,16 +5415,17 @@ class _OfflineDownloadActorCore {
     final attemptedKeys = <String>{};
     final repairedKeys = <String>{};
     while (attemptedKeys.length < _metadataRepairMaxPerRun &&
-        !_disposed &&
-        !_resettingLocalData &&
+        _localDataCurrent(dataRevision) &&
         connection.sessionRevision == sessionRevision) {
       final remaining = _metadataRepairMaxPerRun - attemptedKeys.length;
       final requests =
-          (await _storage.readMetadataRepairRequests(
-                connection.baseUrl,
-                limit: remaining < _metadataRepairBatchSize
-                    ? remaining
-                    : _metadataRepairBatchSize,
+          (await _storageOperation(
+                () => _storage.readMetadataRepairRequests(
+                  connection.baseUrl,
+                  limit: remaining < _metadataRepairBatchSize
+                      ? remaining
+                      : _metadataRepairBatchSize,
+                ),
               ))
               .where(
                 (request) => !attemptedKeys.contains(
@@ -4971,7 +5433,7 @@ class _OfflineDownloadActorCore {
                 ),
               )
               .toList(growable: false);
-      if (requests.isEmpty) {
+      if (!_localDataCurrent(dataRevision) || requests.isEmpty) {
         break;
       }
       for (final request in requests) {
@@ -4986,7 +5448,7 @@ class _OfflineDownloadActorCore {
       repairedKeys.addAll(repaired);
     }
 
-    if (repairedKeys.isEmpty || _disposed || _resettingLocalData) {
+    if (repairedKeys.isEmpty || !_localDataCurrent(dataRevision)) {
       return;
     }
     await _reloadAfterOfflineMetadataRepair(repairedKeys);
@@ -4995,6 +5457,7 @@ class _OfflineDownloadActorCore {
   Future<void> _refreshOfflineMetadataWhere(
     bool Function(OfflineTrackDownload download) matches,
   ) async {
+    final dataRevision = _localDataRevision;
     if (_disposed || _resettingLocalData) {
       return;
     }
@@ -5029,7 +5492,7 @@ class _OfflineDownloadActorCore {
       return;
     }
     final repairedKeys = await _repairOfflineMetadataRequests(requests);
-    if (repairedKeys.isEmpty || _disposed || _resettingLocalData) {
+    if (repairedKeys.isEmpty || !_localDataCurrent(dataRevision)) {
       return;
     }
     await _reloadAfterOfflineMetadataRepair(repairedKeys);
@@ -5040,9 +5503,9 @@ class _OfflineDownloadActorCore {
   ) async {
     final serverBaseUrl = connection.baseUrl;
     final sessionRevision = connection.sessionRevision;
+    final dataRevision = _localDataRevision;
     bool shouldPersist() =>
-        !_disposed &&
-        !_resettingLocalData &&
+        _localDataCurrent(dataRevision) &&
         connection.sessionRevision == sessionRevision;
     final repairedKeys = <String>{};
     for (
@@ -5060,7 +5523,10 @@ class _OfflineDownloadActorCore {
           .toList(growable: false);
       final results = await Future.wait(
         chunk.map((request) async {
-          final metadata = await _fetchOfflineMetadataForRepair(request);
+          final metadata = await _fetchOfflineMetadataForRepair(
+            request,
+            dataRevision,
+          );
           return metadata == null
               ? null
               : MapEntry(request.serverTrackId, metadata);
@@ -5073,10 +5539,12 @@ class _OfflineDownloadActorCore {
         results.whereType<MapEntry<String, OfflineTrackMetadata>>(),
       );
       try {
-        final persisted = await _storage.upsertOfflineMetadataFragments(
-          serverBaseUrl,
-          metadataByTrackId,
-          shouldPersist: shouldPersist,
+        final persisted = await _storageOperation(
+          () => _storage.upsertOfflineMetadataFragments(
+            serverBaseUrl,
+            metadataByTrackId,
+            shouldPersist: shouldPersist,
+          ),
         );
         repairedKeys.addAll(
           persisted.map((trackId) => _lookupKey(serverBaseUrl, trackId)),
@@ -5093,7 +5561,11 @@ class _OfflineDownloadActorCore {
   Future<void> _reloadAfterOfflineMetadataRepair(
     Set<String> repairedKeys,
   ) async {
-    _downloads = await _storage.readDownloads();
+    final dataRevision = _localDataRevision;
+    if (!_localDataCurrent(dataRevision)) return;
+    final downloads = await _storageOperation(_storage.readDownloads);
+    if (!_localDataCurrent(dataRevision)) return;
+    _downloads = downloads;
     _rebuildDownloadIndexes();
     await _loadLocalUserData();
     for (final download in _downloads) {
@@ -5107,10 +5579,12 @@ class _OfflineDownloadActorCore {
 
   Future<OfflineTrackMetadata?> _fetchOfflineMetadataForRepair(
     OfflineMetadataRepairRequest request,
+    int dataRevision,
   ) async {
     try {
       return await connection.fetchOfflineMetadata(request.serverTrackId);
     } catch (err) {
+      if (!_localDataCurrent(dataRevision)) return null;
       AppLogger.debug(
         'Failed to repair offline metadata for ${request.serverTrackId}: $err',
       );
@@ -5119,13 +5593,14 @@ class _OfflineDownloadActorCore {
   }
 
   void _scheduleLocalUserDataReload() {
-    if (_disposed) {
+    final dataRevision = _localDataRevision;
+    if (!_localDataCurrent(dataRevision)) {
       return;
     }
     _localUserDataReloadTimer?.cancel();
     _localUserDataReloadTimer = Timer(_localUserDataReloadDelay, () {
       _localUserDataReloadChain = _localUserDataReloadChain.then((_) async {
-        if (_disposed) {
+        if (!_localDataCurrent(dataRevision)) {
           return;
         }
         try {
@@ -5333,9 +5808,11 @@ class _OfflineDownloadActorCore {
           download.status == OfflineDownloadStatus.validating) {
         recovered.add(
           download.copyWith(
-            status: OfflineDownloadStatus.paused,
+            // Interrupted transfers are still requested. Queue them now; the
+            // scheduler waits for the restored server session before starting.
+            status: OfflineDownloadStatus.queued,
             updatedAt: now,
-            error: 'Paused after app restart',
+            error: null,
           ),
         );
         continue;
@@ -5907,10 +6384,41 @@ Future<void> _downloadWorkerMain(_DownloadWorkerStart start) async {
     }
 
     final timeout = Duration(seconds: request.timeoutSeconds);
-    if (request.trust == null) throw StateError('Download server is not authenticated');
+    if (request.trust == null) {
+      throw StateError('Download server is not authenticated');
+    }
     ServerTrustRegistry.register(request.serverBaseUrl, request.trust!);
     installServerTrustOverrides();
-    if (ServerTrustRegistry.origin(Uri.parse(request.url)) != ServerTrustRegistry.origin(Uri.parse(request.serverBaseUrl))) throw StateError('Cross-server download blocked');
+    if (ServerTrustRegistry.origin(Uri.parse(request.url)) !=
+        ServerTrustRegistry.origin(Uri.parse(request.serverBaseUrl))) {
+      throw StateError('Cross-server download blocked');
+    }
+    final partialFile = File(request.partialPath);
+    final expectedBytes = request.expectedBytes;
+    if (expectedBytes != null &&
+        expectedBytes > 0 &&
+        bytesDownloaded == expectedBytes) {
+      // A crash may occur after the final bytes are flushed but before the
+      // file is promoted. Validate it instead of requesting bytes past EOF.
+      final expectedSha256 = request.expectedSha256?.trim().toLowerCase();
+      if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+        final digest = await _sha256Path(request.partialPath);
+        if (digest != expectedSha256) {
+          await _deleteWorkerFile(request.partialPath);
+          throw const _DownloadWorkerCorrupt('checksum mismatch');
+        }
+      }
+      throwIfCanceled();
+      start.sendPort.send(
+        _DownloadWorkerComplete(
+          bytesDownloaded: bytesDownloaded,
+          bytesTotal: expectedBytes,
+          etag: request.ifRange,
+          sha256: expectedSha256,
+        ),
+      );
+      return;
+    }
     client = HttpClient();
     throwIfCanceled();
     final httpRequest = await client
@@ -5937,7 +6445,6 @@ Future<void> _downloadWorkerMain(_DownloadWorkerStart start) async {
       throw Exception('ApiException(${response.statusCode}): $body');
     }
 
-    final partialFile = File(request.partialPath);
     if (response.statusCode == HttpStatus.ok && bytesDownloaded > 0) {
       await partialFile.writeAsBytes(const <int>[]);
       bytesDownloaded = 0;

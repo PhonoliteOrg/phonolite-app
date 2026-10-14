@@ -1,32 +1,10 @@
 import 'models.dart';
 import 'offline_library_views.dart';
+import 'library_search_matcher.dart';
 
-// Keep normalization and scoring aligned with api/library.rs on the server.
-final _searchSeparators = RegExp(r'[^\p{Alphabetic}\p{N}]+', unicode: true);
+export 'library_search_matcher.dart';
 
-String normalizeLibrarySearch(String value) =>
-    value.toLowerCase().replaceAll(_searchSeparators, ' ').trim();
-
-int scoreLibrarySearch(String normalizedQuery, String candidate) {
-  final target = normalizeLibrarySearch(candidate);
-  if (normalizedQuery.isEmpty || target.isEmpty) return 0;
-  if (target == normalizedQuery) return 100;
-  if (target.startsWith(normalizedQuery)) return 90;
-  if (target.contains(normalizedQuery)) return 80;
-  if (normalizedQuery.split(' ').every(target.contains)) return 70;
-
-  final queryRunes = normalizedQuery.replaceAll(' ', '').runes.toList();
-  var index = 0;
-  for (final rune in target.runes) {
-    if (rune == queryRunes[index]) {
-      index++;
-      if (index == queryRunes.length) return 60;
-    }
-  }
-  return 0;
-}
-
-/// Uses the server's candidate filtering, per-kind limit, scores and ordering.
+/// Uses the server's fuzzy scores and ordering, limiting only after ranking.
 /// Artists and shared albums come from the complete downloaded catalog, so an
 /// album is returned once even when it is billed to several artists.
 List<SearchResult> searchLocalLibrary({
@@ -35,9 +13,8 @@ List<SearchResult> searchLocalLibrary({
   required List<OfflineArtistGroup> artists,
   int limit = 50,
 }) {
-  final rawQuery = query.trim().toLowerCase();
-  final normalizedQuery = normalizeLibrarySearch(query);
-  if (rawQuery.isEmpty || normalizedQuery.isEmpty) return [];
+  final matcher = LibrarySearchQuery(query);
+  if (matcher.isEmpty) return [];
   limit = limit.clamp(1, 100);
   final results = <SearchResult>[];
 
@@ -45,8 +22,6 @@ List<SearchResult> searchLocalLibrary({
     candidates.sort((a, b) => _compareSearchText(a.key, b.key));
     results.addAll(
       candidates
-          .where((candidate) => candidate.key.contains(rawQuery))
-          .take(limit)
           .map((candidate) => candidate.result)
           .where((result) => result.score! > 0),
     );
@@ -54,17 +29,16 @@ List<SearchResult> searchLocalLibrary({
 
   collect([
     for (final artist in artists)
-      if (artist.name.trim().toLowerCase().contains(rawQuery))
-        (
-          key: '${artist.name.trim().toLowerCase()}\x1f${artist.id}',
-          result: SearchResult(
-            kind: 'artist',
-            id: artist.id,
-            title: artist.name,
-            artworkPath: artist.coverPath,
-            score: scoreLibrarySearch(normalizedQuery, artist.name),
-          ),
+      (
+        key: '${artist.name.trim().toLowerCase()}\x1f${artist.id}',
+        result: SearchResult(
+          kind: 'artist',
+          id: artist.id,
+          title: artist.name,
+          artworkPath: artist.coverPath,
+          score: matcher.score(artist.name),
         ),
+      ),
   ]);
 
   final albums = <String, OfflineAlbumGroup>{
@@ -86,10 +60,7 @@ List<SearchResult> searchLocalLibrary({
           subtitle: group.artist,
           albumId: group.id,
           artworkPath: group.coverPath,
-          score: scoreLibrarySearch(
-            normalizedQuery,
-            '${group.title} ${group.artist}',
-          ),
+          score: _albumSearchScore(matcher, group),
         ),
       ),
   ]);
@@ -106,10 +77,7 @@ List<SearchResult> searchLocalLibrary({
           subtitle: '${track.artist} - ${track.album}',
           albumId: trackAlbums[track.id]?.id ?? track.albumId,
           artworkPath: trackAlbums[track.id]?.coverPath ?? track.albumArtPath,
-          score: scoreLibrarySearch(
-            normalizedQuery,
-            '${track.title} ${track.artist} ${track.album}',
-          ),
+          score: _trackSearchScore(matcher, track),
         ),
       ),
   ]);
@@ -127,28 +95,55 @@ List<SearchResult> searchLocalLibrary({
 
 String _albumSearchKey(OfflineAlbumGroup group) {
   final album = group.toAlbum();
+  final year = (album.year ?? 9999).clamp(0, 9999).toString().padLeft(4, '0');
+  return '${_albumSearchArtist(group).toLowerCase()}\x1f$year\x1f'
+      '${album.title.toLowerCase()}\x1f${album.id}';
+}
+
+String _albumSearchArtist(OfflineAlbumGroup group) {
+  final album = group.toAlbum();
   final names = album.artistNames.isNotEmpty
       ? album.artistNames
       : album.credits
             .where((credit) => credit.isAlbumArtist)
             .map((c) => c.name);
-  final year = (album.year ?? 9999).clamp(0, 9999).toString().padLeft(4, '0');
-  return '${names.join(' ').trim().toLowerCase()}\x1f$year\x1f'
-      '${album.title.toLowerCase()}\x1f${album.id}';
+  return names.join(' ').trim();
 }
 
 String _trackSearchKey(Track track) {
+  final artist = _trackSearchArtist(track).toLowerCase();
+  final disc = (track.discNo ?? 65535).toString().padLeft(5, '0');
+  final number = (track.trackNo ?? 65535).toString().padLeft(5, '0');
+  return '$artist\x1f${track.album.toLowerCase()}\x1f$disc\x1f$number\x1f'
+      '${track.title.toLowerCase()}\x1f${track.id}';
+}
+
+String _trackSearchArtist(Track track) {
   final displayed = track.artist.toLowerCase();
   final names = track.credits
       .where((credit) => credit.isPerformingArtist)
       .where((credit) => !displayed.contains(credit.name.toLowerCase()))
       .map((credit) => credit.name)
       .join(' ');
-  final artist = '${track.artist} $names'.trim().toLowerCase();
-  final disc = (track.discNo ?? 65535).toString().padLeft(5, '0');
-  final number = (track.trackNo ?? 65535).toString().padLeft(5, '0');
-  return '$artist\x1f${track.album.toLowerCase()}\x1f$disc\x1f$number\x1f'
-      '${track.title.toLowerCase()}\x1f${track.id}';
+  return '${track.artist} $names'.trim();
+}
+
+int _albumSearchScore(LibrarySearchQuery matcher, OfflineAlbumGroup group) {
+  final catalogScore = matcher.score(
+    '${group.title} ${_albumSearchArtist(group)}',
+  );
+  final displayScore = matcher.score('${group.title} ${group.artist}');
+  return catalogScore > displayScore ? catalogScore : displayScore;
+}
+
+int _trackSearchScore(LibrarySearchQuery matcher, Track track) {
+  final artist = _trackSearchArtist(track);
+  final catalogScore = matcher.score('${track.title} $artist ${track.album}');
+  if (artist == track.artist) return catalogScore;
+  final displayScore = matcher.score(
+    '${track.title} ${track.artist} ${track.album}',
+  );
+  return catalogScore > displayScore ? catalogScore : displayScore;
 }
 
 // Compare Unicode scalar values, matching Rust's UTF-8 string ordering.

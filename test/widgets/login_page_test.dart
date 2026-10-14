@@ -78,14 +78,13 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.text('CONNECT TO SERVER'), findsOneWidget);
 
-        expect(find.text('Encrypted connection'), findsOneWidget);
-        for (final label in ['Server address', 'Port (optional)']) {
+        for (final label in ['Server address', 'Port']) {
           final surface = find
               .descendant(of: _field(label), matching: find.byType(ClipPath))
               .first;
           final rect = tester.getRect(surface);
           expect(rect.height, greaterThanOrEqualTo(width < 820 ? 56 : 48));
-          expect(rect.left, 20);
+          expect(rect.center.dx, width / 2);
           expect(rect.right, lessThanOrEqualTo(width - 20));
         }
         expect(
@@ -133,10 +132,7 @@ void main() {
       tester.widget<TextField>(_input('Server address')).controller!.text,
       'music.test',
     );
-    expect(
-      tester.widget<TextField>(_input('Port (optional)')).controller!.text,
-      '8443',
-    );
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
     expect(find.text('HTTP'), findsNothing);
     await _tapAction(tester, 'Connect');
     expect(controller.probes, ['https://music.test:8443']);
@@ -161,20 +157,31 @@ void main() {
       final controller = _LoginController()..probeResult = pending.future;
       await _pump(tester, controller);
       await tester.enterText(_input('Server address'), 'server.test');
-      final queuedSubmit = tester
-          .widget<TextField>(_input('Port (optional)'))
-          .onSubmitted;
+      final queuedSubmit = tester.widget<TextField>(_input('Port')).onSubmitted;
+      final buttonRect = tester.getRect(_action('Connect'));
       await tester.tap(_action('Connect'));
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(
+        tester
+            .widget<CircularProgressIndicator>(
+              find.byType(CircularProgressIndicator),
+            )
+            .semanticsLabel,
+        'Connecting',
+      );
+      expect(find.text('CONNECT TO SERVER'), findsOneWidget);
+      expect(_input('Username'), findsNothing);
+      expect(tester.getRect(_action('Connect')), buttonRect);
+      expect(
+        tester.getCenter(find.byType(CircularProgressIndicator)),
+        buttonRect.center,
+      );
+      expect(
         tester.widget<TextField>(_input('Server address')).enabled,
         isFalse,
       );
-      expect(
-        tester.widget<TextButton>(_action('Connecting...')).onPressed,
-        isNull,
-      );
+      expect(tester.widget<TextButton>(_action('Connect')).onPressed, isNull);
       queuedSubmit?.call('');
       expect(controller.probes, hasLength(1));
       pending.complete(false);
@@ -186,8 +193,35 @@ void main() {
       );
       expect(find.byType(SnackBar), findsNothing);
       expect(find.byType(MaterialBanner), findsNothing);
+      expect(find.text('CONNECT TO SERVER'), findsOneWidget);
+      expect(_input('Username'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      controller.probeResult = Future.value(true);
+      await _tapAction(tester, 'Connect');
+      expect(controller.probes, hasLength(2));
+      expect(_input('Username'), findsOneWidget);
+      expect(find.text('Connection failed'), findsNothing);
     },
   );
+
+  testWidgets('successful verification keeps the spinner until completion', (
+    tester,
+  ) async {
+    final pending = Completer<bool>();
+    final controller = _LoginController()..probeResult = pending.future;
+    await _pump(tester, controller);
+    await tester.enterText(_input('Server address'), 'server.test');
+    await tester.tap(_action('Connect'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(_input('Username'), findsNothing);
+    pending.complete(true);
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(_input('Username'), findsOneWidget);
+    expect(_input('Server address'), findsNothing);
+  });
 
   testWidgets(
     'short phone keeps actions reachable with keyboard and inline errors',
@@ -205,16 +239,16 @@ void main() {
       expect(find.text('Server address is required'), findsOneWidget);
       await tester.ensureVisible(_input('Server address'));
       await tester.enterText(_input('Server address'), 'server.test');
-      await tester.ensureVisible(_input('Port (optional)'));
-      await tester.enterText(_input('Port (optional)'), '65536');
+      await tester.ensureVisible(_input('Port'));
+      await tester.enterText(_input('Port'), '65536');
       await _tapAction(tester, 'Connect');
       expect(
         find.text('Port must be a number between 1 and 65535'),
         findsOneWidget,
       );
       expect(controller.probes, isEmpty);
-      await tester.ensureVisible(_input('Port (optional)'));
-      await tester.enterText(_input('Port (optional)'), '3000');
+      await tester.ensureVisible(_input('Port'));
+      await tester.enterText(_input('Port'), '3000');
       await _tapAction(tester, 'Connect');
       expect(controller.probes, ['https://server.test:3000']);
       await tester.ensureVisible(_action('Sign in'));
@@ -235,15 +269,11 @@ void main() {
         trust: testServerTrust,
       );
     await _pump(tester, controller);
-    expect(find.text('Encrypted connection'), findsOneWidget);
     expect(
       tester.widget<TextField>(_input('Server address')).controller!.text,
       'saved.test',
     );
-    expect(
-      tester.widget<TextField>(_input('Port (optional)')).controller!.text,
-      '8443',
-    );
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
     await _tapAction(tester, 'Connect');
     expect(
       tester.widget<TextField>(_input('Username')).controller!.text,

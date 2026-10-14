@@ -23,9 +23,14 @@ import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
 import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 
+import '../support/auth_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
 
 class _StatsController extends Fake implements AppController {
+  _StatsController() {
+    server.setTrust(testServerTrust);
+  }
+
   final collectionUpdates = StreamController<bool>.broadcast();
   final statsUpdates = StreamController<StatsResponse?>.broadcast();
   final authUpdates = StreamController<AuthState>.broadcast();
@@ -146,6 +151,17 @@ class _StatsController extends Fake implements AppController {
   }
 
   @override
+  Future<void> resetListeningStatistics() async {
+    if (auth.isAuthorized) {
+      accountResets++;
+      if (failReset) throw ApiException(503, 'Unavailable');
+    } else if (failReset) {
+      throw StateError('Storage unavailable');
+    }
+    localResets++;
+  }
+
+  @override
   Future<void> close() async {
     await collectionUpdates.close();
     await statsUpdates.close();
@@ -222,39 +238,44 @@ void main() {
   setUp(configureTestFonts);
 
   for (final status in SessionStatus.values) {
-    testWidgets('account reset is available only when authenticated: $status', (
-      tester,
-    ) async {
-      _viewport(tester, const Size(320, 812));
-      final controller = _StatsController()
-        ..auth = AuthState(baseUrl: 'saved-server', status: status);
-      _disposeController(tester, controller);
-      await tester.pumpWidget(
-        _app(controller, const SettingsPage(), scale: 0.7),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('reset-account-history')),
-        status == SessionStatus.authenticated ? findsOneWidget : findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey('reset-device-only-history')),
-        findsOneWidget,
-      );
-      expect(find.text('Reset listening statistics'), findsNothing);
-      expect(controller.localResets, 0);
-      expect(controller.accountResets, 0);
-      expect(tester.takeException(), isNull);
-    });
+    testWidgets(
+      'one statistics reset is available for connection state $status',
+      (tester) async {
+        _viewport(tester, const Size(320, 812));
+        final controller = _StatsController()
+          ..auth = AuthState(baseUrl: 'saved-server', status: status);
+        _disposeController(tester, controller);
+        await tester.pumpWidget(
+          _app(controller, const SettingsPage(), scale: 0.7),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('reset-listening-statistics')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('reset-device-only-history')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('reset-account-history')),
+          findsNothing,
+        );
+        expect(find.text('Reset listening statistics'), findsOneWidget);
+        expect(controller.localResets, 0);
+        expect(controller.accountResets, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   for (final account in [false, true]) {
     testWidgets(
-      '${account ? 'account' : 'device-only'} reset requires confirmation and preserves collection toggle',
+      '${account ? 'account' : 'local'} reset requires confirmation and preserves collection toggle',
       (tester) async {
         _viewport(tester, const Size(375, 812));
         final controller = _StatsController()
-          ..enabled = false
+          ..enabled = true
           ..auth = AuthState(
             baseUrl: 'saved-server',
             status: account
@@ -268,16 +289,24 @@ void main() {
         await tester.pumpAndSettle();
         Future<void> openReset() async {
           final reset = find.byKey(
-            ValueKey(
-              account ? 'reset-account-history' : 'reset-device-only-history',
-            ),
+            const ValueKey('reset-listening-statistics'),
           );
           await tester.ensureVisible(reset);
+          await tester.pumpAndSettle();
           await tester.tap(reset);
           await tester.pumpAndSettle();
         }
 
         await openReset();
+        expect(find.text('Reset listening statistics?'), findsOneWidget);
+        expect(
+          find.textContaining(
+            account
+                ? 'saved on this device and for your connected server account'
+                : 'Server statistics and statistics saved on other devices are kept',
+          ),
+          findsOneWidget,
+        );
         expect(controller.localResets, 0);
         expect(controller.accountResets, 0);
         await tester.tap(find.text('CANCEL'));
@@ -285,26 +314,76 @@ void main() {
         expect(controller.localResets, 0);
         expect(controller.accountResets, 0);
         await openReset();
-        await tester.tap(find.text('RESET HISTORY'));
+        await tester.tap(find.text('RESET STATISTICS'));
         await tester.pumpAndSettle();
-        expect(controller.localResets, account ? 0 : 1);
+        expect(controller.localResets, 1);
         expect(controller.accountResets, account ? 1 : 0);
-        expect(controller.enabled, isFalse);
+        expect(controller.enabled, isTrue);
         expect(controller.choices, isEmpty);
-        expect(
-          find.text(
-            account
-                ? 'Account listening history reset.'
-                : 'Device-only listening history reset.',
-          ),
-          findsNothing,
-        );
+        expect(find.text('Listening statistics reset.'), findsNothing);
         expect(find.byType(SnackBar), findsNothing);
         expect(find.byType(MaterialBanner), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  for (final signedIn in [false, true]) {
+    testWidgets(
+      'reset controls follow collection setting, signed in $signedIn',
+      (tester) async {
+        final controller = _StatsController()
+          ..enabled = false
+          ..auth = AuthState(
+            baseUrl: 'saved-server',
+            status: signedIn
+                ? SessionStatus.authenticated
+                : SessionStatus.offline,
+          );
+        _disposeController(tester, controller);
+        await tester.pumpWidget(_app(controller, const SettingsPage()));
+        await tester.pumpAndSettle();
+        final reset = find.byKey(const ValueKey('reset-listening-statistics'));
+        expect(reset, findsNothing);
+
+        final toggle = find.byKey(
+          const ValueKey('listening-statistics-switch'),
+        );
+        await tester.ensureVisible(toggle);
+        await tester.pumpAndSettle();
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(reset, findsOneWidget);
+
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(reset, findsNothing);
+        expect(controller.localResets, 0);
+        expect(controller.accountResets, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('turning collection off during confirmation cancels the reset', (
+    tester,
+  ) async {
+    final controller = _StatsController();
+    _disposeController(tester, controller);
+    await tester.pumpWidget(_app(controller, const SettingsPage()));
+    await tester.pumpAndSettle();
+    final reset = find.byKey(const ValueKey('reset-listening-statistics'));
+    await tester.ensureVisible(reset);
+    await tester.pumpAndSettle();
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    await controller.setStatsCollectionEnabled(false);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('RESET STATISTICS'));
+    await tester.pumpAndSettle();
+    expect(controller.localResets, 0);
+    expect(reset, findsNothing);
+  });
 
   testWidgets(
     'account change during confirmation prevents reset of a different account',
@@ -317,17 +396,18 @@ void main() {
       _disposeController(tester, controller);
       await tester.pumpWidget(_app(controller, const SettingsPage()));
       await tester.pumpAndSettle();
-      final reset = find.byKey(const ValueKey('reset-account-history'));
+      final reset = find.byKey(const ValueKey('reset-listening-statistics'));
       await tester.ensureVisible(reset);
+      await tester.pumpAndSettle();
       await tester.tap(reset);
       await tester.pumpAndSettle();
       controller.server.setToken('different-account');
       controller.authUpdates.add(controller.auth);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('RESET HISTORY'));
+      await tester.tap(find.text('RESET STATISTICS'));
       await tester.pumpAndSettle();
       expect(controller.accountResets, 0);
-      expect(find.text('Account listening history reset.'), findsNothing);
+      expect(find.text('Listening statistics reset.'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -348,16 +428,17 @@ void main() {
       _disposeController(tester, controller);
       await tester.pumpWidget(_app(controller, const SettingsPage()));
       await tester.pumpAndSettle();
-      final reset = find.byKey(const ValueKey('reset-account-history'));
+      final reset = find.byKey(const ValueKey('reset-listening-statistics'));
       await tester.ensureVisible(reset);
+      await tester.pumpAndSettle();
       await tester.tap(reset);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('RESET HISTORY'));
+      await tester.tap(find.text('RESET STATISTICS'));
       await tester.pumpAndSettle();
       expect(controller.accountResets, 1);
-      expect(find.text('Account listening history reset.'), findsNothing);
+      expect(find.text('Listening statistics reset.'), findsNothing);
       expect(
-        find.textContaining('Could not confirm the account reset.'),
+        find.textContaining('Could not reset listening statistics.'),
         findsNothing,
       );
       expect(find.byType(SnackBar), findsNothing);
@@ -366,7 +447,7 @@ void main() {
         failures.any(
           (entry) =>
               entry.level == LogLevel.warning &&
-              entry.message.contains('Could not confirm the account reset.'),
+              entry.message.contains('Could not reset listening statistics.'),
         ),
         isTrue,
       );
@@ -888,7 +969,7 @@ void main() {
       expect(tester.widget<Switch>(toggle).value, isFalse);
       expect(
         find.text(
-          'New listening and uploads are stopped on this device. Existing history is kept.',
+          'New listening statistics and uploads are stopped on this device. Existing statistics are kept.',
         ),
         findsOneWidget,
       );

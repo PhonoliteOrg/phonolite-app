@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../widgets/ui/edit_icon.dart';
 
-import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../entities/offline_models.dart';
@@ -23,6 +22,7 @@ class LocalAlbumDetailScreen extends StatefulWidget {
   const LocalAlbumDetailScreen({super.key, required this.album});
 
   final OfflineAlbumGroup album;
+  static String routeNameFor(String albumId) => '/library/local/album/$albumId';
 
   @override
   State<LocalAlbumDetailScreen> createState() => _LocalAlbumDetailScreenState();
@@ -36,7 +36,6 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
     return Scaffold(
-      backgroundColor: bgDark,
       body: SafeArea(
         child: StreamBuilder<PlaybackState>(
           stream: controller.playbackStream,

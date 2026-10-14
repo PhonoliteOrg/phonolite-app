@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../persistence/log_files.dart';
+import 'log_storage_settings.dart';
 
 typedef LogListener = void Function(LogEntry entry);
 
@@ -115,6 +116,9 @@ class AppLogger {
   final ListQueue<LogEntry> _buffer = ListQueue<LogEntry>();
   final List<LogListener> _listeners = <LogListener>[];
   final Map<String, ListQueue<String>> _pending = {};
+  final Queue<_LogDirectoryChange> _directoryChanges = Queue();
+  final _storageLocationController =
+      StreamController<LogStorageLocation>.broadcast();
   LogFiles? _files;
   Future<void>? _initialization;
   Future<void>? _writer;
@@ -122,6 +126,9 @@ class AppLogger {
   String? _persistenceError;
 
   String? get storageDirectory => _files?.directoryPath;
+  LogStorageLocation? get storageLocation => _files?.storageLocation;
+  Stream<LogStorageLocation> get storageLocationStream =>
+      _storageLocationController.stream;
   String? get persistenceError => _persistenceError;
 
   /// Opt in at app startup; construction and ordinary unit tests do no I/O.
@@ -144,6 +151,7 @@ class AppLogger {
         _retain(entry);
       }
       _files = files;
+      _storageLocationController.add(files.storageLocation!);
       for (final entry in startupEntries) {
         _queue(entry);
       }
@@ -203,11 +211,25 @@ class AppLogger {
 
   Future<void> _drain() async {
     try {
-      while (_clearRequested || _pending.isNotEmpty) {
+      while (_clearRequested ||
+          _pending.isNotEmpty ||
+          _directoryChanges.isNotEmpty) {
         try {
           if (_clearRequested) {
             _clearRequested = false;
             await _files!.clear();
+          } else if (_directoryChanges.isNotEmpty) {
+            final change = _directoryChanges.removeFirst();
+            try {
+              final warnings = await _files!.changeDirectory(change.path);
+              for (final message in warnings) {
+                log(LogEntry(message: message, level: LogLevel.warning));
+              }
+              _storageLocationController.add(_files!.storageLocation!);
+              change.completion.complete();
+            } catch (error, stack) {
+              change.completion.completeError(error, stack);
+            }
           } else {
             final batch = {
               for (final item in _pending.entries)
@@ -257,6 +279,17 @@ class AppLogger {
     return flush();
   }
 
+  Future<void> updateStorageDirectory(String? path) async {
+    await initialize();
+    if (_files == null) {
+      throw StateError('Local log files are unavailable.');
+    }
+    final change = _LogDirectoryChange(path);
+    _directoryChanges.add(change);
+    _scheduleWriter();
+    await change.completion.future;
+  }
+
   static void info(String message) {
     instance.log(LogEntry(message: message, level: LogLevel.info));
   }
@@ -276,4 +309,11 @@ class AppLogger {
   static void debug(String message) {
     instance.log(LogEntry(message: message, level: LogLevel.debug));
   }
+}
+
+class _LogDirectoryChange {
+  _LogDirectoryChange(this.path);
+
+  final String? path;
+  final completion = Completer<void>();
 }

@@ -14,6 +14,7 @@ class ObsidianTextField extends StatefulWidget {
     this.label,
     this.hintText,
     this.obscureText = false,
+    this.autofillHints,
     this.prefixIcon,
     this.suffixIcon,
     this.onSubmitted,
@@ -33,6 +34,7 @@ class ObsidianTextField extends StatefulWidget {
   final String? label;
   final String? hintText;
   final bool obscureText;
+  final Iterable<String>? autofillHints;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
   final ValueChanged<String>? onSubmitted;
@@ -99,15 +101,15 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.white.withOpacity(0.05),
-                      Colors.white.withOpacity(0.01),
+                      Colors.white.withValues(alpha: 0.05),
+                      Colors.white.withValues(alpha: 0.01),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   border: Border(
                     bottom: BorderSide(
-                      color: Colors.white.withOpacity(0.18),
+                      color: Colors.white.withValues(alpha: 0.18),
                       width: 1,
                     ),
                   ),
@@ -116,6 +118,16 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
                   controller: widget.controller,
                   focusNode: _focusNode,
                   obscureText: widget.obscureText,
+                  autofillHints: widget.autofillHints,
+                  autocorrect: !widget.obscureText,
+                  enableSuggestions: !widget.obscureText,
+                  enableIMEPersonalizedLearning: !widget.obscureText,
+                  smartDashesType: widget.obscureText
+                      ? SmartDashesType.disabled
+                      : null,
+                  smartQuotesType: widget.obscureText
+                      ? SmartQuotesType.disabled
+                      : null,
                   enabled: widget.enabled,
                   keyboardType: widget.keyboardType,
                   textInputAction: widget.textInputAction,

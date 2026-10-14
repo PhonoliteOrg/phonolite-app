@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:phonolite_app/entities/auth_storage.dart';
 import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
+import 'package:phonolite_app/entities/log_storage_settings.dart';
 import 'package:phonolite_app/entities/offline_storage_settings.dart';
 import 'package:phonolite_app/entities/playback_preferences.dart';
 import 'package:phonolite_app/persistence/settings_files.dart';
@@ -157,6 +158,29 @@ void main() {
         await (await files.resolve('offline_storage.json')).exists(),
         isTrue,
       );
+    },
+  );
+
+  test(
+    'log paths persist separately and managed devices ignore custom folders',
+    () async {
+      final storage = LogStorageSettingsStorage(
+        files: files,
+        usesManagedStoragePaths: () => false,
+      );
+      final directory = Directory('${temp.path}/logs').absolute.path;
+      await storage.write(directory);
+      expect(await storage.read(), directory);
+      final managed = LogStorageSettingsStorage(
+        files: files,
+        usesManagedStoragePaths: () => true,
+      );
+      expect(await managed.read(), isNull);
+      await managed.write(directory);
+      expect(await storage.read(), isNull);
+      final file = await files.resolve('log_storage.json');
+      await file.writeAsString('{invalid');
+      expect(await storage.read(), isNull);
     },
   );
 

@@ -11,6 +11,7 @@ import 'entities/server_trust.dart';
 import 'pages/home_page.dart';
 import 'widgets/layouts/app_scope.dart';
 import 'widgets/layouts/obsidian_viewport.dart';
+import 'widgets/navigation/desktop_playback_shortcuts.dart';
 import 'widgets/ui/obsidian_theme.dart';
 import 'widgets/ui/phonolite_icons.dart';
 
@@ -73,9 +74,13 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
         title: 'Phonolite',
         theme: ObsidianTheme.build(),
         themeAnimationStyle: AnimationStyle.noAnimation,
-        builder: (context, child) => TooltipVisibility(
-          visible: false,
-          child: ObsidianViewport(child: child ?? const SizedBox.shrink()),
+        builder: (context, child) => DesktopPlaybackShortcuts(
+          onTogglePlayPause: () =>
+              unawaited(_controller.pause(_controller.playbackState.isPlaying)),
+          child: TooltipVisibility(
+            visible: false,
+            child: ObsidianViewport(child: child ?? const SizedBox.shrink()),
+          ),
         ),
         home: const HomePage(),
       ),

@@ -46,12 +46,12 @@ class EmptyStateText extends StatelessWidget {
   const EmptyStateText({
     super.key,
     required this.title,
-    required this.message,
+    this.message,
     this.padding = const EdgeInsets.symmetric(vertical: 24),
   });
 
   final String title;
-  final String message;
+  final String? message;
   final EdgeInsetsGeometry padding;
 
   @override
@@ -71,14 +71,16 @@ class EmptyStateText extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: ObsidianPalette.textMuted,
+            if (message != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                message!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: ObsidianPalette.textMuted,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
+            ],
           ],
         ),
       ),

@@ -465,7 +465,122 @@ void main() {
   );
 
   test(
-    'other devices discard stale uploads and disabled devices learn reset',
+    'connected reset clears the server and every copy on this device',
+    () async {
+      await history.setAccount();
+      await history.recordSegment(localEvent(9));
+      await history.setAccount(serverId: 'server-a', userId: 'user-a');
+      await history.recordSegment(localEvent(0));
+      await sync.sync(immediate: true);
+      await history.recordSegment(localEvent(1));
+      await sync.resetListeningStatistics(resetServer: true);
+      expect(connection.resets, 1);
+      expect(connection.records['user-a'], isNull);
+      expect(history.historyGeneration, 2);
+      expect(history.pendingCount, 0);
+      expect(history.canImportLocalHistory, isFalse);
+      expect((await history.stats(year: 2026)).totalListeningMs, 0);
+      await history.setAccount();
+      expect((await history.stats(year: 2026)).totalListeningMs, 0);
+      await history.setAccount(serverId: 'server-a', userId: 'user-a');
+      await history.recordSegment(localEvent(2));
+      await sync.sync(immediate: true);
+      expect((await history.stats(year: 2026)).totalListeningMs, 60000);
+      expect(connection.records['user-a'], hasLength(1));
+    },
+  );
+
+  test(
+    'offline reset clears cached account totals and pending uploads without contacting the server',
+    () async {
+      await history.recordSegment(localEvent(0));
+      await sync.sync(immediate: true);
+      final generation = history.historyGeneration;
+      authorized = false;
+      await history.recordSegment(localEvent(1));
+      final uploads = connection.uploads;
+      await sync.resetListeningStatistics(resetServer: false);
+      expect(connection.resets, 0);
+      expect(connection.uploads, uploads);
+      expect(history.historyGeneration, generation);
+      expect(history.pendingCount, 0);
+      expect((await history.stats(year: 2026)).totalListeningMs, 0);
+      expect(
+        connection.counterRows['user-a']!.values.single['listened_ms'],
+        60000,
+      );
+
+      await history.recordSegment(localEvent(2));
+      authorized = true;
+      await sync.sync(immediate: true);
+      expect(
+        connection.counterRows['user-a']!.values.single['listened_ms'],
+        120000,
+      );
+      expect(history.pendingCount, 0);
+    },
+  );
+
+  test(
+    'a server reset leaves another device statistics until that device is reset',
+    () async {
+      await history.recordSegment(localEvent(0));
+      await sync.sync(immediate: true);
+      final other = ListeningStatsService(
+        inMemory: true,
+        clock: () => DateTime.utc(2026, 10, 8),
+      );
+      await other.initialize();
+      final otherSync = ListeningStatsSync(
+        history: other,
+        connection: connection,
+        isAuthorized: () => true,
+        onChanged: () {},
+        onIdentity: (_, __) async {},
+      );
+      addTearDown(() async {
+        await otherSync.close();
+        await other.close();
+      });
+      await otherSync.sync(immediate: true);
+      await other.recordSegment(event(1, device: other.deviceId));
+      expect((await other.stats(year: 2026)).totalListeningMs, 120000);
+
+      await sync.resetListeningStatistics(resetServer: true);
+      await otherSync.sync(immediate: true);
+      expect((await history.stats(year: 2026)).totalListeningMs, 0);
+      expect((await other.stats(year: 2026)).totalListeningMs, 120000);
+      expect(other.pendingCount, 0);
+      expect(connection.counterRows['user-a'], isNull);
+      await other.recordSegment(event(2, device: other.deviceId));
+      await otherSync.sync(immediate: true);
+      expect((await other.stats(year: 2026)).totalListeningMs, 180000);
+      expect(
+        connection.counterRows['user-a']!.values.single['listened_ms'],
+        60000,
+      );
+      await otherSync.resetListeningStatistics(resetServer: false);
+      expect((await other.stats(year: 2026)).totalListeningMs, 0);
+      expect(
+        connection.counterRows['user-a']!.values.single['listened_ms'],
+        60000,
+      );
+    },
+  );
+
+  test('a failed connected reset keeps device statistics intact', () async {
+    await history.recordSegment(localEvent(0));
+    connection.failReset = true;
+    await expectLater(
+      sync.resetListeningStatistics(resetServer: true),
+      throwsA(isA<ApiException>()),
+    );
+    expect((await history.stats(year: 2026)).totalListeningMs, 60000);
+    expect(history.pendingCount, 1);
+  });
+
+  test(
+    'other devices retain local totals and retire stale uploads after a server reset',
     () async {
       await history.recordSegment(localEvent(0));
       connection.generation = 2;
@@ -473,13 +588,14 @@ void main() {
       expect(connection.uploads, 0);
       expect(history.pendingCount, 0);
       expect(history.historyGeneration, 2);
+      expect((await history.stats(year: 2026)).totalListeningMs, 60000);
       await history.recordSegment(localEvent(1));
       await history.setEnabled(false);
       connection.generation = 3;
       await sync.sync(immediate: true);
       expect(history.enabled, isFalse);
       expect(history.historyGeneration, 3);
-      expect((await history.stats(year: 2026)).totalListeningMs, 0);
+      expect((await history.stats(year: 2026)).totalListeningMs, 120000);
       expect(connection.uploads, 0);
     },
   );
@@ -598,15 +714,18 @@ void main() {
     },
   );
 
-  test('history reset is checked before any old offline upload', () async {
-    await history.recordSegment(localEvent(0));
-    connection.generation = 2;
-    await sync.sync(immediate: true);
-    expect(history.historyGeneration, 2);
-    expect(history.pendingCount, 0);
-    expect(connection.uploads, 0);
-    expect((await history.stats(year: 2026)).totalMinutes, 0);
-  });
+  test(
+    'server reset retains local statistics without uploading the old copies',
+    () async {
+      await history.recordSegment(localEvent(0));
+      connection.generation = 2;
+      await sync.sync(immediate: true);
+      expect(history.historyGeneration, 2);
+      expect(history.pendingCount, 0);
+      expect(connection.uploads, 0);
+      expect((await history.stats(year: 2026)).totalMinutes, 1);
+    },
+  );
 
   test(
     'permanent batch rejection preserves local totals and permits later listening',

@@ -7,7 +7,6 @@ import '../widgets/ui/playlist_edit_icon.dart';
 import '../widgets/ui/phonolite_icons.dart';
 import '../widgets/ui/responsive_breakpoints.dart';
 import '../widgets/ui/tech_button.dart';
-import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
@@ -108,7 +107,6 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                 );
                 final selectedTracks = _selectedTracks(removableTracks);
                 return Scaffold(
-                  backgroundColor: bgDark,
                   body: CustomScrollView(
                     slivers: [
                       SliverPadding(

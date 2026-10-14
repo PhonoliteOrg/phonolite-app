@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/models.dart';
+import 'package:phonolite_app/entities/log_storage_settings.dart';
 import 'package:phonolite_app/entities/offline_library.dart';
 import 'package:phonolite_app/entities/offline_storage_settings.dart';
 import 'package:phonolite_app/pages/settings_page.dart';
@@ -1526,7 +1527,7 @@ void main() {
       expect(find.text('Pick another album to see tracks.'), findsOneWidget);
     });
 
-    testWidgets('settings page uses managed offline storage copy on iOS', (
+    testWidgets('settings page uses managed local storage copy on iOS', (
       tester,
     ) async {
       _setViewport(tester, const Size(900, 900));
@@ -1545,6 +1546,10 @@ void main() {
             onChangeDownloads: null,
             onResetDownloads: null,
             onResetOfflineData: null,
+            logsLocation: LogStorageLocation(
+              directory: '/app/Phonolite/logs',
+              isDefault: true,
+            ),
           ),
         ),
       );
@@ -1558,48 +1563,160 @@ void main() {
       );
       expect(
         find.textContaining('Managed automatically on this device -'),
-        findsNWidgets(2),
+        findsNWidgets(3),
       );
       expect(find.text('CHANGE'), findsNothing);
-      expect(find.text('RESET'), findsNothing);
+      expect(find.text('RESET PATH'), findsNothing);
+      expect(find.text('OPEN FOLDER'), findsNothing);
     });
 
-    testWidgets('settings page keeps storage actions on desktop platforms', (
+    for (final platform in [
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.linux,
+    ]) {
+      testWidgets('settings page opens each storage folder on $platform', (
+        tester,
+      ) async {
+        _setViewport(tester, const Size(1280, 900));
+        var metadataOpened = 0;
+        var downloadsOpened = 0;
+        var logsOpened = 0;
+        var logsChanged = 0;
+        var logsReset = 0;
+        await tester.pumpWidget(
+          _buildOfflineStorageSectionTestApp(
+            platform: platform,
+            child: OfflineStorageSection(
+              locations: const OfflineStorageLocations(
+                metadataDirectory: '/app/Phonolite/offline',
+                downloadsDirectory: '/app/Phonolite/offline',
+                metadataDirectoryIsDefault: true,
+                downloadsDirectoryIsDefault: true,
+              ),
+              onChangeMetadata: _noop,
+              onResetMetadata: _noop,
+              onChangeDownloads: _noop,
+              onResetDownloads: _noop,
+              onResetOfflineData: _noop,
+              onOpenMetadata: () => metadataOpened++,
+              onOpenDownloads: () => downloadsOpened++,
+              logsLocation: const LogStorageLocation(
+                directory: '/app/Phonolite/logs',
+                isDefault: true,
+              ),
+              onChangeLogs: () => logsChanged++,
+              onResetLogs: () => logsReset++,
+              onOpenLogs: () => logsOpened++,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.text(
+            'Folder selection and custom paths are not supported on iPhone or iPad.',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Managed automatically on this device -'),
+          findsNothing,
+        );
+        expect(find.text('Logs storage'), findsOneWidget);
+        expect(find.text('Reset local data'), findsOneWidget);
+        expect(find.text('Reset offline data'), findsNothing);
+        expect(find.text('CHANGE'), findsNWidgets(3));
+        expect(find.text('RESET PATH'), findsNWidgets(3));
+        expect(find.text('OPEN FOLDER'), findsNWidgets(3));
+        await tester.tap(find.text('OPEN FOLDER').first);
+        expect(metadataOpened, 1);
+        expect(downloadsOpened, 0);
+        await tester.tap(find.text('OPEN FOLDER').at(1));
+        expect(metadataOpened, 1);
+        expect(downloadsOpened, 1);
+        await tester.tap(find.text('OPEN FOLDER').last);
+        await tester.tap(find.text('CHANGE').last);
+        await tester.tap(find.text('RESET PATH').last);
+        expect(logsOpened, 1);
+        expect(logsChanged, 1);
+        expect(logsReset, 1);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets(
+        'narrow desktop storage menu opens each folder on $platform',
+        (tester) async {
+          _setViewport(tester, const Size(390, 844));
+          var metadataOpened = 0;
+          var downloadsOpened = 0;
+          var logsOpened = 0;
+          await tester.pumpWidget(
+            _buildOfflineStorageSectionTestApp(
+              platform: platform,
+              child: OfflineStorageSection(
+                locations: const OfflineStorageLocations(
+                  metadataDirectory: '/app/metadata',
+                  downloadsDirectory: '/app/downloads',
+                  metadataDirectoryIsDefault: false,
+                  downloadsDirectoryIsDefault: false,
+                ),
+                onChangeMetadata: _noop,
+                onResetMetadata: _noop,
+                onChangeDownloads: _noop,
+                onResetDownloads: _noop,
+                onResetOfflineData: _noop,
+                onOpenMetadata: () => metadataOpened++,
+                onOpenDownloads: () => downloadsOpened++,
+                logsLocation: const LogStorageLocation(
+                  directory: '/app/logs',
+                  isDefault: false,
+                ),
+                onChangeLogs: _noop,
+                onResetLogs: _noop,
+                onOpenLogs: () => logsOpened++,
+              ),
+            ),
+          );
+          await tester.pump();
+          for (var row = 0; row < 3; row++) {
+            await tester.tap(find.byTooltip('Storage actions').at(row));
+            await tester.pumpAndSettle();
+            expect(find.text('Open folder'), findsOneWidget);
+            await tester.tap(find.text('Open folder'));
+            await tester.pumpAndSettle();
+          }
+          expect(metadataOpened, 1);
+          expect(downloadsOpened, 1);
+          expect(logsOpened, 1);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
+    testWidgets('Android keeps storage actions without Open folder', (
       tester,
     ) async {
       _setViewport(tester, const Size(1280, 900));
       await tester.pumpWidget(
         _buildOfflineStorageSectionTestApp(
-          platform: TargetPlatform.macOS,
+          platform: TargetPlatform.android,
           child: OfflineStorageSection(
-            locations: const OfflineStorageLocations(
-              metadataDirectory: '/app/Phonolite/offline',
-              downloadsDirectory: '/app/Phonolite/offline',
-              metadataDirectoryIsDefault: true,
-              downloadsDirectoryIsDefault: true,
-            ),
+            locations: null,
             onChangeMetadata: _noop,
             onResetMetadata: _noop,
             onChangeDownloads: _noop,
             onResetDownloads: _noop,
             onResetOfflineData: _noop,
+            onOpenMetadata: _noop,
+            onOpenDownloads: _noop,
           ),
         ),
       );
-      await tester.pump();
-
-      expect(
-        find.text(
-          'Folder selection and custom paths are not supported on iPhone or iPad.',
-        ),
-        findsNothing,
-      );
-      expect(
-        find.textContaining('Managed automatically on this device -'),
-        findsNothing,
-      );
-      expect(find.text('CHANGE'), findsNWidgets(2));
-      expect(find.text('RESET'), findsNWidgets(2));
+      expect(find.text('CHANGE'), findsNWidgets(3));
+      expect(find.text('RESET PATH'), findsNWidgets(3));
+      expect(find.text('OPEN FOLDER'), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }
