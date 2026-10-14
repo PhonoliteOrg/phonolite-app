@@ -355,6 +355,42 @@ void main() {
   );
 
   test(
+    'device reset clears signed-out and cached account statistics durably',
+    () async {
+      final service = await open();
+      await service.recordSegment(interval(id: 'signed-out'));
+      await service.setAccount(serverId: 'server-a', userId: 'user-b');
+      await service.recordSegment(interval(id: 'other-account'));
+      await service.setAccount(serverId: 'server-a', userId: 'user-a');
+      await service.recordSegment(interval(id: 'current-account'));
+      final generation = service.historyGeneration;
+      final revision = service.preferenceRevision;
+      final queued = service.recordSegment(interval(id: 'queued-before-reset'));
+      await service.resetDeviceHistory();
+      await queued;
+      expect(service.enabled, isTrue);
+      expect(service.preferenceRevision, greaterThan(revision));
+      expect(service.historyGeneration, generation);
+      expect(service.pendingCount, 0);
+      expect(service.canImportLocalHistory, isFalse);
+      expect((await service.stats()).totalListeningMs, 0);
+      await service.setAccount(serverId: 'server-a', userId: 'user-b');
+      expect((await service.stats()).totalListeningMs, 0);
+      await service.setAccount();
+      expect((await service.stats()).totalListeningMs, 0);
+      await service.close();
+
+      final reopened = await open();
+      await reopened.setAccount(serverId: 'server-a', userId: 'user-a');
+      expect((await reopened.stats()).totalListeningMs, 0);
+      expect(reopened.pendingCount, 0);
+      await reopened.recordSegment(interval(id: 'fresh', session: 'fresh'));
+      expect((await reopened.stats()).totalListeningMs, 60000);
+      expect(reopened.pendingCount, 1);
+    },
+  );
+
+  test(
     'account generation change deletes old rows but keeps local and other accounts',
     () async {
       final service = await open();

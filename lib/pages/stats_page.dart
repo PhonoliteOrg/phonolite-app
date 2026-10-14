@@ -13,7 +13,10 @@ import '../widgets/modals/confirmation_modal.dart';
 import '../widgets/ui/tech_button.dart';
 
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key});
+  const StatsPage({super.key, this.onArtistTap, this.onTrackTap});
+
+  final ValueChanged<StatsItem>? onArtistTap;
+  final ValueChanged<StatsTrack>? onTrackTap;
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -83,6 +86,8 @@ class _StatsPageState extends State<StatsPage> {
                 final stats = snapshot.data ?? _emptyStats();
                 return StatsCards(
                   stats: stats,
+                  onArtistTap: widget.onArtistTap,
+                  onTrackTap: widget.onTrackTap,
                   artistCoverUrl: (artist) =>
                       _artistCoverUrl(controller, auth, artist),
                   artistImageHeaders: auth.isAuthorized

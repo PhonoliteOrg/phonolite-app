@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/auth_storage.dart';
 import 'package:phonolite_app/entities/server_connection.dart';
 import 'package:phonolite_app/entities/server_trust.dart';
+import 'package:phonolite_quic/phonolite_quic.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +70,143 @@ void main() {
       expect(() => connection.setToken('secret'), throwsStateError);
     },
   );
+  test(
+    'connection verification waits for TLS health without granting trust',
+    () async {
+      final pending = Completer<void>();
+      var calls = 0;
+      var completed = false;
+      const target = 'https://new-endpoint.test:8443/api/v1';
+      final connection = ServerConnection(
+        baseUrl: 'https://original-endpoint.test/api/v1',
+        serverProbe: ({required host, required port, expectedSpki}) async {
+          calls++;
+          expect(host, 'new-endpoint.test');
+          expect(port, 8443);
+          expect(expectedSpki, isNull);
+          await pending.future;
+        },
+      );
+      final verification = connection.verifyServerConnection(target).then((_) {
+        completed = true;
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, 1);
+      expect(completed, isFalse);
+      pending.complete();
+      await verification;
+      expect(connection.baseUrl, 'https://original-endpoint.test/api/v1');
+      expect(connection.token, isNull);
+      expect(ServerTrustRegistry.lookup(target), isNull);
+      expect(values, isEmpty);
+    },
+  );
+
+  test(
+    'connection verification enforces the stored pin for the entered origin',
+    () async {
+      const target = 'https://remembered-endpoint.test:3000/api/v1';
+      await ServerTrustStore.write(target, trust);
+      var calls = 0;
+      final connection = ServerConnection(
+        baseUrl: 'https://another-endpoint.test/api/v1',
+        serverProbe: ({required host, required port, expectedSpki}) async {
+          calls++;
+          expect(host, 'remembered-endpoint.test');
+          expect(port, 3000);
+          expect(expectedSpki, trust.spki);
+        },
+      );
+      await connection.verifyServerConnection(target);
+      expect(calls, 1);
+      expect(values, hasLength(1));
+      expect(ServerTrustRegistry.lookup(target), isNull);
+    },
+  );
+
+  test(
+    'failed connection checks preserve the session and allow retry',
+    () async {
+      var calls = 0;
+      const original = 'https://active-endpoint.test:3000/api/v1';
+      final connection = ServerConnection(
+        baseUrl: original,
+        serverProbe: ({required host, required port, expectedSpki}) async {
+          if (++calls == 1) throw QuicException('Unable to connect to server');
+        },
+      );
+      connection.setTrust(trust);
+      connection.setToken('existing-session');
+      final revision = connection.sessionRevision;
+      await expectLater(
+        connection.verifyServerConnection(
+          'https://unreachable-endpoint.test:3000',
+        ),
+        throwsA(
+          isA<ServerConnectionCheckException>().having(
+            (error) => error.message,
+            'message',
+            'Unable to connect to server',
+          ),
+        ),
+      );
+      expect(connection.baseUrl, original);
+      expect(connection.token, 'existing-session');
+      expect(connection.sessionRevision, revision);
+      await connection.verifyServerConnection(
+        'https://unreachable-endpoint.test:3000',
+      );
+      expect(calls, 2);
+    },
+  );
+
+  test('connection checks time out with a useful error', () async {
+    final pending = Completer<void>();
+    final connection = ServerConnection(
+      baseUrl: 'https://timeout-endpoint.test:3000/api/v1',
+      serverProbe: ({required host, required port, expectedSpki}) =>
+          pending.future,
+    );
+    await expectLater(
+      connection.verifyServerConnection(
+        connection.baseUrl,
+        timeout: const Duration(milliseconds: 5),
+      ),
+      throwsA(
+        isA<ServerConnectionCheckException>().having(
+          (error) => error.message,
+          'message',
+          contains('Connection timed out'),
+        ),
+      ),
+    );
+    pending.complete();
+    expect(connection.token, isNull);
+  });
+
+  test('invalid endpoint details never run the network check', () async {
+    var calls = 0;
+    final connection = ServerConnection(
+      baseUrl: 'https://validation-endpoint.test:3000/api/v1',
+      serverProbe: ({required host, required port, expectedSpki}) async {
+        calls++;
+      },
+    );
+    for (final input in [
+      '',
+      'http://host:3000',
+      'https://host:0',
+      'https://host:65536',
+      'https://user:password@host:3000',
+      'https://host:3000/wrong-api',
+    ]) {
+      await expectLater(
+        connection.verifyServerConnection(input),
+        throwsException,
+      );
+    }
+    expect(calls, 0);
+  });
   test('pins apply to exactly one HTTPS origin', () {
     ServerTrustRegistry.register('https://pinned.test:3000/api/v1', trust);
     ServerTrustRegistry.validate(Uri.parse('https://pinned.test:3000/library'));

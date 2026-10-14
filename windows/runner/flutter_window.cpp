@@ -1,5 +1,8 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+#include <shellapi.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -27,6 +30,46 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  directory_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "phonolite/directories",
+          &flutter::StandardMethodCodec::GetInstance());
+  directory_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() != "openDirectory") {
+          result->NotImplemented();
+          return;
+        }
+        const auto* path = call.arguments()
+                               ? std::get_if<std::string>(call.arguments())
+                               : nullptr;
+        if (path == nullptr || path->empty()) {
+          result->Error("invalid_path", "A folder path is required.");
+          return;
+        }
+        const int length = MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, path->data(),
+            static_cast<int>(path->length()), nullptr, 0);
+        if (length == 0) {
+          result->Error("invalid_path", "The folder path is not valid UTF-8.");
+          return;
+        }
+        std::wstring folder(static_cast<size_t>(length), L'\0');
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path->data(),
+                            static_cast<int>(path->length()), folder.data(),
+                            length);
+        const auto status = reinterpret_cast<INT_PTR>(ShellExecuteW(
+            GetHandle(), L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+        if (status <= 32) {
+          result->Error("open_failed", "Could not open the folder.",
+                        flutter::EncodableValue(static_cast<int>(status)));
+          return;
+        }
+        result->Success();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -40,6 +83,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (directory_channel_) {
+    directory_channel_->SetMethodCallHandler(nullptr);
+  }
+  directory_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

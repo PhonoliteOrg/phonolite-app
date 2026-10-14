@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/local_library_search.dart';
 import 'package:phonolite_app/entities/models.dart';
@@ -7,22 +10,19 @@ void main() {
   test(
     'server scoring vectors preserve Unicode, punctuation and match tiers',
     () {
-      for (final vector in [
-        ('東京', '東京', 100),
-        ('東京', '大阪', 0),
-        ('Björk', 'BJÖRK', 100),
-        ('FIRST--LIGHT', 'First Light', 100),
-        ('first', 'First Light', 90),
-        ('light', 'First Light Alice', 80),
-        ('alice first', 'First Light Alice', 70),
-        ('frstlght', 'First Light', 60),
-        ('unrelated', 'First Light', 0),
-        ('!!!', 'First Light', 0),
-      ]) {
+      // Identical vectors are consumed by Rust's matcher tests.
+      final vectors =
+          jsonDecode(
+                File(
+                  'test/fixtures/library_search_vectors.json',
+                ).readAsStringSync(),
+              )
+              as List<dynamic>;
+      for (final vector in vectors) {
         expect(
-          scoreLibrarySearch(normalizeLibrarySearch(vector.$1), vector.$2),
-          vector.$3,
-          reason: '${vector.$1} vs ${vector.$2}',
+          scoreLibrarySearch(vector[0] as String, vector[1] as String),
+          vector[2],
+          reason: '${vector[0]} vs ${vector[1]}',
         );
       }
     },
@@ -95,12 +95,21 @@ void main() {
     },
   );
 
-  test('same candidate substring filtering and result cap as server API', () {
+  test('fuzzy candidates survive filtering and retain the result cap', () {
     final tracks = [_track('a', 'Morning'), _track('b', 'Evening')];
     final groups = offlineArtistGroups(tracks);
-    // The server filters its catalog before scoring; a fuzzy-only query does
-    // not manufacture candidates that its catalog lookup would exclude.
-    for (final query in ['frstlght', 'alice first', '!!!', ' ', 'absent']) {
+    for (final query in ['frstlght', 'alice first', 'alic frst']) {
+      final results = searchLocalLibrary(
+        query: query,
+        tracks: tracks,
+        artists: groups,
+      );
+      expect(
+        results.map((result) => result.kind),
+        containsAll(['album', 'track']),
+      );
+    }
+    for (final query in ['!!!', ' ', 'absent']) {
       expect(
         searchLocalLibrary(query: query, tracks: tracks, artists: groups),
         isEmpty,
@@ -116,6 +125,84 @@ void main() {
       ['Alice', 'Evening'],
     );
     expect(searchLocalLibrary(query: '', tracks: [], artists: []), isEmpty);
+  });
+
+  test('all single letter edits work without spelling-specific rules', () {
+    const word = 'radiohead';
+    for (var i = 0; i < word.length; i++) {
+      final variants = [
+        word.substring(0, i) + word.substring(i + 1),
+        '${word.substring(0, i)}x${word.substring(i + 1)}',
+        '${word.substring(0, i)}x${word.substring(i)}',
+        if (i + 1 < word.length)
+          word.substring(0, i) + word[i + 1] + word[i] + word.substring(i + 2),
+      ];
+      for (final query in variants) {
+        expect(scoreLibrarySearch(query, word), greaterThan(0), reason: query);
+      }
+    }
+  });
+
+  test('long literal queries work without unbounded fuzzy comparisons', () {
+    final query = LibrarySearchQuery('a' * 5000);
+    expect(query.score('a' * 5000), 100);
+    expect(query.score('b' * 5000), 0);
+  });
+
+  test('punctuation and spacing equivalence preserves display and artwork', () {
+    final track = _track('a', 'Don’t Stop').copyWith(artist: 'Guns N’ Roses');
+    final groups = offlineArtistGroups([track]);
+    for (final query in ['dont stop', 'dontstop', 'dontstp', 'dont stpo']) {
+      final result = searchLocalLibrary(
+        query: query,
+        tracks: [track],
+        artists: groups,
+      ).singleWhere((result) => result.kind == 'track');
+      expect(result.title, 'Don’t Stop');
+      expect(result.artworkPath, 'album.png');
+      expect(result.albumId, 'album');
+    }
+    expect(
+      searchLocalLibrary(
+        query: 'gunsnroses',
+        tracks: [track],
+        artists: groups,
+      ).any((result) => result.kind == 'artist'),
+      isTrue,
+    );
+  });
+
+  test('ranking considers matches beyond the old per-kind candidate cap', () {
+    final tracks = [
+      for (var i = 0; i < 60; i++)
+        _track('early-$i', 'Moonlight $i').copyWith(trackNo: i + 1),
+      _track('late', 'Light').copyWith(trackNo: 100),
+    ];
+    final result = searchLocalLibrary(
+      query: 'light',
+      tracks: tracks,
+      artists: [],
+      limit: 1,
+    );
+    expect(result.single.id, 'late');
+    expect(result.single.score, 90);
+  });
+
+  test('identifiers and ordering numbers do not become fuzzy search terms', () {
+    final track = _track(
+      'secretidentifier',
+      'Morning',
+    ).copyWith(trackNo: 54321);
+    for (final query in ['secretidentifier', '54321', '9999']) {
+      expect(
+        searchLocalLibrary(
+          query: query,
+          tracks: [track],
+          artists: offlineArtistGroups([track]),
+        ),
+        isEmpty,
+      );
+    }
   });
 
   test('track album id remains optional for legacy search payloads', () {

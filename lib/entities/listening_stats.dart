@@ -354,6 +354,7 @@ class ListeningStatsService {
     String? serverId,
     String? userId,
     int? historyGeneration,
+    bool preserveLocalStatistics = false,
   }) => _run(() async {
     final scope = serverId?.isNotEmpty == true && userId?.isNotEmpty == true
         ? jsonEncode([serverId, userId])
@@ -366,6 +367,7 @@ class ListeningStatsService {
     final state = await _storage!.request('account', {
       'scope': scope,
       if (historyGeneration != null) 'generation': historyGeneration,
+      'preserve_local_statistics': preserveLocalStatistics,
     });
     _accountScope = scope;
     _applyState(state as Map);
@@ -518,6 +520,18 @@ class ListeningStatsService {
     await _storage!.request('reset_local', const {});
     await _refreshState();
   });
+
+  /// Clear every locally stored account and signed-out copy on this device.
+  /// Server generations remain unchanged; the next sync reads their state.
+  Future<void> resetDeviceHistory() {
+    // Reject queued playback intervals captured before the reset, including
+    // intervals for a cached account whose server generation stays unchanged.
+    _preferenceRevision++;
+    return _run(() async {
+      await _storage!.request('reset_device', const {});
+      await _refreshState();
+    });
+  }
 
   /// Anonymous listening is never automatically claimed by a signed-in user.
   Future<void> importLocalHistory() {

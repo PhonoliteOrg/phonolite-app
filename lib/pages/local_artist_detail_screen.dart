@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../widgets/ui/edit_icon.dart';
 
-import '../core/constants.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
 import '../entities/offline_models.dart';
@@ -27,6 +26,9 @@ class LocalArtistDetailScreen extends StatefulWidget {
 
   final OfflineArtistGroup group;
 
+  static String routeNameFor(String artistId) =>
+      '/library/local/artist/$artistId';
+
   @override
   State<LocalArtistDetailScreen> createState() =>
       _LocalArtistDetailScreenState();
@@ -40,7 +42,6 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
     return Scaffold(
-      backgroundColor: bgDark,
       body: SafeArea(
         child: StreamBuilder<List<OfflineTrackDownload>>(
           stream: controller.offlineDownloadsStream,
@@ -125,12 +126,10 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                       ),
                     if (albums.isEmpty && releases.collabAlbums.isEmpty)
                       const SliverPadding(
-                        padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
+                        padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
                         sliver: SliverToBoxAdapter(
-                          child: EmptyState(
-                            title: 'No downloaded albums',
-                            message:
-                                'Download this artist’s albums or collaborations to keep them here.',
+                          child: EmptyStateText(
+                            title: 'Artist has no downloaded albums',
                           ),
                         ),
                       )
@@ -296,7 +295,12 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
 
   void _openAlbum(BuildContext context, OfflineAlbumGroup album) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LocalAlbumDetailScreen(album: album)),
+      MaterialPageRoute(
+        settings: RouteSettings(
+          name: LocalAlbumDetailScreen.routeNameFor(album.id),
+        ),
+        builder: (_) => LocalAlbumDetailScreen(album: album),
+      ),
     );
   }
 

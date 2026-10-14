@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/app_log.dart';
 import 'package:phonolite_app/entities/audio_engine.dart';
 import 'package:phonolite_app/entities/auth_storage.dart';
+import 'package:phonolite_app/entities/auth_state.dart';
 import 'package:phonolite_app/entities/connectivity_signal_source.dart';
 import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
 import 'package:phonolite_app/entities/models.dart';
@@ -17,6 +19,7 @@ import 'package:phonolite_app/platform/local_network_permission_service.dart';
 import 'package:phonolite_app/platform/now_playing_platform_service.dart';
 import 'package:phonolite_app/platform/vehicle_surface_service.dart';
 import '../support/auth_test_helpers.dart';
+import '../support/offline_library_test_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +70,292 @@ void main() {
     expect(harness.permissions.disposals, 1);
     expect(harness.connection.onTransportFailure, isNull);
   });
+
+  test(
+    'Connect only advances after the endpoint health check succeeds',
+    () async {
+      final pending = Completer<void>();
+      final connection = _Connection()..pendingProbe = pending.future;
+      final harness = _Harness(connection: connection);
+      addTearDown(harness.controller.close);
+      final original = connection.baseUrl;
+
+      final result = harness.controller.probeServer('music.test:8443');
+      await Future<void>.delayed(Duration.zero);
+      expect(connection.verifiedServers, ['https://music.test:8443/api/v1']);
+      expect(harness.controller.authState.status, SessionStatus.checking);
+      expect(connection.baseUrl, original);
+
+      pending.complete();
+      expect(await result, isTrue);
+      expect(
+        harness.controller.authState.status,
+        SessionStatus.serverReachable,
+      );
+      expect(connection.baseUrl, 'https://music.test:8443/api/v1');
+      expect(harness.controller.authState.isAuthorized, isFalse);
+    },
+  );
+
+  for (final initiallyAvailable in [false, true]) {
+    test(
+      'saved login continues the full artist download (server available: $initiallyAvailable)',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'phonolite_startup_artist_',
+        );
+        addTearDown(() => root.delete(recursive: true));
+        final initialStorage = OfflineLibraryStorage(baseDirectory: root);
+        final connection = _StartupDownloadConnection()
+          ..available = initiallyAvailable;
+        final first = OfflineDownloadManager(
+          connection: connection,
+          storage: initialStorage,
+        );
+        await first.load();
+        final artist = Artist(id: 'artist', name: 'Artist', albumCount: 3);
+        final albums = [
+          for (var index = 1; index <= 3; index++)
+            Album(
+              id: 'album-$index',
+              title: 'Album $index',
+              artist: artist.name,
+              artistId: artist.id,
+              trackCount: 1,
+            ),
+        ];
+        expect(await first.queueArtist(artist, albums), 3);
+        final jobId = first.jobs.single.jobId;
+        await first.dispose();
+        final file = await initialStorage.trackFile(
+          serverBaseUrl: connection.baseUrl,
+          trackId: 'album-1-track',
+        );
+        await file.writeAsBytes([1, 2, 3]);
+        final done = await initialStorage.prepareDownload(
+          offlineTestDownload(
+            serverBaseUrl: connection.baseUrl,
+            batchId: jobId,
+            track: offlineTestTrack(id: 'album-1-track'),
+            filePath: file.path,
+          ),
+        );
+        await initialStorage.upsertDownload(done);
+        final now = DateTime.now();
+        await initialStorage.upsertDownloadJobItems([
+          OfflineDownloadJobItem(
+            jobId: jobId,
+            position: 0,
+            serverTrackId: 'album-1-track',
+            materialized: true,
+            status: OfflineDownloadStatus.downloaded,
+            createdAt: now,
+            updatedAt: now,
+            track: done.track,
+          ),
+        ]);
+        await initialStorage.upsertDownloadJobSources([
+          (await initialStorage.readDownloadJobSources(jobId)).first.copyWith(
+            status: OfflineDownloadStatus.downloaded,
+            updatedAt: now,
+          ),
+        ]);
+        await initialStorage.close();
+
+        final storage = OfflineLibraryStorage(baseDirectory: root);
+        final manager = OfflineDownloadManager(
+          connection: connection,
+          storage: storage,
+        );
+        final harness = _Harness(
+          authenticated: true,
+          connection: connection,
+          offlineDownloadManager: manager,
+          offlineStorage: storage,
+        );
+        try {
+          await harness.controller.initialize();
+          expect(connection.requestedAlbums, isEmpty);
+          expect(manager.jobs.single.jobId, jobId);
+          expect(manager.downloads.single.isDownloaded, isTrue);
+          await harness.controller.restoreSession();
+          if (!initiallyAvailable) {
+            expect(
+              harness.controller.authState.status,
+              SessionStatus.serverUnavailable,
+            );
+            expect(connection.requestedAlbums, isEmpty);
+            expect(manager.jobs.single.jobId, jobId);
+            connection.available = true;
+            connection.pendingHealth = Future.value(1);
+            await harness.controller.refreshServerAvailability();
+          }
+          await offlineTestWaitFor(() => manager.downloads.length == 3);
+          // Saved login also schedules like syncing. Let its mocked storage reads
+          // finish before closing and deleting this test's database on Windows.
+          await connection.likesChecked.future.timeout(
+            const Duration(seconds: 5),
+          );
+          expect(connection.requestedAlbums, ['album-2', 'album-3']);
+          expect(connection.requestedBatches.single, [
+            'album-2-track',
+            'album-3-track',
+          ]);
+          expect(manager.jobs.single.jobId, jobId);
+          expect(manager.jobs.single.completedCount, 1);
+          expect(
+            manager.findForCurrentServer('album-1-track')!.filePath,
+            file.path,
+          );
+          expect(await file.readAsBytes(), [1, 2, 3]);
+        } finally {
+          await harness.controller.close();
+          await storage.close();
+        }
+      },
+    );
+  }
+
+  test(
+    'failed endpoint verification stays offline and can be retried',
+    () async {
+      final pending = Completer<void>();
+      final connection = _Connection()..pendingProbe = pending.future;
+      final harness = _Harness(connection: connection);
+      addTearDown(harness.controller.close);
+      final original = connection.baseUrl;
+
+      final result = harness.controller.probeServer('music.test:8443');
+      await Future<void>.delayed(Duration.zero);
+      pending.completeError(
+        ServerConnectionCheckException('Unable to connect to server'),
+      );
+      expect(await result, isFalse);
+      expect(harness.controller.authState.status, SessionStatus.offline);
+      expect(harness.controller.authState.error, 'Unable to connect to server');
+      expect(connection.baseUrl, original);
+
+      connection.pendingProbe = null;
+      expect(await harness.controller.probeServer('music.test:8443'), isTrue);
+      expect(harness.controller.authState.error, isNull);
+    },
+  );
+
+  test(
+    'password reset preserves the current session, saved auth and downloads',
+    () async {
+      final connection = _PasswordConnection();
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      expect(harness.controller.hasSavedCredentials, isTrue);
+      expect(harness.controller.canResetUserPassword, isTrue);
+
+      await harness.controller.resetUserPassword(
+        currentPassword: 'old password',
+        newPassword: 'new secure password',
+      );
+
+      expect(connection.passwordChanges, 1);
+      expect(connection.logoutRequests, 0);
+      expect(connection.token, 'test-token');
+      expect(harness.controller.canUseServer, isTrue);
+      expect(harness.controller.hasSavedCredentials, isTrue);
+      expect(harness.auth.clears, 0);
+      expect(harness.downloads.resets, 0);
+      expect(harness.downloads.pausedServers, isEmpty);
+    },
+  );
+
+  test(
+    'password reset refuses an offline or mismatched authenticated session',
+    () async {
+      final connection = _PasswordConnection();
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await expectLater(
+        harness.controller.resetUserPassword(
+          currentPassword: 'old password',
+          newPassword: 'new secure password',
+        ),
+        throwsA(isA<PasswordChangeException>()),
+      );
+      await harness.controller.restoreSession();
+      connection.setBaseUrl('https://different.test/api/v1');
+      connection.setTrust(testServerTrust);
+      connection.setToken('other-session');
+      await expectLater(
+        harness.controller.resetUserPassword(
+          currentPassword: 'old password',
+          newPassword: 'new secure password',
+        ),
+        throwsA(isA<PasswordChangeException>()),
+      );
+      expect(connection.passwordChanges, 0);
+      expect(connection.token, 'other-session');
+      expect(harness.auth.clears, 0);
+    },
+  );
+
+  for (final requiresSignIn in [false, true]) {
+    test('password reset failure requires sign in: $requiresSignIn', () async {
+      final connection = _PasswordConnection()
+        ..passwordFailure = PasswordChangeException(
+          'Safe password reset failure',
+          requiresSignIn: requiresSignIn,
+        );
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      await expectLater(
+        harness.controller.resetUserPassword(
+          currentPassword: 'old password',
+          newPassword: 'new secure password',
+        ),
+        throwsA(isA<PasswordChangeException>()),
+      );
+      expect(connection.token, requiresSignIn ? null : 'test-token');
+      expect(harness.controller.canUseServer, !requiresSignIn);
+      expect(harness.controller.hasSavedCredentials, !requiresSignIn);
+      expect(harness.auth.clears, requiresSignIn ? 1 : 0);
+      expect(connection.logoutRequests, 0);
+    });
+  }
+
+  for (final ambiguousFailure in [false, true]) {
+    test(
+      'late password reset cannot clear a new session, failed: $ambiguousFailure',
+      () async {
+        final completed = Completer<void>();
+        final connection = _PasswordConnection()
+          ..passwordResponse = completed.future;
+        final harness = _Harness(authenticated: true, connection: connection);
+        addTearDown(harness.controller.close);
+        await harness.controller.initialize();
+        await harness.controller.restoreSession();
+        final pending = harness.controller.resetUserPassword(
+          currentPassword: 'old password',
+          newPassword: 'new secure password',
+        );
+        connection.setToken('replacement-token');
+        if (ambiguousFailure) {
+          completed.completeError(
+            PasswordChangeException('Unknown outcome', requiresSignIn: true),
+          );
+        } else {
+          completed.complete();
+        }
+        await expectLater(pending, throwsA(isA<PasswordChangeException>()));
+        expect(connection.token, 'replacement-token');
+        expect(harness.controller.canUseServer, isTrue);
+        expect(harness.auth.clears, 0);
+        expect(connection.logoutRequests, 0);
+      },
+    );
+  }
 
   test(
     'closing during initialization ignores late settings and audio callbacks',
@@ -189,6 +478,49 @@ void main() {
       expect(snapshots.first.last.message, 'burst-3999');
     },
   );
+
+  test('reset local data clears log history in every category', () async {
+    final harness = _Harness();
+    await harness.controller.initialize();
+    addTearDown(harness.controller.close);
+    await harness.controller.clearMessages();
+    for (final level in LogLevel.values) {
+      AppLogger.instance.log(
+        LogEntry(message: 'old-${level.name}', level: level),
+      );
+    }
+    expect(harness.controller.messages, hasLength(LogLevel.values.length));
+
+    await harness.controller.resetOfflineData();
+
+    expect(harness.downloads.resets, 1);
+    expect(
+      harness.controller.messages.single.message,
+      'Reset all local downloads, metadata, and logs.',
+    );
+    final replayed = <LogEntry>[];
+    AppLogger.instance.attach(replayed.add);
+    AppLogger.instance.detach(replayed.add);
+    expect(replayed.single.message, harness.controller.messages.single.message);
+  });
+
+  test('failed local data reset keeps logs for troubleshooting', () async {
+    final harness = _Harness();
+    await harness.controller.initialize();
+    addTearDown(harness.controller.close);
+    await harness.controller.clearMessages();
+    AppLogger.warning('existing warning');
+    harness.downloads.failReset = true;
+
+    await harness.controller.resetOfflineData();
+
+    expect(harness.downloads.resets, 1);
+    expect(harness.controller.messages.first.message, 'existing warning');
+    expect(
+      harness.controller.messages.last.message,
+      contains('Failed to reset local data:'),
+    );
+  });
 
   test(
     'transport failure during rapid seeks restarts at the latest target',
@@ -1126,7 +1458,10 @@ class _Harness {
     bool failAudio = false,
     bool authenticated = false,
     _Connection? connection,
-  }) : connection = connection ?? _Connection() {
+    OfflineDownloadManager? offlineDownloadManager,
+    OfflineLibraryStorage? offlineStorage,
+  }) : connection = connection ?? _Connection(),
+       auth = _MemoryAuth(authenticated) {
     controller = AppController(
       connection: this.connection,
       audioEngineFactory:
@@ -1138,9 +1473,9 @@ class _Harness {
             this.onState = onState;
             return audio;
           },
-      offlineDownloadManager: downloads,
-      offlineStorage: _Storage(),
-      authStorage: _MemoryAuth(authenticated),
+      offlineDownloadManager: offlineDownloadManager ?? downloads,
+      offlineStorage: offlineStorage ?? _Storage(),
+      authStorage: auth,
       playbackPreferencesStorage: preferences,
       customShuffleStorage: shuffle,
       connectivitySignalSource: connectivity,
@@ -1152,6 +1487,7 @@ class _Harness {
   }
   late final AppController controller;
   final _Connection connection;
+  final _MemoryAuth auth;
   final audio = _Audio();
   final downloads = _Downloads();
   final preferences = _Preferences();
@@ -1249,6 +1585,12 @@ class _Audio implements AudioEngine {
   }
 
   @override
+  Future<void> stop() async {
+    active = false;
+    paused = false;
+  }
+
+  @override
   void setVolume(double value) {
     volume = value;
   }
@@ -1268,9 +1610,17 @@ class _Audio implements AudioEngine {
 class _Downloads implements OfflineDownloadManager {
   int loads = 0;
   int disposals = 0;
+  int resets = 0;
   bool failLoad = false;
+  bool failReset = false;
   final refreshedAlbums = <String>[];
   final refreshedArtists = <String>[];
+  final pausedServers = <String>[];
+  @override
+  Future<void> pauseDownloadsForServer(String serverBaseUrl) async {
+    pausedServers.add(serverBaseUrl);
+  }
+
   @override
   List<OfflineTrackDownload> get downloads => const [];
   @override
@@ -1305,6 +1655,12 @@ class _Downloads implements OfflineDownloadManager {
   }
 
   @override
+  Future<void> resetLocalData() async {
+    resets++;
+    if (failReset) throw StateError('reset failed');
+  }
+
+  @override
   Future<void> dispose() async {
     disposals++;
   }
@@ -1318,6 +1674,18 @@ class _Connection extends ServerConnection {
     setTrust(testServerTrust);
   }
   int pings = 0;
+  Future<void>? pendingProbe;
+  final verifiedServers = <String>[];
+
+  @override
+  Future<void> verifyServerConnection(
+    String input, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    verifiedServers.add(input);
+    await pendingProbe;
+  }
+
   int searches = 0;
   Future<List<Artist>>? pendingArtistsPage;
   List<Artist> artistsPageResponse = const [];
@@ -1422,9 +1790,114 @@ class _Connection extends ServerConnection {
   }
 }
 
+class _StartupDownloadConnection extends _Connection {
+  bool available = true;
+  final requestedAlbums = <String>[];
+  final requestedBatches = <List<String>>[];
+  final likesChecked = Completer<void>();
+
+  @override
+  Future<List<TrackMatchResult>> matchTracks(
+    List<TrackMatchDescriptor> tracks,
+  ) async {
+    if (!likesChecked.isCompleted) likesChecked.complete();
+    return const [];
+  }
+
+  @override
+  Future<PlaybackSettingsResponse> fetchPlaybackSettings({
+    Duration timeout = const Duration(seconds: 8),
+    bool retryable = true,
+  }) async {
+    if (!available) {
+      throw const SocketException('Server temporarily unavailable');
+    }
+    return PlaybackSettingsResponse(repeatMode: 'off');
+  }
+
+  @override
+  Future<ServerCapabilities> fetchCapabilities() async => ServerCapabilities(
+    downloadJobsV2: false,
+    metadataSnapshotsV2: false,
+    eventReplayV2: false,
+    trackFileContractV2: false,
+  );
+
+  @override
+  Future<List<Track>> fetchTracks(String albumId) async {
+    requestedAlbums.add(albumId);
+    return [offlineTestTrack(id: '$albumId-track')];
+  }
+
+  @override
+  Future<DownloadBatchManifest> createDownloadBatch(
+    List<String> trackIds, {
+    String? clientBatchId,
+  }) async {
+    requestedBatches.add(List.of(trackIds));
+    // Stop after metadata planning; no socket or media worker is started.
+    setToken(null);
+    return DownloadBatchManifest(
+      schemaVersion: 1,
+      batchId: clientBatchId!,
+      createdAt: DateTime.now(),
+      unavailable: const [],
+      items: [
+        for (final id in trackIds)
+          offlineTestDownloadManifest(
+            batchId: clientBatchId,
+            trackId: id,
+          ).items.single,
+      ],
+    );
+  }
+
+  @override
+  Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) async =>
+      offlineTestOfflineMetadata(trackId: trackId);
+
+  @override
+  Future<ServerArtwork?> fetchAlbumCoverBytes(
+    String albumId, {
+    Duration? timeout,
+  }) async => null;
+
+  @override
+  Future<ServerArtwork?> fetchArtistCoverBytes(
+    String artistId, {
+    String kind = 'logo',
+    Duration? timeout,
+  }) async => null;
+}
+
+class _PasswordConnection extends _Connection {
+  int passwordChanges = 0;
+  int logoutRequests = 0;
+  Future<void>? passwordResponse;
+  PasswordChangeException? passwordFailure;
+  @override
+  bool get canChangeOwnPassword => token?.isNotEmpty == true;
+  @override
+  Future<void> changeOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    passwordChanges++;
+    if (passwordFailure != null) throw passwordFailure!;
+    await passwordResponse;
+  }
+
+  @override
+  Future<void> logout({Duration timeout = const Duration(seconds: 8)}) async {
+    logoutRequests++;
+  }
+}
+
 class _MemoryAuth extends AuthStorage {
-  const _MemoryAuth(this.authenticated);
+  _MemoryAuth(this.authenticated);
   final bool authenticated;
+  int clears = 0;
 
   @override
   Future<AuthCredentials?> read() async => authenticated
@@ -1436,7 +1909,9 @@ class _MemoryAuth extends AuthStorage {
         )
       : null;
   @override
-  Future<void> clear() async {}
+  Future<void> clear() async {
+    clears++;
+  }
 }
 
 class _Storage extends OfflineLibraryStorage {

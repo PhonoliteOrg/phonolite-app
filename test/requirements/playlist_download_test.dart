@@ -321,7 +321,13 @@ void main() {
 }
 
 class _PlaylistConnection extends ServerConnection {
-  _PlaylistConnection() : super(baseUrl: _baseUrl);
+  _PlaylistConnection()
+    : super(
+        baseUrl: _baseUrl,
+        client: MockClient(
+          (_) async => throw StateError('Unexpected HTTP request'),
+        ),
+      );
   final batchRequests = <List<String>>[];
   final coverRequests = <String>[];
   bool artworkAvailable = true;

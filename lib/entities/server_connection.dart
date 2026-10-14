@@ -30,6 +30,38 @@ class RequestTimeoutException implements Exception {
   String toString() => 'Request timed out after ${timeout.inSeconds}s';
 }
 
+class ServerConnectionCheckException implements Exception {
+  ServerConnectionCheckException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+typedef ServerReachabilityProbe =
+    Future<void> Function({
+      required String host,
+      required int port,
+      String? expectedSpki,
+    });
+
+/// Safe to display without exposing passwords, bearer tokens, or response data.
+class PasswordChangeException implements Exception {
+  PasswordChangeException(
+    this.message, {
+    this.requiresSignIn = false,
+    this.statusCode,
+  });
+
+  final String message;
+  final bool requiresSignIn;
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
+
 class TrackDownloadStream {
   TrackDownloadStream({
     required this.statusCode,
@@ -66,15 +98,20 @@ class ServerConnection {
   static const Duration _slowRequestThreshold = Duration(milliseconds: 1200);
   static const int _maxGetAttempts = 3;
 
-  ServerConnection({required String baseUrl, http.Client? client})
-    : _baseUrl = _sanitizeBaseUrl(baseUrl),
-      _injectedClient = client != null {
+  ServerConnection({
+    required String baseUrl,
+    http.Client? client,
+    ServerReachabilityProbe? serverProbe,
+  }) : _baseUrl = _sanitizeBaseUrl(baseUrl),
+       _serverProbe = serverProbe ?? probeServerConnection,
+       _injectedClient = client != null {
     _client = client ?? pinnedApiClient(() => _baseUrl);
   }
 
   String _baseUrl;
   late final http.Client _client;
   final bool _injectedClient;
+  final ServerReachabilityProbe _serverProbe;
   final Random _retryJitter = Random();
   final Map<String, Future<Map<String, dynamic>>> _metadataRequests = {};
   int _sessionRevision = 0;
@@ -88,6 +125,23 @@ class ServerConnection {
   void setTrust(ServerTrust value) =>
       ServerTrustRegistry.register(_baseUrl, value);
   int get sessionRevision => _sessionRevision;
+
+  bool get canChangeOwnPassword {
+    final uri = Uri.tryParse(_baseUrl);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.path != '/api/v1' ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      return false;
+    }
+    final authenticatedTrust = trust;
+    return _token?.isNotEmpty == true &&
+        authenticatedTrust != null &&
+        ServerTrust.fromJson(authenticatedTrust.toJson()) != null;
+  }
 
   /// A fresh header map; callers cannot mutate connection authentication state.
   Map<String, String> get authorizationHeaders => {
@@ -114,6 +168,8 @@ class ServerConnection {
     if (uri == null ||
         uri.scheme != 'https' ||
         uri.host.isEmpty ||
+        uri.port < 1 ||
+        uri.port > 65535 ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment ||
@@ -121,6 +177,34 @@ class ServerConnection {
       throw Exception('Enter the server IP and HTTPS port');
     }
     return _ensureApiBase(candidate);
+  }
+
+  /// Verify the entered endpoint without changing the session or trusting a new
+  /// identity. A remembered certificate pin is enforced even before sign-in.
+  Future<void> verifyServerConnection(
+    String input, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final resolved = await resolveBaseUrl(input);
+    final uri = Uri.parse(resolved);
+    try {
+      await (() async {
+        final existing =
+            ServerTrustRegistry.lookup(resolved) ??
+            await ServerTrustStore.read(resolved);
+        await _serverProbe(
+          host: uri.host,
+          port: uri.port,
+          expectedSpki: existing?.spki,
+        );
+      })().timeout(timeout);
+    } on TimeoutException {
+      throw ServerConnectionCheckException(
+        'Connection timed out. Check the server address and port.',
+      );
+    } on QuicException catch (error) {
+      throw ServerConnectionCheckException(error.message);
+    }
   }
 
   void setToken(String? token) {
@@ -189,6 +273,96 @@ class ServerConnection {
 
   Future<void> logout({Duration timeout = _defaultRequestTimeout}) async {
     await _postVoid('/auth/logout', {}, timeout: timeout);
+  }
+
+  /// Changes only the authenticated user's password over the pinned HTTPS
+  /// connection. This mutation is never retried or redirected. The controller
+  /// keeps the originating session signed in; other account sessions are revoked.
+  Future<void> changeOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+    Duration timeout = _defaultRequestTimeout,
+  }) async {
+    if (!canChangeOwnPassword) {
+      throw PasswordChangeException(
+        'Connect to your authenticated server before resetting your password.',
+      );
+    }
+    if (currentPassword.isEmpty || utf8.encode(currentPassword).length > 1024) {
+      throw PasswordChangeException('Enter your current password.');
+    }
+    if (newPassword.isEmpty) {
+      throw PasswordChangeException('Enter your new password.');
+    }
+    if (utf8.encode(newPassword).length > 1024) {
+      throw PasswordChangeException('Your new password is too long.');
+    }
+    final url = _baseUrl;
+    final token = _token;
+    final revision = _sessionRevision;
+    final pin = trust!;
+    bool sessionIsCurrent() =>
+        _baseUrl == url &&
+        _token == token &&
+        _sessionRevision == revision &&
+        trust?.spki == pin.spki &&
+        trust?.opaqueKey == pin.opaqueKey;
+    final request = http.Request('POST', Uri.parse('$url/auth/password'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      })
+      ..body = jsonEncode({
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      });
+    late final http.StreamedResponse response;
+    try {
+      response = await _client.send(request).timeout(timeout);
+    } catch (_) {
+      if (!sessionIsCurrent()) {
+        throw PasswordChangeException(
+          'Your server session changed. Return to settings before resetting your password.',
+        );
+      }
+      // The server may have committed the change before the response was lost.
+      // Do not retry or log the raw transport error. The server preserves this
+      // session even if the change committed before the response was lost.
+      throw PasswordChangeException(
+        'The password change could not be confirmed. Check your connection and password before trying again.',
+      );
+    }
+    // No endpoint response data is needed, even when the server returns an
+    // error. Cancel rather than retaining or displaying an arbitrary body.
+    unawaited(
+      response.stream
+          .listen((_) {}, onError: (Object _) {})
+          .cancel()
+          .catchError((Object _) {}),
+    );
+    if (!sessionIsCurrent()) {
+      throw PasswordChangeException(
+        'Your server session changed. Return to settings before resetting your password.',
+      );
+    }
+    if (response.statusCode == 204) return;
+    final message = switch (response.statusCode) {
+      400 => 'The server rejected the password change.',
+      401 =>
+        'Your session has expired. Sign in again before resetting your password.',
+      403 => 'Your current password is incorrect.',
+      429 =>
+        'Too many password reset attempts. Wait a few minutes and try again.',
+      _ =>
+        'The password change could not be confirmed. Check your connection and password before trying again.',
+    };
+    throw PasswordChangeException(
+      message,
+      statusCode: response.statusCode,
+      requiresSignIn: response.statusCode == 401,
+    );
   }
 
   Future<List<Artist>> fetchArtistsPage({

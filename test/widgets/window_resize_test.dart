@@ -187,6 +187,98 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.windows),
   );
 
+  for (final switchTabs in [true, false]) {
+    testWidgets(
+      'stack replacement can be interrupted by ${switchTabs ? 'switching tabs' : 'another replacement'}',
+      (tester) async {
+        _configureView(tester);
+        final tabKey = GlobalKey();
+        final originalKey = GlobalKey<NavigatorState>();
+        final firstKey = GlobalKey<NavigatorState>();
+        final secondKey = GlobalKey<NavigatorState>();
+        final otherKey = GlobalKey<_TabProbeState>();
+        var otherLayouts = 0;
+
+        Widget destination(GlobalKey<NavigatorState> key, String album) =>
+            Navigator(
+              key: key,
+              onGenerateInitialRoutes: (_, _) => [
+                for (final name in ['Library', 'Artist', album])
+                  MaterialPageRoute<void>(
+                    builder: (_) => Center(child: Text(name)),
+                  ),
+              ],
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => const Center(child: Text('Library')),
+              ),
+            );
+
+        var children = <Widget>[
+          Navigator(
+            key: originalKey,
+            onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (_) => const Center(child: Text('Original')),
+            ),
+          ),
+          _TabProbe(key: otherKey, onLayout: () => otherLayouts++),
+        ];
+        Widget shell(int index) => _app(
+          RetainedTabView(key: tabKey, index: index, children: children),
+        );
+
+        await tester.pumpWidget(shell(0));
+        await tester.pumpAndSettle();
+        final otherState = otherKey.currentState;
+        children = [destination(firstKey, 'First album'), children[1]];
+        await tester.pumpWidget(shell(0));
+        await tester.pump(const Duration(milliseconds: 30));
+        expect(originalKey.currentState, isNotNull);
+        expect(firstKey.currentState, isNotNull);
+
+        if (switchTabs) {
+          await tester.pumpWidget(shell(1));
+          await tester.pumpAndSettle();
+          expect(originalKey.currentState, isNull);
+          expect(firstKey.currentState, isNotNull);
+          await tester.pumpWidget(shell(0));
+        } else {
+          children = [destination(secondKey, 'Second album'), children[1]];
+          await tester.pumpWidget(shell(0));
+          expect(originalKey.currentState, isNull);
+          expect(firstKey.currentState, isNotNull);
+          expect(secondKey.currentState, isNotNull);
+        }
+        await tester.pumpAndSettle();
+        final currentKey = switchTabs ? firstKey : secondKey;
+        expect(
+          find.text(switchTabs ? 'First album' : 'Second album'),
+          findsOneWidget,
+        );
+        expect(find.text('Artist'), findsNothing);
+        expect(originalKey.currentState, isNull);
+        if (!switchTabs) {
+          expect(firstKey.currentState, isNull);
+        }
+        expect(otherKey.currentState, same(otherState));
+
+        // An interrupted fade must not leave the active entry transparent and
+        // expose another tab to painting or layout when the window resizes.
+        final hiddenLayouts = otherLayouts;
+        tester.view.physicalSize = const Size(1100, 740);
+        await tester.pump();
+        expect(otherLayouts, hiddenLayouts);
+        currentKey.currentState!.pop();
+        await tester.pumpAndSettle();
+        expect(find.text('Artist'), findsOneWidget);
+        currentKey.currentState!.pop();
+        await tester.pumpAndSettle();
+        expect(find.text('Library'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+  }
+
   testWidgets('hidden tabs suspend tickers and cannot take keyboard focus', (
     tester,
   ) async {

@@ -10,37 +10,42 @@ class CommandLinkButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onTap,
+    this.enabled = true,
   });
 
   final String label;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
-        onPressed: onTap,
+        onPressed: enabled ? onTap : null,
         style: ButtonStyle(
-          foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
-            if (states.contains(MaterialState.pressed)) {
-              return accentGold.withOpacity(0.75);
+          foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return accentGold.withValues(alpha: 0.4);
             }
-            if (states.contains(MaterialState.hovered)) {
-              return accentGold.withOpacity(0.9);
+            if (states.contains(WidgetState.pressed)) {
+              return accentGold.withValues(alpha: 0.75);
+            }
+            if (states.contains(WidgetState.hovered)) {
+              return accentGold.withValues(alpha: 0.9);
             }
             return accentGold;
           }),
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
-          padding: MaterialStateProperty.all(
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          padding: WidgetStateProperty.all(
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
-          minimumSize: MaterialStateProperty.all(const Size(0, 40)),
+          minimumSize: WidgetStateProperty.all(const Size(0, 40)),
           tapTargetSize: MaterialTapTargetSize.padded,
-          shape: MaterialStateProperty.all(
+          shape: WidgetStateProperty.all(
             const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           ),
-          textStyle: MaterialStateProperty.all(
+          textStyle: WidgetStateProperty.all(
             GoogleFonts.rajdhani(
               fontWeight: FontWeight.w600,
               letterSpacing: 1.6,

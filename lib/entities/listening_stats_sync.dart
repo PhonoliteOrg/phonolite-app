@@ -77,6 +77,29 @@ class ListeningStatsSync {
     });
   }
 
+  Future<void> resetListeningStatistics({required bool resetServer}) {
+    final resetting = _resetting;
+    if (resetting != null) return resetting;
+    final revision = connection.sessionRevision;
+    final work = (() async {
+      _retry?.cancel();
+      _retry = null;
+      await _running;
+      if (_closed || revision != connection.sessionRevision) {
+        throw StateError('The connection or signed-in account changed.');
+      }
+      if (resetServer) await _resetAccountHistory(revision);
+      await history.resetDeviceHistory();
+      message = null;
+      _failures = 0;
+      onChanged();
+    })();
+    _resetting = work;
+    return work.whenComplete(() {
+      if (identical(_resetting, work)) _resetting = null;
+    });
+  }
+
   Future<void> _resetAccountHistory(int revision) async {
     _retry?.cancel();
     _retry = null;
@@ -84,7 +107,9 @@ class ListeningStatsSync {
     await _running;
     void checkSession() {
       if (!_current(revision, duringReset: true)) {
-        throw StateError('Connect and sign in to reset account history.');
+        throw StateError(
+          'Connect and sign in to reset account listening statistics.',
+        );
       }
     }
 
@@ -97,7 +122,7 @@ class ListeningStatsSync {
     final userId = state['user_id']?.toString() ?? '';
     final generation = (state['history_generation'] as num?)?.toInt() ?? 0;
     if (serverId.isEmpty || userId.isEmpty || generation < 1) {
-      throw StateError('Missing account history identity.');
+      throw StateError('Missing account listening statistics identity.');
     }
     final result = await connection.resetListeningHistory(
       historyGeneration: generation,
@@ -107,7 +132,7 @@ class ListeningStatsSync {
     if (result['server_id'] != serverId ||
         result['user_id'] != userId ||
         nextGeneration <= generation) {
-      throw StateError('Invalid account reset response.');
+      throw StateError('Invalid account listening statistics reset response.');
     }
     await history.setAccount(
       serverId: serverId,
@@ -143,6 +168,7 @@ class ListeningStatsSync {
         serverId: serverId,
         userId: userId,
         historyGeneration: generation,
+        preserveLocalStatistics: true,
       );
       if (!_current(revision)) return;
       await onIdentity(serverId, userId);
@@ -267,6 +293,7 @@ class ListeningStatsSync {
             serverId: serverId,
             userId: userId,
             historyGeneration: current['history_generation'] as int,
+            preserveLocalStatistics: true,
           );
           continueSoon = true;
           return;

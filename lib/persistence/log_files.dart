@@ -4,19 +4,37 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../entities/log_storage_settings.dart';
+
 /// File operations are serialized by AppLogger. No files remain open between
 /// writes, and replacing a full file never exposes more than [maxLines] lines.
 class LogFiles {
-  LogFiles({this.directoryProvider, this.maxLines = 3000})
-    : assert(maxLines > 0);
+  LogFiles({
+    this.directoryProvider,
+    this.maxLines = 3000,
+    LogStorageSettingsStorage? settingsStorage,
+  }) : assert(maxLines > 0),
+       _settingsStorage =
+           settingsStorage ??
+           (directoryProvider == null
+               ? const LogStorageSettingsStorage()
+               : null);
 
   final Future<Directory> Function()? directoryProvider;
   final int maxLines;
+  final LogStorageSettingsStorage? _settingsStorage;
   final Map<String, ListQueue<String>> _lines = {};
   final Set<String> _fileNames = {};
   Directory? _directory;
+  bool _directoryIsDefault = true;
 
   String? get directoryPath => _directory?.path;
+  LogStorageLocation? get storageLocation => _directory == null
+      ? null
+      : LogStorageLocation(
+          directory: _directory!.path,
+          isDefault: _directoryIsDefault,
+        );
 
   static Future<Directory> defaultDirectory({
     String? operatingSystem,
@@ -41,7 +59,11 @@ class LogFiles {
 
   Future<void> initialize(Iterable<String> fileNames) async {
     _fileNames.addAll(fileNames);
-    _directory = await (directoryProvider?.call() ?? defaultDirectory());
+    final configured = await _settingsStorage?.read();
+    _directory = configured == null
+        ? await (directoryProvider?.call() ?? defaultDirectory())
+        : Directory(configured);
+    _directoryIsDefault = configured == null;
     await _directory!.create(recursive: true);
     for (final name in _fileNames) {
       final lines = await _load(name);
@@ -52,6 +74,89 @@ class LogFiles {
   }
 
   List<String> read(String name) => List.unmodifiable(_lines[name] ?? []);
+
+  /// Called by AppLogger's writer queue so appends and clears cannot race a move.
+  Future<List<String>> changeDirectory(String? path) async {
+    final warnings = <String>[];
+    final trimmed = path?.trim();
+    final configured = trimmed == null || trimmed.isEmpty
+        ? null
+        : Directory(trimmed).absolute.path;
+    if (configured != null &&
+        (_settingsStorage?.usesManagedStoragePaths ?? Platform.isIOS)) {
+      throw UnsupportedError('Log storage is managed on this device.');
+    }
+    final target = configured == null
+        ? await (directoryProvider?.call() ?? defaultDirectory())
+        : Directory(configured);
+    await target.create(recursive: true);
+    final currentPath = await _directory!.resolveSymbolicLinks();
+    final targetPath = await target.resolveSymbolicLinks();
+    final sameDirectory = Platform.isWindows
+        ? currentPath.toLowerCase() == targetPath.toLowerCase()
+        : currentPath == targetPath;
+    if (!sameDirectory) {
+      final previous = _directory!;
+      final next = LogFiles(
+        directoryProvider: () async => target,
+        maxLines: maxLines,
+      );
+      await next.initialize(_fileNames);
+      for (final name in _fileNames) {
+        final source = _lines[name] ?? await _load(name);
+        final existing = next.read(name);
+        final existingLines = existing.toSet();
+        final combined = [
+          ...existing,
+          ...source.where((line) => !existingLines.contains(line)),
+        ];
+        final ordered =
+            combined.indexed.map((entry) {
+              final end = entry.$2.indexOf(']');
+              return (
+                index: entry.$1,
+                line: entry.$2,
+                time: end > 1
+                    ? DateTime.tryParse(
+                            entry.$2.substring(1, end),
+                          )?.microsecondsSinceEpoch ??
+                          0
+                    : 0,
+              );
+            }).toList()..sort((left, right) {
+              final byTime = left.time.compareTo(right.time);
+              return byTime != 0 ? byTime : left.index.compareTo(right.index);
+            });
+        final newest = ordered
+            .skip(ordered.length > maxLines ? ordered.length - maxLines : 0)
+            .map((entry) => entry.line)
+            .toList();
+        await next._replace(name, newest);
+        next._lines[name] = ListQueue.of(newest);
+      }
+      // Commit the new location before removing only our old category files.
+      // A failed copy or preference save leaves the current logs intact.
+      await _settingsStorage?.write(configured);
+      _lines
+        ..clear()
+        ..addAll(next._lines);
+      for (final name in _fileNames) {
+        final file = File('${previous.path}/$name');
+        try {
+          if (await file.exists()) await file.delete();
+        } on FileSystemException catch (error) {
+          warnings.add(
+            'Logs moved, but an old log file could not be removed: $error',
+          );
+        }
+      }
+    } else {
+      await _settingsStorage?.write(configured);
+    }
+    _directory = target;
+    _directoryIsDefault = configured == null;
+    return warnings;
+  }
 
   Future<void> append(Map<String, List<String>> entries) async {
     for (final item in entries.entries) {

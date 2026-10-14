@@ -39,6 +39,8 @@ class StatsCards extends StatelessWidget {
     this.historyStatus,
     this.artistCoverUrl,
     this.artistImageHeaders = const {},
+    this.onArtistTap,
+    this.onTrackTap,
   });
 
   final StatsResponse stats;
@@ -48,6 +50,8 @@ class StatsCards extends StatelessWidget {
   final Widget? historyStatus;
   final String? Function(StatsItem)? artistCoverUrl;
   final Map<String, String> artistImageHeaders;
+  final ValueChanged<StatsItem>? onArtistTap;
+  final ValueChanged<StatsTrack>? onTrackTap;
 
   @override
   Widget build(BuildContext context) {
@@ -82,9 +86,10 @@ class StatsCards extends StatelessWidget {
             stats: stats,
             artistCoverUrl: artistCoverUrl,
             artistImageHeaders: artistImageHeaders,
+            onArtistTap: onArtistTap,
           ),
           SizedBox(height: s(28)),
-          _TopTracksSection(tracks: stats.topTracks),
+          _TopTracksSection(tracks: stats.topTracks, onTrackTap: onTrackTap),
         ],
       ),
     );
@@ -585,11 +590,13 @@ class _AnalysisSection extends StatelessWidget {
     required this.stats,
     required this.artistCoverUrl,
     required this.artistImageHeaders,
+    required this.onArtistTap,
   });
 
   final StatsResponse stats;
   final String? Function(StatsItem)? artistCoverUrl;
   final Map<String, String> artistImageHeaders;
+  final ValueChanged<StatsItem>? onArtistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -608,6 +615,7 @@ class _AnalysisSection extends StatelessWidget {
       artists: stats.topArtists,
       coverUrl: artistCoverUrl,
       headers: artistImageHeaders,
+      onArtistTap: onArtistTap,
     );
     if (isWide) {
       return IntrinsicHeight(
@@ -783,11 +791,13 @@ class _TopArtistsSection extends StatelessWidget {
     required this.artists,
     required this.coverUrl,
     required this.headers,
+    required this.onArtistTap,
   });
 
   final List<StatsItem> artists;
   final String? Function(StatsItem)? coverUrl;
   final Map<String, String> headers;
+  final ValueChanged<StatsItem>? onArtistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -802,6 +812,12 @@ class _TopArtistsSection extends StatelessWidget {
           else
             for (var i = 0; i < topArtists.length; i++)
               ArtistRowTile(
+                key: topArtists[i].id.trim().isEmpty
+                    ? null
+                    : ValueKey('stats-artist-${topArtists[i].id}'),
+                onTap: onArtistTap == null || topArtists[i].id.trim().isEmpty
+                    ? null
+                    : () => onArtistTap!(topArtists[i]),
                 artist: Artist(
                   id: topArtists[i].id,
                   name: topArtists[i].name,
@@ -831,9 +847,10 @@ class _TopArtistsSection extends StatelessWidget {
 }
 
 class _TopTracksSection extends StatelessWidget {
-  const _TopTracksSection({required this.tracks});
+  const _TopTracksSection({required this.tracks, required this.onTrackTap});
 
   final List<StatsTrack> tracks;
+  final ValueChanged<StatsTrack>? onTrackTap;
 
   @override
   Widget build(BuildContext context) {
@@ -847,6 +864,12 @@ class _TopTracksSection extends StatelessWidget {
           else
             for (var i = 0; i < topTracks.length; i++)
               _TrackRow(
+                key: topTracks[i].id.trim().isEmpty
+                    ? null
+                    : ValueKey('stats-track-${topTracks[i].id}'),
+                onTap: onTrackTap == null || topTracks[i].id.trim().isEmpty
+                    ? null
+                    : () => onTrackTap!(topTracks[i]),
                 rank: i + 1,
                 title: topTracks[i].title,
                 playCount: topTracks[i].plays,
@@ -859,19 +882,23 @@ class _TopTracksSection extends StatelessWidget {
 
 class _TrackRow extends StatelessWidget {
   const _TrackRow({
+    super.key,
     required this.rank,
     required this.title,
     required this.playCount,
+    this.onTap,
   });
 
   final int rank;
   final String title;
   final int playCount;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     return ObsidianHoverRow(
+      onTap: onTap,
       borderWidth: s(2),
       padding: EdgeInsets.symmetric(vertical: s(10), horizontal: s(12)),
       hoverColor: Colors.white.withOpacity(0.05),

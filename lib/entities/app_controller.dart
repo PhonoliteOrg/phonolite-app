@@ -350,7 +350,7 @@ class AppController {
     }
   }
 
-  Future<void> _detachListeningAccount() async {
+  Future<void> _detachListeningAccount({int? expectedSessionRevision}) async {
     _statsServerId = _statsUserId = null;
     _listeningSessionContext = null;
     _audio?.configureListening(null, discardPending: false);
@@ -365,7 +365,11 @@ class AppController {
         return;
       }
     }
-    if (_disposed) return;
+    if (_disposed ||
+        (expectedSessionRevision != null &&
+            connection.sessionRevision != expectedSessionRevision)) {
+      return;
+    }
     final playback = _playbackState;
     if (playback.isLocalPlayback && playback.track != null) {
       _prepareListeningSession(
@@ -440,10 +444,25 @@ class AppController {
     localOnly: true,
   );
 
+  Future<void> resetListeningStatistics() => _resetListeningHistory(() async {
+    final resetServer = _authState.isAuthorized;
+    final sync = _listeningSync;
+    if (sync != null) {
+      await sync.resetListeningStatistics(resetServer: resetServer);
+    } else {
+      if (resetServer) {
+        throw StateError('Listening statistics are not ready. Try again.');
+      }
+      await _listeningStats.resetDeviceHistory();
+    }
+  });
+
   Future<void> resetAccountListeningHistory() async {
     final sync = _listeningSync;
     if (!_authState.isAuthorized || sync == null) {
-      throw StateError('Connect and sign in to reset account history.');
+      throw StateError(
+        'Connect and sign in to reset account listening statistics.',
+      );
     }
     await _resetListeningHistory(sync.resetAccountHistory);
   }
@@ -454,7 +473,7 @@ class AppController {
   }) async {
     if (_disposed || _resettingListeningStats) {
       throw StateError(
-        'Listening history is unavailable or already resetting.',
+        'Listening statistics are unavailable or already resetting.',
       );
     }
     _resettingListeningStats = true;
@@ -578,6 +597,8 @@ class AppController {
   final DateTime Function() _playbackClock;
   late final LogListener _logListener;
   AuthCredentials? _savedCredentials;
+  Future<void> _savedCredentialsWriteChain = Future<void>.value();
+  bool _resettingUserPassword = false;
   CustomShuffleSettings _customShuffleSettings = const CustomShuffleSettings();
   Future<void>? _customShuffleLoadFuture;
   Timer? _volumeSaveDebounce;
@@ -888,6 +909,12 @@ class AppController {
   String? get savedUsername => _savedCredentials?.username;
   String? get savedBaseUrl => _savedCredentials?.baseUrl;
   bool get canUseServer => _authState.isAuthorized;
+  bool get canResetUserPassword =>
+      !_disposed &&
+      !_resettingUserPassword &&
+      _authState.isAuthorized &&
+      _authState.baseUrl == connection.baseUrl &&
+      connection.canChangeOwnPassword;
 
   bool get _canAttemptRemotePlayback {
     final token = connection.token;
@@ -1646,12 +1673,10 @@ class AppController {
       }
       await _offlineDownloadManager.resetLocalData();
       await loadOfflineStorageLocations();
-      _pushMessage('Reset all offline downloads and metadata.');
+      await clearMessages();
+      _pushMessage('Reset all local downloads, metadata, and logs.');
     } catch (err) {
-      _pushMessage(
-        'Failed to reset offline data: $err',
-        level: LogLevel.warning,
-      );
+      _pushMessage('Failed to reset local data: $err', level: LogLevel.warning);
     }
   }
 
@@ -1780,11 +1805,15 @@ class AppController {
   }
 
   Future<bool> probeServer(String input) async {
+    _setSessionStatus(SessionStatus.checking, error: null);
     try {
       final resolved = await connection.resolveBaseUrl(input);
+      await connection.verifyServerConnection(resolved);
+      if (_disposed) return false;
       connection.setBaseUrl(resolved);
       _serverHealthFailureCount = 0;
-      // The server identity and reachability are verified during OPAQUE login.
+      // Reachability is confirmed; OPAQUE sign-in authenticates the account and
+      // establishes server trust before any credentials or tokens can be used.
       _setSessionStatus(SessionStatus.serverReachable, error: null);
       return true;
     } catch (err) {
@@ -1819,6 +1848,75 @@ class AppController {
     if (clearSaved) {
       await _clearSavedCredentials();
     }
+  }
+
+  Future<void> resetUserPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (!canResetUserPassword) {
+      throw PasswordChangeException(
+        'Connect to your authenticated server before resetting your password.',
+      );
+    }
+    final baseUrl = connection.baseUrl;
+    final token = connection.token;
+    final revision = connection.sessionRevision;
+    bool sessionIsCurrent() =>
+        connection.baseUrl == baseUrl &&
+        connection.token == token &&
+        connection.sessionRevision == revision;
+    _resettingUserPassword = true;
+    try {
+      await connection.changeOwnPassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      if (!sessionIsCurrent()) {
+        throw PasswordChangeException(
+          'Your server session changed. Return to settings before resetting your password.',
+        );
+      }
+    } on PasswordChangeException catch (error) {
+      if (error.requiresSignIn && sessionIsCurrent()) {
+        await _signOutAfterPasswordReset();
+      }
+      rethrow;
+    } finally {
+      _resettingUserPassword = false;
+    }
+  }
+
+  Future<void> _signOutAfterPasswordReset() async {
+    // Invalidate restoration before the first await. An expired/revoked session
+    // cannot authorize logout, so there is no additional request to send.
+    _restoreSessionRevision++;
+    _restoringSession = false;
+    final serverBaseUrl = connection.baseUrl;
+    connection.setToken(null);
+    final disconnectedRevision = connection.sessionRevision;
+    final clearSaved = _clearSavedCredentials();
+    if (_disposed) {
+      await clearSaved;
+      return;
+    }
+    final preserveLocalPlayback =
+        _playbackState.isLocalPlayback && _playbackState.track != null;
+    _stopMetadataEventListener();
+    _pauseDownloadsForDisconnectedServer(serverBaseUrl);
+    _serverHealthFailureCount = 0;
+    _serverReconnectAttempt = 0;
+    _setSessionStatus(SessionStatus.offline, error: null);
+    _quicPort = null;
+    if (preserveLocalPlayback) {
+      _closeStreamControl();
+    } else {
+      _clearPlaybackForServerDisconnect();
+    }
+    await _detachListeningAccount(
+      expectedSessionRevision: disconnectedRevision,
+    );
+    await clearSaved;
   }
 
   void _beginBestEffortServerLogout() {
@@ -2023,13 +2121,23 @@ class AppController {
   Future<void> _storeSavedCredentials(AuthCredentials credentials) async {
     _savedCredentialsInvalidated = false;
     _savedCredentials = credentials;
-    await _authStorage.write(credentials);
+    await _queueSavedCredentialsWrite(() => _authStorage.write(credentials));
   }
 
   Future<void> _clearSavedCredentials() async {
     _savedCredentialsInvalidated = true;
     _savedCredentials = null;
-    await _authStorage.clear();
+    await _queueSavedCredentialsWrite(_authStorage.clear);
+  }
+
+  Future<void> _queueSavedCredentialsWrite(Future<void> Function() operation) {
+    // A newly remembered session must be written after an earlier sign-out's
+    // deletion, even when the platform secure storage operations finish late.
+    final pending = _savedCredentialsWriteChain
+        .catchError((Object _) {})
+        .then((_) => operation());
+    _savedCredentialsWriteChain = pending;
+    return pending;
   }
 
   void _configureLocalNetworkPermissions() {

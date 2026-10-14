@@ -180,15 +180,21 @@ class ArtistReleases {
   ]);
   final List<ArtistReleaseContribution> _appearsOn;
   final List<ArtistReleaseContribution> _otherCredits;
-  List<ArtistReleaseContribution> get otherCredits =>
-      _mergeReleaseContributions([
+  List<ArtistReleaseContribution> get otherCredits {
+    // Older servers can repeat headline releases for their supporting roles.
+    final headlineIds = headlineAlbums.map((album) => album.id).toSet();
+    return _mergeReleaseContributions(
+      [
         ..._otherCredits,
         ..._collabAlbums.where(
           (entry) =>
               !entry.isPerformingArtist &&
               !_otherCredits.any((credit) => credit.album.id == entry.album.id),
         ),
-      ]);
+      ].where((entry) => !headlineIds.contains(entry.album.id)),
+    );
+  }
+
   int get releaseCount => {
     for (final album in _albums) album.id,
     for (final entry in collabAlbums) entry.album.id,

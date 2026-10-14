@@ -78,49 +78,48 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(color: ObsidianPalette.obsidian),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.fromLTRB(
-            20,
-            16,
-            20,
-            20 + MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (Navigator.of(context).canPop()) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: CommandLinkButton(
-                    label: 'Back to settings',
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              LibraryHeader(
-                title: (_connected ? 'Sign in' : 'Connect to server')
-                    .toUpperCase(),
-                moduleCount: 0,
-                maxLines: 3,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          20 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (Navigator.of(context).canPop()) ...[
+              CommandLinkButton(
+                label: 'Back to settings',
+                onTap: () => Navigator.of(context).pop(),
               ),
-              const SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  // Use the same readable fields and touch targets as modals.
-                  child: ObsidianModalScope(builder: _buildForm),
-                ),
-              ),
+              const SizedBox(height: 12),
             ],
-          ),
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    LibraryHeader(
+                      title: (_connected ? 'Sign in' : 'Connect to server')
+                          .toUpperCase(),
+                      moduleCount: 0,
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 24),
+                    // Use the same readable fields and touch targets as modals.
+                    ObsidianModalScope(builder: _buildForm),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -166,19 +165,34 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                         _error = null;
                       }),
               ),
-            if (_isSubmitting)
-              const Padding(
-                padding: EdgeInsets.all(14),
-                child: SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Visibility(
+                  visible: !_isSubmitting,
+                  maintainSize: true,
+                  maintainState: true,
+                  maintainAnimation: true,
+                  child: ModalActionButton(
+                    label: _connected ? 'Sign in' : 'Connect',
+                    onPressed: _isSubmitting ? null : _submit,
+                  ),
                 ),
-              ),
-            ModalActionButton(
-              label: _isSubmitting
-                  ? (_connected ? 'Signing in...' : 'Connecting...')
-                  : (_connected ? 'Sign in' : 'Connect'),
-              onPressed: _isSubmitting ? null : _submit,
+                if (_isSubmitting)
+                  Positioned.fill(
+                    child: Center(
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          semanticsLabel: _connected
+                              ? 'Signing in'
+                              : 'Connecting',
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -259,17 +273,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   }
 
   Widget _buildServerSection(BuildContext context) {
-    final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
-      color: ObsidianPalette.textMuted,
-      letterSpacing: 1.2,
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Encrypted connection', style: labelStyle),
-        const SizedBox(height: 6),
-        const Text('Your account verifies the server when you sign in.'),
-        const SizedBox(height: 20),
         _buildInput(
           context,
           controller: _serverHostController,
@@ -283,7 +289,7 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         _buildInput(
           context,
           controller: _serverPortController,
-          label: 'Port (optional)',
+          label: 'Port',
           hintText: '3000',
           keyboardType: TextInputType.number,
           textInputAction: TextInputAction.done,

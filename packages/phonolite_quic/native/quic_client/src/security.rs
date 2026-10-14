@@ -1,5 +1,5 @@
-//! The only provisional TLS connection. It carries PAKE messages, never a password
-//! or bearer token. OPAQUE authenticates its TLS exporter before a pin is returned.
+//! Provisional TLS carries only a public health check or PAKE messages, never a
+//! password or bearer token. Only OPAQUE authentication can establish a new pin.
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use opaque_ke::{
@@ -103,6 +103,142 @@ struct LoginRequest {
     expected_opaque: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProbeRequest {
+    host: String,
+    port: u16,
+    expected_spki: Option<String>,
+}
+
+// A single deadline covers TCP, TLS, and the complete health response, including
+// servers that send response bytes slowly. Login keeps its existing IO timeout.
+struct TimedSocket {
+    socket: TcpStream,
+    deadline: Option<Instant>,
+}
+
+impl TimedSocket {
+    fn timeout(&self) -> std::io::Result<Duration> {
+        self.deadline
+            .map_or(Ok(Duration::from_secs(15)), |deadline| {
+                deadline
+                    .checked_duration_since(Instant::now())
+                    .ok_or_else(|| {
+                        std::io::Error::new(std::io::ErrorKind::TimedOut, "Connection timed out")
+                    })
+            })
+    }
+}
+
+impl Read for TimedSocket {
+    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+        self.socket.set_read_timeout(Some(self.timeout()?))?;
+        self.socket.read(bytes)
+    }
+}
+
+impl Write for TimedSocket {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.socket.set_write_timeout(Some(self.timeout()?))?;
+        self.socket.write(bytes)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.socket.flush()
+    }
+}
+
+fn connect_tls(
+    host: &str,
+    port: u16,
+    pin: Option<String>,
+    deadline: Option<Instant>,
+) -> Result<rustls::StreamOwned<rustls::ClientConnection, TimedSocket>, String> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let verifier = ProvisionalVerifier {
+        pin,
+        algorithms: provider.signature_verification_algorithms,
+    };
+    let mut config = rustls::ClientConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .map_err(|_| "TLS unavailable")?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(verifier))
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    config.enable_early_data = false;
+    let name = ServerName::try_from(host.to_owned()).map_err(|_| "Invalid server address")?;
+    let addresses = (host, port)
+        .to_socket_addrs()
+        .map_err(|_| "Unable to resolve server")?;
+    let mut socket = None;
+    for address in addresses.take(4) {
+        let timeout = match deadline {
+            Some(deadline) => deadline
+                .checked_duration_since(Instant::now())
+                .ok_or("Connection timed out; check the server address and port")?,
+            None => Duration::from_secs(8),
+        };
+        if let Ok(stream) = TcpStream::connect_timeout(&address, timeout) {
+            socket = Some(stream);
+            break;
+        }
+    }
+    let socket = socket.ok_or("Unable to connect to server")?;
+    let mut stream = rustls::StreamOwned::new(
+        rustls::ClientConnection::new(Arc::new(config), name).map_err(|_| "TLS unavailable")?,
+        TimedSocket { socket, deadline },
+    );
+    while stream.conn.is_handshaking() {
+        stream.conn.complete_io(&mut stream.sock).map_err(|_| {
+            "TLS handshake failed; server identity changed, expired, or unavailable"
+        })?;
+    }
+    Ok(stream)
+}
+
+fn probe(request: ProbeRequest) -> Result<serde_json::Value, String> {
+    if request.host.is_empty() || request.host.len() > 253 || request.port == 0 {
+        return Err("Invalid server address or port".into());
+    }
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let stream = connect_tls(
+        &request.host,
+        request.port,
+        request.expected_spki,
+        Some(deadline),
+    )?;
+    let authority = authority(&request.host, request.port);
+    check_health(&mut BufReader::new(stream), &authority)?;
+    // Reachability never registers or returns a trusted server identity.
+    Ok(serde_json::json!({"ok": true}))
+}
+
+fn authority(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn check_health<T: Read + Write>(io: &mut BufReader<T>, authority: &str) -> Result<(), String> {
+    let started = Instant::now();
+    write!(io.get_mut(), "GET /api/v1/health HTTP/1.1\r\nHost: {authority}\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
+        .map_err(|_| "Server health check disconnected")?;
+    io.get_mut()
+        .flush()
+        .map_err(|_| "Server health check disconnected")?;
+    let response = read_json_response(io, started).map_err(|_| {
+        "Server did not return a valid Phonolite health response; check the address and port"
+    })?;
+    if response["status"] != "ok" {
+        return Err("Server is not ready; check the address and port".into());
+    }
+    Ok(())
+}
+
 fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
     let password = Zeroizing::new(request.password);
     let username = request.username.trim().to_ascii_lowercase();
@@ -116,46 +252,7 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
     {
         return Err("Invalid sign-in details".into());
     }
-    let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let verifier = ProvisionalVerifier {
-        pin: request.expected_spki,
-        algorithms: provider.signature_verification_algorithms,
-    };
-    let mut config = rustls::ClientConfig::builder_with_provider(provider)
-        .with_protocol_versions(&[&rustls::version::TLS13])
-        .map_err(|_| "TLS unavailable")?
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(verifier))
-        .with_no_client_auth();
-    config.alpn_protocols = vec![b"http/1.1".to_vec()];
-    config.enable_early_data = false;
-    let name = ServerName::try_from(request.host.clone()).map_err(|_| "Invalid server address")?;
-    let addresses = (request.host.as_str(), request.port)
-        .to_socket_addrs()
-        .map_err(|_| "Unable to resolve server")?;
-    let mut socket = None;
-    for address in addresses.take(4) {
-        if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_secs(8)) {
-            socket = Some(stream);
-            break;
-        }
-    }
-    let socket = socket.ok_or("Unable to connect to server")?;
-    socket
-        .set_read_timeout(Some(Duration::from_secs(15)))
-        .map_err(|_| "Socket unavailable")?;
-    socket
-        .set_write_timeout(Some(Duration::from_secs(15)))
-        .map_err(|_| "Socket unavailable")?;
-    let mut stream = rustls::StreamOwned::new(
-        rustls::ClientConnection::new(Arc::new(config), name).map_err(|_| "TLS unavailable")?,
-        socket,
-    );
-    while stream.conn.is_handshaking() {
-        stream.conn.complete_io(&mut stream.sock).map_err(|_| {
-            "TLS handshake failed; server identity changed, expired, or unavailable"
-        })?;
-    }
+    let stream = connect_tls(&request.host, request.port, request.expected_spki, None)?;
     let cert = stream
         .conn
         .peer_certificates()
@@ -174,11 +271,7 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
     let mut rng = rand08::rngs::OsRng;
     let first =
         ClientLogin::<Suite>::start(&mut rng, password.as_bytes()).map_err(|_| "Sign-in failed")?;
-    let authority = if request.host.contains(':') {
-        format!("[{}]:{}", request.host, request.port)
-    } else {
-        format!("{}:{}", request.host, request.port)
-    };
+    let authority = authority(&request.host, request.port);
     let mut io = BufReader::new(stream);
     let start = post(
         &mut io,
@@ -250,6 +343,13 @@ fn post<T: Read + Write>(
         .write_all(&body)
         .map_err(|_| "Handshake disconnected")?;
     io.get_mut().flush().map_err(|_| "Handshake disconnected")?;
+    read_json_response(io, started)
+}
+
+fn read_json_response<T: Read>(
+    io: &mut BufReader<T>,
+    started: Instant,
+) -> Result<serde_json::Value, String> {
     let mut header = Vec::new();
     // Bound each byte before allocating. No redirects, chunking, or compression.
     while !header.ends_with(b"\r\n\r\n") {
@@ -295,6 +395,22 @@ fn post<T: Read + Write>(
     io.read_exact(&mut body)
         .map_err(|_| "Handshake disconnected")?;
     serde_json::from_slice(&body).map_err(|_| "Invalid handshake response".into())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn phonolite_security_probe(request: *const c_char) -> *mut c_char {
+    let result = std::panic::catch_unwind(|| {
+        if request.is_null() {
+            return Err("Missing server address and port".into());
+        }
+        let request = serde_json::from_slice::<ProbeRequest>(CStr::from_ptr(request).to_bytes())
+            .map_err(|_| "Invalid server address or port")?;
+        probe(request)
+    })
+    .unwrap_or_else(|_| Err("Server connection check unavailable".into()));
+    let response =
+        result.unwrap_or_else(|error: String| serde_json::json!({"ok":false,"error":error}));
+    CString::new(response.to_string()).unwrap().into_raw()
 }
 
 #[no_mangle]
@@ -445,6 +561,80 @@ mod tests {
             Ok(())
         }
     }
+
+    fn health_io(status: &str, body: &str) -> BufReader<MockIo> {
+        BufReader::new(MockIo {
+            read: std::io::Cursor::new(
+                format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .into_bytes(),
+            ),
+            write: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn connection_check_requests_only_public_health_without_credentials() {
+        let mut io = health_io("200 OK", r#"{"status":"ok"}"#);
+        check_health(&mut io, "localhost:3000").unwrap();
+        assert_eq!(
+            String::from_utf8(io.get_ref().write.clone()).unwrap(),
+            "GET /api/v1/health HTTP/1.1\r\nHost: localhost:3000\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n"
+        );
+        assert_eq!(authority("::1", 3000), "[::1]:3000");
+    }
+
+    #[test]
+    fn connection_check_rejects_wrong_services_redirects_and_unhealthy_servers() {
+        for (status, body) in [
+            ("200 OK", "<html>Other service</html>"),
+            ("200 OK", r#"{"status":"unavailable"}"#),
+            ("200 OK", r#"{"ok":true}"#),
+            ("200 OK", "[]"),
+            ("302 Found", r#"{"status":"ok"}"#),
+            ("401 Unauthorized", r#"{"status":"ok"}"#),
+            ("404 Not Found", r#"{"status":"ok"}"#),
+            ("503 Service Unavailable", r#"{"status":"ok"}"#),
+        ] {
+            assert!(check_health(&mut health_io(status, body), "localhost:3000").is_err());
+        }
+        for response in [
+            "HTTP/1.1 200 OK\r\nContent-Length: 999999\r\n\r\n".to_owned(),
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".to_owned(),
+            "HTTP/1.1 200 OK\r\nContent-Length: 15\r\nContent-Length: 15\r\n\r\n".to_owned(),
+            "x".repeat(9000),
+        ] {
+            let mut io = BufReader::new(MockIo {
+                read: std::io::Cursor::new(response.into_bytes()),
+                write: Vec::new(),
+            });
+            assert!(check_health(&mut io, "localhost:3000").is_err());
+        }
+    }
+
+    #[test]
+    fn connection_check_rejects_invalid_details_before_opening_a_socket() {
+        for raw in [
+            r#"{"host":"","port":3000}"#,
+            r#"{"host":"localhost","port":0}"#,
+            r#"{"host":"localhost","port":65536}"#,
+            r#"{"host":"localhost","port":3000,"password":"secret"}"#,
+        ] {
+            let request = CString::new(raw).unwrap();
+            unsafe {
+                let output = phonolite_security_probe(request.as_ptr());
+                let response: serde_json::Value =
+                    serde_json::from_str(CStr::from_ptr(output).to_str().unwrap()).unwrap();
+                drop(CString::from_raw(output));
+                assert_eq!(response["ok"], false);
+                assert!(response["spki_sha256"].is_null());
+                assert!(response["token"].is_null());
+            }
+        }
+    }
+
     #[test]
     fn handshake_http_is_bounded_and_never_follows_redirects() {
         for response in [

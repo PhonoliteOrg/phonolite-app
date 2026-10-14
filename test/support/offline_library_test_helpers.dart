@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:http/testing.dart';
 
 import 'package:phonolite_app/persistence/settings_files.dart';
 
@@ -311,7 +312,11 @@ class OfflineMetadataTestConnection extends ServerConnection {
     required super.baseUrl,
     required this.metadata,
     this.onMetadataRequested,
-  });
+  }) : super(
+         client: MockClient(
+           (_) async => throw StateError('Unexpected HTTP request'),
+         ),
+       );
 
   final OfflineTrackMetadata metadata;
   final void Function()? onMetadataRequested;
@@ -328,7 +333,11 @@ class ArtistRetryTestConnection extends ServerConnection {
     required super.baseUrl,
     required this.tracksByAlbum,
     required this.createBatch,
-  });
+  }) : super(
+         client: MockClient(
+           (_) async => throw StateError('Unexpected HTTP request'),
+         ),
+       );
 
   final Map<String, List<Track>> tracksByAlbum;
   final DownloadBatchManifest Function(

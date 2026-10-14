@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/ui/phonolite_icons.dart';
@@ -9,9 +10,10 @@ import '../widgets/ui/stats_icon.dart';
 import '../entities/app_log.dart';
 import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
-import '../entities/custom_shuffle_settings.dart';
+import '../entities/log_storage_settings.dart';
 import '../entities/offline_storage_settings.dart';
 import '../entities/server_connection.dart';
+import '../platform/desktop_directory_service.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
 import '../widgets/layout/library_header.dart';
 import '../widgets/layouts/app_scope.dart';
@@ -29,6 +31,7 @@ import '../widgets/ui/tech_button.dart';
 import 'custom_shuffle_settings_page.dart';
 import 'login_page.dart';
 import 'logs_page.dart';
+import 'reset_user_password_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -47,7 +50,6 @@ class SettingsPage extends StatelessWidget {
           initialData: controller.messages,
           builder: (context, snapshot) {
             final messages = snapshot.data ?? [];
-            final serverLabel = _serverLabel(authState);
             final logLabel = messages.isEmpty
                 ? 'No events yet'
                 : '${messages.length} log entries';
@@ -71,7 +73,8 @@ class SettingsPage extends StatelessWidget {
                           context,
                           leading: const ServerIcon(),
                           title: 'Server',
-                          subtitle: serverLabel,
+                          subtitle:
+                              'Your server provides access to your music library.',
                           trailing: _serverActions(
                             context,
                             controller: controller,
@@ -79,37 +82,19 @@ class SettingsPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        StreamBuilder<CustomShuffleSettings>(
-                          stream: controller.customShuffleSettingsStream,
-                          initialData: controller.customShuffleSettings,
-                          builder: (context, snapshot) {
-                            final settings =
-                                snapshot.data ??
-                                controller.customShuffleSettings;
-                            final artistCount = settings.artistIds.length;
-                            final genreCount = settings.genres.length;
-                            final localArtistCount =
-                                settings.localArtistIds.length;
-                            final localGenreCount = settings.localGenres.length;
-                            final serverSummary = authState.isAuthorized
-                                ? '$artistCount artists, $genreCount genres'
-                                : authState.hasSession
-                                ? 'unavailable'
-                                : 'not connected';
-                            final summary =
-                                'Server: $serverSummary - Local: $localArtistCount artists, $localGenreCount genres';
-                            return _settingsRow(
-                              context,
-                              leading: const Icon(PhonoliteIcons.shuffle),
-                              title: 'Custom Shuffle',
-                              subtitle: summary,
-                              trailing: const Icon(PhonoliteIcons.chevronRight),
-                              onTap: () => Navigator.of(
-                                context,
-                              ).push(CustomShuffleSettingsPage.route()),
-                            );
-                          },
+                        _settingsRow(
+                          context,
+                          leading: const Icon(PhonoliteIcons.shuffle),
+                          title: 'Custom Shuffle',
+                          subtitle:
+                              'Custom shuffle plays music from your chosen artists and genres.',
+                          trailing: const Icon(PhonoliteIcons.chevronRight),
+                          onTap: () => Navigator.of(
+                            context,
+                          ).push(CustomShuffleSettingsPage.route()),
                         ),
+                        const SizedBox(height: 24),
+                        const ObsidianSectionHeader(title: 'User'),
                         const SizedBox(height: 12),
                         StreamBuilder<bool>(
                           stream: controller.statsCollectionEnabledStream,
@@ -120,29 +105,39 @@ class SettingsPage extends StatelessWidget {
                                     snapshot.data ??
                                     controller.statsCollectionEnabled,
                                 onChanged: controller.setStatsCollectionEnabled,
-                                onResetLocalHistory:
-                                    controller.resetLocalListeningHistory,
-                                onResetAccountHistory: authState.isAuthorized
-                                    ? () async {
-                                        if (!controller
-                                                .authState
-                                                .isAuthorized ||
-                                            controller
-                                                    .connection
-                                                    .sessionRevision !=
-                                                sessionRevision) {
-                                          throw StateError(
-                                            'The signed-in account changed.',
-                                          );
-                                        }
-                                        await controller
-                                            .resetAccountListeningHistory();
-                                      }
-                                    : null,
+                                serverConnected: authState.isAuthorized,
+                                onReset: () async {
+                                  if (controller.authState.isAuthorized !=
+                                          authState.isAuthorized ||
+                                      controller.connection.sessionRevision !=
+                                          sessionRevision) {
+                                    throw StateError(
+                                      'The connection or signed-in account changed.',
+                                    );
+                                  }
+                                  await controller.resetListeningStatistics();
+                                },
                               ),
                         ),
+                        if (authState.isAuthorized) ...[
+                          const SizedBox(height: 12),
+                          KeyedSubtree(
+                            key: const ValueKey('reset-user-password'),
+                            child: _settingsRow(
+                              context,
+                              leading: const Icon(PhonoliteIcons.lockKeyhole),
+                              title: 'Reset user password',
+                              subtitle:
+                                  'Change the password for your signed-in account.',
+                              trailing: const Icon(PhonoliteIcons.chevronRight),
+                              onTap: () => Navigator.of(
+                                context,
+                              ).push(ResetUserPasswordPage.route(controller)),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 24),
-                        const ObsidianSectionHeader(title: 'Offline Storage'),
+                        const ObsidianSectionHeader(title: 'Local Storage'),
                         const SizedBox(height: 12),
                         StreamBuilder<OfflineStorageLocations>(
                           stream: controller.offlineStorageLocationsStream,
@@ -151,44 +146,86 @@ class SettingsPage extends StatelessWidget {
                             final locations =
                                 snapshot.data ??
                                 controller.offlineStorageLocations;
-                            return OfflineStorageSection(
-                              locations: locations,
-                              onChangeMetadata: locations == null
-                                  ? null
-                                  : () => _openStoragePathDialog(
-                                      context,
-                                      title: 'Metadata database folder',
-                                      initialPath: locations.metadataDirectory,
-                                      isDefault:
-                                          locations.metadataDirectoryIsDefault,
-                                      onSave: controller
-                                          .updateOfflineMetadataDirectory,
-                                    ),
-                              onResetMetadata: locations == null
-                                  ? null
-                                  : () => controller
-                                        .resetOfflineMetadataDirectory(),
-                              onChangeDownloads: locations == null
-                                  ? null
-                                  : () => _openStoragePathDialog(
-                                      context,
-                                      title: 'Downloaded audio folder',
-                                      initialPath: locations.downloadsDirectory,
-                                      isDefault:
-                                          locations.downloadsDirectoryIsDefault,
-                                      onSave: controller
-                                          .updateOfflineDownloadsDirectory,
-                                    ),
-                              onResetDownloads: locations == null
-                                  ? null
-                                  : () => controller
-                                        .resetOfflineDownloadsDirectory(),
-                              onResetOfflineData: locations == null
-                                  ? null
-                                  : () => _confirmResetOfflineData(
-                                      context,
-                                      controller,
-                                    ),
+                            final logger = AppLogger.instance;
+                            return StreamBuilder<LogStorageLocation>(
+                              stream: logger.storageLocationStream,
+                              initialData: logger.storageLocation,
+                              builder: (context, logSnapshot) {
+                                final logsLocation =
+                                    logSnapshot.data ?? logger.storageLocation;
+                                return OfflineStorageSection(
+                                  locations: locations,
+                                  logsLocation: logsLocation,
+                                  onChangeMetadata: locations == null
+                                      ? null
+                                      : () => _openStoragePathDialog(
+                                          context,
+                                          title: 'Metadata database folder',
+                                          initialPath:
+                                              locations.metadataDirectory,
+                                          isDefault: locations
+                                              .metadataDirectoryIsDefault,
+                                          onSave: controller
+                                              .updateOfflineMetadataDirectory,
+                                        ),
+                                  onResetMetadata: locations == null
+                                      ? null
+                                      : () => controller
+                                            .resetOfflineMetadataDirectory(),
+                                  onOpenMetadata: locations == null
+                                      ? null
+                                      : () => _openStorageDirectory(
+                                          context,
+                                          locations.metadataDirectory,
+                                        ),
+                                  onChangeDownloads: locations == null
+                                      ? null
+                                      : () => _openStoragePathDialog(
+                                          context,
+                                          title: 'Downloaded audio folder',
+                                          initialPath:
+                                              locations.downloadsDirectory,
+                                          isDefault: locations
+                                              .downloadsDirectoryIsDefault,
+                                          onSave: controller
+                                              .updateOfflineDownloadsDirectory,
+                                        ),
+                                  onResetDownloads: locations == null
+                                      ? null
+                                      : () => controller
+                                            .resetOfflineDownloadsDirectory(),
+                                  onOpenDownloads: locations == null
+                                      ? null
+                                      : () => _openStorageDirectory(
+                                          context,
+                                          locations.downloadsDirectory,
+                                        ),
+                                  onChangeLogs: logsLocation == null
+                                      ? null
+                                      : () => _openStoragePathDialog(
+                                          context,
+                                          title: 'Logs storage folder',
+                                          initialPath: logsLocation.directory,
+                                          isDefault: logsLocation.isDefault,
+                                          onSave: logger.updateStorageDirectory,
+                                        ),
+                                  onResetLogs: logsLocation == null
+                                      ? null
+                                      : () => _resetLogsStorage(context),
+                                  onOpenLogs: logsLocation == null
+                                      ? null
+                                      : () => _openStorageDirectory(
+                                          context,
+                                          logsLocation.directory,
+                                        ),
+                                  onResetOfflineData: locations == null
+                                      ? null
+                                      : () => _confirmResetOfflineData(
+                                          context,
+                                          controller,
+                                        ),
+                                );
+                              },
                             );
                           },
                         ),
@@ -219,25 +256,6 @@ class SettingsPage extends StatelessWidget {
         );
       },
     );
-  }
-
-  String _serverLabel(AuthState state) {
-    final baseUrl = state.baseUrl.trim().isEmpty
-        ? 'No server set'
-        : state.baseUrl;
-    final prefix = switch (state.status) {
-      SessionStatus.authenticated => 'Connected',
-      SessionStatus.serverUnavailable =>
-        state.isReconnecting ? 'Reconnecting...' : 'Server unavailable',
-      SessionStatus.serverReachable => 'Server reachable',
-      SessionStatus.checking => 'Checking saved server',
-      SessionStatus.offline => 'Offline',
-    };
-    final error = state.error?.trim();
-    if (error != null && error.isNotEmpty) {
-      return '$prefix - $baseUrl - $error';
-    }
-    return '$prefix - $baseUrl';
   }
 
   String _loginActionLabel(SessionStatus status) {
@@ -276,6 +294,56 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _openStorageDirectory(BuildContext context, String path) async {
+    try {
+      await const DesktopDirectoryService().openDirectory(path);
+    } catch (error) {
+      AppLogger.warning('Could not open storage folder: $error');
+      if (!context.mounted) return;
+      await _showStorageError(
+        context,
+        title: 'Could not open folder',
+        message: 'Could not open this folder in your file manager:\n$path',
+      );
+    }
+  }
+
+  Future<void> _resetLogsStorage(BuildContext context) async {
+    try {
+      await AppLogger.instance.updateStorageDirectory(null);
+    } catch (error) {
+      AppLogger.warning('Could not reset logs storage: $error');
+      if (!context.mounted) return;
+      await _showStorageError(
+        context,
+        title: 'Could not reset logs storage',
+        message:
+            'Could not restore the default log folder. Your current logs have been kept.',
+      );
+    }
+  }
+
+  Future<void> _showStorageError(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) async {
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => ObsidianAlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          ModalActionButton(
+            label: 'Close',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirmResetOfflineData(
     BuildContext context,
     AppController controller,
@@ -283,10 +351,10 @@ class SettingsPage extends StatelessWidget {
     final usesManagedPaths = _usesManagedOfflineStoragePaths(context);
     final confirmed = await ConfirmationModal.show(
       context,
-      title: 'Reset offline data',
+      title: 'Reset local data',
       message: usesManagedPaths
-          ? 'Delete all locally downloaded tracks, artwork, offline metadata, and offline database files from this device? Offline storage will remain managed automatically on this device.'
-          : 'Delete all locally downloaded tracks, artwork, offline metadata, and offline database files from this device? Storage folder choices will be kept.',
+          ? 'Delete downloaded tracks, artwork, local metadata, local database files, and logs from this device? Local storage will remain managed automatically on this device.'
+          : 'Delete downloaded tracks, artwork, local metadata, local database files, and logs from this device? Storage folder choices will be kept.',
       confirmLabel: 'Reset',
       confirmVariant: TechButtonVariant.danger,
     );
@@ -469,14 +537,14 @@ class ListeningStatisticsSetting extends StatefulWidget {
     super.key,
     required this.enabled,
     required this.onChanged,
-    this.onResetLocalHistory,
-    this.onResetAccountHistory,
+    required this.serverConnected,
+    this.onReset,
   });
 
   final bool enabled;
   final Future<void> Function(bool) onChanged;
-  final Future<void> Function()? onResetLocalHistory;
-  final Future<void> Function()? onResetAccountHistory;
+  final bool serverConnected;
+  final Future<void> Function()? onReset;
 
   @override
   State<ListeningStatisticsSetting> createState() =>
@@ -494,13 +562,9 @@ class _ListeningStatisticsSettingState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _collectionTile(context),
-        if (widget.onResetLocalHistory != null) ...[
+        if (widget.enabled && widget.onReset != null) ...[
           const SizedBox(height: 12),
-          _resetTile(context, account: false),
-        ],
-        if (widget.onResetAccountHistory != null) ...[
-          const SizedBox(height: 12),
-          _resetTile(context, account: true),
+          _resetTile(context),
         ],
       ],
     );
@@ -545,8 +609,8 @@ class _ListeningStatisticsSettingState
                 const SizedBox(height: 4),
                 Text(
                   widget.enabled
-                      ? 'Save listening on this device and sync with your account when the server allows it.'
-                      : 'New listening and uploads are stopped on this device. Existing history is kept.',
+                      ? 'Save listening statistics on this device and sync with your account when the server allows it.'
+                      : 'New listening statistics and uploads are stopped on this device. Existing statistics are kept.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: compact ? 12 : null,
                     color: ObsidianPalette.textMuted,
@@ -581,7 +645,7 @@ class _ListeningStatisticsSettingState
     );
   }
 
-  Widget _resetTile(BuildContext context, {required bool account}) {
+  Widget _resetTile(BuildContext context) {
     final compact = isCompactListWidth(context);
     final theme = Theme.of(context);
     final enabled = !_saving && !_resetting;
@@ -590,11 +654,9 @@ class _ListeningStatisticsSettingState
       button: true,
       enabled: enabled,
       child: ObsidianHoverRow(
-        key: ValueKey(
-          account ? 'reset-account-history' : 'reset-device-only-history',
-        ),
+        key: const ValueKey('reset-listening-statistics'),
         enabled: enabled,
-        onTap: () => _resetHistory(account),
+        onTap: _resetHistory,
         borderColor: ObsidianPalette.gold,
         padding: EdgeInsets.symmetric(
           horizontal: compact ? 10 : 12,
@@ -606,9 +668,7 @@ class _ListeningStatisticsSettingState
               width: compact ? 28 : 32,
               child: IconTheme.merge(
                 data: const IconThemeData(color: ObsidianPalette.textMuted),
-                child: account
-                    ? StatsIcon.accountReset(size: compact ? 20 : 24)
-                    : StatsIcon.deviceReset(size: compact ? 20 : 24),
+                child: StatsIcon.deviceReset(size: compact ? 20 : 24),
               ),
             ),
             SizedBox(width: compact ? 8 : 12),
@@ -617,9 +677,7 @@ class _ListeningStatisticsSettingState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    account
-                        ? 'Reset account history'
-                        : 'Reset device-only history',
+                    'Reset listening statistics',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontSize: compact ? 14.5 : null,
                       letterSpacing: compact ? 0.2 : 0.6,
@@ -627,9 +685,9 @@ class _ListeningStatisticsSettingState
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    account
-                        ? 'Delete this account\'s listening statistics from the server and this app. Device-only history is kept.'
-                        : 'Delete listening statistics recorded while signed out on this device. Account history is kept.',
+                    widget.serverConnected
+                        ? 'Delete listening statistics from this device and your connected server account.'
+                        : 'Delete listening statistics saved on this device.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontSize: compact ? 12 : null,
                       color: ObsidianPalette.textMuted,
@@ -659,37 +717,32 @@ class _ListeningStatisticsSettingState
     }
   }
 
-  Future<void> _resetHistory(bool account) async {
-    if (_saving || _resetting) return;
+  Future<void> _resetHistory() async {
+    if (!widget.enabled || _saving || _resetting) return;
     // Capture the action before confirmation so an account change cannot
     // substitute a different account's callback while the dialog is open.
-    final reset = account
-        ? widget.onResetAccountHistory
-        : widget.onResetLocalHistory;
+    final reset = widget.onReset;
+    final serverConnected = widget.serverConnected;
     if (reset == null) return;
     setState(() => _resetting = true);
     try {
       final confirmed = await ConfirmationModal.show(
         context,
-        title: account
-            ? 'Reset account listening history?'
-            : 'Reset device-only listening history?',
-        message: account
-            ? 'Permanently delete all listening statistics for this account on the server and this app? Other devices will clear their copies and old pending uploads when they reconnect. Device-only history recorded while signed out is kept. This cannot be undone.'
-            : 'Permanently delete listening history recorded while signed out on this device? Server account history and its synced copy are kept. This cannot be undone.',
-        confirmLabel: 'Reset history',
+        title: 'Reset listening statistics?',
+        message: serverConnected
+            ? 'Permanently delete all listening statistics saved on this device and for your connected server account? Statistics saved on other devices must be cleared on each device. This cannot be undone.'
+            : 'Permanently delete all listening statistics saved on this device? Server statistics and statistics saved on other devices are kept. This cannot be undone.',
+        confirmLabel: 'Reset statistics',
       );
-      if (!confirmed || !mounted) return;
+      if (!confirmed || !mounted || !widget.enabled) return;
       await reset();
     } catch (error) {
       final message =
-          account &&
+          serverConnected &&
               error is ApiException &&
               (error.statusCode == 404 || error.statusCode == 405)
-          ? 'This server needs an update to reset account history.'
-          : account
-          ? 'Could not confirm the account reset. Check your connection and statistics before trying again.'
-          : 'Could not reset device-only history. Try again.';
+          ? 'This server needs an update to reset listening statistics.'
+          : 'Could not reset listening statistics. Check your connection and try again.';
       AppLogger.warning('$message $error');
     } finally {
       if (mounted) setState(() => _resetting = false);
@@ -706,6 +759,12 @@ class OfflineStorageSection extends StatelessWidget {
     required this.onChangeDownloads,
     required this.onResetDownloads,
     required this.onResetOfflineData,
+    this.onOpenMetadata,
+    this.onOpenDownloads,
+    this.logsLocation,
+    this.onChangeLogs,
+    this.onResetLogs,
+    this.onOpenLogs,
   });
 
   final OfflineStorageLocations? locations;
@@ -714,6 +773,12 @@ class OfflineStorageSection extends StatelessWidget {
   final VoidCallback? onChangeDownloads;
   final VoidCallback? onResetDownloads;
   final VoidCallback? onResetOfflineData;
+  final VoidCallback? onOpenMetadata;
+  final VoidCallback? onOpenDownloads;
+  final LogStorageLocation? logsLocation;
+  final VoidCallback? onChangeLogs;
+  final VoidCallback? onResetLogs;
+  final VoidCallback? onOpenLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -748,6 +813,7 @@ class OfflineStorageSection extends StatelessWidget {
               : _StorageActions(
                   onChange: onChangeMetadata,
                   onReset: onResetMetadata,
+                  onOpen: onOpenMetadata,
                 ),
         ),
         const Divider(height: 1),
@@ -765,15 +831,34 @@ class OfflineStorageSection extends StatelessWidget {
               : _StorageActions(
                   onChange: onChangeDownloads,
                   onReset: onResetDownloads,
+                  onOpen: onOpenDownloads,
+                ),
+        ),
+        const Divider(height: 1),
+        _sectionRow(
+          context,
+          leading: const Icon(PhonoliteIcons.receiptText),
+          title: 'Logs storage',
+          subtitle: _directorySubtitle(
+            logsLocation?.directory,
+            isDefault: logsLocation?.isDefault ?? true,
+            managed: usesManagedPaths,
+          ),
+          trailing: usesManagedPaths
+              ? const Icon(PhonoliteIcons.lockKeyhole)
+              : _StorageActions(
+                  onChange: onChangeLogs,
+                  onReset: onResetLogs,
+                  onOpen: onOpenLogs,
                 ),
         ),
         const Divider(height: 1),
         _sectionRow(
           context,
           leading: Icon(PhonoliteIcons.trash, color: theme.colorScheme.error),
-          title: 'Reset offline data',
+          title: 'Reset local data',
           subtitle:
-              'Delete local tracks, artwork, metadata, and offline databases',
+              'Delete local tracks, artwork, metadata, local databases, and logs',
           titleColor: theme.colorScheme.error,
           trailing: _resetAction(context, onTap: onResetOfflineData),
         ),
@@ -795,6 +880,15 @@ class OfflineStorageSection extends StatelessWidget {
     final path = metadata
         ? locations.metadataDirectory
         : locations.downloadsDirectory;
+    return _directorySubtitle(path, isDefault: isDefault, managed: managed);
+  }
+
+  String _directorySubtitle(
+    String? path, {
+    required bool isDefault,
+    required bool managed,
+  }) {
+    if (path == null) return 'Loading storage path';
     if (managed) {
       return 'Managed automatically on this device - $path';
     }
@@ -907,13 +1001,26 @@ class OfflineStorageSection extends StatelessWidget {
 }
 
 class _StorageActions extends StatelessWidget {
-  const _StorageActions({required this.onChange, required this.onReset});
+  const _StorageActions({
+    required this.onChange,
+    required this.onReset,
+    required this.onOpen,
+  });
 
   final VoidCallback? onChange;
   final VoidCallback? onReset;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final showOpen =
+        !kIsWeb &&
+        switch (Theme.of(context).platform) {
+          TargetPlatform.windows ||
+          TargetPlatform.macOS ||
+          TargetPlatform.linux => true,
+          _ => false,
+        };
     if (isCompactListWidth(context)) {
       return ObsidianOverflowActionButton(
         tooltip: 'Storage actions',
@@ -924,10 +1031,16 @@ class _StorageActions extends StatelessWidget {
             onTap: onChange,
           ),
           ObsidianMenuAction(
-            label: 'Reset',
+            label: 'Reset path',
             icon: PhonoliteIcons.rotateCcw,
             onTap: onReset,
           ),
+          if (showOpen)
+            ObsidianMenuAction(
+              label: 'Open folder',
+              icon: PhonoliteIcons.folder,
+              onTap: onOpen,
+            ),
         ],
       );
     }
@@ -944,12 +1057,20 @@ class _StorageActions extends StatelessWidget {
           onTap: onChange,
         ),
         TechButton(
-          label: 'Reset',
+          label: 'Reset path',
           icon: PhonoliteIcons.rotateCcw,
           density: TechButtonDensity.compact,
           chrome: TechButtonChrome.borderless,
           onTap: onReset,
         ),
+        if (showOpen)
+          TechButton(
+            label: 'Open folder',
+            icon: PhonoliteIcons.folder,
+            density: TechButtonDensity.compact,
+            chrome: TechButtonChrome.borderless,
+            onTap: onOpen,
+          ),
       ],
     );
   }

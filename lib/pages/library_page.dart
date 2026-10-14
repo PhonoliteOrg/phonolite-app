@@ -850,6 +850,7 @@ class _LibraryPageState extends State<LibraryPage> {
         label: label,
         scope: OfflineDeletionScope.artist(
           id: groups.length == 1 ? groups.single.id : null,
+          ids: groups.map((group) => group.id).toList(growable: false),
           label: label,
         ),
       );
@@ -1037,13 +1038,23 @@ class _LibraryPageState extends State<LibraryPage> {
 
   void _openArtistDetail(Artist artist) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ArtistDetailScreen(artist: artist)),
+      MaterialPageRoute(
+        settings: RouteSettings(
+          name: ArtistDetailScreen.routeNameFor(artist.id),
+        ),
+        builder: (_) => ArtistDetailScreen(artist: artist),
+      ),
     );
   }
 
   void _openLocalArtistDetail(OfflineArtistGroup group) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LocalArtistDetailScreen(group: group)),
+      MaterialPageRoute(
+        settings: RouteSettings(
+          name: LocalArtistDetailScreen.routeNameFor(group.id),
+        ),
+        builder: (_) => LocalArtistDetailScreen(group: group),
+      ),
     );
   }
 

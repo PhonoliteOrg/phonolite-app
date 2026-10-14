@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../widgets/ui/phonolite_icons.dart';
 
-import '../core/constants.dart';
 import '../core/library_helpers.dart';
 import '../entities/app_controller.dart';
 import '../entities/models.dart';
@@ -32,6 +31,9 @@ class ArtistDetailScreen extends StatefulWidget {
   const ArtistDetailScreen({super.key, required this.artist});
 
   final Artist artist;
+
+  static String routeNameFor(String artistId) =>
+      '/library/server/artist/$artistId';
 
   @override
   State<ArtistDetailScreen> createState() => ArtistDetailScreenState();
@@ -92,7 +94,6 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
     final compactHeaderActions = isCompactListWidth(context);
 
     return Scaffold(
-      backgroundColor: bgDark,
       body: SafeArea(
         child: StreamBuilder<bool>(
           stream: controller.albumsLoadingStream,
@@ -225,12 +226,10 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                             else if (albums.isEmpty &&
                                 releases.collabAlbums.isEmpty)
                               const SliverPadding(
-                                padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
+                                padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
                                 sliver: SliverToBoxAdapter(
-                                  child: EmptyState(
-                                    title: 'No albums',
-                                    message:
-                                        'This artist has no releases in the library yet.',
+                                  child: EmptyStateText(
+                                    title: 'Artist has no albums',
                                   ),
                                 ),
                               )
@@ -599,6 +598,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
   void _openAlbumDetail(Album album) {
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: RouteSettings(name: AlbumDetailScreen.routeNameFor(album.id)),
         builder: (_) => AlbumDetailScreen(
           album: album,
           artistName: album.artist.isEmpty ? _artist.name : album.artist,
