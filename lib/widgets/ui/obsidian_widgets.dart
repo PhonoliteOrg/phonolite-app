@@ -280,13 +280,18 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
                       ),
                   ];
                   if (widget.iconWidget != null) {
-                    return IconTheme.merge(
-                      data: IconThemeData(
-                        color: animatedColor,
-                        size: widget.size,
-                        shadows: shadows,
+                    // Keep SVG artwork at the icon size inside touch targets.
+                    return Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: IconTheme.merge(
+                        data: IconThemeData(
+                          color: animatedColor,
+                          size: widget.size,
+                          shadows: shadows,
+                        ),
+                        child: widget.iconWidget!,
                       ),
-                      child: widget.iconWidget!,
                     );
                   }
                   return Icon(

@@ -3,7 +3,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/models.dart';
+import 'package:phonolite_app/entities/offline_models.dart';
 import 'package:phonolite_app/entities/playback_state.dart';
+import 'package:phonolite_app/widgets/display/album_row_tile.dart';
+import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
+import 'package:phonolite_app/widgets/display/track_row_tile.dart';
 import 'package:phonolite_app/widgets/inputs/obsidian_text_field.dart';
 import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
 import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
@@ -55,8 +59,48 @@ Widget _dialog(_Kind kind, VoidCallback onAction) => switch (kind) {
     message: 'Remove this selection from the device?',
     confirmLabel: 'Remove',
   ),
-  _Kind.downloads => const DownloadManagerPanel(downloadsOverride: []),
+  _Kind.downloads => _downloadManager(),
 };
+
+DownloadManagerPanel _downloadManager([
+  ObsidianAdaptiveModalPresentation presentation =
+      ObsidianAdaptiveModalPresentation.dialog,
+]) => DownloadManagerPanel(
+  presentation: presentation,
+  downloadsOverride: [
+    OfflineTrackDownload(
+      serverBaseUrl: 'https://unused.test/api/v1',
+      track: Track(
+        id: 'layout-track',
+        title: 'A long track title that needs to fit beside the controls',
+        artist: 'An artist with a long name',
+        album: 'An album with a long name',
+        durationMs: 60000,
+        liked: false,
+        inPlaylists: false,
+      ),
+      status: OfflineDownloadStatus.downloading,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(1),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(2),
+      bytesDownloaded: 25,
+      bytesTotal: 100,
+    ),
+  ],
+  jobsOverride: [
+    for (final kind in ['album', 'artist'])
+      OfflineDownloadJob(
+        jobId: kind,
+        kind: kind,
+        label: 'A long $kind name that needs to fit beside the controls',
+        serverBaseUrl: 'https://unused.test/api/v1',
+        status: OfflineDownloadStatus.queued,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(1),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(2),
+        totalCount: 10,
+        discoveredCount: 10,
+      ),
+  ],
+);
 
 void main() {
   setUp(configureTestFonts);
@@ -94,11 +138,9 @@ void main() {
                       result = kind == _Kind.downloads
                           ? await ObsidianAdaptiveModal.show<Object>(
                               context: context,
+                              useCompactSheet: false,
                               builder: (_, presentation) =>
-                                  DownloadManagerPanel(
-                                    downloadsOverride: const [],
-                                    presentation: presentation,
-                                  ),
+                                  _downloadManager(presentation),
                             )
                           : await showDialog<Object>(
                               context: context,
@@ -117,8 +159,64 @@ void main() {
           await tester.pumpAndSettle();
 
           final title = find.text(_title(kind));
+          if (kind == _Kind.downloads) {
+            expect(find.byType(Dialog), findsOneWidget);
+            expect(find.byType(BottomSheet), findsNothing);
+            expect(
+              tester
+                  .widget<ObsidianModalSurface>(
+                    find.byType(ObsidianModalSurface),
+                  )
+                  .showDragHandle,
+              isFalse,
+            );
+            for (final tileType in [
+              TrackRowTile,
+              AlbumRowTile,
+              ArtistRowTile,
+            ]) {
+              final tile = find.byType(tileType);
+              final tileRect = tester.getRect(tile);
+              final buttons = find.descendant(
+                of: tile,
+                matching: find.byType(IconButton),
+              );
+              expect(buttons, findsNWidgets(2));
+              for (final button in buttons.evaluate()) {
+                final rect = tester.getRect(find.byWidget(button.widget));
+                expect(rect.center.dy, closeTo(tileRect.center.dy, 0.1));
+                expect(rect.left, greaterThanOrEqualTo(tileRect.left));
+                expect(rect.right, lessThanOrEqualTo(tileRect.right));
+                if (width < 820) {
+                  expect(rect.size, const Size(44, 44));
+                }
+              }
+              final title = find
+                  .descendant(of: tile, matching: find.byType(Text))
+                  .first;
+              expect(tester.getSize(title).width, greaterThan(0));
+            }
+          }
           final surface = tester.getRect(find.byType(ObsidianFrostedSurface));
           final titleRect = tester.getRect(title);
+          if (kind == _Kind.downloads) {
+            final controls = [
+              for (final label in [
+                'Pause all',
+                'Resume paused',
+                'Clear partial / failed',
+              ])
+                tester.getRect(find.byTooltip(label)),
+            ];
+            expect(titleRect.right, lessThan(controls.first.left));
+            for (final control in controls) {
+              expect(control.center.dy, closeTo(titleRect.center.dy, 0.1));
+              expect(control.size, Size.square(width < 820 ? 48 : 36));
+            }
+            expect(controls[0].right, lessThan(controls[1].left));
+            expect(controls[1].right, lessThan(controls[2].left));
+            expect(surface.right - controls.last.right, closeTo(24, 0.1));
+          }
           final titleStyle = tester
               .renderObject<RenderParagraph>(title)
               .text
@@ -157,7 +255,7 @@ void main() {
           expect(surface.bottom - primaryRect.bottom, closeTo(16, 0.1));
           expect(titleRect.bottom, lessThan(dismissRect.top));
           expect(dismissRect.height, greaterThanOrEqualTo(48));
-          if (width < 820 && kind != _Kind.downloads) {
+          if (width < 820) {
             expect(surface.width, closeTo(width - 24, 0.1));
           }
           if (expected.length > 1) {

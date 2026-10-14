@@ -170,18 +170,27 @@ class _TrackRowTileState extends State<TrackRowTile>
               ),
           ]
         : const <ObsidianMenuAction>[];
-    final leadingWidth = isCompact ? 28.0 : 32.0;
-    final leadingGap = isCompact ? 6.0 : 8.0;
-    final artSize = isCompact ? 36.0 : 42.0;
-    final artGap = isCompact ? 10.0 : 12.0;
-    final actionGap = isCompact ? 2.0 : 6.0;
+    final leadingWidth = isCompact
+        ? selectionMode || widget.index >= 100
+              ? 28.0
+              : 22.0
+        : 32.0;
+    final leadingGap = isCompact ? 4.0 : 8.0;
+    final artSize = isCompact ? 32.0 : 42.0;
+    final artGap = isCompact ? 8.0 : 12.0;
+    final actionGap = isCompact ? 0.0 : 6.0;
+    final actionIconSize = isCompact ? 18.0 : 22.0;
+    Widget sizedAction(Widget child) =>
+        isCompact ? SizedBox.square(dimension: 44, child: child) : child;
     final titleStyle = theme.textTheme.titleMedium?.copyWith(
-      fontSize: isCompact ? 14.5 : null,
+      fontSize: isCompact ? 13 : null,
       letterSpacing: isCompact ? 0.2 : 0.6,
+      height: isCompact ? 1.25 : null,
     );
     final subtitleStyle = theme.textTheme.bodySmall?.copyWith(
-      fontSize: isCompact ? 12 : null,
+      fontSize: isCompact ? 11 : null,
       letterSpacing: isCompact ? 0 : null,
+      height: isCompact ? 1.25 : null,
       color: ObsidianPalette.textMuted,
     );
 
@@ -197,7 +206,7 @@ class _TrackRowTileState extends State<TrackRowTile>
           ? widget.onSelectionToggle
           : widget.onSelectionModeRequested ?? widget.onLongPress,
       padding: isCompact
-          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 4)
           : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),
@@ -207,6 +216,7 @@ class _TrackRowTileState extends State<TrackRowTile>
             SizedBox(
               width: leadingWidth,
               child: Center(
+                heightFactor: 1,
                 child: selectionMode
                     ? LucideCheckbox(
                         value: widget.selected,
@@ -229,7 +239,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                     ? Text(
                         widget.index.toString().padLeft(2, '0'),
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: isCompact ? 14 : null,
+                          fontSize: isCompact ? 12 : null,
                           color: ObsidianPalette.gold,
                           letterSpacing: isCompact ? 0.8 : 1.2,
                         ),
@@ -249,6 +259,7 @@ class _TrackRowTileState extends State<TrackRowTile>
             ],
             Expanded(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -257,7 +268,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                     overflow: TextOverflow.ellipsis,
                     style: titleStyle,
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: isCompact ? 1 : 2),
                   Text(
                     widget.subtitle ?? _artistAlbumLine(widget.track),
                     maxLines: 1,
@@ -285,6 +296,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                   download: widget.offlineDownload,
                   onDownload: widget.onDownload,
                   onRemoveDownload: widget.onRemoveDownload,
+                  isCompact: isCompact,
                 ),
                 SizedBox(width: actionGap),
               ],
@@ -299,10 +311,12 @@ class _TrackRowTileState extends State<TrackRowTile>
                 SizedBox(width: actionGap),
               ],
               if (!selectionMode)
-                LikeIconButton(
-                  isLiked: widget.track.liked,
-                  onPressed: isDeleting ? null : widget.onLike,
-                  size: 22,
+                sizedAction(
+                  LikeIconButton(
+                    isLiked: widget.track.liked,
+                    onPressed: isDeleting ? null : widget.onLike,
+                    size: actionIconSize,
+                  ),
                 ),
               if (!selectionMode && !isCompact && widget.onDelete != null) ...[
                 SizedBox(width: actionGap),
@@ -314,9 +328,12 @@ class _TrackRowTileState extends State<TrackRowTile>
               ],
               if (overflowActions.isNotEmpty) ...[
                 SizedBox(width: actionGap),
-                ObsidianOverflowActionButton(
-                  tooltip: 'Track actions',
-                  actions: overflowActions,
+                sizedAction(
+                  ObsidianOverflowActionButton(
+                    tooltip: 'Track actions',
+                    actions: overflowActions,
+                    size: actionIconSize,
+                  ),
                 ),
               ],
             ],
@@ -373,15 +390,18 @@ class _DownloadStatusButton extends StatelessWidget {
     required this.download,
     required this.onDownload,
     required this.onRemoveDownload,
+    required this.isCompact,
   });
 
   final OfflineTrackDownload? download;
   final VoidCallback? onDownload;
   final VoidCallback? onRemoveDownload;
+  final bool isCompact;
 
   @override
   Widget build(BuildContext context) {
     final status = download?.status;
+    final iconSize = isCompact ? 18.0 : 22.0;
     final queued = status == OfflineDownloadStatus.queued;
     final preparing = status == OfflineDownloadStatus.preparing;
     final downloading = status == OfflineDownloadStatus.downloading;
@@ -428,13 +448,13 @@ class _DownloadStatusButton extends StatelessWidget {
         onTap: action,
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
-          width: _trackActionButtonExtent,
-          height: _trackActionButtonExtent,
+          width: isCompact ? 44 : _trackActionButtonExtent,
+          height: isCompact ? 44 : _trackActionButtonExtent,
           child: Center(
             child: showProgressRing
                 ? SizedBox(
-                    width: 22,
-                    height: 22,
+                    width: iconSize,
+                    height: iconSize,
                     child: CircularProgressIndicator(
                       value: progress,
                       strokeWidth: 2,
@@ -446,7 +466,7 @@ class _DownloadStatusButton extends StatelessWidget {
                   )
                 : preparing
                 ? IconTheme.merge(
-                    data: IconThemeData(color: color, size: 22),
+                    data: IconThemeData(color: color, size: iconSize),
                     child: const ReloadIcon(),
                   )
                 : Icon(
@@ -466,7 +486,7 @@ class _DownloadStatusButton extends StatelessWidget {
                         ? PhonoliteIcons.download
                         : PhonoliteIcons.download,
                     color: color,
-                    size: 22,
+                    size: iconSize,
                   ),
           ),
         ),

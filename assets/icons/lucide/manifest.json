@@ -400,7 +400,8 @@
   },
   "notes": [
     "Lucide uses outline icons. Existing active colors distinguish liked, shuffle and selected navigation states.",
-    "Native liked star and heart variants use the same Lucide path with a filled interior.",
+    "Liked heart variants in Flutter and native controls use the same Lucide path with a filled interior.",
+    "Native liked star variants use the same Lucide path with a filled interior.",
     "Checkboxes retain Flutter interaction/semantics, with local square/square-check glyphs.",
     "Font glyphs are centered in square advance cells with zero line gap.",
     "The main player retains its original filled Material play/pause icons.",

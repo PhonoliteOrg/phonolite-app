@@ -50,6 +50,7 @@ class _LibraryPageState extends State<LibraryPage> {
   static const double _regularHeaderActionIconSize = 26;
 
   late final TextEditingController _searchController;
+  String _lastSearchText = '';
   late final ScrollController _scrollController;
   Timer? _searchDebounce;
   bool _requestedServerLoad = false;
@@ -62,7 +63,16 @@ class _LibraryPageState extends State<LibraryPage> {
     super.initState();
     _scrollController = ScrollController()..addListener(_handleArtistScroll);
     _searchController = TextEditingController();
-    _searchController.addListener(() => setState(() {}));
+    _searchController.addListener(_handleSearchTextChanged);
+  }
+
+  void _handleSearchTextChanged() {
+    final text = _searchController.text;
+    // Selection and IME updates also notify this controller. Rebuild/filter
+    // the library only when the query changes, not when the keyboard focuses.
+    if (text == _lastSearchText) return;
+    _lastSearchText = text;
+    setState(() {});
   }
 
   @override

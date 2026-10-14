@@ -25,6 +25,7 @@ Future<void> showDownloadManagerPanel(BuildContext context) async {
   final controller = AppScope.of(context);
   await ObsidianAdaptiveModal.show<void>(
     context: context,
+    useCompactSheet: false,
     builder: (context, presentation) => DownloadManagerPanel(
       controller: controller,
       presentation: presentation,
@@ -98,55 +99,51 @@ class DownloadManagerPanel extends StatelessWidget {
   }
 
   Widget _toolbar(BuildContext context, _DownloadManagerViewState state) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final iconOnly = constraints.maxWidth < 430;
-        return Wrap(
-          spacing: iconOnly ? 4 : 8,
-          runSpacing: iconOnly ? 2 : 8,
-          children: [
-            TechButton(
-              label: 'Pause all',
-              tooltip: 'Pause all',
-              icon: PhonoliteIcons.pause,
-              iconOnly: iconOnly,
-              density: TechButtonDensity.compact,
-              chrome: TechButtonChrome.borderless,
-              onTap: controller == null || !state.hasPausable
-                  ? null
-                  : () => unawaited(controller!.pauseAllOfflineDownloads()),
-            ),
-            TechButton(
-              label: 'Resume paused',
-              tooltip: 'Resume paused',
-              icon: PhonoliteIcons.play,
-              iconOnly: iconOnly,
-              density: TechButtonDensity.compact,
-              chrome: TechButtonChrome.borderless,
-              onTap: controller == null || !state.hasPaused
-                  ? null
-                  : () => unawaited(controller!.resumePausedOfflineDownloads()),
-            ),
-            TechButton(
-              label: 'Clear partial / failed',
-              tooltip: 'Clear partial / failed',
-              icon: PhonoliteIcons.trash2,
-              iconOnly: iconOnly,
-              density: TechButtonDensity.compact,
-              chrome: TechButtonChrome.borderless,
-              onTap: controller == null || !state.hasClearable
-                  ? null
-                  : () => unawaited(
-                      _confirmClearPausedCached(
-                        context,
-                        controller!,
-                        state.clearableCount,
-                      ),
-                    ),
-            ),
-          ],
-        );
-      },
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TechButton(
+          label: 'Pause all',
+          tooltip: 'Pause all',
+          icon: PhonoliteIcons.pause,
+          iconOnly: true,
+          density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
+          onTap: controller == null || !state.hasPausable
+              ? null
+              : () => unawaited(controller!.pauseAllOfflineDownloads()),
+        ),
+        const SizedBox(width: 4),
+        TechButton(
+          label: 'Resume paused',
+          tooltip: 'Resume paused',
+          icon: PhonoliteIcons.play,
+          iconOnly: true,
+          density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
+          onTap: controller == null || !state.hasPaused
+              ? null
+              : () => unawaited(controller!.resumePausedOfflineDownloads()),
+        ),
+        const SizedBox(width: 4),
+        TechButton(
+          label: 'Clear partial / failed',
+          tooltip: 'Clear partial / failed',
+          icon: PhonoliteIcons.trash2,
+          iconOnly: true,
+          density: TechButtonDensity.compact,
+          chrome: TechButtonChrome.borderless,
+          onTap: controller == null || !state.hasClearable
+              ? null
+              : () => unawaited(
+                  _confirmClearPausedCached(
+                    context,
+                    controller!,
+                    state.clearableCount,
+                  ),
+                ),
+        ),
+      ],
     );
   }
 
@@ -498,68 +495,51 @@ class _DownloadJobRow extends StatelessWidget {
     final coverUrl = _coverUrl;
     final headers = _headers;
     final actions = _DownloadJobActions(job: job, controller: controller);
-    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
-    final trailing = touchLayout ? const SizedBox.shrink() : actions;
-    Widget withActions(Widget row) => touchLayout
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              row,
-              Align(alignment: Alignment.centerRight, child: actions),
-            ],
-          )
-        : row;
     final subtitle = _subtitle;
     if (job.kind == 'artist') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: withActions(
-          ArtistRowTile(
-            artist: Artist(
-              id: _sourceId ?? job.jobId,
-              name: title,
-              albumCount: 0,
-            ),
-            coverUrl: coverUrl,
-            headers: headers,
-            subtitle: subtitle,
-            trailing: trailing,
+        child: ArtistRowTile(
+          artist: Artist(
+            id: _sourceId ?? job.jobId,
+            name: title,
+            albumCount: 0,
           ),
+          coverUrl: coverUrl,
+          headers: headers,
+          subtitle: subtitle,
+          trailing: actions,
         ),
       );
     }
     if (job.kind == 'album') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: withActions(
-          AlbumRowTile(
-            album: Album(
-              id: _sourceId ?? job.jobId,
-              title: title,
-              artist: '',
-              artistId: '',
-              trackCount: job.totalCount > 0
-                  ? job.totalCount
-                  : job.discoveredCount,
-            ),
-            coverUrl: coverUrl ?? '',
-            headers: headers,
-            subtitle: subtitle,
-            trailing: trailing,
+        child: AlbumRowTile(
+          album: Album(
+            id: _sourceId ?? job.jobId,
+            title: title,
+            artist: '',
+            artistId: '',
+            trackCount: job.totalCount > 0
+                ? job.totalCount
+                : job.discoveredCount,
           ),
+          coverUrl: coverUrl ?? '',
+          headers: headers,
+          subtitle: subtitle,
+          trailing: actions,
         ),
       );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: withActions(
-        ArtistRowTile(
-          artist: Artist(id: job.jobId, name: title, albumCount: 0),
-          coverUrl: null,
-          headers: const {},
-          subtitle: subtitle,
-          trailing: trailing,
-        ),
+      child: ArtistRowTile(
+        artist: Artist(id: job.jobId, name: title, albumCount: 0),
+        coverUrl: null,
+        headers: const {},
+        subtitle: subtitle,
+        trailing: actions,
       ),
     );
   }
@@ -625,23 +605,21 @@ class _DownloadJobActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canResume = job.status == OfflineDownloadStatus.paused;
     return Wrap(
       spacing: 4,
       runSpacing: 4,
       children: [
         _ActionButton(
-          tooltip: 'Pause download job',
-          icon: PhonoliteIcons.pause,
-          onPressed: controller == null || !_canPauseJob(job)
+          tooltip: canResume ? 'Resume download job' : 'Pause download job',
+          icon: canResume ? PhonoliteIcons.play : PhonoliteIcons.pause,
+          onPressed: controller == null || (!canResume && !_canPauseJob(job))
               ? null
-              : () => unawaited(controller!.pauseOfflineDownloadJob(job)),
-        ),
-        _ActionButton(
-          tooltip: 'Resume download job',
-          icon: PhonoliteIcons.play,
-          onPressed: controller == null || !_canResumeJob(job)
-              ? null
-              : () => unawaited(controller!.resumeOfflineDownloadJob(job)),
+              : () => unawaited(
+                  canResume
+                      ? controller!.resumeOfflineDownloadJob(job)
+                      : controller!.pauseOfflineDownloadJob(job),
+                ),
         ),
         _ActionButton(
           tooltip: 'Cancel and remove job',
@@ -663,10 +641,6 @@ class _DownloadJobActions extends StatelessWidget {
       _ => false,
     };
   }
-
-  static bool _canResumeJob(OfflineDownloadJob job) {
-    return job.status == OfflineDownloadStatus.paused;
-  }
 }
 
 class _DownloadItemRow extends StatelessWidget {
@@ -677,7 +651,6 @@ class _DownloadItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final touchLayout = ObsidianModalScope.usesTouchTargets(context);
     final actions = _DownloadActions(
       download: download,
       controller: controller,
@@ -693,20 +666,9 @@ class _DownloadItemRow extends StatelessWidget {
       subtitle: _subtitle,
       offlineDownload: download,
       leading: _DownloadStatusGlyph(download: download),
-      trailing: touchLayout ? const SizedBox.shrink() : actions,
+      trailing: actions,
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: touchLayout
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                row,
-                Align(alignment: Alignment.centerRight, child: actions),
-              ],
-            )
-          : row,
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 8), child: row);
   }
 
   String get _subtitle {
@@ -824,44 +786,39 @@ class _DownloadActions extends StatelessWidget {
     final canPause = _canPause(download.status);
     final canResume = download.status == OfflineDownloadStatus.paused;
     final canRetry = _canRetry(download.status);
-    final canCancel = _canCancel(download.status);
-    final canRemovePartial = _canRemovePartial(download.status);
+    final canRemove = _canRemove(download.status);
     return Wrap(
       spacing: 4,
       runSpacing: 4,
       children: [
+        if (canResume)
+          _ActionButton(
+            tooltip: 'Resume',
+            icon: PhonoliteIcons.play,
+            onPressed: controller == null
+                ? null
+                : () => unawaited(controller!.resumeOfflineDownload(download)),
+          )
+        else if (canRetry)
+          _ActionButton(
+            tooltip: 'Retry',
+            iconWidget: const ReloadIcon(),
+            onPressed: controller == null
+                ? null
+                : () => unawaited(controller!.retryOfflineDownload(download)),
+          )
+        else
+          _ActionButton(
+            tooltip: 'Pause',
+            icon: PhonoliteIcons.pause,
+            onPressed: controller == null || !canPause
+                ? null
+                : () => unawaited(controller!.pauseOfflineDownload(download)),
+          ),
         _ActionButton(
-          tooltip: 'Pause',
-          icon: PhonoliteIcons.pause,
-          onPressed: controller == null || !canPause
-              ? null
-              : () => unawaited(controller!.pauseOfflineDownload(download)),
-        ),
-        _ActionButton(
-          tooltip: 'Resume',
-          icon: PhonoliteIcons.play,
-          onPressed: controller == null || !canResume
-              ? null
-              : () => unawaited(controller!.resumeOfflineDownload(download)),
-        ),
-        _ActionButton(
-          tooltip: 'Retry',
-          iconWidget: const ReloadIcon(),
-          onPressed: controller == null || !canRetry
-              ? null
-              : () => unawaited(controller!.retryOfflineDownload(download)),
-        ),
-        _ActionButton(
-          tooltip: 'Cancel',
-          icon: PhonoliteIcons.x,
-          onPressed: controller == null || !canCancel
-              ? null
-              : () => unawaited(controller!.cancelOfflineDownload(download)),
-        ),
-        _ActionButton(
-          tooltip: 'Remove partial cache',
+          tooltip: 'Remove download',
           icon: PhonoliteIcons.trash2,
-          onPressed: controller == null || !canRemovePartial
+          onPressed: controller == null || !canRemove
               ? null
               : () => unawaited(controller!.removeOfflineDownload(download)),
         ),
@@ -871,6 +828,7 @@ class _DownloadActions extends StatelessWidget {
 
   static bool _canPause(OfflineDownloadStatus status) {
     return switch (status) {
+      OfflineDownloadStatus.queued ||
       OfflineDownloadStatus.preparing ||
       OfflineDownloadStatus.downloading ||
       OfflineDownloadStatus.validating => true,
@@ -887,23 +845,11 @@ class _DownloadActions extends StatelessWidget {
     };
   }
 
-  static bool _canCancel(OfflineDownloadStatus status) {
+  static bool _canRemove(OfflineDownloadStatus status) {
     return switch (status) {
-      OfflineDownloadStatus.queued ||
-      OfflineDownloadStatus.preparing ||
-      OfflineDownloadStatus.downloading ||
-      OfflineDownloadStatus.validating => true,
-      _ => false,
-    };
-  }
-
-  static bool _canRemovePartial(OfflineDownloadStatus status) {
-    return switch (status) {
-      OfflineDownloadStatus.paused ||
-      OfflineDownloadStatus.failed ||
-      OfflineDownloadStatus.corrupt ||
-      OfflineDownloadStatus.canceled => true,
-      _ => false,
+      OfflineDownloadStatus.removing ||
+      OfflineDownloadStatus.downloaded => false,
+      _ => true,
     };
   }
 }
@@ -924,7 +870,7 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final touchLayout = ObsidianModalScope.usesTouchTargets(context);
-    final size = touchLayout ? 48.0 : 32.0;
+    final size = touchLayout ? 44.0 : 32.0;
     return Tooltip(
       message: tooltip,
       child: SizedBox.square(
@@ -933,7 +879,7 @@ class _ActionButton extends StatelessWidget {
           padding: EdgeInsets.zero,
           constraints: BoxConstraints.tightFor(width: size, height: size),
           visualDensity: VisualDensity.standard,
-          iconSize: touchLayout ? 24 : 20,
+          iconSize: 20,
           onPressed: onPressed,
           icon: iconWidget ?? Icon(icon),
         ),

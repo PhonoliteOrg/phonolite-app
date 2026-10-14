@@ -2,6 +2,7 @@ Lucide 1.52.0
 Official source: https://lucide.dev/guide/static
 The app bundles these SVGs and a subset of the official icon font for offline use.
 The font subset centers each glyph within its square advance cell.
+heart-filled.svg is a Phonolite variant of heart.svg with a filled interior.
 LICENSE contains the Lucide ISC and inherited Feather MIT notices.
 manifest.json records the full replacement mapping and package integrity.
 Regenerate: python tools/vendor_lucide.py --download

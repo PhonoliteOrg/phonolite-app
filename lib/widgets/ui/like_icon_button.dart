@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'phonolite_icons.dart';
 
 import 'obsidian_widgets.dart';
+import 'svg_asset_icon.dart';
 
 class LikeIconButton extends StatelessWidget {
   const LikeIconButton({
@@ -19,7 +20,12 @@ class LikeIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ObsidianHudIconButton(
-      icon: PhonoliteIcons.heart,
+      icon: isLiked ? null : PhonoliteIcons.heart,
+      iconWidget: isLiked
+          ? const SvgAssetIcon(
+              assetName: 'assets/icons/lucide/heart-filled.svg',
+            )
+          : null,
       isActive: isLiked,
       onPressed: onPressed,
       size: size,

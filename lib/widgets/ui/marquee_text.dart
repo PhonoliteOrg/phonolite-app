@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 class MarqueeText extends StatefulWidget {
@@ -22,8 +24,11 @@ class MarqueeText extends StatefulWidget {
 
 class _MarqueeTextState extends State<MarqueeText> {
   final ScrollController _controller = ScrollController();
-  bool _running = false;
+  Timer? _pauseTimer;
+  int _loopGeneration = 0;
   bool _shouldScroll = false;
+  double? _viewportWidth;
+  double? _textWidth;
 
   @override
   void didUpdateWidget(covariant MarqueeText oldWidget) {
@@ -33,86 +38,116 @@ class _MarqueeTextState extends State<MarqueeText> {
         oldWidget.velocity != widget.velocity ||
         oldWidget.gap != widget.gap ||
         oldWidget.pause != widget.pause) {
-      _running = false;
-      if (_controller.hasClients) {
-        _controller.jumpTo(0);
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startLoop());
+      _restartLoop();
     }
   }
 
   @override
   void dispose() {
-    _running = false;
+    _cancelLoop();
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _startLoop() async {
-    if (_running || !_shouldScroll) {
-      return;
-    }
-    _running = true;
-    await Future.delayed(const Duration(milliseconds: 200));
-    while (mounted && _running) {
-      if (!_controller.hasClients) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        continue;
-      }
-      final position = _controller.position;
-      final max = position.maxScrollExtent;
-      if (max <= 0) {
-        await Future.delayed(const Duration(milliseconds: 400));
-        continue;
-      }
-      await Future.delayed(widget.pause);
-      if (!_controller.hasClients) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        continue;
-      }
-      final distance = max - _controller.position.pixels;
-      final durationMs = (distance / widget.velocity * 1000).round();
-      await _controller.animateTo(
-        max,
-        duration: Duration(milliseconds: durationMs.clamp(1, 60000)),
-        curve: Curves.linear,
-      );
-      await Future.delayed(widget.pause);
-      if (!_running) {
-        break;
-      }
+  void _cancelLoop() {
+    _loopGeneration++;
+    _pauseTimer?.cancel();
+    _pauseTimer = null;
+  }
+
+  bool _isCurrentLoop(int generation) =>
+      mounted && _shouldScroll && generation == _loopGeneration;
+
+  void _restartLoop() {
+    _cancelLoop();
+    if (_controller.hasClients) {
       _controller.jumpTo(0);
+    }
+    if (_shouldScroll) {
+      _scheduleScroll(
+        _loopGeneration,
+        const Duration(milliseconds: 200) + widget.pause,
+      );
     }
   }
 
-  void _setShouldScroll(bool value) {
-    if (_shouldScroll == value) {
+  void _scheduleScroll(int generation, Duration delay) {
+    if (!_isCurrentLoop(generation)) return;
+    _pauseTimer?.cancel();
+    _pauseTimer = Timer(delay, () {
+      _pauseTimer = null;
+      unawaited(_scrollToEnd(generation));
+    });
+  }
+
+  Future<void> _scrollToEnd(int generation) async {
+    if (!_isCurrentLoop(generation)) return;
+    if (!_controller.hasClients) {
+      _scheduleScroll(generation, const Duration(milliseconds: 200));
       return;
     }
-    _shouldScroll = value;
-    if (!_shouldScroll) {
-      _running = false;
+    final position = _controller.position;
+    final max = position.maxScrollExtent;
+    if (max <= 0) {
+      _scheduleScroll(generation, const Duration(milliseconds: 400));
+      return;
+    }
+    final distance = max - position.pixels;
+    final durationMs = (distance / widget.velocity * 1000).round();
+    await _controller.animateTo(
+      max,
+      duration: Duration(milliseconds: durationMs > 0 ? durationMs : 1),
+      curve: Curves.linear,
+    );
+    if (!_isCurrentLoop(generation)) return;
+    _pauseTimer = Timer(widget.pause, () {
+      _pauseTimer = null;
+      if (!_isCurrentLoop(generation)) return;
       if (_controller.hasClients) {
         _controller.jumpTo(0);
       }
-    } else {
-      _startLoop();
+      _scheduleScroll(generation, widget.pause);
+    });
+  }
+
+  void _setShouldScroll(bool value, double viewportWidth, double textWidth) {
+    if (_shouldScroll == value &&
+        _viewportWidth == viewportWidth &&
+        _textWidth == textWidth) {
+      return;
     }
+    _shouldScroll = value;
+    _viewportWidth = viewportWidth;
+    _textWidth = textWidth;
+    _restartLoop();
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        var effectiveStyle = DefaultTextStyle.of(
+          context,
+        ).style.merge(widget.style);
+        if (MediaQuery.boldTextOf(context)) {
+          effectiveStyle = effectiveStyle.merge(
+            const TextStyle(fontWeight: FontWeight.bold),
+          );
+        }
         final painter = TextPainter(
-          text: TextSpan(text: widget.text, style: widget.style),
+          text: TextSpan(text: widget.text, style: effectiveStyle),
           maxLines: 1,
-          textDirection: TextDirection.ltr,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          locale: Localizations.maybeLocaleOf(context),
         )..layout();
-        final shouldScroll = painter.width > constraints.maxWidth;
+        final textWidth = painter.width;
+        painter.dispose();
+        final shouldScroll =
+            constraints.hasBoundedWidth && textWidth > constraints.maxWidth;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            _setShouldScroll(shouldScroll);
+            _setShouldScroll(shouldScroll, constraints.maxWidth, textWidth);
           }
         });
 
@@ -127,7 +162,7 @@ class _MarqueeTextState extends State<MarqueeText> {
 
         return ClipRect(
           child: Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: SingleChildScrollView(
               controller: _controller,
               scrollDirection: Axis.horizontal,

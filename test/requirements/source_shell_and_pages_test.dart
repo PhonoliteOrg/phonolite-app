@@ -134,6 +134,7 @@ void main() {
 
       expectContainsAll(panelSource, const [
         'ObsidianAdaptiveModal.show<void>',
+        'useCompactSheet: false',
         'ObsidianModalSurface(',
         'presentation == ObsidianAdaptiveModalPresentation.sheet',
         "tooltip: 'Pause all'",
@@ -375,8 +376,7 @@ void main() {
           "'Local Storage'",
           "'Metadata database'",
           "'Downloaded audio'",
-          "'Managed automatically on this device - \$path'",
-          "'Folder selection and custom paths are not supported on iPhone or iPad.'",
+          'if (!hideStoragePaths)',
           "'Logs storage'",
           'logger.updateStorageDirectory',
           "'Reset local data'",

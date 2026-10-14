@@ -4,6 +4,44 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('apple platform source contracts', () {
+    test(
+      'ios exports every audio FFI binding in every build configuration',
+      () {
+        final engine = readProjectFile('lib/entities/audio_engine.dart');
+        final bindings = engine.substring(
+          engine.indexOf('class _CoreAudioBindings'),
+          engine.indexOf('typedef _CoreAudioOpenNative'),
+        );
+        final symbols = RegExp(
+          r"'((?:phonolite_audio_)\w+)'",
+        ).allMatches(bindings).map((match) => match[1]!).toSet();
+        expect(symbols, isNotEmpty);
+
+        final project = readProjectFile('ios/Runner.xcodeproj/project.pbxproj');
+        final configurations =
+            RegExp(r'/\* (Debug|Release|Profile) \*/ = \{([\s\S]*?)\n\t\t\};')
+                .allMatches(project)
+                .where(
+                  (match) => match[2]!.contains(
+                    'PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;',
+                  ),
+                );
+        expect(
+          configurations.map((match) => match[1]),
+          unorderedEquals(['Debug', 'Release', 'Profile']),
+        );
+        for (final configuration in configurations) {
+          for (final symbol in symbols) {
+            expect(
+              configuration[2],
+              contains('-Wl,-exported_symbol,_$symbol'),
+              reason: '${configuration[1]} must expose $symbol to Dart FFI',
+            );
+          }
+        }
+      },
+    );
+
     test('ios primes output before starting and reports native failures', () {
       final source = readProjectFile('ios/Runner/phonolite_audio.m');
       final open = source.substring(

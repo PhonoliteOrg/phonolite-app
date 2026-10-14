@@ -115,8 +115,8 @@ class ObsidianTheme {
           TargetPlatform.fuchsia: ObsidianPageTransitionsBuilder(),
           TargetPlatform.windows: ObsidianPageTransitionsBuilder(),
           TargetPlatform.linux: ObsidianPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: ObsidianCupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: ObsidianCupertinoPageTransitionsBuilder(),
         },
       ),
     );

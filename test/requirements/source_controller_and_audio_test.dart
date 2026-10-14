@@ -335,13 +335,12 @@ void main() {
       ]);
     });
 
-    test('controller hydrates synced server likes with known metadata', () {
+    test('controller updates explicit server likes with known metadata', () {
       final source = readProjectFile('lib/entities/app_controller.dart');
 
       expectContainsAll(source, const [
         'void _updateLike(String trackId, bool liked, {Track? knownTrack})',
-        'Track _serverTrackFromMatchedDownload(',
-        'knownTrack: decision.knownTrack?.copyWith(liked: serverState.liked)',
+        '_updateLike(track.id, state?.liked ?? liked, knownTrack: track)',
         'Track? _knownLikedTrack(String trackId, {Track? knownTrack})',
       ]);
       expect(source, isNot(contains("title: 'Unknown track'")));

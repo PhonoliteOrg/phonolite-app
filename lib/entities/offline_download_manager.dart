@@ -370,37 +370,6 @@ class OfflineDownloadManager {
     return _send<List<LocalLikeState>>('readLocalLikeStates');
   }
 
-  Future<List<ServerLikeSync>> readServerLikeSyncs(String serverBaseUrl) {
-    final core = _inlineCore;
-    if (core != null) {
-      return core.readServerLikeSyncs(serverBaseUrl);
-    }
-    return _send<List<ServerLikeSync>>('readServerLikeSyncs', serverBaseUrl);
-  }
-
-  Future<void> upsertServerLikeSyncs(List<ServerLikeSync> syncs) {
-    final core = _inlineCore;
-    if (core != null) {
-      return core.upsertServerLikeSyncs(syncs);
-    }
-    return _send<void>('upsertServerLikeSyncs', syncs);
-  }
-
-  Future<void> applySyncedLocalLikeState(
-    String localTrackId,
-    bool liked,
-    int updatedAt,
-  ) {
-    final core = _inlineCore;
-    if (core != null) {
-      return core.applySyncedLocalLikeState(localTrackId, liked, updatedAt);
-    }
-    return _send<void>(
-      'applySyncedLocalLikeState',
-      _SyncedLocalLikeRequest(localTrackId, liked, updatedAt),
-    );
-  }
-
   Future<Playlist> createLocalPlaylist(String name, {String? description}) {
     final core = _inlineCore;
     if (core != null) {
@@ -1118,14 +1087,6 @@ class _TrackBoolRequest {
   final bool value;
 }
 
-class _SyncedLocalLikeRequest {
-  const _SyncedLocalLikeRequest(this.localTrackId, this.liked, this.updatedAt);
-
-  final String localTrackId;
-  final bool liked;
-  final int updatedAt;
-}
-
 class _PlaylistDetailsRequest {
   const _PlaylistDetailsRequest(this.playlistId, this.name, this.description);
 
@@ -1346,13 +1307,10 @@ void _offlineDownloadActorMain(_OfflineActorInit init) {
 bool _offlineActorCommandNeedsDownloadState(String name) {
   return switch (name) {
     'readLocalLikeStates' ||
-    'readServerLikeSyncs' ||
-    'upsertServerLikeSyncs' ||
     'loadLocalPlaylists' ||
     'loadLocalPlaylistTracks' ||
     'loadLocalLikedTracks' ||
     'setLocalLike' ||
-    'applySyncedLocalLikeState' ||
     'createLocalPlaylist' ||
     'renameLocalPlaylist' ||
     'updateLocalPlaylistImage' ||
@@ -1378,7 +1336,6 @@ bool _offlineActorCommandMayChangeLibraryState(String name) {
     'loadLocalPlaylistTracks' ||
     'loadLocalLikedTracks' ||
     'setLocalLike' ||
-    'applySyncedLocalLikeState' ||
     'createLocalPlaylist' ||
     'downloadPlaylist' ||
     'renameLocalPlaylist' ||
@@ -1551,21 +1508,6 @@ Future<Object?> _handleOfflineActorCommand(
       return null;
     case 'readLocalLikeStates':
       return core.readLocalLikeStates();
-    case 'readServerLikeSyncs':
-      return core.readServerLikeSyncs(command.payload! as String);
-    case 'upsertServerLikeSyncs':
-      await core.upsertServerLikeSyncs(
-        (command.payload! as List).cast<ServerLikeSync>(),
-      );
-      return null;
-    case 'applySyncedLocalLikeState':
-      final request = command.payload! as _SyncedLocalLikeRequest;
-      await core.applySyncedLocalLikeState(
-        request.localTrackId,
-        request.liked,
-        request.updatedAt,
-      );
-      return null;
     case 'createLocalPlaylist':
       final request = command.payload! as _PlaylistDetailsRequest;
       return core.createLocalPlaylist(
@@ -3170,23 +3112,6 @@ class _OfflineDownloadActorCore {
 
   Future<List<LocalLikeState>> readLocalLikeStates() {
     return _storage.readLocalLikeStates();
-  }
-
-  Future<List<ServerLikeSync>> readServerLikeSyncs(String serverBaseUrl) {
-    return _storage.readServerLikeSyncs(serverBaseUrl);
-  }
-
-  Future<void> upsertServerLikeSyncs(List<ServerLikeSync> syncs) {
-    return _storage.upsertServerLikeSyncs(syncs);
-  }
-
-  Future<void> applySyncedLocalLikeState(
-    String localTrackId,
-    bool liked,
-    int updatedAt,
-  ) async {
-    await _storage.applySyncedLocalLikeState(localTrackId, liked, updatedAt);
-    await _loadLocalUserData();
   }
 
   Future<Playlist> createLocalPlaylist(

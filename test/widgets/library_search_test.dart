@@ -19,6 +19,48 @@ void main() {
 
   for (final connected in [false, true]) {
     testWidgets(
+      'cursor changes do not rebuild the library for connected=$connected',
+      (tester) async {
+        final controller = _Controller(connected: connected);
+        try {
+          await _pumpSearch(tester, controller, 'Alice');
+          final text = tester
+              .widget<TextField>(find.byType(TextField))
+              .controller!;
+          final readsBeforeSelection = controller.librarySnapshotReads;
+          text.selection = const TextSelection.collapsed(offset: 0);
+          await tester.pump();
+          expect(
+            controller.librarySnapshotReads,
+            readsBeforeSelection,
+            reason:
+                'Focusing or moving the cursor must not rebuild/filter the full music library',
+          );
+          text.value = text.value.copyWith(
+            composing: const TextRange(start: 0, end: 1),
+          );
+          await tester.pump();
+          expect(controller.librarySnapshotReads, readsBeforeSelection);
+          expect(find.byType(SearchResultTile), findsNWidgets(3));
+
+          await tester.enterText(find.byType(TextField), 'no matching song');
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(
+            controller.librarySnapshotReads,
+            greaterThan(readsBeforeSelection),
+          );
+          expect(find.byType(SearchResultTile), findsNothing);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await controller.close();
+        }
+      },
+    );
+  }
+
+  for (final connected in [false, true]) {
+    testWidgets(
       'search shows local types and counts while connected=$connected',
       (tester) async {
         final controller = _Controller(connected: connected);
@@ -111,6 +153,7 @@ class _Controller extends AppController {
     : super(connection: ServerConnection(baseUrl: 'http://server.test/api/v1'));
 
   final bool connected;
+  int librarySnapshotReads = 0;
   final played = <String>[];
   List<String> playedQueue = [];
   static final _track = Track(
@@ -141,14 +184,17 @@ class _Controller extends AppController {
   List<Track> get offlineTracks => [_track];
 
   @override
-  OfflineLibrarySnapshot get offlineLibrarySnapshot => OfflineLibrarySnapshot(
-    tracks: offlineTracks,
-    artistGroups: offlineArtistGroups(offlineTracks),
-    liked: [],
-    playlists: [],
-    playlistTracks: [],
-    revision: 1,
-  );
+  OfflineLibrarySnapshot get offlineLibrarySnapshot {
+    librarySnapshotReads++;
+    return OfflineLibrarySnapshot(
+      tracks: offlineTracks,
+      artistGroups: offlineArtistGroups(offlineTracks),
+      liked: [],
+      playlists: [],
+      playlistTracks: [],
+      revision: 1,
+    );
+  }
 
   @override
   Future<void> search(String query, {String? filter}) async {}

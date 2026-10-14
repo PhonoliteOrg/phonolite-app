@@ -6,7 +6,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/widgets.dart' hide RepeatMode;
 
 import '../platform/local_network_permission_service.dart';
 import '../platform/now_playing_platform_service.dart';
@@ -738,8 +738,6 @@ class AppController {
   final Map<String, String> _albumIdByKey = <String, String>{};
   int _albumIdCacheSessionRevision = -1;
   int _metadataReadRevision = 0;
-  Timer? _likeSyncDebounce;
-  Future<void> _likeSyncChain = Future<void>.value();
   Timer? _carPlayStateDebounce;
   StreamSubscription<bool>? _connectivitySubscription;
   StreamSubscription<OfflineLibrarySnapshot>?
@@ -757,7 +755,6 @@ class AppController {
     onDiagnostic: AppLogger.debug,
   );
 
-  static const int _likeSyncBatchSize = 40;
   static const int _serverUnavailableHealthFailureThreshold = 2;
   static const List<Duration> _serverReconnectForegroundBackoff = <Duration>[
     Duration(seconds: 2),
@@ -773,7 +770,6 @@ class AppController {
     Duration(seconds: 120),
   ];
   static const Duration _serverReconnectJitterMax = Duration(milliseconds: 750);
-  static const Duration _likeSyncDebounceDelay = Duration(seconds: 2);
   static const Duration _serverLogoutBestEffortTimeout = Duration(
     milliseconds: 750,
   );
@@ -1186,8 +1182,6 @@ class AppController {
     _wantsPlayback = false;
     _streamRecoveryTimer?.cancel();
     _streamRecoveryTimer = null;
-    _likeSyncDebounce?.cancel();
-    _likeSyncDebounce = null;
     _volumeSaveDebounce?.cancel();
     _volumeSaveDebounce = null;
     _carPlayStateDebounce?.cancel();
@@ -1304,7 +1298,6 @@ class AppController {
       await _loadPlaybackSettings();
       unawaited(_offlineDownloadManager.resumePausedForCurrentServer());
       unawaited(_offlineDownloadManager.repairOfflineMetadataFragments());
-      _scheduleLikeSync(immediate: true);
       if (rememberMe) {
         final credentials = AuthCredentials(
           baseUrl: connection.baseUrl,
@@ -1800,7 +1793,6 @@ class AppController {
       await _loadPlaybackSettings();
       await _offlineDownloadManager.resumePausedForCurrentServer();
       unawaited(_offlineDownloadManager.repairOfflineMetadataFragments());
-      _scheduleLikeSync(immediate: true);
     }();
   }
 
@@ -2081,7 +2073,6 @@ class AppController {
       _setAuthorized(true, error: null);
       unawaited(_offlineDownloadManager.resumePausedForCurrentServer());
       unawaited(_offlineDownloadManager.repairOfflineMetadataFragments());
-      _scheduleLikeSync(immediate: true);
       unawaited(
         _refreshServerPorts(
           timeout: _storedSessionRequestTimeout,
@@ -3554,7 +3545,6 @@ class AppController {
       final liked = !track.liked;
       final state = await connection.setLikeState(track.id, liked);
       _updateLike(track.id, state?.liked ?? liked, knownTrack: track);
-      _scheduleLikeSync();
       await _pushNowPlayingUpdate(force: true);
     } on ApiException catch (err) {
       _handleApiError(err, context: 'like');
@@ -3578,339 +3568,10 @@ class AppController {
     try {
       await _offlineDownloadManager.setLocalLike(track, !currentlyLiked);
       _updateLocalLike(localId, !currentlyLiked);
-      _scheduleLikeSync();
       await _pushNowPlayingUpdate(force: true);
     } catch (err) {
       _pushMessage('Failed to update local like: $err');
     }
-  }
-
-  void _scheduleLikeSync({bool immediate = false}) {
-    if (!_authState.isAuthorized) {
-      return;
-    }
-    _likeSyncDebounce?.cancel();
-    final delay = immediate ? Duration.zero : _likeSyncDebounceDelay;
-    _likeSyncDebounce = Timer(delay, () {
-      final serverBaseUrl = connection.baseUrl;
-      _likeSyncChain = _likeSyncChain.then(
-        (_) => _runLikeSyncForServer(serverBaseUrl),
-      );
-      unawaited(_likeSyncChain);
-    });
-  }
-
-  Future<void> _runLikeSyncForServer(String serverBaseUrl) async {
-    if (!_authState.isAuthorized || connection.baseUrl != serverBaseUrl) {
-      return;
-    }
-    try {
-      await _syncLocalAndServerLikes(serverBaseUrl);
-    } on ApiException catch (err) {
-      AppLogger.warning('Like sync failed: ${_formatApiError(err)}');
-    } catch (err) {
-      AppLogger.warning('Like sync failed: $err');
-    }
-  }
-
-  Future<void> _syncLocalAndServerLikes(String serverBaseUrl) async {
-    await _offlineDownloadManager.load();
-    final downloadsByLocalId = <String, OfflineTrackDownload>{};
-    for (final download in availableOfflineDownloads) {
-      final localId = _downloadLocalId(download);
-      if (localId == null || localId.isEmpty) {
-        continue;
-      }
-      downloadsByLocalId.putIfAbsent(localId, () => download);
-    }
-    if (downloadsByLocalId.isEmpty) {
-      return;
-    }
-
-    final localStates = {
-      for (final state in await _offlineDownloadManager.readLocalLikeStates())
-        state.localTrackId: state,
-    };
-    final existingSyncs = {
-      for (final sync in await _offlineDownloadManager.readServerLikeSyncs(
-        serverBaseUrl,
-      ))
-        sync.localTrackId: sync,
-    };
-
-    final descriptors = <TrackMatchDescriptor>[];
-    for (final entry in downloadsByLocalId.entries) {
-      final localId = entry.key;
-      final download = entry.value;
-      final sync = existingSyncs[localId];
-      final currentServerTrackId = download.serverBaseUrl == serverBaseUrl
-          ? _serverTrackId(download)
-          : null;
-      descriptors.add(
-        TrackMatchDescriptor(
-          localTrackId: localId,
-          title: download.track.title,
-          artist: download.track.artist,
-          album: download.track.album,
-          durationMs: download.track.durationMs,
-          trackNo: download.track.trackNo,
-          discNo: download.track.discNo,
-          serverTrackId: sync?.serverTrackId ?? currentServerTrackId,
-        ),
-      );
-    }
-
-    final matches = await _matchLocalTracks(descriptors);
-    if (matches.length < descriptors.length) {
-      AppLogger.debug(
-        'Like sync skipped ${descriptors.length - matches.length} unmatched local track(s).',
-      );
-    }
-
-    final syncsToWrite = <ServerLikeSync>[];
-    final serverUpdates = <String, bool>{};
-    final serverDecisions = <String, _LikeSyncServerDecision>{};
-    final localApplications = <_LikeSyncLocalApplication>[];
-
-    for (final match in matches) {
-      final download = downloadsByLocalId[match.localTrackId];
-      if (download == null) {
-        continue;
-      }
-      final localState =
-          localStates[match.localTrackId] ??
-          LocalLikeState(
-            localTrackId: match.localTrackId,
-            liked: download.track.liked,
-            updatedAt: 0,
-          );
-      final knownServerTrack = _serverTrackFromMatchedDownload(
-        download,
-        serverBaseUrl: serverBaseUrl,
-        serverTrackId: match.serverTrackId,
-        liked: localState.liked,
-      );
-      final sync = existingSyncs[match.localTrackId];
-      if (sync == null) {
-        _queueServerLikeDecision(
-          serverBaseUrl: serverBaseUrl,
-          match: match,
-          localState: localState,
-          desiredLiked: localState.liked,
-          knownTrack: knownServerTrack,
-          serverUpdates: serverUpdates,
-          serverDecisions: serverDecisions,
-          syncsToWrite: syncsToWrite,
-        );
-        continue;
-      }
-
-      final localChanged =
-          localState.liked != sync.lastLocalLiked ||
-          localState.updatedAt > sync.lastLocalUpdatedAt;
-      final serverChanged =
-          match.serverLiked != sync.lastServerLiked ||
-          match.serverUpdatedAt > sync.lastServerUpdatedAt ||
-          match.serverTrackId != sync.serverTrackId;
-
-      if (!localChanged && !serverChanged) {
-        continue;
-      }
-
-      final localWins = localChanged && !serverChanged
-          ? true
-          : !localChanged && serverChanged
-          ? false
-          : localState.updatedAt >= match.serverUpdatedAt;
-
-      if (localWins) {
-        _queueServerLikeDecision(
-          serverBaseUrl: serverBaseUrl,
-          match: match,
-          localState: localState,
-          desiredLiked: localState.liked,
-          knownTrack: knownServerTrack,
-          serverUpdates: serverUpdates,
-          serverDecisions: serverDecisions,
-          syncsToWrite: syncsToWrite,
-        );
-      } else {
-        localApplications.add(
-          _LikeSyncLocalApplication(
-            serverBaseUrl: serverBaseUrl,
-            match: match,
-            knownTrack: knownServerTrack.copyWith(liked: match.serverLiked),
-            liked: match.serverLiked,
-            updatedAt: match.serverUpdatedAt,
-          ),
-        );
-      }
-    }
-
-    var changedLocal = false;
-    for (final apply in localApplications) {
-      try {
-        await _offlineDownloadManager.applySyncedLocalLikeState(
-          apply.match.localTrackId,
-          apply.liked,
-          apply.updatedAt,
-        );
-        _updateLike(
-          apply.match.serverTrackId,
-          apply.liked,
-          knownTrack: apply.knownTrack,
-        );
-        _updateLocalLike(apply.match.localTrackId, apply.liked);
-        changedLocal = true;
-        syncsToWrite.add(
-          ServerLikeSync(
-            localTrackId: apply.match.localTrackId,
-            serverBaseUrl: apply.serverBaseUrl,
-            serverTrackId: apply.match.serverTrackId,
-            matchConfidence: apply.match.confidence,
-            matchKind: apply.match.matchKind,
-            lastLocalLiked: apply.liked,
-            lastLocalUpdatedAt: apply.updatedAt,
-            lastServerLiked: apply.liked,
-            lastServerUpdatedAt: apply.updatedAt,
-            syncedAt: DateTime.now().millisecondsSinceEpoch,
-          ),
-        );
-      } catch (err) {
-        AppLogger.warning(
-          'Failed to apply synced local like for ${apply.match.localTrackId}: $err',
-        );
-      }
-    }
-
-    if (serverUpdates.isNotEmpty) {
-      final updated = await connection.updateLikeStates(
-        serverUpdates,
-        updatedAtByTrack: {
-          for (final entry in serverDecisions.entries)
-            if (entry.value.localState.updatedAt > 0)
-              entry.key: entry.value.localState.updatedAt,
-        },
-      );
-      final updatedByTrack = {for (final item in updated) item.trackId: item};
-      for (final entry in serverDecisions.entries) {
-        final decision = entry.value;
-        final serverState = updatedByTrack[entry.key];
-        if (serverState == null) {
-          AppLogger.warning(
-            'Like sync did not receive an updated server state for ${entry.key}.',
-          );
-          continue;
-        }
-        _updateLike(
-          serverState.trackId,
-          serverState.liked,
-          knownTrack: decision.knownTrack?.copyWith(liked: serverState.liked),
-        );
-        syncsToWrite.add(
-          ServerLikeSync(
-            localTrackId: decision.match.localTrackId,
-            serverBaseUrl: decision.serverBaseUrl,
-            serverTrackId: decision.match.serverTrackId,
-            matchConfidence: decision.match.confidence,
-            matchKind: decision.match.matchKind,
-            lastLocalLiked: decision.localState.liked,
-            lastLocalUpdatedAt: decision.localState.updatedAt,
-            lastServerLiked: serverState.liked,
-            lastServerUpdatedAt: serverState.updatedAt,
-            syncedAt: DateTime.now().millisecondsSinceEpoch,
-          ),
-        );
-      }
-    }
-
-    if (syncsToWrite.isNotEmpty) {
-      await _offlineDownloadManager.upsertServerLikeSyncs(syncsToWrite);
-    }
-    if (serverUpdates.isNotEmpty || localApplications.isNotEmpty) {
-      await loadLikedTracks();
-    }
-    if (changedLocal || serverUpdates.isNotEmpty) {
-      await _pushNowPlayingUpdate(force: true);
-    }
-  }
-
-  Track _serverTrackFromMatchedDownload(
-    OfflineTrackDownload download, {
-    required String serverBaseUrl,
-    required String serverTrackId,
-    required bool liked,
-  }) {
-    return download.track.copyWith(
-      id: serverTrackId,
-      localId: null,
-      serverBaseUrl: serverBaseUrl,
-      serverTrackId: serverTrackId,
-      liked: liked,
-      inPlaylists: false,
-    );
-  }
-
-  Future<List<TrackMatchResult>> _matchLocalTracks(
-    List<TrackMatchDescriptor> descriptors,
-  ) async {
-    final matches = <TrackMatchResult>[];
-    for (
-      var start = 0;
-      start < descriptors.length;
-      start += _likeSyncBatchSize
-    ) {
-      final end = min(start + _likeSyncBatchSize, descriptors.length);
-      matches.addAll(
-        await connection.matchTracks(descriptors.sublist(start, end)),
-      );
-    }
-    return matches;
-  }
-
-  void _queueServerLikeDecision({
-    required String serverBaseUrl,
-    required TrackMatchResult match,
-    required LocalLikeState localState,
-    required bool desiredLiked,
-    required Track? knownTrack,
-    required Map<String, bool> serverUpdates,
-    required Map<String, _LikeSyncServerDecision> serverDecisions,
-    required List<ServerLikeSync> syncsToWrite,
-  }) {
-    if (match.serverLiked == desiredLiked) {
-      syncsToWrite.add(
-        ServerLikeSync(
-          localTrackId: match.localTrackId,
-          serverBaseUrl: serverBaseUrl,
-          serverTrackId: match.serverTrackId,
-          matchConfidence: match.confidence,
-          matchKind: match.matchKind,
-          lastLocalLiked: localState.liked,
-          lastLocalUpdatedAt: localState.updatedAt,
-          lastServerLiked: match.serverLiked,
-          lastServerUpdatedAt: match.serverUpdatedAt,
-          syncedAt: DateTime.now().millisecondsSinceEpoch,
-        ),
-      );
-      return;
-    }
-
-    final existing = serverUpdates[match.serverTrackId];
-    if (existing != null && existing != desiredLiked) {
-      AppLogger.warning(
-        'Like sync skipped conflicting local matches for server track ${match.serverTrackId}.',
-      );
-      return;
-    }
-    serverUpdates[match.serverTrackId] = desiredLiked;
-    serverDecisions[match.serverTrackId] = _LikeSyncServerDecision(
-      serverBaseUrl: serverBaseUrl,
-      match: match,
-      localState: localState,
-      desiredLiked: desiredLiked,
-      knownTrack: knownTrack,
-    );
   }
 
   Future<void> createPlaylist(
@@ -7059,7 +6720,6 @@ class AppController {
     unawaited(_loadPlaybackSettings());
     unawaited(_offlineDownloadManager.resumePausedForCurrentServer());
     unawaited(_offlineDownloadManager.repairOfflineMetadataFragments());
-    _scheduleLikeSync(immediate: true);
     _retryPlaybackAfterServerReconnect();
   }
 
@@ -7731,36 +7391,4 @@ class AppController {
       _pushMessage('Failed to update playback settings: $err');
     }
   }
-}
-
-class _LikeSyncServerDecision {
-  _LikeSyncServerDecision({
-    required this.serverBaseUrl,
-    required this.match,
-    required this.localState,
-    required this.desiredLiked,
-    required this.knownTrack,
-  });
-
-  final String serverBaseUrl;
-  final TrackMatchResult match;
-  final LocalLikeState localState;
-  final bool desiredLiked;
-  final Track? knownTrack;
-}
-
-class _LikeSyncLocalApplication {
-  _LikeSyncLocalApplication({
-    required this.serverBaseUrl,
-    required this.match,
-    required this.knownTrack,
-    required this.liked,
-    required this.updatedAt,
-  });
-
-  final String serverBaseUrl;
-  final TrackMatchResult match;
-  final Track knownTrack;
-  final bool liked;
-  final int updatedAt;
 }

@@ -326,33 +326,6 @@ class LocalLikeState {
 }
 
 @immutable
-class ServerLikeSync {
-  const ServerLikeSync({
-    required this.localTrackId,
-    required this.serverBaseUrl,
-    required this.serverTrackId,
-    required this.matchConfidence,
-    required this.matchKind,
-    required this.lastLocalLiked,
-    required this.lastLocalUpdatedAt,
-    required this.lastServerLiked,
-    required this.lastServerUpdatedAt,
-    required this.syncedAt,
-  });
-
-  final String localTrackId;
-  final String serverBaseUrl;
-  final String serverTrackId;
-  final double matchConfidence;
-  final String matchKind;
-  final bool lastLocalLiked;
-  final int lastLocalUpdatedAt;
-  final bool lastServerLiked;
-  final int lastServerUpdatedAt;
-  final int syncedAt;
-}
-
-@immutable
 class OfflineMetadataRepairRequest {
   const OfflineMetadataRepairRequest({
     required this.serverBaseUrl,

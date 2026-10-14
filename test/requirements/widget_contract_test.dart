@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
+import 'package:phonolite_app/widgets/ui/like_icon_button.dart';
+import 'package:phonolite_app/widgets/ui/svg_asset_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/entities/app_controller.dart';
@@ -866,7 +869,14 @@ void main() {
       expect(find.textContaining('Boards of Canada'), findsOneWidget);
       expect(find.text('05:21'), findsOneWidget);
       expect(find.byType(PlaylistAddIcon), findsOneWidget);
-      expect(find.byIcon(PhonoliteIcons.heart), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SvgAssetIcon &&
+              widget.assetName == 'assets/icons/lucide/heart-filled.svg',
+        ),
+        findsOneWidget,
+      );
       expect(find.byIcon(PhonoliteIcons.trash2), findsOneWidget);
     });
 
@@ -890,14 +900,18 @@ void main() {
 
       await tester.pumpWidget(
         wrapInTestApp(
-          TrackRowTile(
-            track: track,
-            index: 2,
-            onTap: () {},
-            onDownload: () => downloaded += 1,
-            onAddToPlaylist: () => added += 1,
-            onLike: () => liked += 1,
-            onDelete: () => deleted += 1,
+          Align(
+            alignment: Alignment.topCenter,
+            child: TrackRowTile(
+              track: track,
+              index: 2,
+              onTap: () {},
+              onDownload: () => downloaded += 1,
+              showAlbumArt: true,
+              onAddToPlaylist: () => added += 1,
+              onLike: () => liked += 1,
+              onDelete: () => deleted += 1,
+            ),
           ),
         ),
       );
@@ -908,6 +922,27 @@ void main() {
       expect(find.byType(PlaylistAddIcon), findsNothing);
       expect(find.byIcon(PhonoliteIcons.trash2), findsNothing);
       expect(find.byTooltip('Track actions'), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(TrackRowTile)).height,
+        lessThanOrEqualTo(56),
+      );
+      expect(tester.widget<Text>(find.text(track.title)).style?.fontSize, 13);
+      expect(
+        tester
+            .widget<Text>(find.textContaining('Boards of Canada'))
+            .style
+            ?.fontSize,
+        11,
+      );
+      expect(
+        tester.getSize(find.byType(LikeIconButton)),
+        const Size.square(44),
+      );
+      expect(
+        tester.getSize(find.byTooltip('Track actions')),
+        const Size.square(44),
+      );
+      expect(tester.getSize(find.byTooltip('Download')), const Size.square(44));
 
       await tester.tap(find.byIcon(PhonoliteIcons.download));
       await tester.pump();
@@ -1276,9 +1311,9 @@ void main() {
       expect(find.text('Queue'), findsOneWidget);
       expect(find.text('Paused'), findsOneWidget);
       expect(find.text('Needs Attention'), findsOneWidget);
-      expect(find.text('PAUSE ALL'), findsOneWidget);
-      expect(find.text('RESUME PAUSED'), findsOneWidget);
-      expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
+      expect(find.byTooltip('Pause all'), findsOneWidget);
+      expect(find.byTooltip('Resume paused'), findsOneWidget);
+      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
       expect(find.text('CLEAR PAUSED / CACHED'), findsNothing);
       final managerPanel = find.byType(DownloadManagerPanel);
       expect(
@@ -1299,11 +1334,11 @@ void main() {
       expect(find.byTooltip('Pause'), findsWidgets);
       expect(find.byTooltip('Resume'), findsWidgets);
       expect(find.byTooltip('Retry'), findsWidgets);
-      expect(find.byTooltip('Cancel'), findsWidgets);
-      expect(find.byTooltip('Remove partial cache'), findsWidgets);
+      expect(find.byTooltip('Cancel'), findsNothing);
+      expect(find.byTooltip('Remove partial cache'), findsNothing);
       expect(find.text('Track cached'), findsNothing);
       expect(find.text('Downloaded / Cached'), findsNothing);
-      expect(find.byTooltip('Remove download'), findsNothing);
+      expect(find.byTooltip('Remove download'), findsNWidgets(3));
     });
 
     testWidgets('download manager does not clear completed cached tracks', (
@@ -1319,9 +1354,9 @@ void main() {
       );
 
       expect(find.text('Track cached'), findsNothing);
-      expect(find.text('PAUSE ALL'), findsOneWidget);
-      expect(find.text('RESUME PAUSED'), findsOneWidget);
-      expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
+      expect(find.byTooltip('Pause all'), findsOneWidget);
+      expect(find.byTooltip('Resume paused'), findsOneWidget);
+      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
       expect(find.text('No queued downloads'), findsOneWidget);
     });
 
@@ -1342,7 +1377,7 @@ void main() {
             jobsOverride: <OfflineDownloadJob>[
               _job('artist-active', 'artist', OfflineDownloadStatus.queued),
             ],
-            presentation: ObsidianAdaptiveModalPresentation.sheet,
+            presentation: ObsidianAdaptiveModalPresentation.dialog,
           ),
         ),
       );
@@ -1424,13 +1459,14 @@ void main() {
       );
 
       expect(find.byTooltip('Pause'), findsNWidgets(2));
-      expect(find.byTooltip('Resume'), findsNWidgets(2));
-      expect(find.byTooltip('Retry'), findsNWidgets(2));
-      expect(find.byTooltip('Cancel'), findsNWidgets(2));
-      expect(find.byTooltip('Remove partial cache'), findsNWidgets(2));
+      expect(find.byTooltip('Resume'), findsNothing);
+      expect(find.byTooltip('Retry'), findsNothing);
+      expect(find.byTooltip('Cancel'), findsNothing);
+      expect(find.byTooltip('Remove partial cache'), findsNothing);
+      expect(find.byTooltip('Remove download'), findsNWidgets(2));
     });
 
-    testWidgets('queued download row keeps disabled actions visible', (
+    testWidgets('queued download row shows its state action and removal', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -1444,10 +1480,11 @@ void main() {
       );
 
       expect(find.byTooltip('Pause'), findsOneWidget);
-      expect(find.byTooltip('Resume'), findsOneWidget);
-      expect(find.byTooltip('Retry'), findsOneWidget);
-      expect(find.byTooltip('Cancel'), findsOneWidget);
-      expect(find.byTooltip('Remove partial cache'), findsOneWidget);
+      expect(find.byTooltip('Resume'), findsNothing);
+      expect(find.byTooltip('Retry'), findsNothing);
+      expect(find.byTooltip('Cancel'), findsNothing);
+      expect(find.byTooltip('Remove partial cache'), findsNothing);
+      expect(find.byTooltip('Remove download'), findsOneWidget);
     });
 
     testWidgets('artist rolling job shows pause while active or queued', (
@@ -1470,7 +1507,7 @@ void main() {
       );
 
       expect(find.byTooltip('Pause download job'), findsNWidgets(2));
-      expect(find.byTooltip('Resume download job'), findsNWidgets(2));
+      expect(find.byTooltip('Resume download job'), findsNothing);
       expect(find.byTooltip('Cancel and remove job'), findsNWidgets(2));
     });
 
@@ -1487,11 +1524,11 @@ void main() {
       );
 
       expect(find.byTooltip('Resume download job'), findsOneWidget);
-      expect(find.byTooltip('Pause download job'), findsOneWidget);
+      expect(find.byTooltip('Pause download job'), findsNothing);
       expect(find.byTooltip('Cancel and remove job'), findsOneWidget);
-      expect(find.text('PAUSE ALL'), findsOneWidget);
-      expect(find.text('RESUME PAUSED'), findsOneWidget);
-      expect(find.text('CLEAR PARTIAL / FAILED'), findsOneWidget);
+      expect(find.byTooltip('Pause all'), findsOneWidget);
+      expect(find.byTooltip('Resume paused'), findsOneWidget);
+      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
     });
 
     testWidgets('non-artist rolling jobs show downloader controls', (
@@ -1509,7 +1546,7 @@ void main() {
       );
 
       expect(find.byTooltip('Pause download job'), findsOneWidget);
-      expect(find.byTooltip('Resume download job'), findsOneWidget);
+      expect(find.byTooltip('Resume download job'), findsNothing);
       expect(find.byTooltip('Cancel and remove job'), findsOneWidget);
     });
 
@@ -1527,48 +1564,48 @@ void main() {
       expect(find.text('Pick another album to see tracks.'), findsOneWidget);
     });
 
-    testWidgets('settings page uses managed local storage copy on iOS', (
-      tester,
-    ) async {
-      _setViewport(tester, const Size(900, 900));
-      await tester.pumpWidget(
-        _buildOfflineStorageSectionTestApp(
-          platform: TargetPlatform.iOS,
-          child: const OfflineStorageSection(
-            locations: OfflineStorageLocations(
-              metadataDirectory: '/app/Phonolite/offline',
-              downloadsDirectory: '/app/Phonolite/offline',
-              metadataDirectoryIsDefault: true,
-              downloadsDirectoryIsDefault: true,
-            ),
-            onChangeMetadata: null,
-            onResetMetadata: null,
-            onChangeDownloads: null,
-            onResetDownloads: null,
-            onResetOfflineData: null,
-            logsLocation: LogStorageLocation(
-              directory: '/app/Phonolite/logs',
-              isDefault: true,
+    testWidgets(
+      'settings page hides storage paths on mobile',
+      (tester) async {
+        _setViewport(tester, const Size(900, 900));
+        await tester.pumpWidget(
+          _buildOfflineStorageSectionTestApp(
+            platform: defaultTargetPlatform,
+            child: const OfflineStorageSection(
+              locations: OfflineStorageLocations(
+                metadataDirectory: '/app/Phonolite/offline',
+                downloadsDirectory: '/app/Phonolite/offline',
+                metadataDirectoryIsDefault: true,
+                downloadsDirectoryIsDefault: true,
+              ),
+              onChangeMetadata: null,
+              onResetMetadata: null,
+              onChangeDownloads: null,
+              onResetDownloads: null,
+              onResetOfflineData: null,
+              logsLocation: LogStorageLocation(
+                directory: '/app/Phonolite/logs',
+                isDefault: true,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      expect(
-        find.text(
-          'Folder selection and custom paths are not supported on iPhone or iPad.',
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('Managed automatically on this device -'),
-        findsNWidgets(3),
-      );
-      expect(find.text('CHANGE'), findsNothing);
-      expect(find.text('RESET PATH'), findsNothing);
-      expect(find.text('OPEN FOLDER'), findsNothing);
-    });
+        expect(find.text('Metadata database'), findsNothing);
+        expect(find.text('Downloaded audio'), findsNothing);
+        expect(find.text('Logs storage'), findsNothing);
+        expect(find.textContaining('/app/Phonolite'), findsNothing);
+        expect(find.text('Reset local data'), findsOneWidget);
+        expect(find.text('CHANGE'), findsNothing);
+        expect(find.text('RESET PATH'), findsNothing);
+        expect(find.text('OPEN FOLDER'), findsNothing);
+      },
+      variant: const TargetPlatformVariant({
+        TargetPlatform.iOS,
+        TargetPlatform.android,
+      }),
+    );
 
     for (final platform in [
       TargetPlatform.windows,
@@ -1694,7 +1731,7 @@ void main() {
       );
     }
 
-    testWidgets('Android keeps storage actions without Open folder', (
+    testWidgets('Android hides storage paths while locations are loading', (
       tester,
     ) async {
       _setViewport(tester, const Size(1280, 900));
@@ -1713,9 +1750,14 @@ void main() {
           ),
         ),
       );
-      expect(find.text('CHANGE'), findsNWidgets(3));
-      expect(find.text('RESET PATH'), findsNWidgets(3));
+      expect(find.text('CHANGE'), findsNothing);
+      expect(find.text('RESET PATH'), findsNothing);
       expect(find.text('OPEN FOLDER'), findsNothing);
+      expect(find.text('Metadata database'), findsNothing);
+      expect(find.text('Downloaded audio'), findsNothing);
+      expect(find.text('Logs storage'), findsNothing);
+      expect(find.text('Loading storage path'), findsNothing);
+      expect(find.text('Reset local data'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

@@ -25,9 +25,10 @@ class ObsidianAdaptiveModal {
     required BuildContext context,
     required ObsidianAdaptiveModalBuilder builder,
     bool barrierDismissible = true,
+    bool useCompactSheet = true,
   }) {
     final size = MediaQuery.sizeOf(context);
-    if (size.width < compactBreakpoint) {
+    if (useCompactSheet && size.width < compactBreakpoint) {
       return showModalBottomSheet<T>(
         context: context,
         isScrollControlled: true,
@@ -61,14 +62,15 @@ class ObsidianAdaptiveModal {
       barrierColor: Colors.black.withValues(alpha: 0.45),
       builder: (dialogContext) {
         final size = MediaQuery.sizeOf(dialogContext);
-        final dialogWidth = (size.width - dialogInset.horizontal)
+        final inset = ObsidianModalScope.insetsOf(dialogContext);
+        final dialogWidth = (size.width - inset.horizontal)
             .clamp(0.0, maxDialogSize.width)
             .toDouble();
-        final dialogHeight = (size.height - dialogInset.vertical)
+        final dialogHeight = (size.height - inset.vertical)
             .clamp(0.0, maxDialogSize.height)
             .toDouble();
         return Dialog(
-          insetPadding: dialogInset,
+          insetPadding: inset,
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
@@ -105,6 +107,12 @@ class ObsidianModalSurface extends StatelessWidget {
       ObsidianModalScope(builder: _buildSurface);
 
   Widget _buildSurface(BuildContext context) {
+    final heading = Text(
+      title,
+      maxLines: headerActions == null ? null : 2,
+      overflow: headerActions == null ? null : TextOverflow.ellipsis,
+      style: ObsidianModalStyle.titleStyle(context),
+    );
     return ObsidianFrostedSurface(
       child: DecoratedBox(
         decoration: const BoxDecoration(
@@ -119,22 +127,16 @@ class ObsidianModalSurface extends StatelessWidget {
               if (showDragHandle) const _ObsidianModalDragHandle(),
               Padding(
                 padding: ObsidianModalStyle.titlePadding,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    title,
-                    style: ObsidianModalStyle.titleStyle(context),
-                  ),
-                ),
+                child: headerActions == null
+                    ? Align(alignment: Alignment.centerLeft, child: heading)
+                    : Row(
+                        children: [
+                          Expanded(child: heading),
+                          const SizedBox(width: 8),
+                          headerActions!,
+                        ],
+                      ),
               ),
-              if (headerActions != null)
-                Padding(
-                  padding: ObsidianModalStyle.contentPadding,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: headerActions,
-                  ),
-                ),
               Expanded(
                 child: Padding(
                   padding: ObsidianModalStyle.contentPadding,

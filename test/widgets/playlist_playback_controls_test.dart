@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 
 import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +17,7 @@ import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
 import 'package:phonolite_app/widgets/layouts/app_scope.dart';
 import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
+import 'package:phonolite_app/widgets/ui/marquee_text.dart';
 import 'package:phonolite_app/widgets/ui/tech_button.dart';
 
 import '../support/widget_test_helpers.dart';
@@ -362,6 +363,110 @@ void main() {
     },
   );
 
+  for (final size in [
+    const Size(320, 640),
+    const Size(390, 844),
+    const Size(430, 932),
+  ]) {
+    testWidgets('mobile player artwork and tags fit without scrolling at $size', (
+      tester,
+    ) async {
+      final controller = (await tester.runAsync(
+        () async => _PlaylistController(),
+      ))!..activate(isLocal: false);
+      try {
+        await _pump(
+          tester,
+          controller,
+          NowPlayingExpandedSheet(
+            useNativeMobileTreatment: true,
+            onOpenAlbum: null,
+            state: controller.playbackState.copyWith(
+              shuffleMode: ShuffleMode.custom,
+              repeatMode: RepeatMode.one,
+              streamRttMs: 28,
+              bufferRatio: 0.5,
+            ),
+            onPlayPause: () {},
+            onNext: () {},
+            onPrev: () {},
+            onStop: () {},
+            onSeek: (_) {},
+            onSeekPreview: (_) {},
+            onShuffleChanged: (_, {scope}) {},
+            onToggleRepeat: () {},
+            onStreamModeChanged: (_) {},
+            onVolumeChanged: (_) {},
+            onToggleLike: () {},
+          ),
+          width: size.width,
+          height: size.height,
+        );
+
+        final verticalScroll = find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.down,
+        );
+        expect(verticalScroll, findsOneWidget);
+        expect(
+          tester
+              .state<ScrollableState>(verticalScroll)
+              .position
+              .maxScrollExtent,
+          0,
+        );
+        expect(find.text('SERVER'), findsOneWidget);
+        expect(find.text('LOOP'), findsOneWidget);
+        Rect controlRect(IconData icon) => tester.getRect(
+          find.byWidgetPredicate(
+            (widget) => widget is ObsidianHudIconButton && widget.icon == icon,
+          ),
+        );
+        final previous = controlRect(PhonoliteIcons.skipBack);
+        final next = controlRect(PhonoliteIcons.skipForward);
+        final shuffle = controlRect(PhonoliteIcons.shuffle);
+        final stop = controlRect(PhonoliteIcons.square);
+        final repeat = controlRect(PhonoliteIcons.repeat);
+        expect(previous.center.dy, next.center.dy);
+        expect(shuffle.top, greaterThan(previous.bottom));
+        expect(shuffle.center.dy, stop.center.dy);
+        expect(stop.center.dy, repeat.center.dy);
+        final device = controlRect(PhonoliteIcons.speaker);
+        final quality = tester.getRect(
+          find
+              .ancestor(
+                of: find.text('HQ'),
+                matching: find.byType(AnimatedContainer),
+              )
+              .first,
+        );
+        expect(quality.width, lessThan(60));
+        expect(quality.height, lessThanOrEqualTo(36));
+        expect(quality.left, greaterThanOrEqualTo(device.right));
+        expect(
+          quality.center.dy,
+          device.center.dy,
+          reason:
+              'The compact quality button should sit beside the audio device button',
+        );
+        final horizontalScroll = find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.right,
+        );
+        expect(
+          horizontalScroll,
+          findsNothing,
+          reason: 'Tags should wrap rather than require horizontal scrolling',
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    });
+  }
+
   for (final isLocal in [true, false]) {
     for (final surface in ['desktop', 'mini', 'expanded']) {
       testWidgets(
@@ -448,6 +553,110 @@ void main() {
       );
     }
   }
+  for (final surface in ['desktop', 'mini', 'expanded']) {
+    testWidgets('$surface player scrolls artist-album text at half title speed', (
+      tester,
+    ) async {
+      final controller = (await tester.runAsync(
+        () async => _PlaylistController(),
+      ))!..activate(isLocal: false);
+      final track = _track.copyWith(
+        title:
+            'A very long track title with an extended live recording description '
+            'and many featured collaborators from the special anniversary edition '
+            'recorded at a concert with an even longer venue name',
+        artist: 'An artist with a very long name and several collaborators',
+        album: 'An album with a very long title and a special edition subtitle',
+      );
+      final state = controller.playbackState.copyWith(track: track);
+      try {
+        await _pump(
+          tester,
+          controller,
+          _marqueePlayer(state, surface),
+          width: surface == 'desktop' ? 1280 : 390,
+        );
+        final title = find.byWidgetPredicate(
+          (widget) => widget is MarqueeText && widget.text == track.title,
+        );
+        final subtitle = find.byWidgetPredicate(
+          (widget) =>
+              widget is MarqueeText &&
+              widget.text == '${track.artist} - ${track.album}',
+        );
+        final scroll = find.descendant(
+          of: subtitle,
+          matching: find.byType(Scrollable),
+        );
+        expect(title, findsOneWidget);
+        expect(subtitle, findsOneWidget);
+        expect(scroll, findsOneWidget);
+        final titleScroll = find.descendant(
+          of: title,
+          matching: find.byType(Scrollable),
+        );
+        expect(titleScroll, findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        final titlePosition = tester
+            .state<ScrollableState>(titleScroll)
+            .position;
+        final subtitlePosition = tester.state<ScrollableState>(scroll).position;
+        final titleStart = titlePosition.pixels;
+        final subtitleStart = subtitlePosition.pixels;
+        await tester.pump(const Duration(milliseconds: 500));
+        final titleDistance = titlePosition.pixels - titleStart;
+        final subtitleDistance = subtitlePosition.pixels - subtitleStart;
+        expect(titleDistance, greaterThan(0));
+        expect(subtitleDistance, closeTo(titleDistance * 0.5, 0.05));
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    });
+  }
+}
+
+Widget _marqueePlayer(PlaybackState state, String surface) {
+  if (surface == 'mini') {
+    return NowPlayingMiniBar(
+      state: state,
+      onPlayPause: () {},
+      onNext: () {},
+      onExpand: () {},
+    );
+  }
+  if (surface == 'expanded') {
+    return NowPlayingExpandedSheet(
+      state: state,
+      onOpenAlbum: null,
+      onPlayPause: () {},
+      onNext: () {},
+      onPrev: () {},
+      onStop: () {},
+      onSeek: (_) {},
+      onSeekPreview: (_) {},
+      onShuffleChanged: (_, {scope}) {},
+      onToggleRepeat: () {},
+      onStreamModeChanged: (_) {},
+      onVolumeChanged: (_) {},
+      onToggleLike: () {},
+    );
+  }
+  return NowPlayingBar(
+    state: state,
+    onOpenAlbum: null,
+    onPlayPause: () {},
+    onNext: () {},
+    onPrev: () {},
+    onStop: () {},
+    onSeek: (_) {},
+    onSeekPreview: (_) {},
+    onShuffleChanged: (_, {scope}) {},
+    onToggleRepeat: () {},
+    onStreamModeChanged: (_) {},
+    onVolumeChanged: (_) {},
+    onToggleLike: () {},
+  );
 }
 
 Future<void> _pump(

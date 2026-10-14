@@ -160,6 +160,10 @@ def main():
         ASSETS.mkdir(parents=True, exist_ok=True)
         for name in names:
             (ASSETS / f"{name}.svg").write_bytes(read(f"icons/{name}.svg"))
+        (ASSETS / "heart-filled.svg").write_text(
+            (ASSETS / "heart.svg").read_text().replace('fill="none"', 'fill="currentColor"'),
+            encoding="utf-8",
+        )
         (ASSETS / "LICENSE").write_bytes(read("LICENSE"))
         font = TTFont(io.BytesIO(read("font/lucide.ttf")))
 
@@ -203,7 +207,8 @@ def main():
         "ios_assets": NATIVE_IOS, "android_drawables": NATIVE_ANDROID,
         "notes": [
             "Lucide uses outline icons. Existing active colors distinguish liked, shuffle and selected navigation states.",
-            "Native liked star and heart variants use the same Lucide path with a filled interior.",
+            "Liked heart variants in Flutter and native controls use the same Lucide path with a filled interior.",
+            "Native liked star variants use the same Lucide path with a filled interior.",
             "Checkboxes retain Flutter interaction/semantics, with local square/square-check glyphs.",
             "Font glyphs are centered in square advance cells with zero line gap.",
             "The main player retains its original filled Material play/pause icons.",
@@ -215,6 +220,7 @@ def main():
         f"Lucide {VERSION}\nOfficial source: https://lucide.dev/guide/static\n"
         "The app bundles these SVGs and a subset of the official icon font for offline use.\n"
         "The font subset centers each glyph within its square advance cell.\n"
+        "heart-filled.svg is a Phonolite variant of heart.svg with a filled interior.\n"
         "LICENSE contains the Lucide ISC and inherited Feather MIT notices.\n"
         "manifest.json records the full replacement mapping and package integrity.\n"
         "Regenerate: python tools/vendor_lucide.py --download\n"
