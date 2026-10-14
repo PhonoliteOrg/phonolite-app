@@ -23,8 +23,8 @@
 - UI-008: Album artwork placeholders shall render a gold gradient square with the album title initial when no cover image is available or image loading fails.
 - UI-009: Artist artwork placeholders shall render a gold gradient circle with the artist initial when no artist logo is available or image loading fails.
 - UI-010: Artist logo and album backdrop colors shall be derived from deterministic fallback color logic so missing or failed remote images still produce visually stable headers.
-- UI-011: Text summaries for artists and albums shall support collapsed and expanded presentation, with a "Read more" or "Collapse" control once content crosses the configured threshold.
-- UI-012: Long text in constrained presentation areas shall be handled either by ellipsis or marquee-style horizontal scrolling, depending on widget context.
+- UI-011: Text summaries for artists and albums shall support collapsed and expanded presentation. Desktop summaries shall offer "Read more" or "Collapse" once content crosses the configured threshold; compact mobile headers shall keep biographies and genres behind an "About artist" or "Album details" toggle.
+- UI-012: Long text in constrained presentation areas shall be handled either by ellipsis or marquee-style horizontal scrolling, depending on widget context. Player track titles and artist-album subtitles shall marquee independently when they exceed the available width on desktop and mobile. Artist-album subtitles in playbars and the expanded player tray shall scroll at half the track title's speed, including for very long text.
 - UI-013: Empty-state views shall present explicit title and message text rather than silent blank screens.
 - UI-014: Shared command buttons shall use explicit labels such as "Back to library", "Back to artist", or "Back to settings" instead of relying only on gesture navigation.
 - UI-015: The app shall preserve a secondary full-screen search page implementation in code, even though the main navigation currently uses inline library search.
@@ -96,7 +96,7 @@
 - LIB-023: Album detail views shall expose a compact album download action that queues missing or failed tracks through the batch download manager.
 - LIB-024: Artist detail views shall expose a confirmed artist download action that fetches album tracks, deduplicates track IDs, and queues one batch through the download manager.
 - LIB-025: The Library header shall expose a Download Manager action in both connected and offline library modes.
-- LIB-026: The Download Manager shall render as a drawer-style panel on wide layouts and a sheet-style panel on narrow layouts.
+- LIB-026: The Download Manager shall render as a normal modal on mobile and desktop, with Pause all, Resume paused, and Clear partial / failed icon buttons at the top right inline with the title.
 - LIB-027: Downloaded music in the Library shall mirror the server catalog drilldown: downloaded artist cards or rows open downloaded album cards or rows, which open downloaded track rows.
 - LIB-028: Downloaded artist, album, track-list, and now-playing views shall prefer locally cached artwork paths when offline metadata contains them.
 
@@ -134,7 +134,7 @@
 - FEAT-021: The Logs page shall show buffered diagnostic events, support copying all visible entries, and support clearing the in-memory log buffer.
 - FEAT-022: Log entries shall preserve timestamp and log-level labeling.
 - FEAT-023: Local playlists and connected server playlists shall be separate copies and shall be allowed to differ.
-- FEAT-024: Local liked downloads and connected server liked songs shall be separate copies and shall be allowed to differ.
+- FEAT-024: Local liked downloads and connected server liked songs shall be separate copies and shall be allowed to differ. Likes shall never be automatically copied between local and server tracks, including on login, session restore, and reconnect.
 - FEAT-025: Server library, server playlist, server liked-song, streamed now-playing, and connected playback actions shall update server likes only.
 - FEAT-026: Offline library, local playlist, local liked-song, and downloaded playback actions shall update local likes only.
 - FEAT-027: Add-to-playlist actions shall be scoped to the current source: local contexts shall show only local playlists, and server contexts shall show only connected server playlists.
@@ -265,7 +265,7 @@
 - DATA-027: Logout, authorization loss, or disconnect from the current server shall pause queued or active downloads for that server while keeping partial files.
 - DATA-028: Reconnecting to the same server with a valid session shall resume paused downloads for that server.
 - DATA-029: Partial downloads shall resume with server ETag validation, and completed files shall be promoted only after byte-count and SHA256 validation pass when manifest validation data is present.
-- DATA-030: Corrupt, failed, canceled, partial, and completed downloads shall be removable from the Download Manager, and removing completed downloads shall prune local likes and local playlist membership only when no completed local source remains for the canonical track.
+- DATA-030: Corrupt, failed, canceled, partial, and completed downloads shall be removable from the Download Manager, and removing completed downloads shall prune local likes and local playlist membership only when no completed local source remains for the canonical track. Unfinished download entries shall expose one Remove action that stops active work, removes the entry, and deletes remaining cached files. Track transfer controls shall share one fixed button position, showing Pause for queued or active downloads, Resume for paused downloads, and Retry for failed, corrupt, or canceled downloads. Album and artist jobs shall likewise share one Pause/Resume button position. Transfer and removal controls shall remain inline with their track, album, or artist tiles on mobile and desktop, retaining at least 44-point mobile tap targets.
 - DATA-031: The offline metadata store shall persist local album cover, artist logo, and artist banner file paths on canonical tracks and store fetched artwork under the metadata directory.
 
 ## Diagnostics, Health, and Error Handling

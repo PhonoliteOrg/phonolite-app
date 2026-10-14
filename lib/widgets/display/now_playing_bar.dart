@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 
 import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -46,6 +46,7 @@ const Color _playlistSourcePurple = Color(0xFFB388FF);
 const int _scrubberAuthoritativeDiscontinuityMs = 1500;
 const int _scrubberMaxInterpolationLeadMs = 1500;
 const double _compactPlaybackChromeWidth = 980;
+const double _subtitleMarqueeSpeedFactor = 0.5;
 
 typedef ShuffleModeChanged =
     void Function(ShuffleMode mode, {ActionScope? scope});
@@ -1089,7 +1090,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                               fontSize: s(12),
                               color: ObsidianPalette.textMuted,
                             ),
-                            velocity: s(24),
+                            velocity: s(26 * _subtitleMarqueeSpeedFactor),
                             gap: s(18),
                           ),
                         ],
@@ -1108,6 +1109,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                       size: s(28),
                     ),
                   ),
+                  SizedBox(width: s(8)),
                   GestureDetector(
                     onTap: playEnabled ? onPlayPause : null,
                     behavior: HitTestBehavior.opaque,
@@ -1185,6 +1187,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
 
   Widget _buildSheet(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final track = state.track;
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
@@ -1214,7 +1217,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final headers = hasLocalImage
         ? const <String, String>{}
         : authHeaders(AppScope.of(context));
-    final artSize = math.min(size.width * 0.78, 320.0);
+    final preferredArtSize = math.min(size.width * 0.78, 320.0);
 
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: s(10),
@@ -1244,17 +1247,35 @@ class NowPlayingExpandedSheet extends StatelessWidget {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
+                final contentPadding = EdgeInsets.fromLTRB(
+                  s(16),
+                  s(12),
+                  s(16),
+                  s(12),
+                );
+                final contentHeight = math.max(
+                  0.0,
+                  constraints.maxHeight - contentPadding.vertical,
+                );
+                final textScale = math.max(
+                  1.0,
+                  MediaQuery.textScalerOf(context).scale(14) / 14,
+                );
+                final artSize = usesTouchTargets
+                    ? math.min(
+                        preferredArtSize,
+                        math.max(96.0, contentHeight - s(184) * textScale),
+                      )
+                    : preferredArtSize;
                 return ScrollConfiguration(
                   behavior: ScrollConfiguration.of(
                     context,
                   ).copyWith(scrollbars: false),
                   child: SingleChildScrollView(
                     physics: const ClampingScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(s(16), s(12), s(16), s(12)),
+                    padding: contentPadding,
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
+                      constraints: BoxConstraints(minHeight: contentHeight),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1329,7 +1350,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                                     fontSize: s(15),
                                     color: ObsidianPalette.textMuted,
                                   ),
-                                  velocity: s(26),
+                                  velocity: s(28 * _subtitleMarqueeSpeedFactor),
                                   gap: s(24),
                                 ),
                               ),
@@ -1337,9 +1358,14 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                           ],
                           if (inlineTags.isNotEmpty) ...[
                             SizedBox(height: s(10)),
-                            _techTagRow(context, inlineTags, center: true),
+                            _techTagRow(
+                              context,
+                              inlineTags,
+                              center: true,
+                              wrap: usesTouchTargets,
+                            ),
                           ],
-                          SizedBox(height: s(20)),
+                          SizedBox(height: s(usesTouchTargets ? 12 : 20)),
                         ],
                       ),
                     ),
@@ -1350,10 +1376,10 @@ class NowPlayingExpandedSheet extends StatelessWidget {
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(
-              s(20),
+              s(usesTouchTargets ? 12 : 20),
               s(6),
-              s(20),
-              s(20) + padding.bottom,
+              s(usesTouchTargets ? 12 : 20),
+              s(usesTouchTargets ? 12 : 20) + padding.bottom,
             ),
             child: Column(
               children: [
@@ -1368,7 +1394,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                   onSeekPreview: onSeekPreview,
                   enabled: track != null,
                 ),
-                SizedBox(height: s(22)),
+                SizedBox(height: s(usesTouchTargets ? 12 : 22)),
                 _ExpandedControls(
                   state: state,
                   onPlayPause: onPlayPause,
@@ -1382,7 +1408,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                   ),
                   onRepeat: onToggleRepeat,
                 ),
-                SizedBox(height: s(20)),
+                SizedBox(height: s(usesTouchTargets ? 8 : 20)),
                 _ExpandedExtras(
                   state: state,
                   onToggleLike: onToggleLike,
@@ -1472,7 +1498,7 @@ class _IntelZone extends StatelessWidget {
                   fontSize: s(11),
                   color: ObsidianPalette.textMuted,
                 ),
-                velocity: s(28),
+                velocity: s(32 * _subtitleMarqueeSpeedFactor),
                 gap: s(24),
               ),
               SizedBox(height: s(3)),
@@ -1692,54 +1718,50 @@ class _ExpandedControls extends StatelessWidget {
     final transportEnabled = _transportControlsEnabled(state);
     final playEnabled = transportEnabled && !state.isLoading;
 
-    // Keep every transport action finger-sized instead of shrinking the side
-    // groups with a FittedBox on a narrow phone.
     if (ObsidianModalScope.usesTouchTargets(context)) {
+      final shuffle = ObsidianHudIconButton(
+        icon: PhonoliteIcons.shuffle,
+        size: 22,
+        isActive: state.shuffleMode != ShuffleMode.off,
+        onPressed: onShuffle,
+      );
+      final previous = ObsidianHudIconButton(
+        icon: PhonoliteIcons.skipBack,
+        size: 24,
+        onPressed: transportEnabled ? onPrev : null,
+      );
+      final play = _HudPlayButton(
+        icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+        size: 56,
+        onPressed: playEnabled ? onPlayPause : null,
+      );
+      final next = ObsidianHudIconButton(
+        icon: PhonoliteIcons.skipForward,
+        size: 24,
+        onPressed: transportEnabled ? onNext : null,
+      );
+      final stop = ObsidianHudIconButton(
+        icon: PhonoliteIcons.square,
+        size: 22,
+        onPressed: transportEnabled ? onStop : null,
+      );
+      final repeat = ObsidianHudIconButton(
+        icon: PhonoliteIcons.repeat,
+        size: 22,
+        isActive: state.repeatMode == RepeatMode.one,
+        onPressed: onRepeat,
+      );
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ObsidianHudIconButton(
-                icon: PhonoliteIcons.skipBack,
-                size: 32,
-                onPressed: transportEnabled ? onPrev : null,
-              ),
-              _HudPlayButton(
-                icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                size: 80,
-                onPressed: playEnabled ? onPlayPause : null,
-              ),
-              ObsidianHudIconButton(
-                icon: PhonoliteIcons.skipForward,
-                size: 32,
-                onPressed: transportEnabled ? onNext : null,
-              ),
-            ],
+            children: [previous, play, next],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ObsidianHudIconButton(
-                icon: PhonoliteIcons.shuffle,
-                size: 28,
-                isActive: state.shuffleMode != ShuffleMode.off,
-                onPressed: onShuffle,
-              ),
-              ObsidianHudIconButton(
-                icon: PhonoliteIcons.square,
-                size: 28,
-                onPressed: transportEnabled ? onStop : null,
-              ),
-              ObsidianHudIconButton(
-                icon: PhonoliteIcons.repeat,
-                size: 28,
-                isActive: state.repeatMode == RepeatMode.one,
-                onPressed: onRepeat,
-              ),
-            ],
+            children: [shuffle, stop, repeat],
           ),
         ],
       );
@@ -1863,6 +1885,8 @@ class _ExpandedExtras extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
+    final actionSize = usesTouchTargets ? 22.0 : s(32);
     final trackAvailable = state.track != null;
     final volumeTheme = SliderTheme.of(context).copyWith(
       trackHeight: s(7),
@@ -1878,17 +1902,17 @@ class _ExpandedExtras extends StatelessWidget {
       ObsidianHudIconButton(
         iconWidget: const PlaylistAddIcon(),
         onPressed: userActionsEnabled ? onAddToPlaylist : null,
-        size: s(32),
+        size: actionSize,
       ),
       LikeIconButton(
         isLiked: state.track?.liked == true,
         onPressed: userActionsEnabled ? onToggleLike : null,
-        size: s(32),
+        size: actionSize,
       ),
       ObsidianHudIconButton(
         icon: PhonoliteIcons.speaker,
         onPressed: onShowDevicePicker,
-        size: s(32),
+        size: actionSize,
       ),
       if (state.track != null && !state.isLocalPlayback)
         _QualityBadge(
@@ -1929,7 +1953,7 @@ class _ExpandedExtras extends StatelessWidget {
               ),
             ),
           ),
-        SizedBox(height: s(14)),
+        SizedBox(height: s(usesTouchTargets ? 8 : 14)),
         Row(
           children: [
             Icon(
@@ -2614,6 +2638,7 @@ class _QualityBadgeState extends State<_QualityBadge> {
   @override
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
+    final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final enabled = widget.onTap != null;
     final active = enabled && _hovered;
     final bgColor = active
@@ -2635,38 +2660,48 @@ class _QualityBadgeState extends State<_QualityBadge> {
       child: GestureDetector(
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: _transition,
-          curve: Curves.easeOut,
-          alignment: Alignment.center,
+        child: ConstrainedBox(
           constraints: BoxConstraints(
-            minWidth: ObsidianModalScope.usesTouchTargets(context) ? 48 : 0,
-            minHeight: ObsidianModalScope.usesTouchTargets(context)
-                ? 48
-                : s(36),
+            minWidth: usesTouchTargets ? 48 : 0,
+            minHeight: usesTouchTargets ? 48 : 0,
           ),
-          padding: EdgeInsets.symmetric(horizontal: s(12), vertical: s(6)),
-          decoration: BoxDecoration(
-            color: bgColor,
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              if (_hovered)
-                BoxShadow(
-                  color: ObsidianPalette.gold.withOpacity(0.35),
-                  blurRadius: s(10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: _transition,
+                curve: Curves.easeOut,
+                alignment: Alignment.center,
+                constraints: BoxConstraints(minHeight: s(36)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: s(12),
+                  vertical: s(6),
                 ),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  border: Border.all(color: borderColor),
+                  boxShadow: [
+                    if (_hovered)
+                      BoxShadow(
+                        color: ObsidianPalette.gold.withOpacity(0.35),
+                        blurRadius: s(10),
+                      ),
+                  ],
+                ),
+                child: AnimatedDefaultTextStyle(
+                  duration: _transition,
+                  curve: Curves.easeOut,
+                  style: GoogleFonts.rajdhani(
+                    fontSize: s(13),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: s(1.2),
+                    color: textColor,
+                  ),
+                  child: Text(widget.label),
+                ),
+              ),
             ],
-          ),
-          child: AnimatedDefaultTextStyle(
-            duration: _transition,
-            curve: Curves.easeOut,
-            style: GoogleFonts.rajdhani(
-              fontSize: s(13),
-              fontWeight: FontWeight.w600,
-              letterSpacing: s(1.2),
-              color: textColor,
-            ),
-            child: Text(widget.label),
           ),
         ),
       ),

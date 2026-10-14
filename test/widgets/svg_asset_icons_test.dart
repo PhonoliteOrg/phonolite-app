@@ -1,10 +1,14 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/widgets/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/widgets/ui/edit_icon.dart';
+import 'package:phonolite_app/widgets/ui/like_icon_button.dart';
+import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
+import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
 import 'package:phonolite_app/widgets/ui/playlist_edit_icon.dart';
 import 'package:phonolite_app/widgets/ui/playlist_icon.dart';
@@ -63,6 +67,100 @@ void main() {
         expect(pixels[brightest + 2], closeTo(color.b * 255, 2));
         expect(pixels[brightest + 3], closeTo(theme.opacity! * 255, 1));
       }
+    });
+  }
+
+  testWidgets('liked hearts paint a filled interior', (tester) async {
+    final loader = FontLoader(PhonoliteIcons.fontFamily)
+      ..addFont(rootBundle.load('assets/icons/lucide/PhonoliteLucide.ttf'));
+    await loader.load();
+    const key = ValueKey('heart');
+    for (final liked in [false, true]) {
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: RepaintBoundary(
+              key: key,
+              child: LikeIconButton(isLiked: liked, size: 40),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final finder = find.byKey(key);
+      final pixels = await _capturePixels(tester, finder);
+      final dimension = tester.getSize(finder).width.toInt();
+      final center = dimension ~/ 2;
+      final centerAlpha = pixels[(center * dimension + center) * 4 + 3];
+      expect(centerAlpha > 100, liked);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  for (final width in [390.0, 1280.0]) {
+    testWidgets('playlist control matches neighboring icons at width $width', (
+      tester,
+    ) async {
+      final loader = FontLoader(PhonoliteIcons.fontFamily)
+        ..addFont(rootBundle.load('assets/icons/lucide/PhonoliteLucide.ttf'));
+      await loader.load();
+      final size = width < 820 ? 22.0 : 26.0;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: MediaQuery(
+            data: MediaQueryData(size: Size(width, 800)),
+            child: ObsidianModalScope(
+              builder: (context) => Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RepaintBoundary(
+                      key: const ValueKey('playlist'),
+                      child: ObsidianHudIconButton(
+                        iconWidget: const PlaylistAddIcon(),
+                        size: size,
+                      ),
+                    ),
+                    RepaintBoundary(
+                      key: const ValueKey('heart'),
+                      child: LikeIconButton(isLiked: false, size: size),
+                    ),
+                    RepaintBoundary(
+                      key: const ValueKey('device'),
+                      child: ObsidianHudIconButton(
+                        icon: PhonoliteIcons.speaker,
+                        size: size,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final painted = <String, Rect>{};
+      final buttonSize = Size.square(width < 820 ? 48 : size + 16);
+      for (final name in ['playlist', 'heart', 'device']) {
+        final finder = find.byKey(ValueKey(name));
+        expect(tester.getSize(finder), buttonSize);
+        painted[name] = await _paintedBounds(tester, finder);
+      }
+      final playlist = painted['playlist']!;
+      final playlistExtent = playlist.size.longestSide;
+      for (final name in ['heart', 'device']) {
+        expect(
+          playlistExtent,
+          closeTo(painted[name]!.size.longestSide, 1.25),
+          reason: 'playlist artwork matches the visible $name size',
+        );
+      }
+      expect(playlist.center.dx, closeTo(buttonSize.width / 2, 0.75));
+      expect(playlist.center.dy, closeTo(buttonSize.height / 2, 0.75));
+      expect(tester.takeException(), isNull);
     });
   }
 
@@ -150,4 +248,28 @@ Future<Uint8List> _capturePixels(WidgetTester tester, Finder finder) async {
       image.dispose();
     }
   }))!;
+}
+
+Future<Rect> _paintedBounds(WidgetTester tester, Finder finder) async {
+  final pixels = await _capturePixels(tester, finder);
+  final size = tester.getSize(finder);
+  var left = size.width.toInt();
+  var top = size.height.toInt();
+  var right = 0;
+  var bottom = 0;
+  for (var y = 0; y < size.height.toInt(); y++) {
+    for (var x = 0; x < size.width.toInt(); x++) {
+      if (pixels[(y * size.width.toInt() + x) * 4 + 3] < 32) continue;
+      if (x < left) left = x;
+      if (y < top) top = y;
+      if (x > right) right = x;
+      if (y > bottom) bottom = y;
+    }
+  }
+  return Rect.fromLTRB(
+    left.toDouble(),
+    top.toDouble(),
+    right + 1.0,
+    bottom + 1.0,
+  );
 }

@@ -18,6 +18,8 @@ edit.svg                    Playlist metadata and management; collection/setting
 
 playlist-edit.svg is a Phonolite variant matching the playlist-add linework,
 with a pencil in place of the add symbol.
+playlist-add.svg uses a centered viewport to match the visible size of the
+neighboring Lucide playback controls.
 playlist.svg uses the same list with a compact filled eighth note, sized to
 match the plus and pencil symbols.
 The playlist, playlist-add, and playlist-edit artwork fills the same area as

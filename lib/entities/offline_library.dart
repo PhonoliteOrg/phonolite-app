@@ -1151,83 +1151,6 @@ class OfflineLibraryStorage {
     }
   }
 
-  Future<List<ServerLikeSync>> readServerLikeSyncs(String serverBaseUrl) async {
-    if (kIsWeb) {
-      return const [];
-    }
-    Database? db;
-    try {
-      db = await _openDatabase();
-      final rows = db.select(
-        '''
-        SELECT *
-        FROM server_like_syncs
-        WHERE server_base_url = ?
-      ''',
-        [serverBaseUrl],
-      );
-      return rows.map(_serverLikeSyncFromRow).toList(growable: false);
-    } catch (err) {
-      AppLogger.warning('Failed to read server like syncs: $err');
-      return const [];
-    } finally {
-      _releaseDatabase(db);
-    }
-  }
-
-  Future<void> upsertServerLikeSyncs(List<ServerLikeSync> syncs) async {
-    if (kIsWeb || syncs.isEmpty) {
-      return;
-    }
-    Database? db;
-    try {
-      db = await _openDatabase();
-      _transaction(db, () {
-        for (final sync in syncs) {
-          db!.execute(
-            '''
-            INSERT INTO server_like_syncs (
-              local_track_id,
-              server_base_url,
-              server_track_id,
-              match_confidence,
-              match_kind,
-              last_local_liked,
-              last_local_updated_at,
-              last_server_liked,
-              last_server_updated_at,
-              synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(local_track_id, server_base_url) DO UPDATE SET
-              server_track_id = excluded.server_track_id,
-              match_confidence = excluded.match_confidence,
-              match_kind = excluded.match_kind,
-              last_local_liked = excluded.last_local_liked,
-              last_local_updated_at = excluded.last_local_updated_at,
-              last_server_liked = excluded.last_server_liked,
-              last_server_updated_at = excluded.last_server_updated_at,
-              synced_at = excluded.synced_at
-          ''',
-            [
-              sync.localTrackId,
-              sync.serverBaseUrl,
-              sync.serverTrackId,
-              sync.matchConfidence,
-              sync.matchKind,
-              sync.lastLocalLiked ? 1 : 0,
-              sync.lastLocalUpdatedAt,
-              sync.lastServerLiked ? 1 : 0,
-              sync.lastServerUpdatedAt,
-              sync.syncedAt,
-            ],
-          );
-        }
-      });
-    } finally {
-      _releaseDatabase(db);
-    }
-  }
-
   Future<List<OfflineMetadataRepairRequest>> readMetadataRepairRequests(
     String serverBaseUrl, {
     int limit = 32,
@@ -1602,23 +1525,6 @@ class OfflineLibraryStorage {
     }
   }
 
-  Future<void> applySyncedLocalLikeState(
-    String localTrackId,
-    bool liked,
-    int updatedAt,
-  ) async {
-    Database? db;
-    try {
-      db = await _openDatabase();
-      _requireDownloadedLocalTrack(db, localTrackId);
-      _transaction(db, () {
-        _writeLocalLikeState(db!, localTrackId, liked, updatedAt);
-      });
-    } finally {
-      _releaseDatabase(db);
-    }
-  }
-
   Future<Playlist?> addLocalTrackToPlaylist(
     String playlistId,
     String localTrackId,
@@ -1881,12 +1787,17 @@ class OfflineLibraryStorage {
       if (!hadMetadataTable ||
           previousSchemaVersion != _schemaVersion ||
           !_metadataFlag(db, 'artwork_repair_v1') ||
+          !_metadataFlag(db, 'playlist_artwork_repair_v1') ||
           previousLocation.isEmpty ||
           previousLocation.single['value'] != repairLocation) {
         await _repairCanonicalArtworkPaths(db);
         db.execute(
           'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
           ['artwork_repair_v1', '1'],
+        );
+        db.execute(
+          'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+          ['playlist_artwork_repair_v1', '1'],
         );
         db.execute(
           'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
@@ -1929,11 +1840,15 @@ class OfflineLibraryStorage {
          OR artist_art_path IS NOT NULL
          OR artist_banner_path IS NOT NULL
     ''');
-    if (rows.isEmpty) {
+    final playlistRows = db.select(
+      'SELECT id, image_path FROM local_playlists WHERE image_path IS NOT NULL',
+    );
+    if (rows.isEmpty && playlistRows.isEmpty) {
       return;
     }
     final albumDir = await _artDirectory(_albumArtDirName);
     final artistDir = await _artDirectory(_artistArtDirName);
+    final playlistDir = await _artDirectory(_playlistArtDirName);
     _transaction(db, () {
       for (final row in rows) {
         final localTrackId = _readString(row, 'id');
@@ -1977,6 +1892,21 @@ class OfflineLibraryStorage {
             localTrackId,
           ],
         );
+      }
+      for (final row in playlistRows) {
+        final playlistId = _readString(row, 'id');
+        final savedPath = _readNullableString(row, 'image_path');
+        final repairedPath = _repairCanonicalArtworkPathSync(
+          directory: playlistDir,
+          id: playlistId,
+          savedPath: savedPath,
+        );
+        if (repairedPath != savedPath) {
+          db.execute('UPDATE local_playlists SET image_path = ? WHERE id = ?', [
+            repairedPath,
+            playlistId,
+          ]);
+        }
       }
     });
   }
@@ -2480,25 +2410,6 @@ class OfflineLibraryStorage {
       SELECT local_track_id, 1, created_at FROM local_likes
     ''');
     db.execute('''
-      CREATE TABLE IF NOT EXISTS server_like_syncs (
-        local_track_id TEXT NOT NULL,
-        server_base_url TEXT NOT NULL,
-        server_track_id TEXT NOT NULL,
-        match_confidence REAL NOT NULL,
-        match_kind TEXT NOT NULL,
-        last_local_liked INTEGER NOT NULL,
-        last_local_updated_at INTEGER NOT NULL,
-        last_server_liked INTEGER NOT NULL,
-        last_server_updated_at INTEGER NOT NULL,
-        synced_at INTEGER NOT NULL,
-        PRIMARY KEY (local_track_id, server_base_url),
-        FOREIGN KEY (local_track_id) REFERENCES tracks(id) ON DELETE CASCADE
-      )
-    ''');
-    db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_server_like_syncs_server ON server_like_syncs(server_base_url)',
-    );
-    db.execute('''
       CREATE TABLE IF NOT EXISTS local_playlists (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2974,21 +2885,6 @@ class OfflineLibraryStorage {
       updatedAt: _dateFromMs(_readInt(row, 'updated_at')),
       label: _readNullableString(row, 'label'),
       error: _readNullableString(row, 'error'),
-    );
-  }
-
-  ServerLikeSync _serverLikeSyncFromRow(Row row) {
-    return ServerLikeSync(
-      localTrackId: _readString(row, 'local_track_id'),
-      serverBaseUrl: _readString(row, 'server_base_url'),
-      serverTrackId: _readString(row, 'server_track_id'),
-      matchConfidence: _readDouble(row, 'match_confidence'),
-      matchKind: _readString(row, 'match_kind'),
-      lastLocalLiked: _readBool(row, 'last_local_liked'),
-      lastLocalUpdatedAt: _readInt(row, 'last_local_updated_at'),
-      lastServerLiked: _readBool(row, 'last_server_liked'),
-      lastServerUpdatedAt: _readInt(row, 'last_server_updated_at'),
-      syncedAt: _readInt(row, 'synced_at'),
     );
   }
 
@@ -3714,18 +3610,6 @@ class OfflineLibraryStorage {
     );
     db.execute(
       '''
-      DELETE FROM server_like_syncs
-      WHERE NOT EXISTS (
-        SELECT 1 FROM source_tracks s
-        WHERE s.local_track_id = server_like_syncs.local_track_id
-          AND s.status = ?
-          AND s.file_path IS NOT NULL
-      )
-    ''',
-      [OfflineDownloadStatus.downloaded.name],
-    );
-    db.execute(
-      '''
       DELETE FROM local_playlist_tracks
       WHERE NOT EXISTS (
         SELECT 1 FROM source_tracks s
@@ -4298,17 +4182,6 @@ class OfflineLibraryStorage {
     } catch (_) {
       return null;
     }
-  }
-
-  static double _readDouble(Row row, String key) {
-    final value = row[key];
-    if (value is double) {
-      return value;
-    }
-    if (value is num) {
-      return value.toDouble();
-    }
-    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   static bool _readBool(Row row, String key) {

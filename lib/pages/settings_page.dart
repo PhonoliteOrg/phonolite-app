@@ -783,76 +783,54 @@ class OfflineStorageSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final usesManagedPaths = Theme.of(context).platform == TargetPlatform.iOS;
+    final hideStoragePaths = switch (theme.platform) {
+      TargetPlatform.iOS || TargetPlatform.android => true,
+      _ => false,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (usesManagedPaths) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Text(
-              'Folder selection and custom paths are not supported on iPhone or iPad.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: ObsidianPalette.textMuted,
-              ),
+        if (!hideStoragePaths) ...[
+          _sectionRow(
+            context,
+            leading: const Icon(PhonoliteIcons.database),
+            title: 'Metadata database',
+            subtitle: _subtitle(locations, metadata: true),
+            trailing: _StorageActions(
+              onChange: onChangeMetadata,
+              onReset: onResetMetadata,
+              onOpen: onOpenMetadata,
+            ),
+          ),
+          const Divider(height: 1),
+          _sectionRow(
+            context,
+            leading: const Icon(PhonoliteIcons.folder),
+            title: 'Downloaded audio',
+            subtitle: _subtitle(locations, metadata: false),
+            trailing: _StorageActions(
+              onChange: onChangeDownloads,
+              onReset: onResetDownloads,
+              onOpen: onOpenDownloads,
+            ),
+          ),
+          const Divider(height: 1),
+          _sectionRow(
+            context,
+            leading: const Icon(PhonoliteIcons.receiptText),
+            title: 'Logs storage',
+            subtitle: _directorySubtitle(
+              logsLocation?.directory,
+              isDefault: logsLocation?.isDefault ?? true,
+            ),
+            trailing: _StorageActions(
+              onChange: onChangeLogs,
+              onReset: onResetLogs,
+              onOpen: onOpenLogs,
             ),
           ),
           const Divider(height: 1),
         ],
-        _sectionRow(
-          context,
-          leading: const Icon(PhonoliteIcons.database),
-          title: 'Metadata database',
-          subtitle: _subtitle(
-            locations,
-            metadata: true,
-            managed: usesManagedPaths,
-          ),
-          trailing: usesManagedPaths
-              ? const Icon(PhonoliteIcons.lockKeyhole)
-              : _StorageActions(
-                  onChange: onChangeMetadata,
-                  onReset: onResetMetadata,
-                  onOpen: onOpenMetadata,
-                ),
-        ),
-        const Divider(height: 1),
-        _sectionRow(
-          context,
-          leading: const Icon(PhonoliteIcons.folder),
-          title: 'Downloaded audio',
-          subtitle: _subtitle(
-            locations,
-            metadata: false,
-            managed: usesManagedPaths,
-          ),
-          trailing: usesManagedPaths
-              ? const Icon(PhonoliteIcons.lockKeyhole)
-              : _StorageActions(
-                  onChange: onChangeDownloads,
-                  onReset: onResetDownloads,
-                  onOpen: onOpenDownloads,
-                ),
-        ),
-        const Divider(height: 1),
-        _sectionRow(
-          context,
-          leading: const Icon(PhonoliteIcons.receiptText),
-          title: 'Logs storage',
-          subtitle: _directorySubtitle(
-            logsLocation?.directory,
-            isDefault: logsLocation?.isDefault ?? true,
-            managed: usesManagedPaths,
-          ),
-          trailing: usesManagedPaths
-              ? const Icon(PhonoliteIcons.lockKeyhole)
-              : _StorageActions(
-                  onChange: onChangeLogs,
-                  onReset: onResetLogs,
-                  onOpen: onOpenLogs,
-                ),
-        ),
-        const Divider(height: 1),
         _sectionRow(
           context,
           leading: Icon(PhonoliteIcons.trash, color: theme.colorScheme.error),
@@ -869,7 +847,6 @@ class OfflineStorageSection extends StatelessWidget {
   String _subtitle(
     OfflineStorageLocations? locations, {
     required bool metadata,
-    required bool managed,
   }) {
     if (locations == null) {
       return 'Loading storage path';
@@ -880,18 +857,11 @@ class OfflineStorageSection extends StatelessWidget {
     final path = metadata
         ? locations.metadataDirectory
         : locations.downloadsDirectory;
-    return _directorySubtitle(path, isDefault: isDefault, managed: managed);
+    return _directorySubtitle(path, isDefault: isDefault);
   }
 
-  String _directorySubtitle(
-    String? path, {
-    required bool isDefault,
-    required bool managed,
-  }) {
+  String _directorySubtitle(String? path, {required bool isDefault}) {
     if (path == null) return 'Loading storage path';
-    if (managed) {
-      return 'Managed automatically on this device - $path';
-    }
     return isDefault ? 'Default - $path' : path;
   }
 

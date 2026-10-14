@@ -221,6 +221,81 @@ void main() {
       expect(await storage.readLocalPlaylists(), isEmpty);
     });
 
+    for (final relocate in [false, true]) {
+      test(
+        'restores playlist covers after ${relocate ? 'container relocation' : 'upgrading legacy path repair'}',
+        () async {
+          final temp = await Directory.systemTemp.createTemp(
+            'phonolite_playlist_restart_',
+          );
+          addTearDown(() => temp.delete(recursive: true));
+          final original = Directory(offlineTestJoin(temp.path, 'original'));
+          final storage = OfflineLibraryStorage(baseDirectory: original);
+          final playlist = await storage.createLocalPlaylist('Cover Mix');
+          final saved = await storage.updateLocalPlaylistImage(
+            playlist.id,
+            PlaylistImageEdit.replace(
+              bytes: Uint8List.fromList([1, 2, 3]),
+              contentType: 'image/png',
+            ),
+          );
+          final originalPath = saved!.imagePath!;
+          await storage.close();
+
+          final Directory current;
+          if (relocate) {
+            current = await original.rename(
+              offlineTestJoin(temp.path, 'relocated'),
+            );
+          } else {
+            current = original;
+            final db = sqlite3.open(
+              offlineTestJoin(
+                offlineTestJoin(original.path, 'offline'),
+                'phonolite_offline.sqlite',
+              ),
+            );
+            // The previous version already repaired album/artist paths at this
+            // location, but left a playlist reference pointing at an old container.
+            db.execute('DELETE FROM metadata WHERE key = ?', [
+              'playlist_artwork_repair_v1',
+            ]);
+            db.execute(
+              'UPDATE local_playlists SET image_path = ? WHERE id = ?',
+              [
+                offlineTestJoin(temp.path, 'old-container/cover.png'),
+                playlist.id,
+              ],
+            );
+            db.dispose();
+          }
+
+          final restarted = OfflineLibraryStorage(baseDirectory: current);
+          final restored = (await restarted.readLocalPlaylists()).single;
+          final expected = await restarted.playlistArtFile(
+            playlistId: playlist.id,
+            extension: 'png',
+          );
+          expect(restored.imagePath, expected.path);
+          expect(await File(restored.imagePath!).readAsBytes(), [1, 2, 3]);
+          if (relocate) expect(await File(originalPath).exists(), isFalse);
+          expect(
+            await restarted.readPendingFileDeletes(),
+            isNot(contains(expected.path)),
+          );
+          await restarted.close();
+
+          final secondRestart = OfflineLibraryStorage(baseDirectory: current);
+          expect(
+            (await secondRestart.readLocalPlaylists()).single.imagePath,
+            expected.path,
+          );
+          expect(await expected.exists(), isTrue);
+          await secondRestart.close();
+        },
+      );
+    }
+
     test('records local like and unlike history', () async {
       final temp = await Directory.systemTemp.createTemp(
         'phonolite_offline_like_state_',
@@ -301,63 +376,6 @@ void main() {
         'Zeta Song',
         'Alpha Song',
       ]);
-    });
-
-    test('persists server like sync baselines per server', () async {
-      final temp = await Directory.systemTemp.createTemp(
-        'phonolite_offline_like_sync_',
-      );
-      addTearDown(() => temp.delete(recursive: true));
-      final storage = OfflineLibraryStorage(baseDirectory: temp);
-      final mediaFile = await offlineTestMediaFile(temp, 'completed.mp3');
-      final prepared = await storage.prepareDownload(
-        offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
-          track: offlineTestTrack(id: 'server-track-1'),
-          filePath: mediaFile.path,
-        ),
-      );
-      await storage.upsertDownload(prepared);
-      final localTrackId = prepared.localTrackId!;
-
-      await storage.upsertServerLikeSyncs([
-        ServerLikeSync(
-          localTrackId: localTrackId,
-          serverBaseUrl: 'http://server-one.test/api/v1',
-          serverTrackId: 'server-track-1',
-          matchConfidence: 1,
-          matchKind: 'exact_server_track_id',
-          lastLocalLiked: true,
-          lastLocalUpdatedAt: 10,
-          lastServerLiked: true,
-          lastServerUpdatedAt: 20,
-          syncedAt: 30,
-        ),
-        ServerLikeSync(
-          localTrackId: localTrackId,
-          serverBaseUrl: 'http://server-two.test/api/v1',
-          serverTrackId: 'server-track-2',
-          matchConfidence: 0.96,
-          matchKind: 'metadata_strict',
-          lastLocalLiked: false,
-          lastLocalUpdatedAt: 40,
-          lastServerLiked: false,
-          lastServerUpdatedAt: 50,
-          syncedAt: 60,
-        ),
-      ]);
-
-      final first = await storage.readServerLikeSyncs(
-        'http://server-one.test/api/v1',
-      );
-      final second = await storage.readServerLikeSyncs(
-        'http://server-two.test/api/v1',
-      );
-
-      expect(first.single.serverTrackId, 'server-track-1');
-      expect(first.single.lastServerUpdatedAt, 20);
-      expect(second.single.serverTrackId, 'server-track-2');
-      expect(second.single.matchKind, 'metadata_strict');
     });
 
     test(

@@ -71,6 +71,111 @@ void main() {
     expect(harness.connection.onTransportFailure, isNull);
   });
 
+  for (final initiallyAvailable in [true, false]) {
+    test(
+      'local and server likes stay independent through ${initiallyAvailable ? 'session restore' : 'reconnect'} and restart',
+      () async {
+        final root = await Directory.systemTemp.createTemp('local_like_scope_');
+        addTearDown(() => root.delete(recursive: true));
+        final connection = _LikeConnection()..available = initiallyAvailable;
+        final storage = OfflineLibraryStorage(baseDirectory: root);
+        final serverTrack = offlineTestTrack(id: 'server-track');
+        final media = await offlineTestMediaFile(root, 'download.mp3');
+        final download = await storage.prepareDownload(
+          offlineTestDownload(
+            serverBaseUrl: connection.baseUrl,
+            track: serverTrack,
+            filePath: media.path,
+          ).copyWith(
+            offlineMetadata: offlineTestOfflineMetadata(
+              trackId: serverTrack.id,
+            ),
+          ),
+        );
+        await storage.upsertDownload(download);
+        final manager = OfflineDownloadManager(
+          connection: connection,
+          storage: storage,
+        );
+        final harness = _Harness(
+          authenticated: true,
+          connection: connection,
+          offlineDownloadManager: manager,
+          offlineStorage: storage,
+        );
+        try {
+          await harness.controller.initialize();
+          await harness.controller.restoreSession();
+          expect(harness.controller.canUseServer, initiallyAvailable);
+          final localTrack = harness.controller.offlineTracks.single;
+          expect(localTrack.serverTrackId, serverTrack.id);
+
+          await harness.controller.toggleLike(localTrack);
+          // Wait beyond the former background sync delay, with a server match
+          // available, to detect delayed writes as well as immediate writes.
+          await Future<void>.delayed(const Duration(milliseconds: 2100));
+          expect(harness.controller.localLiked.single.liked, isTrue);
+          expect(connection.likeUpdates, isEmpty);
+          expect(connection.matches, 0);
+
+          connection.available = true;
+          connection.pendingHealth = Future.value(1);
+          await harness.controller.refreshServerAvailability();
+          await harness.controller.restoreSession();
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(harness.controller.canUseServer, isTrue);
+          expect(connection.likeUpdates, isEmpty);
+          expect(connection.matches, 0);
+
+          await harness.controller.toggleLike(serverTrack);
+          expect(harness.controller.liked.single.title, serverTrack.title);
+          await harness.controller.toggleLike(harness.controller.liked.single);
+          await Future<void>.delayed(const Duration(milliseconds: 2100));
+          expect(connection.likeUpdates, [
+            {serverTrack.id: true},
+            {serverTrack.id: false},
+          ]);
+          expect(harness.controller.liked, isEmpty);
+          expect(harness.controller.localLiked.single.liked, isTrue);
+          expect(connection.matches, 0);
+        } finally {
+          await harness.controller.close();
+          await storage.close();
+        }
+
+        final restoredStorage = OfflineLibraryStorage(baseDirectory: root);
+        final restoredManager = OfflineDownloadManager(
+          connection: connection,
+          storage: restoredStorage,
+        );
+        final restoredHarness = _Harness(
+          authenticated: true,
+          connection: connection,
+          offlineDownloadManager: restoredManager,
+          offlineStorage: restoredStorage,
+        );
+        try {
+          await restoredHarness.controller.initialize();
+          await restoredHarness.controller.restoreSession();
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(restoredHarness.controller.localLiked.single.liked, isTrue);
+          expect(connection.serverLiked, isFalse);
+          await restoredHarness.controller.toggleLike(
+            restoredHarness.controller.localLiked.single,
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 2100));
+          expect(restoredHarness.controller.localLiked, isEmpty);
+          expect(await restoredStorage.readLocalLikedTracks(), isEmpty);
+          expect(connection.likeUpdates, hasLength(2));
+          expect(connection.matches, 0);
+        } finally {
+          await restoredHarness.controller.close();
+          await restoredStorage.close();
+        }
+      },
+    );
+  }
+
   test(
     'Connect only advances after the endpoint health check succeeds',
     () async {
@@ -191,11 +296,6 @@ void main() {
             await harness.controller.refreshServerAvailability();
           }
           await offlineTestWaitFor(() => manager.downloads.length == 3);
-          // Saved login also schedules like syncing. Let its mocked storage reads
-          // finish before closing and deleting this test's database on Windows.
-          await connection.likesChecked.future.timeout(
-            const Duration(seconds: 5),
-          );
           expect(connection.requestedAlbums, ['album-2', 'album-3']);
           expect(connection.requestedBatches.single, [
             'album-2-track',
@@ -1790,17 +1890,71 @@ class _Connection extends ServerConnection {
   }
 }
 
-class _StartupDownloadConnection extends _Connection {
+class _LikeConnection extends _Connection {
   bool available = true;
-  final requestedAlbums = <String>[];
-  final requestedBatches = <List<String>>[];
-  final likesChecked = Completer<void>();
+  bool serverLiked = false;
+  int matches = 0;
+  final likeUpdates = <Map<String, bool>>[];
+
+  @override
+  Future<PlaybackSettingsResponse> fetchPlaybackSettings({
+    Duration timeout = const Duration(seconds: 8),
+    bool retryable = true,
+  }) async {
+    if (!available) throw const SocketException('Server unavailable');
+    return PlaybackSettingsResponse(repeatMode: 'off');
+  }
+
+  @override
+  Future<List<ServerLikeState>> updateLikeStates(
+    Map<String, bool> states, {
+    Map<String, int> updatedAtByTrack = const {},
+  }) async {
+    likeUpdates.add(Map.of(states));
+    serverLiked = states.values.single;
+    return [
+      for (final entry in states.entries)
+        ServerLikeState(
+          trackId: entry.key,
+          liked: entry.value,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<Track>> fetchLikedTracks() async => serverLiked
+      ? [offlineTestTrack(id: 'server-track').copyWith(liked: true)]
+      : [];
 
   @override
   Future<List<TrackMatchResult>> matchTracks(
     List<TrackMatchDescriptor> tracks,
   ) async {
-    if (!likesChecked.isCompleted) likesChecked.complete();
+    matches++;
+    return [
+      for (final track in tracks)
+        TrackMatchResult(
+          localTrackId: track.localTrackId,
+          serverTrackId: 'server-track',
+          confidence: 1,
+          matchKind: 'exact_server_track_id',
+          serverLiked: serverLiked,
+          serverUpdatedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+    ];
+  }
+}
+
+class _StartupDownloadConnection extends _Connection {
+  bool available = true;
+  final requestedAlbums = <String>[];
+  final requestedBatches = <List<String>>[];
+
+  @override
+  Future<List<TrackMatchResult>> matchTracks(
+    List<TrackMatchDescriptor> tracks,
+  ) async {
     return const [];
   }
 
