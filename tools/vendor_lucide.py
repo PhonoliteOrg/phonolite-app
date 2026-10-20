@@ -31,6 +31,7 @@ EXTRA_ICONS = {
 NATIVE_IOS = {
     "LucideAntenna": "antenna",
     "LucideDownload": "download",
+    "LucideDisc3": "disc-3",
     "LucideMicVocal": "mic-vocal",
     "LucideListMusic": "list-music",
     "LucideHeart": "heart",
@@ -38,6 +39,13 @@ NATIVE_IOS = {
     "LucideShuffle": "shuffle",
     "LucideEllipsis": "ellipsis",
     "LucideBookmark": "bookmark",
+}
+NATIVE_IOS_GRID = {
+    "LucideDisc3Grid": "disc-3",
+    "LucideListMusicGrid": "list-music",
+    "LucideHeartFilledGrid": "heart",
+    "LucideShuffleGrid": "shuffle",
+    "LucideEllipsisGrid": "ellipsis",
 }
 NATIVE_ANDROID = {
     "ic_lucide_play": "play",
@@ -204,7 +212,8 @@ def main():
         "font_family": "PhonoliteLucide", "branding": "Original Phonolite logo retained",
         "material_to_lucide": mapping,
         "icons": {name: {"dart": dart_name(name), "codepoint": codepoints[name]} for name in names},
-        "ios_assets": NATIVE_IOS, "android_drawables": NATIVE_ANDROID,
+        "ios_assets": NATIVE_IOS, "ios_grid_assets": NATIVE_IOS_GRID,
+        "android_drawables": NATIVE_ANDROID,
         "notes": [
             "Lucide uses outline icons. Existing active colors distinguish liked, shuffle and selected navigation states.",
             "Liked heart variants in Flutter and native controls use the same Lucide path with a filled interior.",

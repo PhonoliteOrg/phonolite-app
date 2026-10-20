@@ -1,0 +1,238 @@
+{
+  "feature": "playlists",
+  "sources": [
+    "lib/pages/playlists_page.dart",
+    "lib/pages/playlist_detail_view.dart",
+    "lib/widgets/modals/playlist_editor_modal.dart",
+    "lib/widgets/display/playlist_module_card.dart"
+  ],
+  "interactions": [
+    {
+      "id": "playlists.scroll",
+      "action": "Scroll playlist collections",
+      "expected": "Reveal additional playlists",
+      "availability": "Enough playlists",
+      "risk": "browse",
+      "journeys": [
+        "playlists.scroll"
+      ]
+    },
+    {
+      "id": "playlists.create_open",
+      "action": "Tap Create playlist",
+      "expected": "Open empty editor",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "playlists.create_cancel"
+      ]
+    },
+    {
+      "id": "playlists.collection_view",
+      "action": "Tap Show cards or Show list",
+      "expected": "Switch shared collection layout",
+      "availability": "all",
+      "risk": "preference",
+      "journeys": [
+        "playlists.collection_view"
+      ]
+    },
+    {
+      "id": "playlists.open",
+      "action": "Tap a playlist card/row",
+      "expected": "Open local/server playlist detail",
+      "availability": "Playlist exists",
+      "risk": "browse",
+      "journeys": [
+        "playlists.detail_navigation"
+      ]
+    },
+    {
+      "id": "playlists.long_press",
+      "action": "Long-press populated playlist",
+      "expected": "Start playlist from top",
+      "availability": "Populated playlist",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "playlists.edit",
+      "action": "Tap Edit playlists",
+      "expected": "Enter playlist selection",
+      "availability": "Playlist exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlists.select",
+      "action": "Tap playlist/checkbox in selection mode",
+      "expected": "Toggle selected playlist",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlists.select_all",
+      "action": "Select all or Deselect all playlists",
+      "expected": "Update selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlists.delete_open",
+      "action": "Tap Remove selected",
+      "expected": "Show playlist-deletion confirmation",
+      "availability": "Selection exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlists.delete_confirm",
+      "action": "Confirm deletion",
+      "expected": "Delete selected local/server playlists",
+      "availability": "Disposable playlist",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "playlists.delete_cancel",
+      "action": "Cancel deletion",
+      "expected": "Keep playlists",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlists.cancel_selection",
+      "action": "Tap Cancel",
+      "expected": "Exit playlist selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlist.back",
+      "action": "Tap Back to playlists",
+      "expected": "Return to playlist list",
+      "availability": "Playlist detail",
+      "risk": "browse",
+      "journeys": [
+        "playlists.detail_navigation"
+      ]
+    },
+    {
+      "id": "playlist.scroll",
+      "action": "Scroll tracks",
+      "expected": "Reveal further playlist tracks",
+      "availability": "Populated playlist",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlist.play",
+      "action": "Tap Play playlist",
+      "expected": "Play from first track",
+      "availability": "Populated playlist",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "playlist.edit_details",
+      "action": "Tap Edit details",
+      "expected": "Open existing playlist editor",
+      "availability": "Playlist detail",
+      "risk": "browse",
+      "journeys": [
+        "playlists.detail_navigation"
+      ]
+    },
+    {
+      "id": "playlist.edit_tracks",
+      "action": "Tap Edit tracks",
+      "expected": "Enter removable-download selection",
+      "availability": "Downloaded playlist tracks",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlist.download_open",
+      "action": "Tap Download playlist",
+      "expected": "Show download destination/confirmation",
+      "availability": "Server playlist",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlist.download_confirm",
+      "action": "Confirm download",
+      "expected": "Queue playlist downloads",
+      "availability": "Server playlist",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "playlist.remove_tracks",
+      "action": "Remove selected downloads",
+      "expected": "Confirm removal of downloaded tracks",
+      "availability": "Selected downloaded tracks",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "playlist_editor.name",
+      "action": "Enter playlist name",
+      "expected": "Update unsaved name and enforce length limit",
+      "availability": "Editor open",
+      "risk": "browse",
+      "journeys": [
+        "playlists.create_cancel"
+      ]
+    },
+    {
+      "id": "playlist_editor.description",
+      "action": "Enter description",
+      "expected": "Update unsaved description and enforce length limit",
+      "availability": "Editor open",
+      "risk": "browse",
+      "journeys": [
+        "playlists.create_cancel"
+      ]
+    },
+    {
+      "id": "playlist_editor.target",
+      "action": "Select Local or Server",
+      "expected": "Change new playlist destination",
+      "availability": "Signed in editor",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "playlist_editor.image",
+      "action": "Tap Choose image",
+      "expected": "Open native image/file picker",
+      "availability": "Editor open",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "playlist_editor.save",
+      "action": "Tap Save or submit name",
+      "expected": "Create/update playlist and dismiss on success",
+      "availability": "Valid draft",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "playlist_editor.close",
+      "action": "Tap Close or dismiss draft",
+      "expected": "Discard unsaved draft",
+      "availability": "Editor open",
+      "risk": "browse",
+      "journeys": [
+        "playlists.create_cancel",
+        "playlists.detail_navigation"
+      ]
+    }
+  ]
+}

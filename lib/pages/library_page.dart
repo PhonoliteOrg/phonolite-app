@@ -105,17 +105,28 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    return StreamBuilder<AuthState>(
-      stream: controller.authStream,
-      initialData: controller.authState,
-      builder: (context, snapshot) {
-        final authState = snapshot.data ?? controller.authState;
-        if (!authState.isAuthorized) {
-          _requestedServerLoad = false;
-          return _buildOfflineLibrary(controller);
+    return NotificationListener<ScrollStartNotification>(
+      onNotification: (notification) {
+        // Clamped short lists produce no ScrollUpdateNotification on Android.
+        // Recognize the drag itself; wheel scrolling and input-field scrolling
+        // must retain focus.
+        if (notification.depth == 0 && notification.dragDetails != null) {
+          FocusScope.of(context).unfocus();
         }
-        return _buildServerLibrary(controller);
+        return false;
       },
+      child: StreamBuilder<AuthState>(
+        stream: controller.authStream,
+        initialData: controller.authState,
+        builder: (context, snapshot) {
+          final authState = snapshot.data ?? controller.authState;
+          if (!authState.isAuthorized) {
+            _requestedServerLoad = false;
+            return _buildOfflineLibrary(controller);
+          }
+          return _buildServerLibrary(controller);
+        },
+      ),
     );
   }
 
@@ -226,8 +237,12 @@ class _LibraryPageState extends State<LibraryPage> {
                                     ];
 
                               return CustomScrollView(
+                                physics: const AlwaysScrollableScrollPhysics(),
                                 controller: _scrollController,
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
                                 slivers: [
+                                  const SliverPageTopInset(),
                                   SliverPadding(
                                     padding: const EdgeInsets.fromLTRB(
                                       20,
@@ -349,8 +364,12 @@ class _LibraryPageState extends State<LibraryPage> {
               final headerActionSpacing = _headerActionSpacing(context);
 
               return CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 controller: _scrollController,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 slivers: [
+                  const SliverPageTopInset(),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                     sliver: SliverToBoxAdapter(

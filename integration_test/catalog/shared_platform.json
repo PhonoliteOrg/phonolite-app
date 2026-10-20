@@ -1,0 +1,125 @@
+{
+  "feature": "shared_platform",
+  "sources": [
+    "lib/widgets/ui/compact_hero_details.dart",
+    "lib/widgets/ui/dismissible_selection_area.dart",
+    "lib/widgets/navigation/desktop_mouse_navigation.dart",
+    "lib/widgets/navigation/desktop_playback_shortcuts.dart",
+    "lib/pages/search_page.dart",
+    "lib/pages/splash_page.dart"
+  ],
+  "interactions": [
+    {
+      "id": "shared.modal_dismiss",
+      "action": "Tap dismissible modal barrier or Close/Cancel",
+      "expected": "Return without committing a choice",
+      "availability": "Dismissible overlay",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "shared.modal_scroll",
+      "action": "Scroll long modal contents",
+      "expected": "Reveal additional controls",
+      "availability": "Overflowing modal",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "shared.text_selection",
+      "action": "Long-press selectable metadata/text",
+      "expected": "Expose platform text-selection controls",
+      "availability": "Selectable text",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "shared.keyboard_next",
+      "action": "Use keyboard Next/Done/Search",
+      "expected": "Move focus or invoke documented field action",
+      "availability": "Focused input",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "shared.disabled",
+      "action": "Tap disabled/loading controls",
+      "expected": "No action is performed",
+      "availability": "Disabled state",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "shared.drawer_back",
+      "action": "Use visible back link from nested route",
+      "expected": "Return to correct originating screen",
+      "availability": "Nested route",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "native.image_picker",
+      "action": "Use iOS image picker and cancel/confirm",
+      "expected": "Return image selection to playlist editor",
+      "availability": "Requires native automation",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "native.permission_dialog",
+      "action": "Respond to local-network/OS permission prompt",
+      "expected": "Allow or deny access and return to app",
+      "availability": "Requires native automation",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "native.output_route",
+      "action": "Use system audio routing UI",
+      "expected": "Switch actual audio output",
+      "availability": "Requires native automation",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "desktop.mouse_history",
+      "action": "Use mouse Back/Forward",
+      "expected": "Navigate current tab history",
+      "availability": "Desktop only",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "desktop.space",
+      "action": "Press Space outside inputs",
+      "expected": "Toggle playback once per keypress",
+      "availability": "Desktop only",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "desktop.volume",
+      "action": "Adjust visible desktop volume control",
+      "expected": "Update volume",
+      "availability": "Desktop layout",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "unreachable.search_page",
+      "action": "Standalone SearchPage filter chips/search/results",
+      "expected": "Not reachable from current HomePage navigation; do not count as shipped coverage",
+      "availability": "Source-only page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "unreachable.splash_page",
+      "action": "Standalone SplashPage controls",
+      "expected": "Not mounted by current main/HomePage; excluded from reachable coverage",
+      "availability": "Source-only page",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

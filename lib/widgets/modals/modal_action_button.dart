@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/tech_button.dart';
 import 'obsidian_modal_scope.dart';
+import '../ui/button_haptics.dart';
 
 class ModalActionButton extends StatelessWidget {
   const ModalActionButton({
@@ -64,12 +65,12 @@ class ModalActionButton extends StatelessWidget {
     final iconData = icon;
     return iconData == null
         ? TextButton(
-            onPressed: onPressed,
+            onPressed: withButtonHaptic(onPressed),
             style: style,
             child: Text(label.toUpperCase()),
           )
         : TextButton.icon(
-            onPressed: onPressed,
+            onPressed: withButtonHaptic(onPressed),
             style: style,
             icon: Icon(iconData, size: touchLayout ? 20 : 16),
             label: Text(label.toUpperCase()),

@@ -107,7 +107,6 @@ class _StatsPageState extends State<StatsPage> {
                     connected: auth.isAuthorized,
                     serverEnabled: controller.statsServerCollectionEnabled,
                     syncing: controller.statsSyncing,
-                    pendingCount: controller.pendingStatsCount,
                     lastSyncedAt: controller.statsLastSyncedAt,
                     message: controller.statsSyncMessage,
                     onImport:

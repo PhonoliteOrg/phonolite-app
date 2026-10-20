@@ -72,6 +72,13 @@ class _IsolateAudioWorker implements AudioWorkerHandle {
   void kill() => isolate.kill(priority: Isolate.immediate);
 }
 
+class _AudioSourceRejected implements Exception {
+  const _AudioSourceRejected(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 class AudioEngine {
   AudioEngine({
     void Function(String message)? onMessage,
@@ -121,12 +128,14 @@ class AudioEngine {
   bool _workerFailed = false;
   bool _active = false;
   bool _paused = false;
+  bool _sourceRejected = false;
   int _playbackId = 0;
   Map<String, dynamic>? _listeningContext;
   void Function(Map<String, dynamic>)? onListeningSegment;
   Completer<void>? _listeningFlush;
   int _listeningFlushRequestId = 0;
   Future<void>? _stopInFlight;
+  bool _stopWaitsForRelease = false;
 
   void configureListening(
     Map<String, dynamic>? context, {
@@ -325,7 +334,9 @@ class AudioEngine {
         final paused = message['paused'] == true;
         _active = active;
         _paused = paused;
+        _sourceRejected = message['source_rejected'] == true;
         _onState?.call(active, paused);
+        if (_sourceRejected) _cancelPendingSeeks();
         break;
       default:
         break;
@@ -348,30 +359,42 @@ class AudioEngine {
     _workerPort = null;
   }
 
-  Future<void> stop() {
+  Future<void> stop({bool waitForRelease = false}) {
     final previous = _stopInFlight;
-    if (previous != null) return previous;
-    final stopping = _stopAndFlush();
+    if (previous != null) {
+      return waitForRelease && !_stopWaitsForRelease
+          ? previous.then((_) => stop(waitForRelease: true))
+          : previous;
+    }
+    _stopWaitsForRelease = waitForRelease;
+    final stopping = _stopAndFlush(waitForRelease: waitForRelease);
     _stopInFlight = stopping;
     return stopping.whenComplete(() {
-      if (identical(_stopInFlight, stopping)) _stopInFlight = null;
+      if (identical(_stopInFlight, stopping)) {
+        _stopInFlight = null;
+        _stopWaitsForRelease = false;
+      }
     });
   }
 
-  Future<void> _stopAndFlush() async {
+  Future<void> _stopAndFlush({bool waitForRelease = false}) async {
     _cancelPendingSeeks();
     _playbackId++;
     _active = false;
     _paused = false;
-    final waitForListening =
-        _listeningContext != null && _workerPort != null && !_workerFailed;
-    final flush = waitForListening ? Completer<void>() : null;
+    // The worker acknowledges only after closing its decoder/file. Deletion
+    // must wait for that acknowledgment even when listening stats are disabled.
+    final waitForAcknowledgment =
+        !_workerFailed &&
+        (waitForRelease || (_listeningContext != null && _workerPort != null));
+    final flush = waitForAcknowledgment ? Completer<void>() : null;
     _listeningFlush = flush;
     _sendCmd({'cmd': 'stop', 'flush_request_id': ++_listeningFlushRequestId});
     if (flush != null) {
       try {
         await flush.future.timeout(const Duration(seconds: 2));
       } on TimeoutException {
+        if (waitForRelease) rethrow;
         // A terminated worker cannot provide its uncheckpointed tail.
       } finally {
         if (identical(_listeningFlush, flush)) _listeningFlush = null;
@@ -469,6 +492,9 @@ class AudioEngine {
     _sendCmd({'cmd': 'resume', 'playback_id': _playbackId});
   }
 
+  /// The server rejected this request; reconnecting cannot repair its source.
+  bool get sourceRejected => _sourceRejected;
+
   bool get hasActivePlayer => _active;
 
   bool get isPaused => _paused;
@@ -484,6 +510,7 @@ class AudioEngine {
     bool initialPaused = false,
   }) async {
     if (_disposed) return;
+    _sourceRejected = false;
     _cancelPendingSeeks();
     _ensureWorkerForPlayback();
     final playbackId = ++_playbackId;
@@ -571,6 +598,7 @@ class AudioEngine {
     bool initialPaused = false,
   }) async {
     if (_disposed) return;
+    _sourceRejected = false;
     _cancelPendingSeeks();
     _ensureWorkerForPlayback();
     _sendCmd({'cmd': 'stop'});
@@ -1512,7 +1540,14 @@ class _PlaybackSession {
       completed = _isActive;
     } catch (err) {
       _log('Playback failed: $err');
-      _sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
+      final rejected = err is _AudioSourceRejected;
+      _sendPlaybackMessage({
+        'type': 'state',
+        'active': false,
+        'paused': false,
+        if (rejected) 'source_rejected': true,
+      });
+      if (rejected) _failSeek('source_rejected');
     } finally {
       if (_stopCompletion != null) await _stopCompletion;
       _listening.flush(endReason: completed ? 'finished' : 'interrupted');
@@ -1758,7 +1793,12 @@ class _PlaybackSession {
       );
     } catch (_) {
       quic.close();
-      quic = QuicClient.connect(host: host, port: port, token: token, serverPin:serverPin);
+      quic = QuicClient.connect(
+        host: host,
+        port: port,
+        token: token,
+        serverPin: serverPin,
+      );
       _quic = quic;
       _transportRequestId = quic.openTrack(
         trackId: trackId,
@@ -1794,8 +1834,10 @@ class _PlaybackSession {
       final requestId = (event!['request_id'] as num?)?.toInt();
       if (requestId != null && requestId != _transportRequestId) continue;
       if (event['type'] == 'error') {
+        final message = 'Audio range request failed: ${event['message']}';
+        if (event['origin'] == 'server') throw _AudioSourceRejected(message);
         _failSeek('server_error');
-        throw Exception('Audio range request failed: ${event['message']}');
+        throw Exception(message);
       }
       if (event['type'] != 'stream') continue;
       final version = event['source_version']?.toString() ?? '';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'dismissible_selection_area.dart';
+import 'button_haptics.dart';
 
 class ExpandableSummaryText extends StatefulWidget {
   const ExpandableSummaryText({
@@ -58,7 +59,9 @@ class _ExpandableSummaryTextState extends State<ExpandableSummaryText> {
         ),
         if (showToggle)
           TextButton(
-            onPressed: () => setState(() => _expanded = !_expanded),
+            onPressed: withButtonHaptic(
+              () => setState(() => _expanded = !_expanded),
+            ),
             style: TextButton.styleFrom(
               foregroundColor: widget.toggleColor,
               padding: widget.togglePadding,

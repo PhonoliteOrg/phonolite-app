@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/ui/obsidian_theme.dart';
+import '../widgets/ui/button_haptics.dart';
 
 class SplashPage extends StatelessWidget {
   const SplashPage({
@@ -61,7 +62,9 @@ class SplashPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: isResetting ? null : onTryDifferentServer,
+                  onPressed: withButtonHaptic(
+                    isResetting ? null : onTryDifferentServer,
+                  ),
                   child: Text(
                     isResetting
                         ? 'Preparing login...'

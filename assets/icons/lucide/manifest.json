@@ -381,6 +381,7 @@
   "ios_assets": {
     "LucideAntenna": "antenna",
     "LucideDownload": "download",
+    "LucideDisc3": "disc-3",
     "LucideMicVocal": "mic-vocal",
     "LucideListMusic": "list-music",
     "LucideHeart": "heart",
@@ -388,6 +389,13 @@
     "LucideShuffle": "shuffle",
     "LucideEllipsis": "ellipsis",
     "LucideBookmark": "bookmark"
+  },
+  "ios_grid_assets": {
+    "LucideDisc3Grid": "disc-3",
+    "LucideListMusicGrid": "list-music",
+    "LucideHeartFilledGrid": "heart",
+    "LucideShuffleGrid": "shuffle",
+    "LucideEllipsisGrid": "ellipsis"
   },
   "android_drawables": {
     "ic_lucide_play": "play",

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../ui/phonolite_icons.dart';
+import '../ui/button_haptics.dart';
 
 /// Keeps Material checkbox input, focus and accessibility while drawing Lucide.
 class LucideCheckbox extends StatelessWidget {
@@ -38,7 +39,7 @@ class LucideCheckbox extends StatelessWidget {
       children: [
         Checkbox(
           value: value,
-          onChanged: onChanged,
+          onChanged: withSelectionHaptic(onChanged),
           visualDensity: visualDensity,
           materialTapTargetSize: materialTapTargetSize,
           focusNode: focusNode,

@@ -115,6 +115,7 @@ class _LikedPageState extends State<LikedPage> {
                             serverRemovableTracks.length;
                         return CustomScrollView(
                           slivers: [
+                            const SliverPageTopInset(),
                             SliverPadding(
                               padding: const EdgeInsets.fromLTRB(
                                 20,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../ui/obsidian_glass_surface.dart';
 import '../ui/obsidian_theme.dart';
 import 'modal_action_button.dart';
 import 'obsidian_dialog.dart';
@@ -109,56 +110,53 @@ class ObsidianModalSurface extends StatelessWidget {
   Widget _buildSurface(BuildContext context) {
     final heading = Text(
       title,
+      textAlign: TextAlign.left,
       maxLines: headerActions == null ? null : 2,
       overflow: headerActions == null ? null : TextOverflow.ellipsis,
       style: ObsidianModalStyle.titleStyle(context),
     );
-    return ObsidianFrostedSurface(
-      child: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border.fromBorderSide(
-            BorderSide(color: ObsidianPalette.border),
-          ),
-        ),
-        child: SafeArea(
-          top: !showDragHandle,
-          child: Column(
-            children: [
-              if (showDragHandle) const _ObsidianModalDragHandle(),
-              Padding(
-                padding: ObsidianModalStyle.titlePadding,
-                child: headerActions == null
-                    ? Align(alignment: Alignment.centerLeft, child: heading)
-                    : Row(
-                        children: [
-                          Expanded(child: heading),
-                          const SizedBox(width: 8),
-                          headerActions!,
-                        ],
-                      ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: ObsidianModalStyle.contentPadding,
-                  child: DefaultTextStyle.merge(
-                    style: ObsidianModalStyle.bodyStyle(context),
-                    child: child,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: ObsidianModalStyle.actionsPadding,
-                child: ObsidianModalActions(
-                  children: [
-                    ModalActionButton(
-                      label: 'Close',
-                      onPressed: () => Navigator.of(context).maybePop(),
+    return ObsidianGlassSurface(
+      child: SafeArea(
+        top: !showDragHandle,
+        child: Column(
+          children: [
+            if (showDragHandle) const _ObsidianModalDragHandle(),
+            Padding(
+              padding: ObsidianModalStyle.titlePadding,
+              child: headerActions == null
+                  ? Align(alignment: Alignment.centerLeft, child: heading)
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(child: heading),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: headerActions!,
+                        ),
+                      ],
                     ),
-                  ],
+            ),
+            Expanded(
+              child: Padding(
+                padding: ObsidianModalStyle.contentPadding,
+                child: DefaultTextStyle.merge(
+                  style: ObsidianModalStyle.bodyStyle(context),
+                  child: child,
                 ),
               ),
-            ],
-          ),
+            ),
+            Padding(
+              padding: ObsidianModalStyle.actionsPadding,
+              child: ObsidianModalActions(
+                children: [
+                  ModalActionButton(
+                    label: 'Close',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -8,34 +8,39 @@ import '../support/widget_test_helpers.dart';
 void main() {
   setUpAll(configureTestFonts);
 
-  testWidgets('now-playing bars move independently, then stop and resume', (
-    tester,
-  ) async {
-    await _pumpRow(tester, isPlaying: true);
-    final before = _barHeights(tester);
-    expect(before, hasLength(3));
+  testWidgets(
+    'idle row starts independent playing bars, then stops and resumes',
+    (tester) async {
+      await _pumpRow(tester, isPlaying: false);
+      await tester.pumpAndSettle();
+      expect(_barHeights(tester), isEmpty);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await _pumpRow(tester, isPlaying: true);
+      final before = _barHeights(tester);
+      expect(before, hasLength(3));
 
-    await tester.pump(const Duration(milliseconds: 150));
-    final after = _barHeights(tester);
-    final changes = [for (var i = 0; i < 3; i++) after[i] - before[i]];
-    // A scaled static icon cannot move some bars up while others move down.
-    expect(changes.any((change) => change > 0), isTrue);
-    expect(changes.any((change) => change < 0), isTrue);
+      await tester.pump(const Duration(milliseconds: 150));
+      final after = _barHeights(tester);
+      final changes = [for (var i = 0; i < 3; i++) after[i] - before[i]];
+      // A scaled static icon cannot move some bars up while others move down.
+      expect(changes.any((change) => change > 0), isTrue);
+      expect(changes.any((change) => change < 0), isTrue);
 
-    await _pumpRow(tester, isPlaying: false);
-    await tester.pumpAndSettle();
-    expect(_barHeights(tester), isEmpty);
-    expect(find.text('01'), findsOneWidget);
-    expect(tester.binding.hasScheduledFrame, isFalse);
+      await _pumpRow(tester, isPlaying: false);
+      await tester.pumpAndSettle();
+      expect(_barHeights(tester), isEmpty);
+      expect(find.text('01'), findsOneWidget);
+      expect(tester.binding.hasScheduledFrame, isFalse);
 
-    await _pumpRow(tester, isPlaying: true);
-    final resumed = _barHeights(tester);
-    expect(resumed, hasLength(3));
-    await tester.pump(const Duration(milliseconds: 150));
-    expect(_barHeights(tester), isNot(equals(resumed)));
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+      await _pumpRow(tester, isPlaying: true);
+      final resumed = _barHeights(tester);
+      expect(resumed, hasLength(3));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(_barHeights(tester), isNot(equals(resumed)));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
 
 Future<void> _pumpRow(WidgetTester tester, {required bool isPlaying}) async {

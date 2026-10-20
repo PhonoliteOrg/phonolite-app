@@ -52,6 +52,7 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                 final selectedTracks = _selectedTracks(album.tracks);
                 return CustomScrollView(
                   slivers: [
+                    const SliverPageTopInset(),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                       sliver: SliverToBoxAdapter(
@@ -136,6 +137,7 @@ class _LocalAlbumDetailScreenState extends State<LocalAlbumDetailScreen> {
                         sliver: TrackSliverList(
                           tracks: album.tracks,
                           useAlbumTrackNumbers: true,
+                          actionsInMenu: true,
                           isPlayingTrack: (track) =>
                               playback.isPlaying && playingId == track.id,
                           onTrackTap: (track) => controller.playOfflineTrack(

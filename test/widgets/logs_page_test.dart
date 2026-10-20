@@ -7,6 +7,7 @@ import 'package:phonolite_app/entities/app_controller.dart';
 import 'package:phonolite_app/entities/app_log.dart';
 import 'package:phonolite_app/pages/logs_page.dart';
 import 'package:phonolite_app/widgets/display/message_log.dart';
+import 'package:phonolite_app/widgets/inputs/obsidian_toggle_option.dart';
 import 'package:phonolite_app/widgets/layouts/app_scope.dart';
 
 import '../support/widget_test_helpers.dart';
@@ -119,6 +120,8 @@ void main() {
       controller.add('info only', LogLevel.info);
       controller.add('warning only', LogLevel.warning);
       controller.add('error only', LogLevel.error);
+      controller.add('status only', LogLevel.status);
+      controller.add('debug only', LogLevel.debug);
 
       final logLines = find.byWidgetPredicate(
         (widget) =>
@@ -131,16 +134,31 @@ void main() {
           AppScope(controller: controller, child: const LogsPage()),
         ),
       );
-      expect(logLines, findsNWidgets(3));
+      expect(logLines, findsNWidgets(5));
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byType(DropdownButton<LogCategory>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Issues').last);
+      expect(find.byType(DropdownButton<LogCategory>), findsNothing);
+      for (final category in LogCategory.values) {
+        await tester.tap(find.text(category.label.toUpperCase()));
+        await tester.pumpAndSettle();
+        final selected = tester
+            .widgetList<ObsidianToggleOption>(find.byType(ObsidianToggleOption))
+            .where((option) => option.isActive);
+        expect(selected.single.label, category.label);
+        expect(
+          logLines,
+          findsNWidgets(switch (category) {
+            LogCategory.all => 5,
+            LogCategory.issues => 2,
+            _ => 1,
+          }),
+        );
+      }
+      await tester.tap(find.text('ISSUES'));
       await tester.pumpAndSettle();
       expect(logLines, findsNWidgets(2));
       controller.add('new warning only', LogLevel.warning);
       await tester.pumpAndSettle();
-      expect(find.text('issues.log • 3 entries'), findsOneWidget);
+      expect(find.text('issues.log • 3 entries'), findsNothing);
       expect(find.textContaining('new warning only'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.byWidgetPredicate(

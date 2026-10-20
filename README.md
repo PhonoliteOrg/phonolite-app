@@ -2,6 +2,14 @@
 
 Phonolite Flutter client.
 
+## UI interaction inventory and device profiling
+
+See the [interaction inventory](integration_test/catalog/INTERACTIONS.md) for
+on-screen actions and the [device test guide](integration_test/README.md) for
+feature-organized iOS journeys and automatic profile-mode frame/trace reports.
+The [test index](test/README.md) explains where to find device, widget, entity,
+platform and server tests. The device harness lives outside the main app source.
+
 ## Desktop controls
 
 On Windows, macOS, and Linux, press Space to pause or resume playback. Holding

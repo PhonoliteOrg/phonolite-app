@@ -18,6 +18,9 @@ class NowPlayingPlatformService {
 
   bool get isSupported => Platform.isIOS || Platform.isAndroid;
 
+  // iOS can fetch and decode covers while Flutter's renderer is suspended.
+  bool get loadsArtworkNatively => Platform.isIOS;
+
   void setRemoteCommandHandler(
     Future<void> Function(NativeRemoteCommand command) handler,
   ) {

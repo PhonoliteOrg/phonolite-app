@@ -1440,7 +1440,7 @@ fn handle_control_bytes(
                         continue;
                     }
                     tx.event(serde_json::json!({
-                        "type": "error", "message": message,
+                        "type": "error", "origin": "server", "message": message,
                         "request_id": request_id, "seek_id": seek_id,
                     }));
                     set_last_error_if_empty(last_error, message);

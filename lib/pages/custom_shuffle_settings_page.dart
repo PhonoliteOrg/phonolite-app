@@ -337,86 +337,110 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
                         (_) => _maybeLoadMoreArtists(),
                       );
                     }
-                    return ListView(
+                    return CustomScrollView(
                       controller: _scrollController,
-                      padding: EdgeInsets.fromLTRB(
-                        20,
-                        20,
-                        20,
-                        20 + PlaybackContentInset.bottomOf(context),
-                      ),
-                      children: [
-                        CommandLinkButton(
-                          label: 'Back to settings',
-                          onTap: () => Navigator.of(context).pop(),
-                        ),
-                        const SizedBox(height: 16),
-                        const LibraryHeader(
-                          title: 'CUSTOM SHUFFLE',
-                          moduleCount: 0,
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Pick artists and genres used for library shuffles.',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: ObsidianPalette.textMuted),
-                        ),
-                        const SizedBox(height: 24),
-                        Wrap(
-                          spacing: 32,
-                          runSpacing: 16,
-                          children: [_buildTargetToggle(), _buildViewToggle()],
-                        ),
-                        const SizedBox(height: 20),
-                        if (showingArtists) ...[
-                          _buildSelectionSection(
-                            title: 'Artists',
-                            controller: _artistSearchController,
-                            hintText: 'Search artists',
-                            summary: hasMoreArtists
-                                ? 'Selected ${_activeArtistSelection.length} of loaded ${artists.length}'
-                                : 'Selected ${_activeArtistSelection.length} of ${artists.length}',
-                            onSelectAll:
-                                !canUseArtists ||
-                                    (artists.isEmpty && !hasMoreArtists)
-                                ? null
-                                : _selectAllAvailableArtists,
-                            onClear:
-                                !canUseArtists || _activeArtistSelection.isEmpty
-                                ? null
-                                : _clearArtists,
-                            child: _buildArtistList(
-                              canLoadArtists: canUseArtists,
-                              artists: filteredArtists,
-                              fullCount: artists.length,
-                              isLoading: isLoading,
-                              hasMoreArtists: hasMoreArtists,
-                            ),
+                      slivers: [
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(
+                            20,
+                            20 + PlaybackContentInset.topOf(context),
+                            20,
+                            20 + PlaybackContentInset.bottomOf(context),
                           ),
-                        ] else ...[
-                          _buildSelectionSection(
-                            title: 'Genres',
-                            controller: _genreSearchController,
-                            hintText: 'Search genres',
-                            summary:
-                                'Selected ${_activeGenreSelection.length} of ${genreOptions.length}',
-                            onSelectAll: !canUseArtists || genreOptions.isEmpty
-                                ? null
-                                : () => _selectAllGenres(genreOptions),
-                            onClear:
-                                !canUseArtists || _activeGenreSelection.isEmpty
-                                ? null
-                                : _clearGenres,
-                            child: _buildGenreList(
-                              canLoadArtists: canUseArtists,
-                              genres: filteredGenres,
-                              fullCount: genreOptions.length,
-                              isLoading: isLoading,
-                              hasMoreArtists: hasMoreArtists,
-                            ),
+                          sliver: SliverMainAxisGroup(
+                            slivers: [
+                              SliverToBoxAdapter(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    CommandLinkButton(
+                                      label: 'Back to settings',
+                                      onTap: () => Navigator.of(context).pop(),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const LibraryHeader(
+                                      title: 'CUSTOM SHUFFLE',
+                                      moduleCount: 0,
+                                      maxLines: 2,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Pick artists and genres used for library shuffles.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: ObsidianPalette.textMuted,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    Wrap(
+                                      spacing: 32,
+                                      runSpacing: 16,
+                                      children: [
+                                        _buildTargetToggle(),
+                                        _buildViewToggle(),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 20),
+                                  ],
+                                ),
+                              ),
+                              if (showingArtists) ...[
+                                _buildSelectionSection(
+                                  title: 'Artists',
+                                  controller: _artistSearchController,
+                                  hintText: 'Search artists',
+                                  summary: hasMoreArtists
+                                      ? 'Selected ${_activeArtistSelection.length} of loaded ${artists.length}'
+                                      : 'Selected ${_activeArtistSelection.length} of ${artists.length}',
+                                  onSelectAll:
+                                      !canUseArtists ||
+                                          (artists.isEmpty && !hasMoreArtists)
+                                      ? null
+                                      : _selectAllAvailableArtists,
+                                  onClear:
+                                      !canUseArtists ||
+                                          _activeArtistSelection.isEmpty
+                                      ? null
+                                      : _clearArtists,
+                                  sliver: _buildArtistList(
+                                    canLoadArtists: canUseArtists,
+                                    artists: filteredArtists,
+                                    fullCount: artists.length,
+                                    isLoading: isLoading,
+                                    hasMoreArtists: hasMoreArtists,
+                                  ),
+                                ),
+                              ] else ...[
+                                _buildSelectionSection(
+                                  title: 'Genres',
+                                  controller: _genreSearchController,
+                                  hintText: 'Search genres',
+                                  summary:
+                                      'Selected ${_activeGenreSelection.length} of ${genreOptions.length}',
+                                  onSelectAll:
+                                      !canUseArtists || genreOptions.isEmpty
+                                      ? null
+                                      : () => _selectAllGenres(genreOptions),
+                                  onClear:
+                                      !canUseArtists ||
+                                          _activeGenreSelection.isEmpty
+                                      ? null
+                                      : _clearGenres,
+                                  sliver: _buildGenreList(
+                                    canLoadArtists: canUseArtists,
+                                    genres: filteredGenres,
+                                    fullCount: genreOptions.length,
+                                    isLoading: isLoading,
+                                    hasMoreArtists: hasMoreArtists,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                        ],
+                        ),
                       ],
                     );
                   },
@@ -436,31 +460,37 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
     required String summary,
     required VoidCallback? onSelectAll,
     required VoidCallback? onClear,
-    required Widget child,
+    required Widget sliver,
   }) {
     final compact = isCompactListWidth(context);
-    return Padding(
+    return SliverPadding(
       padding: EdgeInsets.all(compact ? 12 : 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ObsidianSectionHeader(title: title),
-          const SizedBox(height: 16),
-          SearchHud(
-            controller: controller,
-            hintText: hintText,
-            height: 48,
-            onSubmit: () => setState(() {}),
-            onClear: () => setState(() {}),
+      sliver: SliverMainAxisGroup(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ObsidianSectionHeader(title: title),
+                const SizedBox(height: 16),
+                SearchHud(
+                  controller: controller,
+                  hintText: hintText,
+                  height: 48,
+                  onSubmit: () => setState(() {}),
+                  onClear: () => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                _buildSelectionActions(
+                  summary: summary,
+                  onSelectAll: onSelectAll,
+                  onClear: onClear,
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildSelectionActions(
-            summary: summary,
-            onSelectAll: onSelectAll,
-            onClear: onClear,
-          ),
-          const SizedBox(height: 12),
-          child,
+          sliver,
         ],
       ),
     );
@@ -624,11 +654,9 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       return _buildInlineMessage('No artists match your search.');
     }
 
-    return Column(
-      children: [
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverList.builder(
           itemCount: artists.length,
           itemBuilder: (context, index) {
             final artist = artists[index];
@@ -665,9 +693,7 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
       return _buildInlineMessage('No genres match your search.');
     }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+    return SliverList.builder(
       itemCount: genres.length,
       itemBuilder: (context, index) {
         final genre = genres[index];
@@ -682,9 +708,11 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
   }
 
   Widget _buildLoadingIndicator({double verticalPadding = 24}) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: verticalPadding),
-      child: const Center(child: CircularProgressIndicator()),
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: verticalPadding),
+        child: const Center(child: CircularProgressIndicator()),
+      ),
     );
   }
 
@@ -731,13 +759,15 @@ class _CustomShuffleSettingsPageState extends State<CustomShuffleSettingsPage> {
   }
 
   Widget _buildInlineMessage(String message) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Text(
-        message,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Text(
+          message,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
+        ),
       ),
     );
   }

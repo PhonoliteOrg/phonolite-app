@@ -1,0 +1,153 @@
+{
+  "feature": "authentication",
+  "sources": [
+    "lib/pages/login_page.dart",
+    "lib/pages/reset_user_password_page.dart"
+  ],
+  "interactions": [
+    {
+      "id": "authentication.address",
+      "action": "Enter Server address",
+      "expected": "Update server host draft",
+      "availability": "Connect page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.port",
+      "action": "Enter Port",
+      "expected": "Update server port draft",
+      "availability": "Connect page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.connect",
+      "action": "Tap Connect or submit port",
+      "expected": "Check server and open sign-in form on success",
+      "availability": "Valid address",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "authentication.username",
+      "action": "Enter Username",
+      "expected": "Update sign-in draft",
+      "availability": "Server reachable",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.password",
+      "action": "Enter Password",
+      "expected": "Update obscured sign-in draft",
+      "availability": "Server reachable",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.remember",
+      "action": "Toggle Remember me",
+      "expected": "Choose session persistence for sign-in",
+      "availability": "Sign-in form",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.submit",
+      "action": "Tap Sign in or submit password",
+      "expected": "Authenticate and return to app on success",
+      "availability": "Test account",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "authentication.change_server",
+      "action": "Tap Change server",
+      "expected": "Return to address form",
+      "availability": "Sign-in form",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.dismiss_keyboard",
+      "action": "Tap page background",
+      "expected": "Dismiss keyboard",
+      "availability": "Input focused",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "authentication.ios_settings",
+      "action": "Tap Open iOS Settings",
+      "expected": "Open system settings for local-network permission",
+      "availability": "iOS permission not granted",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "authentication.back",
+      "action": "Tap Back to settings",
+      "expected": "Return from connection flow",
+      "availability": "Connect/sign-in page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "password.current",
+      "action": "Enter Current password",
+      "expected": "Update obscured draft",
+      "availability": "Password page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "password.new",
+      "action": "Enter New password",
+      "expected": "Update obscured draft",
+      "availability": "Password page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "password.confirm",
+      "action": "Enter Confirm new password",
+      "expected": "Update confirmation draft",
+      "availability": "Password page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "password.submit",
+      "action": "Tap Reset password or submit final field",
+      "expected": "Validate fields and change account password",
+      "availability": "Disposable test account",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "password.done",
+      "action": "Tap Done after success",
+      "expected": "Return to Settings",
+      "availability": "Password changed",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "password.back",
+      "action": "Tap Back to settings",
+      "expected": "Leave password form",
+      "availability": "Password page",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "password.dismiss_keyboard",
+      "action": "Tap background",
+      "expected": "Dismiss keyboard",
+      "availability": "Input focused",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

@@ -24,11 +24,20 @@ class MarqueeText extends StatefulWidget {
 
 class _MarqueeTextState extends State<MarqueeText> {
   final ScrollController _controller = ScrollController();
+  final TextPainter _measurementPainter = TextPainter(maxLines: 1);
   Timer? _pauseTimer;
   int _loopGeneration = 0;
   bool _shouldScroll = false;
   double? _viewportWidth;
   double? _textWidth;
+
+  @override
+  void initState() {
+    super.initState();
+    PaintingBinding.instance.systemFonts.addListener(_handleFontChange);
+  }
+
+  void _handleFontChange() => setState(_measurementPainter.markNeedsLayout);
 
   @override
   void didUpdateWidget(covariant MarqueeText oldWidget) {
@@ -44,6 +53,8 @@ class _MarqueeTextState extends State<MarqueeText> {
 
   @override
   void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_handleFontChange);
+    _measurementPainter.dispose();
     _cancelLoop();
     _controller.dispose();
     super.dispose();
@@ -134,15 +145,15 @@ class _MarqueeTextState extends State<MarqueeText> {
             const TextStyle(fontWeight: FontWeight.bold),
           );
         }
-        final painter = TextPainter(
-          text: TextSpan(text: widget.text, style: effectiveStyle),
-          maxLines: 1,
-          textDirection: Directionality.of(context),
-          textScaler: MediaQuery.textScalerOf(context),
-          locale: Localizations.maybeLocaleOf(context),
-        )..layout();
-        final textWidth = painter.width;
-        painter.dispose();
+        // TextPainter retains its paragraph when these inputs are unchanged.
+        // Playback updates often rebuild the label without changing its text.
+        _measurementPainter
+          ..text = TextSpan(text: widget.text, style: effectiveStyle)
+          ..textDirection = Directionality.of(context)
+          ..textScaler = MediaQuery.textScalerOf(context)
+          ..locale = Localizations.maybeLocaleOf(context)
+          ..layout();
+        final textWidth = _measurementPainter.width;
         final shouldScroll =
             constraints.hasBoundedWidth && textWidth > constraints.maxWidth;
         WidgetsBinding.instance.addPostFrameCallback((_) {

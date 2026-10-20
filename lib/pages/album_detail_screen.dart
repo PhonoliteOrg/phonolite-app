@@ -113,6 +113,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         final selectedTracks = _selectedTracks(removableTracks);
                         return CustomScrollView(
                           slivers: [
+                            const SliverPageTopInset(),
                             SliverPadding(
                               padding: const EdgeInsets.fromLTRB(
                                 20,
@@ -223,6 +224,7 @@ class AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                 sliver: TrackSliverList(
                                   tracks: tracks,
                                   useAlbumTrackNumbers: true,
+                                  actionsInMenu: true,
                                   isPlayingTrack: (track) =>
                                       playback.isPlaying &&
                                       playingId == track.id,

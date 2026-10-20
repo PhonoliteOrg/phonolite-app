@@ -13,6 +13,7 @@ import '../../entities/app_controller.dart';
 import '../../entities/models.dart';
 import '../../entities/offline_models.dart';
 import '../layouts/app_scope.dart';
+import '../modals/obsidian_modal_scope.dart';
 import '../ui/hover_row.dart';
 import '../ui/like_icon_button.dart';
 import '../ui/obsidian_overflow_action_button.dart';
@@ -20,7 +21,9 @@ import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
 import '../ui/responsive_breakpoints.dart';
 import '../ui/tech_button.dart';
+import '../ui/svg_asset_icon.dart';
 import 'album_art.dart';
+import '../ui/button_haptics.dart';
 
 const double _trackActionButtonExtent = 38;
 
@@ -48,8 +51,10 @@ class TrackRowTile extends StatefulWidget {
     this.showDuration = true,
     this.albumArtUrl,
     this.albumArtHeaders,
+    this.albumArtOverlay,
     this.leading,
     this.showIndex = true,
+    this.actionsInMenu = false,
   });
 
   final Track track;
@@ -73,8 +78,60 @@ class TrackRowTile extends StatefulWidget {
   final bool showDuration;
   final String? albumArtUrl;
   final Map<String, String>? albumArtHeaders;
+  final Widget? albumArtOverlay;
   final Widget? leading;
   final bool showIndex;
+  final bool actionsInMenu;
+
+  static List<ObsidianMenuAction> menuActionsFor({
+    required Track track,
+    OfflineTrackDownload? offlineDownload,
+    VoidCallback? onLike,
+    VoidCallback? onDownload,
+    VoidCallback? onRemoveDownload,
+    VoidCallback? onAddToPlaylist,
+    VoidCallback? onDelete,
+  }) {
+    final removing = offlineDownload?.status == OfflineDownloadStatus.removing;
+    final showDownload =
+        offlineDownload?.status == OfflineDownloadStatus.downloaded
+        ? onRemoveDownload != null
+        : onDownload != null || offlineDownload != null;
+    return [
+      if (onLike != null)
+        ObsidianMenuAction(
+          label: track.liked ? 'Unlike' : 'Like',
+          icon: track.liked ? null : PhonoliteIcons.heart,
+          iconWidget: track.liked
+              ? const SvgAssetIcon(
+                  assetName: 'assets/icons/lucide/heart-filled.svg',
+                )
+              : null,
+          isActive: track.liked,
+          onTap: removing ? null : onLike,
+        ),
+      if (showDownload)
+        _DownloadStatusButton(
+          download: offlineDownload,
+          onDownload: onDownload,
+          onRemoveDownload: onRemoveDownload,
+          isCompact: false,
+        ).menuAction,
+      if (onAddToPlaylist != null)
+        ObsidianMenuAction(
+          label: 'Add to playlist',
+          iconWidget: const PlaylistAddIcon(),
+          onTap: removing ? null : onAddToPlaylist,
+        ),
+      if (onDelete != null)
+        ObsidianMenuAction(
+          label: 'Delete',
+          icon: PhonoliteIcons.trash2,
+          variant: TechButtonVariant.danger,
+          onTap: removing ? null : onDelete,
+        ),
+    ];
+  }
 
   @override
   State<TrackRowTile> createState() => _TrackRowTileState();
@@ -87,13 +144,16 @@ class _TrackRowTileState extends State<TrackRowTile>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    if (widget.isPlaying) _startBars();
+  }
+
+  void _startBars() {
+    // Most rows never play. Allocate a ticker only when this row needs bars,
+    // and keep it for subsequent pause/resume transitions.
+    (_controller ??= AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    );
-    if (widget.isPlaying) {
-      _controller!.repeat();
-    }
+    )).repeat();
   }
 
   @override
@@ -101,7 +161,7 @@ class _TrackRowTileState extends State<TrackRowTile>
     super.didUpdateWidget(oldWidget);
     if (widget.isPlaying != oldWidget.isPlaying) {
       if (widget.isPlaying) {
-        _controller?.repeat();
+        _startBars();
       } else {
         _controller?.stop();
       }
@@ -118,6 +178,8 @@ class _TrackRowTileState extends State<TrackRowTile>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isCompact = isCompactListWidth(context);
+    final actionsInMenu =
+        widget.actionsInMenu || ObsidianModalScope.isCompact(context);
     final explicitCoverUrl = widget.albumArtUrl?.trim();
     final controller =
         widget.showAlbumArt &&
@@ -147,28 +209,33 @@ class _TrackRowTileState extends State<TrackRowTile>
         );
 
     final selectionMode = widget.selectionMode;
+    final showLeading =
+        selectionMode ||
+        widget.isPlaying ||
+        widget.leading != null ||
+        widget.showIndex;
     final isDeleting =
         widget.offlineDownload?.status == OfflineDownloadStatus.removing;
     final showDownloadStatus =
         widget.offlineDownload?.status == OfflineDownloadStatus.downloaded
         ? widget.onRemoveDownload != null
         : widget.onDownload != null || widget.offlineDownload != null;
-    final overflowActions = isCompact && !selectionMode
-        ? <ObsidianMenuAction>[
-            if (widget.onAddToPlaylist != null)
-              ObsidianMenuAction(
-                label: 'Add to playlist',
-                iconWidget: const PlaylistAddIcon(),
-                onTap: isDeleting ? null : widget.onAddToPlaylist,
-              ),
-            if (widget.onDelete != null)
-              ObsidianMenuAction(
-                label: 'Delete',
-                icon: PhonoliteIcons.trash2,
-                variant: TechButtonVariant.danger,
-                onTap: isDeleting ? null : widget.onDelete,
-              ),
-          ]
+    final downloadButton = _DownloadStatusButton(
+      download: widget.offlineDownload,
+      onDownload: widget.onDownload,
+      onRemoveDownload: widget.onRemoveDownload,
+      isCompact: isCompact,
+    );
+    final overflowActions = actionsInMenu && !selectionMode
+        ? TrackRowTile.menuActionsFor(
+            track: widget.track,
+            offlineDownload: widget.offlineDownload,
+            onLike: widget.onLike,
+            onDownload: widget.onDownload,
+            onRemoveDownload: widget.onRemoveDownload,
+            onAddToPlaylist: widget.onAddToPlaylist,
+            onDelete: widget.onDelete,
+          )
         : const <ObsidianMenuAction>[];
     final leadingWidth = isCompact
         ? selectionMode || widget.index >= 100
@@ -213,47 +280,62 @@ class _TrackRowTileState extends State<TrackRowTile>
         opacity: isDeleting ? 0.45 : 1,
         child: Row(
           children: [
-            SizedBox(
-              width: leadingWidth,
-              child: Center(
-                heightFactor: 1,
-                child: selectionMode
-                    ? LucideCheckbox(
-                        value: widget.selected,
-                        onChanged:
-                            widget.onSelectionToggle == null || isDeleting
-                            ? null
-                            : (_) => widget.onSelectionToggle!(),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(color: ObsidianPalette.border),
-                        activeColor: ObsidianPalette.gold,
-                      )
-                    : widget.isPlaying
-                    ? _NowPlayingBars(
-                        controller: _controller ?? kAlwaysDismissedAnimation,
-                      )
-                    : widget.leading != null
-                    ? widget.leading!
-                    : widget.showIndex
-                    ? Text(
-                        widget.index.toString().padLeft(2, '0'),
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontSize: isCompact ? 12 : null,
-                          color: ObsidianPalette.gold,
-                          letterSpacing: isCompact ? 0.8 : 1.2,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+            if (showLeading) ...[
+              SizedBox(
+                width: leadingWidth,
+                child: Center(
+                  heightFactor: 1,
+                  child: selectionMode
+                      ? LucideCheckbox(
+                          value: widget.selected,
+                          onChanged:
+                              widget.onSelectionToggle == null || isDeleting
+                              ? null
+                              : (_) => widget.onSelectionToggle!(),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: ObsidianPalette.border),
+                          activeColor: ObsidianPalette.gold,
+                        )
+                      : widget.isPlaying
+                      ? _NowPlayingBars(
+                          controller: _controller ?? kAlwaysDismissedAnimation,
+                        )
+                      : widget.leading != null
+                      ? widget.leading!
+                      : widget.showIndex
+                      ? Text(
+                          widget.index.toString().padLeft(2, '0'),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontSize: isCompact ? 12 : null,
+                            color: ObsidianPalette.gold,
+                            letterSpacing: isCompact ? 0.8 : 1.2,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
               ),
-            ),
-            SizedBox(width: leadingGap),
+              SizedBox(width: leadingGap),
+            ],
             if (widget.showAlbumArt) ...[
-              AlbumArt(
-                title: widget.track.album,
-                size: artSize,
-                imageUrl: coverUrl,
-                headers: headers,
+              SizedBox.square(
+                dimension: artSize,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    AlbumArt(
+                      title: widget.track.album,
+                      size: artSize,
+                      imageUrl: coverUrl,
+                      headers: headers,
+                    ),
+                    if (widget.albumArtOverlay != null)
+                      Positioned.fill(
+                        child: IgnorePointer(child: widget.albumArtOverlay!),
+                      ),
+                  ],
+                ),
               ),
               SizedBox(width: artGap),
             ],
@@ -291,16 +373,12 @@ class _TrackRowTileState extends State<TrackRowTile>
                 ),
                 const SizedBox(width: 8),
               ],
-              if (!selectionMode && showDownloadStatus) ...[
-                _DownloadStatusButton(
-                  download: widget.offlineDownload,
-                  onDownload: widget.onDownload,
-                  onRemoveDownload: widget.onRemoveDownload,
-                  isCompact: isCompact,
-                ),
+              if (!selectionMode && !actionsInMenu && showDownloadStatus) ...[
+                downloadButton,
                 SizedBox(width: actionGap),
               ],
               if (!selectionMode &&
+                  !actionsInMenu &&
                   !isCompact &&
                   widget.onAddToPlaylist != null) ...[
                 ObsidianHudIconButton(
@@ -310,7 +388,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                 ),
                 SizedBox(width: actionGap),
               ],
-              if (!selectionMode)
+              if (!selectionMode && !actionsInMenu)
                 sizedAction(
                   LikeIconButton(
                     isLiked: widget.track.liked,
@@ -318,7 +396,10 @@ class _TrackRowTileState extends State<TrackRowTile>
                     size: actionIconSize,
                   ),
                 ),
-              if (!selectionMode && !isCompact && widget.onDelete != null) ...[
+              if (!selectionMode &&
+                  !actionsInMenu &&
+                  !isCompact &&
+                  widget.onDelete != null) ...[
                 SizedBox(width: actionGap),
                 ObsidianHudIconButton(
                   icon: PhonoliteIcons.trash2,
@@ -331,6 +412,7 @@ class _TrackRowTileState extends State<TrackRowTile>
                 sizedAction(
                   ObsidianOverflowActionButton(
                     tooltip: 'Track actions',
+                    modalTitle: widget.track.title,
                     actions: overflowActions,
                     size: actionIconSize,
                   ),
@@ -398,16 +480,56 @@ class _DownloadStatusButton extends StatelessWidget {
   final VoidCallback? onRemoveDownload;
   final bool isCompact;
 
+  VoidCallback? get action => switch (download?.status) {
+    OfflineDownloadStatus.downloaded => onRemoveDownload,
+    OfflineDownloadStatus.queued ||
+    OfflineDownloadStatus.preparing ||
+    OfflineDownloadStatus.downloading ||
+    OfflineDownloadStatus.validating ||
+    OfflineDownloadStatus.removing => null,
+    _ => onDownload,
+  };
+
+  String get tooltip => switch (download?.status) {
+    OfflineDownloadStatus.removing => 'Removing download',
+    OfflineDownloadStatus.downloaded =>
+      onRemoveDownload == null ? 'Downloaded' : 'Remove download',
+    OfflineDownloadStatus.downloading => 'Downloading',
+    OfflineDownloadStatus.validating => 'Validating download',
+    OfflineDownloadStatus.preparing => 'Preparing download',
+    OfflineDownloadStatus.queued => 'Queued download',
+    OfflineDownloadStatus.failed => 'Retry download',
+    _ => 'Download',
+  };
+
+  IconData get icon => switch (download?.status) {
+    OfflineDownloadStatus.downloaded =>
+      onRemoveDownload == null
+          ? PhonoliteIcons.circleCheck
+          : PhonoliteIcons.trash2,
+    OfflineDownloadStatus.removing => PhonoliteIcons.trash2,
+    OfflineDownloadStatus.queued => PhonoliteIcons.clock,
+    _ => PhonoliteIcons.download,
+  };
+
+  ObsidianMenuAction get menuAction => ObsidianMenuAction(
+    label: tooltip,
+    icon: download?.status == OfflineDownloadStatus.preparing ? null : icon,
+    iconWidget: download?.status == OfflineDownloadStatus.preparing
+        ? const ReloadIcon()
+        : null,
+    variant: download?.isDownloaded == true && onRemoveDownload != null
+        ? TechButtonVariant.danger
+        : TechButtonVariant.standard,
+    onTap: action,
+  );
+
   @override
   Widget build(BuildContext context) {
     final status = download?.status;
     final iconSize = isCompact ? 18.0 : 22.0;
-    final queued = status == OfflineDownloadStatus.queued;
     final preparing = status == OfflineDownloadStatus.preparing;
     final downloading = status == OfflineDownloadStatus.downloading;
-    final validating = status == OfflineDownloadStatus.validating;
-    final busy = queued || preparing || downloading || validating;
-    final removing = status == OfflineDownloadStatus.removing;
     final downloaded = status == OfflineDownloadStatus.downloaded;
     final failed = status == OfflineDownloadStatus.failed;
     final color = downloaded
@@ -419,33 +541,11 @@ class _DownloadStatusButton extends StatelessWidget {
         : ObsidianPalette.textMuted;
     final progress = download?.progress;
     final showProgressRing = downloading;
-    final action = downloaded
-        ? onRemoveDownload
-        : busy || removing
-        ? null
-        : onDownload;
-    final tooltip = removing
-        ? 'Removing download'
-        : downloaded
-        ? onRemoveDownload == null
-              ? 'Downloaded'
-              : 'Remove download'
-        : downloading
-        ? 'Downloading'
-        : validating
-        ? 'Validating download'
-        : preparing
-        ? 'Preparing download'
-        : queued
-        ? 'Queued download'
-        : failed
-        ? 'Retry download'
-        : 'Download';
 
     return Tooltip(
       message: tooltip,
       child: GestureDetector(
-        onTap: action,
+        onTap: withButtonHaptic(action),
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
           width: isCompact ? 44 : _trackActionButtonExtent,
@@ -469,25 +569,7 @@ class _DownloadStatusButton extends StatelessWidget {
                     data: IconThemeData(color: color, size: iconSize),
                     child: const ReloadIcon(),
                   )
-                : Icon(
-                    downloaded
-                        ? onRemoveDownload == null
-                              ? PhonoliteIcons.circleCheck
-                              : PhonoliteIcons.trash2
-                        : removing
-                        ? PhonoliteIcons.trash2
-                        : validating
-                        ? PhonoliteIcons.download
-                        : queued
-                        ? PhonoliteIcons.clock
-                        : downloading
-                        ? PhonoliteIcons.download
-                        : failed
-                        ? PhonoliteIcons.download
-                        : PhonoliteIcons.download,
-                    color: color,
-                    size: iconSize,
-                  ),
+                : Icon(icon, color: color, size: iconSize),
           ),
         ),
       ),

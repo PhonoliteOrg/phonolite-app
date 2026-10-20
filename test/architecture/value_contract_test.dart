@@ -38,6 +38,18 @@ void main() {
     expect(copy.queueSourcePlaylistId, 'playlist');
     expect(copy.volume, 0.7);
     expect(copy.shuffleMode, ShuffleMode.album);
+    expect(copy.localShuffleMode, ShuffleMode.album);
+    expect(copy.serverShuffleMode, ShuffleMode.off);
+    final server = copy.copyWith(shuffleScope: ActionScope.server);
+    expect(server.shuffleMode, ShuffleMode.off);
+    final configured = server.copyWith(shuffleMode: ShuffleMode.liked);
+    final local = configured.copyWith(shuffleScope: ActionScope.local);
+    expect(local.shuffleMode, ShuffleMode.album);
+    expect(local.serverShuffleMode, ShuffleMode.liked);
+    expect(
+      local.copyWith(shuffleScope: ActionScope.server).shuffleMode,
+      ShuffleMode.liked,
+    );
     expect(copy.position, state.position);
     expect(state.isPlaying, isTrue);
     final cleared = state.copyWith(track: null, queueSourcePlaylistId: null);

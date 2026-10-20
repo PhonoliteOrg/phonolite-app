@@ -64,6 +64,7 @@ class _LocalArtistDetailScreenState extends State<LocalArtistDetailScreen> {
                     viewModeSnapshot.data ?? controller.collectionListMode;
                 return CustomScrollView(
                   slivers: [
+                    const SliverPageTopInset(),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                       sliver: SliverToBoxAdapter(

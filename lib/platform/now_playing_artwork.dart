@@ -16,6 +16,13 @@ class NowPlayingArtwork {
   String? get key => _source?.key;
   Uint8List? get bytes => _bytes?.asUnmodifiableView();
 
+  static String? sourceKey({String? url, String? localPath}) {
+    final path = localPath?.trim();
+    if (path != null && path.isNotEmpty) return 'file:$path';
+    final remote = url?.trim();
+    return remote != null && remote.isNotEmpty ? 'url:$remote' : null;
+  }
+
   void clear() {
     _generation++;
     _source = null;
@@ -33,16 +40,12 @@ class NowPlayingArtwork {
     final path = localPath?.trim();
     final remote = url?.trim();
     final local = path != null && path.isNotEmpty;
-    final sourceKey = local
-        ? 'file:$path'
-        : remote != null && remote.isNotEmpty
-        ? 'url:$remote'
-        : null;
-    if (sourceKey == null) {
+    final key = sourceKey(url: remote, localPath: path);
+    if (key == null) {
       clear();
       return false;
     }
-    final source = (key: sourceKey, token: token);
+    final source = (key: key, token: token);
     if (_source == source && (_loading || _bytes != null)) return false;
     _source = source;
     _bytes = null;

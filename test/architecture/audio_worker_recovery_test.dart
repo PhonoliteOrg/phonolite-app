@@ -13,6 +13,55 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
+    'source rejection cancels pending seek and clears on a new play',
+    () async {
+      final factory = _Workers();
+      late AudioEngine engine;
+      final rejectedStates = <bool>[];
+      engine = AudioEngine(
+        workerSpawner: factory.spawn,
+        onState: (_, __) => rejectedStates.add(engine.sourceRejected),
+      );
+      addTearDown(() async {
+        await engine.dispose();
+        factory.close();
+      });
+      await _play(engine, 'rejected');
+      await waitUntil(
+        () => factory.latest.commands.any((c) => c['cmd'] == 'play'),
+      );
+      final worker = factory.latest;
+      final oldId = worker.commands.lastWhere(
+        (c) => c['cmd'] == 'play',
+      )['playback_id'];
+      final seek = engine.seekTo(const Duration(seconds: 10));
+      await waitUntil(() => worker.commands.any((c) => c['cmd'] == 'seek'));
+      worker.emit({
+        'type': 'state',
+        'playback_id': oldId,
+        'active': false,
+        'paused': false,
+        'source_rejected': true,
+      });
+      expect(await seek.timeout(const Duration(seconds: 1)), isFalse);
+      expect(engine.sourceRejected, isTrue);
+      expect(engine.hasActivePlayer, isFalse);
+      expect(rejectedStates.last, isTrue);
+      await _play(engine, 'valid');
+      expect(engine.sourceRejected, isFalse);
+      worker.emit({
+        'type': 'state',
+        'playback_id': oldId,
+        'active': false,
+        'paused': false,
+        'source_rejected': true,
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.sourceRejected, isFalse);
+    },
+  );
+
+  test(
     'next play replaces an exited worker and restores current settings',
     () async {
       final factory = _Workers();
@@ -175,6 +224,58 @@ void main() {
       expect(engine.hasActivePlayer, isFalse);
     },
   );
+
+  for (final acknowledge in [true, false]) {
+    test(
+      'local deletion requires a stop acknowledgment without listening stats: $acknowledge',
+      () async {
+        final factory = _Workers();
+        final engine = AudioEngine(workerSpawner: factory.spawn);
+        addTearDown(() async {
+          await engine.dispose();
+          factory.close();
+        });
+        await engine.playLocalFile(
+          track: _track('saved'),
+          filePath: 'unused.fake',
+        );
+        await waitUntil(
+          () => factory.latest.commands.any(
+            (command) => command['cmd'] == 'play_local',
+          ),
+        );
+        var finished = false;
+        final stopping = engine
+            .stop(waitForRelease: true)
+            .then((_) => finished = true);
+        final failure = acknowledge
+            ? null
+            : expectLater(stopping, throwsA(isA<TimeoutException>()));
+        await waitUntil(
+          () => factory.latest.commands.any(
+            (command) =>
+                command['cmd'] == 'stop' && command['flush_request_id'] is int,
+          ),
+        );
+        expect(finished, isFalse);
+        if (acknowledge) {
+          final request = factory.latest.commands.lastWhere(
+            (command) =>
+                command['cmd'] == 'stop' && command['flush_request_id'] is int,
+          );
+          factory.latest.emit({
+            'type': 'listening_flushed',
+            'flush_request_id': request['flush_request_id'],
+          });
+          await stopping.timeout(const Duration(seconds: 1));
+          expect(finished, isTrue);
+        } else {
+          await failure;
+          expect(finished, isFalse);
+        }
+      },
+    );
+  }
 
   test(
     'stop waits for its own flush acknowledgment and final listening interval',

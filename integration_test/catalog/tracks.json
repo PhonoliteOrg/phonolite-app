@@ -1,0 +1,131 @@
+{
+  "feature": "tracks",
+  "sources": [
+    "lib/widgets/display/track_row_tile.dart",
+    "lib/widgets/display/track_sliver_list.dart",
+    "lib/widgets/display/search_result_tile.dart",
+    "lib/widgets/modals/add_to_playlist_modal.dart"
+  ],
+  "interactions": [
+    {
+      "id": "track.play",
+      "action": "Tap an enabled track row",
+      "expected": "Start selected track using its source queue",
+      "availability": "Playable track",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "track.long_press",
+      "action": "Long-press an eligible downloaded track",
+      "expected": "Enter selection with that track selected",
+      "availability": "Downloaded track",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "track.actions_open",
+      "action": "Tap Track actions",
+      "expected": "Open actions modal/menu",
+      "availability": "Track exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "track.like",
+      "action": "Tap Like or Unlike",
+      "expected": "Update appropriate local/server liked state",
+      "availability": "Track exists",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "track.add_open",
+      "action": "Tap Add to playlist",
+      "expected": "Open scoped playlist chooser",
+      "availability": "Track exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "track.delete_open",
+      "action": "Tap Delete",
+      "expected": "Open removal confirmation",
+      "availability": "Reusable callback only; no current page supplies onTrackDelete/onDelete",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "track.actions_close",
+      "action": "Close actions or tap dismissible barrier",
+      "expected": "Return without applying an action",
+      "availability": "Actions open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "add_to_playlist.search",
+      "action": "Type/clear playlist filter",
+      "expected": "Filter chooser's playlist list",
+      "availability": "Chooser open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "add_to_playlist.add",
+      "action": "Tap eligible playlist/add control",
+      "expected": "Add song to chosen playlist",
+      "availability": "Eligible playlist",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "add_to_playlist.remove_open",
+      "action": "Tap Remove from playlist",
+      "expected": "Open removal confirmation",
+      "availability": "Song already in playlist",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "add_to_playlist.remove_confirm",
+      "action": "Confirm song removal",
+      "expected": "Remove song from that playlist",
+      "availability": "Confirmation open",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "add_to_playlist.remove_cancel",
+      "action": "Cancel song removal",
+      "expected": "Retain membership",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "add_to_playlist.close",
+      "action": "Tap Close or dismiss chooser",
+      "expected": "Return to prior screen",
+      "availability": "Chooser open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "track.download",
+      "action": "Tap Download in track actions",
+      "expected": "Queue a local download",
+      "availability": "Server track",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "track.remove_download",
+      "action": "Tap Remove download in track actions",
+      "expected": "Open local download-removal confirmation",
+      "availability": "Reusable callback only; no current page supplies onTrackRemoveDownload/onRemoveDownload",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

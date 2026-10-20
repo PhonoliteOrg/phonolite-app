@@ -19,6 +19,7 @@ import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
 import 'package:phonolite_app/widgets/display/stats_cards.dart';
 import 'package:phonolite_app/widgets/layouts/app_scope.dart';
 import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
+import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
 import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
@@ -227,11 +228,16 @@ Future<void> _openHistoryStatus(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(status);
   await tester.pumpAndSettle();
+  expect(find.byType(ObsidianAlertDialog), findsOneWidget);
+  expect(find.text('Listening history'), findsOneWidget);
+  expect(find.text('CLOSE'), findsOneWidget);
+  expect(find.byType(PopupMenuItem<String>), findsNothing);
 }
 
 Future<void> _dismissHistoryStatus(WidgetTester tester) async {
-  await tester.tapAt(const Offset(2, 2));
+  await tester.tap(find.text('CLOSE'));
   await tester.pumpAndSettle();
+  expect(find.byType(ObsidianAlertDialog), findsNothing);
 }
 
 void main() {
@@ -793,6 +799,23 @@ void main() {
       expect(find.text('Track 11'), findsNothing);
       expect(find.text('Track 12'), findsNothing);
 
+      // Sharing a backdrop is valid only while every glass panel has its own
+      // rectangle, including when the analysis panels stack on narrow screens.
+      final surfaces = find.byType(ObsidianGlassSurface);
+      final rectangles = [
+        for (var i = 0; i < surfaces.evaluate().length; i++)
+          tester.getRect(surfaces.at(i)),
+      ];
+      for (var i = 0; i < rectangles.length; i++) {
+        for (var j = i + 1; j < rectangles.length; j++) {
+          expect(
+            rectangles[i].overlaps(rectangles[j]),
+            isFalse,
+            reason: 'Stats glass panels $i and $j must not share pixels',
+          );
+        }
+      }
+
       Rect panel(String title) => tester.getRect(
         find.ancestor(
           of: find.text(title),
@@ -886,7 +909,10 @@ void main() {
     await tester.pumpWidget(_app(controller, const StatsPage(), scale: 0.7));
     await tester.pumpAndSettle();
     await _openHistoryStatus(tester);
-    expect(find.text('This device'), findsOneWidget);
+    expect(
+      find.text('Listening is saved on this device, even offline.'),
+      findsOneWidget,
+    );
     await _dismissHistoryStatus(tester);
     expect(find.text('42m 0s'), findsWidgets);
     expect(find.text('Connect / Log in'), findsNothing);
@@ -989,7 +1015,7 @@ void main() {
   );
 
   testWidgets(
-    'account history fits narrow screens and reports pending offline sync',
+    'account history fits narrow screens and reports offline sync status',
     (tester) async {
       _viewport(tester, const Size(320, 812));
       final controller = _StatsController()
@@ -1015,11 +1041,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _openHistoryStatus(tester);
-      expect(find.text('Account history'), findsOneWidget);
-      expect(
-        find.text('12 listening updates waiting to sync.'),
-        findsOneWidget,
-      );
+      expect(find.text('Account history'), findsNothing);
+      expect(find.textContaining('waiting to sync'), findsNothing);
       expect(
         find.textContaining('Offline. Listening is saved'),
         findsOneWidget,

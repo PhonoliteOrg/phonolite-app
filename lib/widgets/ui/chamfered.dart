@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import 'blur.dart';
+import 'button_haptics.dart';
 
 class GlassChamfered extends StatelessWidget {
   const GlassChamfered({
@@ -38,7 +39,7 @@ class GlassChamfered extends StatelessWidget {
       return content;
     }
 
-    return GestureDetector(onTap: onTap, child: content);
+    return GestureDetector(onTap: withButtonHaptic(onTap), child: content);
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../entities/app_log.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import '../ui/button_haptics.dart';
 
 class MessageLog extends StatefulWidget {
   const MessageLog({
@@ -39,27 +40,26 @@ class _MessageLogState extends State<MessageLog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final defaultSubtitle = widget.messages.isEmpty
-        ? 'No events yet'
-        : 'System log';
     final canCopy = widget.messages.isNotEmpty;
     final copyButton = TextButton.icon(
-      onPressed: canCopy
-          ? () async {
-              // Formatting the entire history is only needed on demand.
-              final combined = widget.messages.reversed
-                  .map((entry) => entry.format())
-                  .join('\n');
-              await Clipboard.setData(ClipboardData(text: combined));
-            }
-          : null,
+      onPressed: withButtonHaptic(
+        canCopy
+            ? () async {
+                // Formatting the entire history is only needed on demand.
+                final combined = widget.messages.reversed
+                    .map((entry) => entry.format())
+                    .join('\n');
+                await Clipboard.setData(ClipboardData(text: combined));
+              }
+            : null,
+      ),
       icon: const Icon(PhonoliteIcons.copyCheck),
       label: const Text('Copy All'),
     );
     final clearButton = widget.onClear == null
         ? null
         : TextButton.icon(
-            onPressed: widget.onClear,
+            onPressed: withButtonHaptic(widget.onClear),
             icon: const Icon(PhonoliteIcons.listX),
             label: const Text('Clear'),
           );
@@ -79,14 +79,13 @@ class _MessageLogState extends State<MessageLog> {
       children: [
         ObsidianSectionHeader(
           title: widget.title,
-          subtitle: widget.subtitle ?? defaultSubtitle,
+          subtitle: widget.subtitle,
           trailing: trailing,
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: Container(
+          child: Padding(
             padding: const EdgeInsets.all(12),
-            color: ObsidianPalette.obsidianGlass,
             child: SelectableRegion(
               focusNode: _selectionFocus,
               selectionControls: materialTextSelectionControls,

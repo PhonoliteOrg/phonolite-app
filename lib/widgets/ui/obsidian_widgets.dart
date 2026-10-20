@@ -7,6 +7,7 @@ import 'chamfer_clipper.dart';
 import 'hoverable.dart';
 import 'obsidian_shapes.dart';
 import 'obsidian_theme.dart';
+import 'button_haptics.dart';
 
 enum ObsidianButtonStyle { glass, subtle }
 
@@ -139,7 +140,7 @@ class ObsidianIconButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onPressed,
+        onTap: withButtonHaptic(onPressed),
         child: Center(
           child: iconWidget != null
               ? IconTheme.merge(
@@ -250,7 +251,7 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> {
           ? SystemMouseCursors.basic
           : SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onPressed,
+        onTap: withButtonHaptic(widget.onPressed),
         onTapDown: enabled ? (_) => _setPressed(true) : null,
         onTapUp: enabled ? (_) => _setPressed(false) : null,
         onTapCancel: enabled ? () => _setPressed(false) : null,
@@ -397,7 +398,7 @@ class _ObsidianPlayButtonState extends State<ObsidianPlayButton> {
         width: widget.size,
         height: widget.size,
         child: GestureDetector(
-          onTap: widget.onPressed,
+          onTap: withButtonHaptic(widget.onPressed),
           child: CustomPaint(
             painter: _OctagonBorderPainter(
               color: ObsidianPalette.gold.withOpacity(active ? 1.0 : 0.4),
@@ -522,7 +523,7 @@ class ObsidianNavIcon extends StatelessWidget {
             tween: ColorTween(end: iconColor),
             curve: Curves.easeOut,
             builder: (context, color, child) => IconButton(
-              onPressed: onTap,
+              onPressed: withButtonHaptic(onTap),
               tooltip: label,
               iconSize: resolvedIconSize,
               style: ButtonStyle(

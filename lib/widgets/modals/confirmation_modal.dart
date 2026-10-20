@@ -5,6 +5,7 @@ import '../ui/tech_button.dart';
 import 'modal_action_button.dart';
 import 'obsidian_dialog.dart';
 import 'obsidian_modal_scope.dart';
+import '../ui/button_haptics.dart';
 
 class ConfirmationModal extends StatelessWidget {
   const ConfirmationModal({
@@ -81,7 +82,7 @@ class ConfirmationModal extends StatelessWidget {
           ),
         ] else ...[
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: withButtonHaptic(() => Navigator.of(context).pop(false)),
             child: Text(cancelLabel),
           ),
           TechButton(

@@ -1,8 +1,6 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 
-import '../ui/obsidian_theme.dart';
+import '../ui/obsidian_glass_surface.dart';
 import 'obsidian_modal_scope.dart';
 
 abstract final class ObsidianModalStyle {
@@ -35,44 +33,6 @@ class ObsidianModalActions extends StatelessWidget {
       spacing: ObsidianModalStyle.actionSpacing,
       overflowSpacing: ObsidianModalStyle.actionSpacing,
       children: children,
-    );
-  }
-}
-
-/// A strongly blurred, darkened surface shared by dialogs and modal sheets.
-class ObsidianFrostedSurface extends StatelessWidget {
-  const ObsidianFrostedSurface({
-    super.key,
-    required this.child,
-    this.shape = const RoundedRectangleBorder(),
-  });
-
-  static final _blur = ImageFilter.blur(sigmaX: 40, sigmaY: 40);
-  static final _gradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [
-      const Color(0xFF18181F).withValues(alpha: 0.68),
-      ObsidianPalette.obsidianElevated.withValues(alpha: 0.82),
-      ObsidianPalette.obsidianElevated.withValues(alpha: 0.92),
-    ],
-    stops: const [0, 0.5, 1],
-  );
-
-  final Widget child;
-  final ShapeBorder shape;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipPath(
-      clipper: ShapeBorderClipper(shape: shape),
-      child: BackdropFilter(
-        filter: _blur,
-        child: DecoratedBox(
-          decoration: BoxDecoration(gradient: _gradient),
-          child: child,
-        ),
-      ),
     );
   }
 }
@@ -130,7 +90,7 @@ class ObsidianDialog extends Dialog {
                 )
               : null),
       semanticsRole: semanticsRole,
-      child: ObsidianFrostedSurface(
+      child: ObsidianGlassSurface(
         shape: effectiveShape,
         child: child ?? const SizedBox.shrink(),
       ),

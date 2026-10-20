@@ -26,12 +26,12 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/phonolite_quic/ios"
 
 SPEC CHECKSUMS:
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_secure_storage: d33dac7ae2ea08509be337e775f6b59f1ff45f12
   phonolite_local_audio: ca2bfafb0589597b61a073dd3accc7da66ff5df4
   phonolite_opus: 95aa10019b5f18e9ac9c3f5ce6d13ce606dd0ed5
   phonolite_quic: 6665529edf1f838114fc018476a9536171abe50b
 
-PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
+PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
 
 COCOAPODS: 1.16.2

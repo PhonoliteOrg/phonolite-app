@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../entities/app_log.dart';
 import '../widgets/display/message_log.dart';
+import '../widgets/inputs/obsidian_toggle_option.dart';
 import '../widgets/layouts/app_scope.dart';
 import '../widgets/layouts/playback_content_inset.dart';
 import '../widgets/navigation/command_link_button.dart';
@@ -44,7 +45,6 @@ class _LogsPageState extends State<LogsPage> {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
-    final logger = AppLogger.instance;
     return Scaffold(
       body: SafeArea(
         child: StreamBuilder<List<LogEntry>>(
@@ -55,7 +55,7 @@ class _LogsPageState extends State<LogsPage> {
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 20,
-                20,
+                20 + PlaybackContentInset.topOf(context),
                 20,
                 20 + PlaybackContentInset.bottomOf(context),
               ),
@@ -67,45 +67,28 @@ class _LogsPageState extends State<LogsPage> {
                     onTap: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(height: 12),
-                  SelectableText(
-                    logger.persistenceError != null
-                        ? 'Unable to save local logs: ${logger.persistenceError}'
-                        : logger.storageDirectory == null
-                        ? 'Local log files are unavailable.'
-                        : 'Log folder: ${logger.storageDirectory}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      DropdownButton<LogCategory>(
-                        value: _category,
-                        items: [
-                          for (final category in LogCategory.values)
-                            DropdownMenuItem(
-                              value: category,
-                              child: Text(category.label),
-                            ),
-                        ],
-                        onChanged: (category) {
-                          if (category != null) {
-                            setState(() => _category = category);
-                          }
-                        },
-                      ),
-                      const Text('Newest 3,000 entries per file'),
-                    ],
+                  Center(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        for (final category in LogCategory.values)
+                          ObsidianToggleOption(
+                            label: category.label,
+                            isActive: _category == category,
+                            onPressed: () {
+                              if (_category != category) {
+                                setState(() => _category = category);
+                              }
+                            },
+                          ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Expanded(
                     child: MessageLog(
                       key: ValueKey(_category),
                       title: 'Logs',
-                      subtitle: messages.isEmpty
-                          ? 'No events yet'
-                          : '${_category.fileName} • ${messages.length} entries',
                       messages: messages,
                       onClear: controller.clearMessages,
                     ),

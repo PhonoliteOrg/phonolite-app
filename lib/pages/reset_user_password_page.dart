@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/layouts/playback_content_inset.dart';
+
 import '../entities/app_controller.dart';
 import '../entities/auth_state.dart';
 import '../entities/server_connection.dart';
@@ -77,9 +79,11 @@ class _ResetUserPasswordPageState extends State<ResetUserPasswordPage> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.fromLTRB(
             20,
-            16,
+            16 + PlaybackContentInset.topOf(context),
             20,
-            20 + MediaQuery.viewInsetsOf(context).bottom,
+            20 +
+                PlaybackContentInset.bottomOf(context) +
+                MediaQuery.viewInsetsOf(context).bottom,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

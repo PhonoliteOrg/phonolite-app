@@ -3,11 +3,17 @@ import 'package:flutter/material.dart';
 import '../ui/phonolite_icons.dart';
 
 import '../../entities/models.dart';
+import '../../entities/playback_state.dart';
 import '../../entities/server_connection.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/responsive_breakpoints.dart';
+import '../layouts/app_scope.dart';
+import '../modals/add_to_playlist_modal.dart';
+import '../modals/obsidian_modal_scope.dart';
+import '../ui/obsidian_overflow_action_button.dart';
 import 'album_art.dart';
+import 'track_row_tile.dart';
 
 IconData searchResultIconForKind(String kind) {
   switch (kind) {
@@ -42,6 +48,13 @@ class SearchResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isCompact = isCompactListWidth(context);
+    final controller = context
+        .dependOnInheritedWidgetOfExactType<AppScope>()
+        ?.controller;
+    final showTrackActions =
+        result.kind == 'track' &&
+        controller != null &&
+        ObsidianModalScope.isCompact(context);
     return ObsidianHoverRow(
       onTap: onTap,
       padding: isCompact
@@ -88,11 +101,53 @@ class SearchResultTile extends StatelessWidget {
               ],
             ),
           ),
-          Icon(
-            PhonoliteIcons.chevronRight,
-            size: isCompact ? 22 : 24,
-            color: Colors.white38,
-          ),
+          if (showTrackActions)
+            SizedBox.square(
+              dimension: 44,
+              child: ObsidianOverflowActionButton(
+                tooltip: 'Track actions',
+                modalTitle: result.title,
+                size: isCompact ? 18 : 22,
+                actions: const [],
+                resolveActions: () async {
+                  final Track track;
+                  if (useLocalArtwork) {
+                    track = controller.offlineTracks.firstWhere(
+                      (track) =>
+                          track.id == result.id || track.localId == result.id,
+                    );
+                  } else {
+                    track = await (connection ?? controller.connection)
+                        .fetchTrackById(result.id);
+                  }
+                  return TrackRowTile.menuActionsFor(
+                    track: track,
+                    offlineDownload: controller.offlineDownloadForTrack(
+                      track.id,
+                    ),
+                    onLike: () => useLocalArtwork
+                        ? controller.toggleLocalLike(track)
+                        : controller.toggleLike(track),
+                    onDownload: useLocalArtwork
+                        ? null
+                        : () => controller.downloadTrack(track),
+                    onAddToPlaylist: () => showAddToPlaylistModalForTrack(
+                      context,
+                      track,
+                      scope: useLocalArtwork
+                          ? ActionScope.local
+                          : ActionScope.server,
+                    ),
+                  );
+                },
+              ),
+            )
+          else
+            Icon(
+              PhonoliteIcons.chevronRight,
+              size: isCompact ? 22 : 24,
+              color: Colors.white38,
+            ),
         ],
       ),
     );

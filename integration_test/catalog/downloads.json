@@ -1,0 +1,142 @@
+{
+  "feature": "downloads",
+  "sources": [
+    "lib/widgets/modals/download_manager_panel.dart",
+    "lib/widgets/modals/remove_download_modal.dart",
+    "lib/widgets/display/download_selection_toolbar.dart"
+  ],
+  "interactions": [
+    {
+      "id": "downloads.open",
+      "action": "Tap Download Manager",
+      "expected": "Show queue and cache status",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "library.download_manager"
+      ]
+    },
+    {
+      "id": "downloads.scroll",
+      "action": "Scroll jobs/cache rows",
+      "expected": "Reveal remaining jobs/files",
+      "availability": "Enough entries",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "downloads.pause_all",
+      "action": "Tap Pause all",
+      "expected": "Pause pausable jobs",
+      "availability": "Pausable jobs",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.resume_all",
+      "action": "Tap Resume paused",
+      "expected": "Resume paused jobs",
+      "availability": "Paused jobs",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.clear_open",
+      "action": "Tap Clear all jobs and cache",
+      "expected": "Show clear confirmation",
+      "availability": "Jobs/cache exist",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "downloads.clear_confirm",
+      "action": "Confirm clear",
+      "expected": "Remove jobs and temporary cache",
+      "availability": "Disposable download state",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.clear_cancel",
+      "action": "Cancel clear",
+      "expected": "Keep jobs/cache",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "downloads.job_pause",
+      "action": "Tap Pause download job",
+      "expected": "Pause one job",
+      "availability": "Pausable job",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.job_resume",
+      "action": "Tap Resume download job",
+      "expected": "Resume one job",
+      "availability": "Paused job",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.job_cancel",
+      "action": "Tap Cancel and remove job",
+      "expected": "Cancel/remove selected job",
+      "availability": "Disposable job",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.track_actions",
+      "action": "Open Track actions for failed item",
+      "expected": "Show retry action",
+      "availability": "Failed download",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "downloads.retry",
+      "action": "Tap Retry or Retry download",
+      "expected": "Retry eligible failed download",
+      "availability": "Failed download",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.remove_open",
+      "action": "Request download removal",
+      "expected": "Show target/count confirmation",
+      "availability": "Downloaded selection",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "downloads.remove_confirm",
+      "action": "Tap Remove in confirmation",
+      "expected": "Delete local audio and unused metadata/artwork",
+      "availability": "Disposable download",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "downloads.remove_cancel",
+      "action": "Tap Cancel or dismiss confirmation",
+      "expected": "Retain downloaded files",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "downloads.close",
+      "action": "Tap Close, dismiss barrier, or drag supported sheet",
+      "expected": "Return to underlying page",
+      "availability": "Manager open",
+      "risk": "browse",
+      "journeys": [
+        "library.download_manager"
+      ]
+    }
+  ]
+}

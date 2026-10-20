@@ -165,7 +165,7 @@ void main() {
       expectContainsAll(source, const [
         'class OfflineDownloadManager',
         'static const int maxParallelDownloadsPerServer = 1;',
-        'static const Duration _progressEmitInterval = Duration(seconds: 3);',
+        'static const Duration _progressEmitInterval = Duration(milliseconds: 200);',
         'static const int _queuePersistChunkSize = 20;',
         'static const Duration _queuePersistYieldDelay = Duration(milliseconds: 8);',
         'static const int _maxParallelFileDeletes = 4;',

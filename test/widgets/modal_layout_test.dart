@@ -7,6 +7,7 @@ import 'package:phonolite_app/entities/offline_models.dart';
 import 'package:phonolite_app/entities/playback_state.dart';
 import 'package:phonolite_app/widgets/display/album_row_tile.dart';
 import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
+import 'package:phonolite_app/widgets/display/album_art.dart';
 import 'package:phonolite_app/widgets/display/track_row_tile.dart';
 import 'package:phonolite_app/widgets/inputs/obsidian_text_field.dart';
 import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
@@ -19,6 +20,8 @@ import 'package:phonolite_app/widgets/modals/obsidian_adaptive_modal.dart';
 import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
+import 'package:phonolite_app/widgets/ui/hover_row.dart';
+import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_overflow_action_button.dart';
 
@@ -159,7 +162,12 @@ void main() {
           await tester.pumpAndSettle();
 
           final title = find.text(_title(kind));
+          expect(find.byType(ObsidianGlassSurface), findsOneWidget);
           if (kind == _Kind.downloads) {
+            expect(
+              tester.widget<Text>(find.text('Jobs')).style,
+              tester.widget<Text>(find.text('Queue')).style,
+            );
             expect(find.byType(Dialog), findsOneWidget);
             expect(find.byType(BottomSheet), findsNothing);
             expect(
@@ -177,11 +185,26 @@ void main() {
             ]) {
               final tile = find.byType(tileType);
               final tileRect = tester.getRect(tile);
+              if (tileType == TrackRowTile) {
+                final artRect = tester.getRect(
+                  find.descendant(of: tile, matching: find.byType(AlbumArt)),
+                );
+                final progressRect = tester.getRect(
+                  find.descendant(
+                    of: tile,
+                    matching: find.byType(CircularProgressIndicator),
+                  ),
+                );
+                expect(progressRect.center, artRect.center);
+                expect(artRect.contains(progressRect.topLeft), isTrue);
+                expect(artRect.contains(progressRect.bottomRight), isTrue);
+                expect(artRect.left - tileRect.left, lessThanOrEqualTo(16));
+              }
               final buttons = find.descendant(
                 of: tile,
                 matching: find.byType(IconButton),
               );
-              expect(buttons, findsNWidgets(2));
+              expect(buttons, findsNWidgets(tileType == TrackRowTile ? 0 : 2));
               for (final button in buttons.evaluate()) {
                 final rect = tester.getRect(find.byWidget(button.widget));
                 expect(rect.center.dy, closeTo(tileRect.center.dy, 0.1));
@@ -197,24 +220,26 @@ void main() {
               expect(tester.getSize(title).width, greaterThan(0));
             }
           }
-          final surface = tester.getRect(find.byType(ObsidianFrostedSurface));
+          final surface = tester.getRect(find.byType(ObsidianGlassSurface));
           final titleRect = tester.getRect(title);
           if (kind == _Kind.downloads) {
+            expect(titleRect.left - surface.left, closeTo(24, 0.1));
+            expect(tester.widget<Text>(title).textAlign, TextAlign.left);
             final controls = [
               for (final label in [
                 'Pause all',
                 'Resume paused',
-                'Clear partial / failed',
+                'Clear all jobs and cache',
               ])
                 tester.getRect(find.byTooltip(label)),
             ];
             expect(titleRect.right, lessThan(controls.first.left));
             for (final control in controls) {
               expect(control.center.dy, closeTo(titleRect.center.dy, 0.1));
-              expect(control.size, Size.square(width < 820 ? 48 : 36));
+              expect(control.size, Size.square(width < 820 ? 44 : 28));
             }
-            expect(controls[0].right, lessThan(controls[1].left));
-            expect(controls[1].right, lessThan(controls[2].left));
+            expect(controls[0].right, closeTo(controls[1].left, 0.1));
+            expect(controls[1].right, closeTo(controls[2].left, 0.1));
             expect(surface.right - controls.last.right, closeTo(24, 0.1));
           }
           final titleStyle = tester
@@ -344,43 +369,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('mobile popup actions wrap labels and accept edge taps', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(320, 640);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-    var selected = 0;
-    await tester.pumpWidget(
-      wrapInTestApp(
-        MediaQuery(
-          data: const MediaQueryData(
-            size: Size(320, 640),
-            textScaler: TextScaler.linear(1.4),
-          ),
-          child: ObsidianOverflowActionButton(
-            tooltip: 'More actions',
-            actions: [
-              ObsidianMenuAction(
-                label: 'Remove this downloaded selection',
-                icon: Icons.delete,
-                onTap: () => selected++,
+  for (final useModal in [false, true]) {
+    testWidgets(
+      'mobile ${useModal ? 'modal' : 'popup'} actions wrap labels and accept edge taps',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(320, 640);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        var selected = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ObsidianTheme.build(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.4)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: ObsidianOverflowActionButton(
+                tooltip: 'More actions',
+                modalTitle: useModal
+                    ? 'A long album track title that wraps within the modal'
+                    : null,
+                actions: [
+                  ObsidianMenuAction(
+                    label: 'Remove this downloaded selection',
+                    icon: Icons.delete,
+                    onTap: () => selected++,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+        await tester.tap(find.byTooltip('More actions'));
+        await tester.pumpAndSettle();
+        final rect = tester.getRect(
+          useModal
+              ? find.byType(ObsidianHoverRow)
+              : find.byType(PopupMenuItem<int>),
+        );
+        expect(rect.height, greaterThanOrEqualTo(48));
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+        await tester.tapAt(rect.bottomRight - const Offset(2, 2));
+        await tester.pumpAndSettle();
+        expect(selected, 1);
+        expect(tester.takeException(), isNull);
+      },
     );
-    await tester.tap(find.byTooltip('More actions'));
-    await tester.pumpAndSettle();
-    final rect = tester.getRect(find.byType(PopupMenuItem<int>));
-    expect(rect.height, greaterThanOrEqualTo(48));
-    await tester.tapAt(rect.bottomRight - const Offset(2, 2));
-    await tester.pumpAndSettle();
-    expect(selected, 1);
-    expect(tester.takeException(), isNull);
-  });
+  }
 
   testWidgets(
     'modal footer wraps long actions and supports keyboard activation',

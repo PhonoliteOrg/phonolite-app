@@ -9,18 +9,107 @@ import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
 import 'package:phonolite_app/widgets/layouts/app_scope.dart';
 import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
 import 'package:phonolite_app/widgets/layouts/playback_content_inset.dart';
+import 'package:phonolite_app/widgets/layouts/retained_tab_view.dart';
 import 'package:phonolite_app/widgets/navigation/adaptive_scaffold.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
+import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
+import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
 
 import '../support/widget_test_helpers.dart';
 
 const _viewportKey = ValueKey('page-viewport');
 const _finalRowKey = ValueKey('final-row');
+const _firstRowKey = ValueKey('first-row');
 const _safeAreaBottom = 24.0;
 const _navigationHeight = 64.0;
 
 void main() {
   setUpAll(configureTestFonts);
+
+  for (final layout in const [
+    (size: Size(375, 667), topInset: 20.0),
+    (size: Size(390, 844), topInset: 44.0),
+    (size: Size(430, 932), topInset: 59.0),
+    (size: Size(402, 874), topInset: 62.0),
+    (size: Size(1024, 800), topInset: 24.0),
+  ]) {
+    final size = layout.size;
+    final topInset = layout.topInset;
+    for (final hiddenPlayer in [false, true]) {
+      testWidgets(
+        'iOS viewport fills $size with safe controls, hidden player: $hiddenPlayer',
+        (tester) async {
+          final probe = (await tester.runAsync(() async => _LayoutProbe()))!;
+          final compact = size.width < 980;
+          try {
+            await _pumpLayout(
+              tester,
+              probe: probe,
+              size: size,
+              platform: TargetPlatform.iOS,
+              safeAreaTop: topInset,
+              hidePlaybackChrome: hiddenPlayer,
+            );
+            expect(
+              tester.getRect(find.byKey(_viewportKey)),
+              Rect.fromLTWH(
+                compact ? 0 : 64,
+                0,
+                size.width - (compact ? 0 : 64),
+                size.height,
+              ),
+            );
+            expect(probe.pagePadding.top, 0);
+            expect(probe.pagePadding.bottom, 0);
+            expect(probe.topInset, topInset);
+            expect(tester.getRect(find.byKey(_firstRowKey)).top, topInset);
+
+            final player = find.byType(
+              compact ? NowPlayingMiniBar : NowPlayingBar,
+            );
+            final navigation = find.byType(ObsidianNavIcon);
+            if (compact) {
+              final glass = find.ancestor(
+                of: navigation,
+                matching: find.byType(ObsidianGlassSurface),
+              );
+              expect(tester.getRect(glass).bottom, size.height);
+              expect(
+                tester.getRect(navigation).bottom,
+                lessThanOrEqualTo(size.height - _safeAreaBottom),
+              );
+            } else {
+              expect(
+                tester.getRect(navigation).top,
+                greaterThanOrEqualTo(topInset),
+              );
+            }
+            final clearBottom = hiddenPlayer
+                ? size.height -
+                      (compact
+                          ? _navigationHeight + _safeAreaBottom
+                          : _safeAreaBottom)
+                : tester.getRect(player).top;
+            probe.scroll.jumpTo(topInset / 2);
+            await tester.pump();
+            final scrolledTop = tester.getRect(find.byKey(_firstRowKey)).top;
+            expect(scrolledTop, inExclusiveRange(0, topInset));
+
+            probe.scroll.jumpTo(probe.scroll.position.maxScrollExtent);
+            await tester.pump();
+            expect(
+              tester.getRect(find.byKey(_finalRowKey)).bottom,
+              closeTo(clearBottom, 0.01),
+            );
+            expect(tester.takeException(), isNull);
+          } finally {
+            await probe.dispose(tester);
+          }
+        },
+        variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+      );
+    }
+  }
 
   for (final layout in const [
     (name: 'wide', size: Size(1280, 800), compact: false),
@@ -64,42 +153,40 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.windows),
     );
 
-    testWidgets(
-      '${layout.name} hidden player leaves no playback clearance',
-      (tester) async {
-        final probe = (await tester.runAsync(() async => _LayoutProbe()))!;
-        try {
-          await _pumpLayout(
-            tester,
-            probe: probe,
-            size: layout.size,
-            hidePlaybackChrome: true,
-          );
-          final viewportRect = tester.getRect(find.byKey(_viewportKey));
-          final expectedBottom =
-              layout.size.height -
-              (layout.compact ? _navigationHeight + _safeAreaBottom : 0);
+    testWidgets('${layout.name} hidden player leaves no playback clearance', (
+      tester,
+    ) async {
+      final probe = (await tester.runAsync(() async => _LayoutProbe()))!;
+      try {
+        await _pumpLayout(
+          tester,
+          probe: probe,
+          size: layout.size,
+          hidePlaybackChrome: true,
+        );
+        final viewportRect = tester.getRect(find.byKey(_viewportKey));
+        final expectedBottom =
+            layout.size.height -
+            (layout.compact ? _navigationHeight + _safeAreaBottom : 0);
 
-          expect(find.byType(NowPlayingBar), findsNothing);
-          expect(find.byType(NowPlayingMiniBar), findsNothing);
-          expect(probe.playbackInset, 0);
-          expect(probe.pagePadding.bottom, 0);
-          expect(viewportRect.bottom, closeTo(expectedBottom, 0.01));
+        expect(find.byType(NowPlayingBar), findsNothing);
+        expect(find.byType(NowPlayingMiniBar), findsNothing);
+        expect(probe.playbackInset, 0);
+        expect(probe.pagePadding.bottom, 0);
+        expect(viewportRect.bottom, closeTo(expectedBottom, 0.01));
 
-          probe.scroll.jumpTo(probe.scroll.position.maxScrollExtent);
-          await tester.pump();
+        probe.scroll.jumpTo(probe.scroll.position.maxScrollExtent);
+        await tester.pump();
 
-          expect(
-            tester.getRect(find.byKey(_finalRowKey)).bottom,
-            closeTo(viewportRect.bottom, 0.01),
-          );
-          expect(tester.takeException(), isNull);
-        } finally {
-          await probe.dispose(tester);
-        }
-      },
-      variant: TargetPlatformVariant.only(TargetPlatform.windows),
-    );
+        expect(
+          tester.getRect(find.byKey(_finalRowKey)).bottom,
+          closeTo(viewportRect.bottom, 0.01),
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await probe.dispose(tester);
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
   }
 }
 
@@ -108,6 +195,8 @@ Future<void> _pumpLayout(
   required _LayoutProbe probe,
   required Size size,
   bool hidePlaybackChrome = false,
+  TargetPlatform platform = TargetPlatform.windows,
+  double safeAreaTop = 0,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -120,12 +209,15 @@ Future<void> _pumpLayout(
     AppScope(
       controller: probe.controller,
       child: MaterialApp(
-        theme: ObsidianTheme.build().copyWith(platform: TargetPlatform.windows),
+        theme: ObsidianTheme.build().copyWith(platform: platform),
         home: MediaQuery(
           data: MediaQueryData(
             size: size,
-            padding: const EdgeInsets.only(bottom: _safeAreaBottom),
-            viewPadding: const EdgeInsets.only(bottom: _safeAreaBottom),
+            padding: EdgeInsets.only(top: safeAreaTop, bottom: _safeAreaBottom),
+            viewPadding: EdgeInsets.only(
+              top: safeAreaTop,
+              bottom: _safeAreaBottom,
+            ),
           ),
           child: ObsidianScale(
             scale: ObsidianScale.compute(size.width),
@@ -138,32 +230,47 @@ Future<void> _pumpLayout(
               ],
               selectedIndex: 0,
               onDestinationSelected: (_) {},
-              page: Builder(
-                builder: (context) {
-                  probe.playbackInset = PlaybackContentInset.bottomOf(context);
-                  probe.pagePadding = MediaQuery.paddingOf(context);
-                  return ColoredBox(
-                    key: _viewportKey,
-                    color: Colors.deepPurple,
-                    child: CustomScrollView(
-                      controller: probe.scroll,
-                      slivers: [
-                        SliverFixedExtentList(
-                          itemExtent: 80,
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) => ColoredBox(
-                              key: index == 31 ? _finalRowKey : null,
-                              color: index.isEven ? Colors.blue : Colors.teal,
-                              child: Center(child: Text('Row $index')),
+              page: RetainedTabView(
+                index: 0,
+                children: [
+                  Builder(
+                    builder: (context) {
+                      probe.playbackInset = PlaybackContentInset.bottomOf(
+                        context,
+                      );
+                      probe.topInset = PlaybackContentInset.topOf(context);
+                      probe.pagePadding = MediaQuery.paddingOf(context);
+                      return ColoredBox(
+                        key: _viewportKey,
+                        color: Colors.deepPurple,
+                        child: CustomScrollView(
+                          controller: probe.scroll,
+                          slivers: [
+                            const SliverPageTopInset(),
+                            SliverFixedExtentList(
+                              itemExtent: 80,
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) => ColoredBox(
+                                  key: index == 31
+                                      ? _finalRowKey
+                                      : index == 0
+                                      ? _firstRowKey
+                                      : null,
+                                  color: index.isEven
+                                      ? Colors.blue
+                                      : Colors.teal,
+                                  child: Center(child: Text('Row $index')),
+                                ),
+                                childCount: 32,
+                              ),
                             ),
-                            childCount: 32,
-                          ),
+                            const SliverPlaybackInset(),
+                          ],
                         ),
-                        const SliverPlaybackInset(),
-                      ],
-                    ),
-                  );
-                },
+                      );
+                    },
+                  ),
+                ],
               ),
               playbackState: probe.controller.playbackState,
               onOpenAlbum: _noop,
@@ -227,6 +334,7 @@ class _LayoutProbe {
   );
   final scroll = ScrollController();
   double playbackInset = -1;
+  double topInset = -1;
   EdgeInsets pagePadding = EdgeInsets.zero;
 
   Future<void> dispose(WidgetTester tester) async {

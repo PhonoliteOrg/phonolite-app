@@ -5,10 +5,9 @@ import '../../core/constants.dart';
 final Map<String, Color> _artistBackdropCache = <String, Color>{};
 final Map<String, Color> _albumBackdropCache = <String, Color>{};
 
-Future<Color> resolveLogoBackdropColor(
-  ImageProvider provider,
-  String cacheKey,
-) async {
+// These colors depend only on the artwork key, so they are ready for the first
+// paint. A Future would add an intermediate tint and a rebuild per image.
+Color resolveLogoBackdropColor(String cacheKey) {
   final cached = _artistBackdropCache[cacheKey];
   if (cached != null) {
     return cached;
@@ -45,10 +44,7 @@ Color _ensureMinLightness(Color color, double minLightness) {
   return artistBackdropForcedLight;
 }
 
-Future<Color> resolveAlbumBackdropColor(
-  ImageProvider provider,
-  String cacheKey,
-) async {
+Color resolveAlbumBackdropColor(String cacheKey) {
   final cached = _albumBackdropCache[cacheKey];
   if (cached != null) {
     return cached;

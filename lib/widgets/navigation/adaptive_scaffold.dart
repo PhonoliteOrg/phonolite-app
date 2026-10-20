@@ -4,6 +4,7 @@ import '../display/now_playing_bar.dart';
 import '../layouts/obsidian_scale.dart';
 import '../layouts/playback_content_inset.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/obsidian_glass_surface.dart';
 import '../ui/obsidian_widgets.dart';
 import '../../entities/app_controller.dart';
 
@@ -63,24 +64,33 @@ class AdaptiveScaffold extends StatelessWidget {
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
     final isWide = screenWidth >= _wideLayoutWidth;
+    final edgeToEdge = Theme.of(context).platform == TargetPlatform.iOS;
     final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
     final showWideBar = isWide && !hidePlaybackChrome;
     final showMiniBar = !isWide && !hidePlaybackChrome;
     final miniBarHeight = showMiniBar
         ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12)
         : 0.0;
-    final bottomInset = showWideBar
+    final playbackInset = showWideBar
         ? nowPlayingHeight + s(_nowPlayingPadding)
         : miniBarHeight;
     final navPad = _navBarHeight + media.padding.bottom;
-    // Keep the viewport behind the glass; only the end of its content needs
-    // clearance. The compact navigation bar reserves its own area below it.
+    final bottomInset =
+        playbackInset +
+        (edgeToEdge ? (isWide ? media.padding.bottom : navPad) : 0);
+    // iOS scrolls through the system areas and behind the bottom navigation.
+    // The scroll content reserves clearance instead of cropping its viewport.
     final pageContent = MediaQuery.removePadding(
       context: context,
+      removeTop: edgeToEdge,
       removeBottom: true,
       child: SafeArea(
         bottom: false,
-        child: PlaybackContentInset(bottom: bottomInset, child: page),
+        child: PlaybackContentInset(
+          top: edgeToEdge ? media.padding.top : 0,
+          bottom: bottomInset,
+          child: page,
+        ),
       ),
     );
 
@@ -111,23 +121,29 @@ class AdaptiveScaffold extends StatelessWidget {
                   color: _navigationBackground,
                   border: Border(right: _navigationBorder),
                 ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: s(16)),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      for (var i = 0; i < destinations.length; i++) ...[
-                        ObsidianNavIcon(
-                          icon:
-                              destinations[i].selectedIcon ??
-                              destinations[i].icon,
-                          isSelected: i == selectedIndex,
-                          label: destinations[i].label,
-                          onTap: () => onDestinationSelected(i),
-                        ),
-                        SizedBox(height: s(12)),
+                child: SafeArea(
+                  top: edgeToEdge,
+                  bottom: edgeToEdge,
+                  left: edgeToEdge,
+                  right: false,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: s(16)),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        for (var i = 0; i < destinations.length; i++) ...[
+                          ObsidianNavIcon(
+                            icon:
+                                destinations[i].selectedIcon ??
+                                destinations[i].icon,
+                            isSelected: i == selectedIndex,
+                            label: destinations[i].label,
+                            onTap: () => onDestinationSelected(i),
+                          ),
+                          SizedBox(height: s(12)),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -137,7 +153,12 @@ class AdaptiveScaffold extends StatelessWidget {
                 children: [
                   Positioned.fill(child: pageContent),
                   if (showWideBar)
-                    Positioned(left: 0, right: 0, bottom: 0, child: nowPlaying),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: edgeToEdge ? media.padding.bottom : 0,
+                      child: nowPlaying,
+                    ),
                 ],
               ),
             ),
@@ -149,7 +170,7 @@ class AdaptiveScaffold extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(bottom: navPad, child: pageContent),
+          Positioned.fill(bottom: edgeToEdge ? 0 : navPad, child: pageContent),
           if (showMiniBar)
             Positioned(
               left: 0,
@@ -197,10 +218,15 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    return Container(
+    final padding = MediaQuery.paddingOf(context);
+    final bottomPad = padding.bottom;
+    final navigation = Container(
       height: _height + bottomPad,
-      padding: EdgeInsets.only(bottom: bottomPad),
+      padding: EdgeInsets.only(
+        bottom: bottomPad,
+        left: padding.left,
+        right: padding.right,
+      ),
       decoration: const BoxDecoration(
         color: _navigationBackground,
         border: Border(top: _navigationBorder),
@@ -225,5 +251,8 @@ class _BottomNavBar extends StatelessWidget {
         ),
       ),
     );
+    return Theme.of(context).platform == TargetPlatform.iOS
+        ? ObsidianGlassSurface(child: navigation)
+        : navigation;
   }
 }

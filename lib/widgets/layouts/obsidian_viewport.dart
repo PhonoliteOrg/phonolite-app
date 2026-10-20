@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../ui/dismissible_selection_area.dart';
 import '../ui/obsidian_background.dart';
@@ -19,9 +20,12 @@ class ObsidianViewport extends StatelessWidget {
         final scale = ObsidianScale.compute(constraints.maxWidth);
         return Theme(
           data: ObsidianTheme.build(scale: scale),
-          child: SelectionDismissLayer(
-            child: ObsidianBackground(
-              child: ObsidianScale(scale: scale, child: child),
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle.light,
+            child: SelectionDismissLayer(
+              child: ObsidianBackground(
+                child: ObsidianScale(scale: scale, child: child),
+              ),
             ),
           ),
         );

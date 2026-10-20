@@ -4,6 +4,7 @@ import '../ui/phonolite_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
+import '../ui/button_haptics.dart';
 
 class CommandLinkButton extends StatelessWidget {
   const CommandLinkButton({
@@ -22,7 +23,7 @@ class CommandLinkButton extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
-        onPressed: enabled ? onTap : null,
+        onPressed: withButtonHaptic(enabled ? onTap : null),
         style: ButtonStyle(
           foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
             if (states.contains(WidgetState.disabled)) {

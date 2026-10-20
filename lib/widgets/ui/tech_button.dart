@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'chamfer_clipper.dart';
 import 'obsidian_theme.dart';
 import '../modals/obsidian_modal_scope.dart';
+import 'button_haptics.dart';
 
 enum TechButtonVariant { standard, danger }
 
@@ -22,8 +23,10 @@ class TechButton extends StatefulWidget {
     this.density = TechButtonDensity.standard,
     this.chrome = TechButtonChrome.framed,
     this.iconOnly = false,
+    this.iconOnlySize,
     this.tooltip,
   }) : assert(icon == null || iconWidget == null),
+       assert(iconOnlySize == null || iconOnlySize > 0),
        assert(!iconOnly || icon != null || iconWidget != null);
 
   final String label;
@@ -34,6 +37,7 @@ class TechButton extends StatefulWidget {
   final TechButtonDensity density;
   final TechButtonChrome chrome;
   final bool iconOnly;
+  final double? iconOnlySize;
   final String? tooltip;
 
   @override
@@ -77,11 +81,13 @@ class _TechButtonState extends State<TechButton> {
     final padding = widget.density == TechButtonDensity.compact
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
         : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
-    final iconOnlySize = touchLayout
-        ? 48.0
-        : widget.density == TechButtonDensity.compact
-        ? 36.0
-        : 42.0;
+    final iconOnlySize =
+        widget.iconOnlySize ??
+        (touchLayout
+            ? 48.0
+            : widget.density == TechButtonDensity.compact
+            ? 36.0
+            : 42.0);
     final iconOnlyGlyphSize = widget.density == TechButtonDensity.compact
         ? 20.0
         : 24.0;
@@ -145,7 +151,7 @@ class _TechButtonState extends State<TechButton> {
         onExit: enabled ? (_) => _setHovered(false) : null,
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         child: GestureDetector(
-          onTap: widget.onTap,
+          onTap: withButtonHaptic(widget.onTap),
           onTapDown: enabled ? (_) => _setPressed(true) : null,
           onTapUp: enabled ? (_) => _setPressed(false) : null,
           onTapCancel: enabled ? () => _setPressed(false) : null,
@@ -182,7 +188,7 @@ class _TechButtonState extends State<TechButton> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: widget.onTap,
+          onTap: withButtonHaptic(widget.onTap),
           child: Container(
             constraints: touchLayout
                 ? const BoxConstraints(minHeight: 48, minWidth: 48)

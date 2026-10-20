@@ -139,7 +139,7 @@ void main() {
         'presentation == ObsidianAdaptiveModalPresentation.sheet',
         "tooltip: 'Pause all'",
         "tooltip: 'Resume paused'",
-        "tooltip: 'Clear partial / failed'",
+        "tooltip: 'Clear all jobs and cache'",
       ]);
       expect(panelSource, isNot(contains('showDialog<void>(')));
       expect(panelSource, isNot(contains('showModalBottomSheet<void>(')));
@@ -155,7 +155,7 @@ void main() {
         'MediaQuery.viewInsetsOf(sheetContext).bottom',
         'ObsidianModalScope(',
         'class ObsidianModalSurface extends StatelessWidget',
-        'ObsidianFrostedSurface(',
+        'ObsidianGlassSurface(',
         'ObsidianModalActions(',
         "label: 'Close'",
       ]);

@@ -28,6 +28,7 @@ import 'package:phonolite_app/widgets/modals/confirmation_modal.dart';
 import 'package:phonolite_app/widgets/modals/download_manager_panel.dart';
 import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
 import 'package:phonolite_app/widgets/modals/obsidian_adaptive_modal.dart';
+import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
 import 'package:phonolite_app/widgets/ui/collection_view_toggle_button.dart';
 import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
@@ -132,7 +133,7 @@ void main() {
       );
     });
 
-    test('expanded now playing sheet uses native mobile treatment', () {
+    test('expanded now playing sheet uses glass with native mobile sizing', () {
       final source = readProjectFile(
         'lib/widgets/display/now_playing_bar.dart',
       );
@@ -142,17 +143,16 @@ void main() {
         'bool _usesNativeMobileExpandedSheet(BuildContext context)',
         'platform == TargetPlatform.iOS || platform == TargetPlatform.android',
         'useSafeArea: useNativeMobileTreatment,',
-        'barrierColor: useNativeMobileTreatment',
+        'barrierColor: Colors.black.withValues(alpha: 0.45)',
         'useNativeMobileTreatment ? size.height : size.height * 0.92',
-        '? ObsidianPalette.obsidianElevated',
-        ': maybeBlur(sigma: 40, child: sheetBody)',
+        'final sheetBody = ObsidianGlassSurface(',
       ]);
     });
 
     test('local shuffle modal mirrors server shuffle modes', () {
       final source = readProjectFile(
         'lib/widgets/display/now_playing_bar.dart',
-      );
+      ).replaceAll(RegExp(r'\s+'), ' ');
 
       expectContainsAll(source, const [
         'const items = [',
@@ -839,9 +839,10 @@ void main() {
       expect(removedIds, <String>['liked']);
     });
 
-    testWidgets('track row tile renders track metadata and controls', (
+    testWidgets('desktop track row renders track metadata and controls', (
       tester,
     ) async {
+      _setViewport(tester, const Size(1280, 800));
       final track = Track(
         id: 'track-1',
         title: 'Dayvan Cowboy',
@@ -880,7 +881,7 @@ void main() {
       expect(find.byIcon(PhonoliteIcons.trash2), findsOneWidget);
     });
 
-    testWidgets('compact track row keeps priority actions and menus the rest', (
+    testWidgets('compact track row puts all actions in the shared modal', (
       tester,
     ) async {
       _setViewport(tester, const Size(390, 800));
@@ -917,8 +918,8 @@ void main() {
       );
 
       expect(find.text('05:21'), findsNothing);
-      expect(find.byIcon(PhonoliteIcons.download), findsOneWidget);
-      expect(find.byIcon(PhonoliteIcons.heart), findsOneWidget);
+      expect(find.byIcon(PhonoliteIcons.download), findsNothing);
+      expect(find.byIcon(PhonoliteIcons.heart), findsNothing);
       expect(find.byType(PlaylistAddIcon), findsNothing);
       expect(find.byIcon(PhonoliteIcons.trash2), findsNothing);
       expect(find.byTooltip('Track actions'), findsOneWidget);
@@ -934,33 +935,23 @@ void main() {
             ?.fontSize,
         11,
       );
-      expect(
-        tester.getSize(find.byType(LikeIconButton)),
-        const Size.square(44),
-      );
+      expect(find.byType(LikeIconButton), findsNothing);
       expect(
         tester.getSize(find.byTooltip('Track actions')),
         const Size.square(44),
       );
-      expect(tester.getSize(find.byTooltip('Download')), const Size.square(44));
-
-      await tester.tap(find.byIcon(PhonoliteIcons.download));
-      await tester.pump();
-      await tester.tap(find.byIcon(PhonoliteIcons.heart));
-      await tester.pump();
-
+      for (final action in ['Download', 'Like', 'Add to playlist']) {
+        await tester.tap(find.byTooltip('Track actions'));
+        await tester.pumpAndSettle();
+        expect(find.byType(ObsidianAlertDialog), findsOneWidget);
+        expect(find.byType(PopupMenuItem<int>), findsNothing);
+        expect(find.text('Delete'), findsOneWidget);
+        await tester.tap(find.text(action));
+        await tester.pumpAndSettle();
+        expect(find.byType(ObsidianAlertDialog), findsNothing);
+      }
       expect(downloaded, 1);
       expect(liked, 1);
-
-      await tester.tap(find.byTooltip('Track actions'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Add to playlist'), findsOneWidget);
-      expect(find.text('Delete'), findsOneWidget);
-
-      await tester.tap(find.text('Add to playlist'));
-      await tester.pumpAndSettle();
-
       expect(added, 1);
       expect(deleted, 0);
     });
@@ -1025,6 +1016,7 @@ void main() {
     testWidgets('downloaded track row exposes remove download action', (
       tester,
     ) async {
+      _setViewport(tester, const Size(1280, 800));
       final track = Track(
         id: 'track-1',
         title: 'Dayvan Cowboy',
@@ -1313,7 +1305,7 @@ void main() {
       expect(find.text('Needs Attention'), findsOneWidget);
       expect(find.byTooltip('Pause all'), findsOneWidget);
       expect(find.byTooltip('Resume paused'), findsOneWidget);
-      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
+      expect(find.byTooltip('Clear all jobs and cache'), findsOneWidget);
       expect(find.text('CLEAR PAUSED / CACHED'), findsNothing);
       final managerPanel = find.byType(DownloadManagerPanel);
       expect(
@@ -1331,34 +1323,38 @@ void main() {
         ),
         findsWidgets,
       );
-      expect(find.byTooltip('Pause'), findsWidgets);
-      expect(find.byTooltip('Resume'), findsWidgets);
+      expect(find.byTooltip('Pause'), findsNothing);
+      expect(find.byTooltip('Resume'), findsNothing);
       expect(find.byTooltip('Retry'), findsWidgets);
       expect(find.byTooltip('Cancel'), findsNothing);
       expect(find.byTooltip('Remove partial cache'), findsNothing);
       expect(find.text('Track cached'), findsNothing);
       expect(find.text('Downloaded / Cached'), findsNothing);
-      expect(find.byTooltip('Remove download'), findsNWidgets(3));
+      expect(find.byTooltip('Remove download'), findsNothing);
+      for (final status in ['QUEUED', 'PAUSED', 'CORRUPT']) {
+        expect(find.textContaining(status), findsNothing);
+      }
     });
 
-    testWidgets('download manager does not clear completed cached tracks', (
-      tester,
-    ) async {
-      _setViewport(tester, const Size(900, 900));
-      final downloads = <OfflineTrackDownload>[
-        _download('cached', OfflineDownloadStatus.downloaded),
-      ];
+    testWidgets(
+      'download manager hides completed cached tracks from the queue',
+      (tester) async {
+        _setViewport(tester, const Size(900, 900));
+        final downloads = <OfflineTrackDownload>[
+          _download('cached', OfflineDownloadStatus.downloaded),
+        ];
 
-      await tester.pumpWidget(
-        wrapInTestApp(DownloadManagerPanel(downloadsOverride: downloads)),
-      );
+        await tester.pumpWidget(
+          wrapInTestApp(DownloadManagerPanel(downloadsOverride: downloads)),
+        );
 
-      expect(find.text('Track cached'), findsNothing);
-      expect(find.byTooltip('Pause all'), findsOneWidget);
-      expect(find.byTooltip('Resume paused'), findsOneWidget);
-      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
-      expect(find.text('No queued downloads'), findsOneWidget);
-    });
+        expect(find.text('Track cached'), findsNothing);
+        expect(find.byTooltip('Pause all'), findsOneWidget);
+        expect(find.byTooltip('Resume paused'), findsOneWidget);
+        expect(find.byTooltip('Clear all jobs and cache'), findsOneWidget);
+        expect(find.text('No queued downloads'), findsOneWidget);
+      },
+    );
 
     testWidgets('download manager mobile shell uses compact modal chrome', (
       tester,
@@ -1386,11 +1382,11 @@ void main() {
       expect(find.text('CLOSE'), findsOneWidget);
       expect(find.byTooltip('Pause all'), findsOneWidget);
       expect(find.byTooltip('Resume paused'), findsOneWidget);
-      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
+      expect(find.byTooltip('Clear all jobs and cache'), findsOneWidget);
       expect(find.text('PAUSE ALL'), findsNothing);
       expect(find.text('RESUME PAUSED'), findsNothing);
-      expect(find.text('CLEAR PARTIAL / FAILED'), findsNothing);
-      expect(find.text('Rolling Jobs'), findsOneWidget);
+      expect(find.text('CLEAR ALL JOBS AND CACHE'), findsNothing);
+      expect(find.text('Jobs'), findsOneWidget);
       expect(find.text('Queue'), findsOneWidget);
       expect(find.text('Paused'), findsOneWidget);
       expect(find.text('Needs Attention'), findsOneWidget);
@@ -1458,15 +1454,15 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Pause'), findsNWidgets(2));
+      expect(find.byTooltip('Pause'), findsNothing);
       expect(find.byTooltip('Resume'), findsNothing);
       expect(find.byTooltip('Retry'), findsNothing);
       expect(find.byTooltip('Cancel'), findsNothing);
       expect(find.byTooltip('Remove partial cache'), findsNothing);
-      expect(find.byTooltip('Remove download'), findsNWidgets(2));
+      expect(find.byTooltip('Remove download'), findsNothing);
     });
 
-    testWidgets('queued download row shows its state action and removal', (
+    testWidgets('queued download row has no per-track controls', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -1479,12 +1475,12 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Pause'), findsOneWidget);
+      expect(find.byTooltip('Pause'), findsNothing);
       expect(find.byTooltip('Resume'), findsNothing);
       expect(find.byTooltip('Retry'), findsNothing);
       expect(find.byTooltip('Cancel'), findsNothing);
       expect(find.byTooltip('Remove partial cache'), findsNothing);
-      expect(find.byTooltip('Remove download'), findsOneWidget);
+      expect(find.byTooltip('Remove download'), findsNothing);
     });
 
     testWidgets('artist rolling job shows pause while active or queued', (
@@ -1528,7 +1524,7 @@ void main() {
       expect(find.byTooltip('Cancel and remove job'), findsOneWidget);
       expect(find.byTooltip('Pause all'), findsOneWidget);
       expect(find.byTooltip('Resume paused'), findsOneWidget);
-      expect(find.byTooltip('Clear partial / failed'), findsOneWidget);
+      expect(find.byTooltip('Clear all jobs and cache'), findsOneWidget);
     });
 
     testWidgets('non-artist rolling jobs show downloader controls', (

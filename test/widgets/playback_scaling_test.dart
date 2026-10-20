@@ -87,41 +87,181 @@ void main() {
     );
   }
 
-  testWidgets(
-    'scaled desktop controls retain their rendered hit targets',
-    (tester) async {
-      final probe = (await tester.runAsync(
-        () async => _PlayerProbe('server'),
-      ))!;
-      _configureView(tester);
-      try {
-        await _pumpScaffold(tester, probe, width: 980);
+  testWidgets('scaled desktop controls retain their rendered hit targets', (
+    tester,
+  ) async {
+    final probe = (await tester.runAsync(() async => _PlayerProbe('server')))!;
+    _configureView(tester);
+    try {
+      await _pumpScaffold(tester, probe, width: 980);
 
-        await tester.tap(find.byIcon(Icons.play_arrow));
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.tap(find.byIcon(PhonoliteIcons.skipForward));
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.tap(find.byIcon(PhonoliteIcons.heart));
-        await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.byIcon(PhonoliteIcons.skipForward));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.byIcon(PhonoliteIcons.heart));
+      await tester.pump(const Duration(milliseconds: 250));
 
-        expect(probe.playTaps, 1);
-        expect(probe.nextTaps, 1);
-        expect(probe.likeTaps, 1);
+      expect(probe.playTaps, 1);
+      expect(probe.nextTaps, 1);
+      expect(probe.likeTaps, 1);
 
-        final volume = _renderedRect(tester, _volumeSlider());
-        await tester.tapAt(
-          Offset(volume.left + volume.width * 0.8, volume.center.dy),
-        );
-        await tester.pump();
-        expect(probe.lastVolume, isNotNull);
-        expect(probe.lastVolume!, greaterThan(0.5));
-        expect(tester.takeException(), isNull);
-      } finally {
-        await probe.dispose(tester);
-      }
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.windows),
-  );
+      final volume = _renderedRect(tester, _volumeSlider());
+      await tester.tapAt(
+        Offset(volume.left + volume.width * 0.8, volume.center.dy),
+      );
+      await tester.pump();
+      expect(probe.lastVolume, isNotNull);
+      expect(probe.lastVolume!, greaterThan(0.5));
+      expect(tester.takeException(), isNull);
+    } finally {
+      await probe.dispose(tester);
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  for (final layout in [
+    (size: const Size(320, 568), textScale: 1.0),
+    (size: const Size(390, 700), textScale: 1.0),
+    (size: const Size(430, 932), textScale: 1.0),
+    (size: const Size(320, 568), textScale: 1.4),
+    (size: const Size(390, 844), textScale: 1.4),
+  ]) {
+    for (final playback in ['local', 'server']) {
+      testWidgets(
+        '$playback mobile tray fits without scrolling at ${layout.size}, text scale ${layout.textScale}',
+        (tester) async {
+          final probe = (await tester.runAsync(
+            () async => _PlayerProbe(playback),
+          ))!;
+          _configureView(tester);
+          tester.view.physicalSize = layout.size;
+          Duration? seekPosition;
+          try {
+            await tester.pumpWidget(
+              AppScope(
+                controller: probe.controller,
+                child: wrapInTestApp(
+                  Builder(
+                    builder: (context) => MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        padding: const EdgeInsets.only(top: 44, bottom: 34),
+                        viewPadding: const EdgeInsets.only(top: 44, bottom: 34),
+                        textScaler: TextScaler.linear(layout.textScale),
+                      ),
+                      child: SafeArea(
+                        bottom: false,
+                        child: NowPlayingExpandedSheet(
+                          state: probe.state,
+                          useNativeMobileTreatment: true,
+                          onOpenAlbum: null,
+                          onPlayPause: () => probe.playTaps++,
+                          onNext: () => probe.nextTaps++,
+                          onPrev: () => probe.prevTaps++,
+                          onStop: () => probe.stopTaps++,
+                          onSeek: (position) => seekPosition = position,
+                          onSeekPreview: (_) {},
+                          onShuffleChanged: (_, {scope}) {},
+                          onToggleRepeat: () => probe.repeatTaps++,
+                          onStreamModeChanged: (_) {},
+                          onVolumeChanged: (volume) =>
+                              probe.lastVolume = volume,
+                          onToggleLike: _noop,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final sheet = find.byType(NowPlayingExpandedSheet);
+            final seek = find.byWidgetPredicate(
+              (widget) => widget is Slider && widget.max > 1,
+            );
+            final seekRect = tester.getRect(seek);
+            final art = find.byType(AlbumArt);
+            final artRect = tester.getRect(art);
+            final titleRect = tester.getRect(find.text('Song'));
+            final subtitleRect = tester.getRect(find.text('Artist - Album'));
+            expect(find.byType(Slider), findsOneWidget);
+            expect(find.byIcon(PhonoliteIcons.volume2), findsNothing);
+            expect(
+              tester
+                  .widgetList<SingleChildScrollView>(
+                    find.descendant(
+                      of: sheet,
+                      matching: find.byType(SingleChildScrollView),
+                    ),
+                  )
+                  .where((scroll) => scroll.scrollDirection == Axis.vertical),
+              isEmpty,
+            );
+            expect(artRect.width, greaterThan(0));
+            expect(artRect.left, greaterThanOrEqualTo(16));
+            expect(artRect.right, lessThanOrEqualTo(layout.size.width - 16));
+            expect(artRect.width, closeTo(artRect.height, 0.01));
+            expect(artRect.top, greaterThanOrEqualTo(44 + 30 + 12));
+            expect(
+              artRect.bottom + 22,
+              lessThanOrEqualTo(titleRect.top + 0.01),
+            );
+            expect(subtitleRect.bottom, lessThan(seekRect.top));
+            expect(seekRect.width, closeTo(layout.size.width - 24, 0.01));
+            expect(seekRect.height, greaterThanOrEqualTo(48));
+
+            final controls = [
+              PhonoliteIcons.skipBack,
+              PhonoliteIcons.repeat,
+              Icons.play_arrow,
+              PhonoliteIcons.square,
+              PhonoliteIcons.skipForward,
+            ].map((icon) => tester.getRect(find.byIcon(icon))).toList();
+            expect(controls[2].center.dx, closeTo(layout.size.width / 2, 0.01));
+            for (final rect in controls) {
+              expect(rect.center.dy, closeTo(controls.first.center.dy, 0.01));
+              expect(rect.left, greaterThanOrEqualTo(12));
+              expect(rect.right, lessThanOrEqualTo(layout.size.width - 12));
+              expect(rect.bottom, lessThanOrEqualTo(layout.size.height - 34));
+            }
+            for (var index = 1; index < controls.length; index++) {
+              expect(
+                controls[index].left,
+                greaterThan(controls[index - 1].right),
+              );
+            }
+            final shuffle = tester.getRect(find.byIcon(PhonoliteIcons.shuffle));
+            final device = tester.getRect(find.byIcon(PhonoliteIcons.speaker));
+            expect(shuffle.top, greaterThan(controls.first.bottom));
+            expect(shuffle.center.dy, closeTo(device.center.dy, 0.01));
+            await tester.drag(art, const Offset(0, -80));
+            await tester.pumpAndSettle();
+            expect(tester.getRect(art), artRect);
+
+            await tester.tapAt(
+              Offset(seekRect.left + seekRect.width * 0.75, seekRect.center.dy),
+            );
+            await tester.pump();
+            expect(seekPosition?.inSeconds, inInclusiveRange(40, 50));
+            await tester.tap(find.byIcon(Icons.play_arrow));
+            await tester.tap(find.byIcon(PhonoliteIcons.square));
+            await tester.tap(find.byIcon(PhonoliteIcons.skipBack));
+            await tester.tap(find.byIcon(PhonoliteIcons.skipForward));
+            await tester.tap(find.byIcon(PhonoliteIcons.repeat));
+            expect([
+              probe.playTaps,
+              probe.stopTaps,
+              probe.prevTaps,
+              probe.nextTaps,
+              probe.repeatTaps,
+            ], everyElement(1));
+            expect(tester.takeException(), isNull);
+          } finally {
+            await probe.dispose(tester);
+          }
+        },
+      );
+    }
+  }
 }
 
 void _configureView(WidgetTester tester) {
@@ -207,7 +347,7 @@ Map<String, Rect> _playerMeasurements(WidgetTester tester, String playback) {
   if (playback == 'server') {
     measurements['location tag'] = find.text('SERVER');
     expect(find.text('LOCAL'), findsNothing);
-    measurements['source tag'] = find.text('SOURCE: LIKED');
+    measurements['source tag'] = find.text('LIKED TRACKS');
     measurements['quality text'] = find.text('AUTO');
     measurements['quality button'] = find
         .ancestor(
@@ -290,6 +430,9 @@ class _PlayerProbe {
   late final PlaybackState state;
   int playTaps = 0;
   int nextTaps = 0;
+  int prevTaps = 0;
+  int stopTaps = 0;
+  int repeatTaps = 0;
   int likeTaps = 0;
   double? lastVolume;
 

@@ -249,18 +249,23 @@ void main() {
         'showRootForCurrentState()',
         'scope: "local"',
         'scope: "server"',
-        r'text: "\(sourceName) Library"',
-        r'text: "\(sourceName) Playlists"',
-        r'text: "\(sourceName) Liked Songs"',
-        r'text: "\(sourceName) Shuffle"',
+        'CPGridTemplate(',
+        'gridButtons: buildSourceButtons(scope: scope)',
+        'titleVariants: ["Library"]',
+        'titleVariants: ["Playlists"]',
+        'titleVariants: ["Liked Songs", "Liked"]',
+        'titleVariants: ["Shuffle"]',
         'carPlayIcon(named:',
         'UIImage(named: imageName)',
-        '"LucideAntenna"',
         '"LucideHeartFilled"',
         'withRenderingMode(.alwaysTemplate)',
         '"startShuffle"',
         'updateNowPlayingButtons(liked: Bool, available: Bool)',
         'func updateNowPlayingVisibility(hasTrack _: Bool) {}',
+        'nowPlayingTemplate.setValue(true, forKey: "allowsMiniPlayer")',
+        'CPTabBarTemplate(templates: templates)',
+        'template.tabTitle = title',
+        'self?.refreshNowPlayingUI(force: true)',
         'sendRemoteCommandToFlutter("toggleLike")',
         'PinnedArtworkSession.make(url: url, pin: serverPin)',
         'serverPin: entry.serverPin',
@@ -268,8 +273,16 @@ void main() {
       expect(source, isNot(contains('URLSession.shared')));
       expect(source, isNot(contains('title: "Listen"')));
       expect(source, isNot(contains('getListenActions')));
-      expect(source, isNot(contains('CPBarButton(image:')));
+      expect(source, isNot(contains('leadingNavigationBarButtons')));
       expect(source, isNot(contains('trailingNavigationBarButtons')));
+      expect(source, isNot(contains('configureNowPlayingShortcut')));
+      expect(
+        source,
+        isNot(contains('setValue(false, forKey: "allowsMiniPlayer")')),
+      );
+      expect(source, isNot(contains('hasNowPlayingTrack')));
+      expect(source, isNot(contains('trailingNavigationBarButtons = []')));
+      expect(source, isNot(contains('title: nil')));
       expect(source, isNot(contains('nowPlayingButtonVisible')));
       expect(source, isNot(contains('setShowsNowPlayingButton')));
       expect(

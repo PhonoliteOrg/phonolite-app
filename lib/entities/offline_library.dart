@@ -213,6 +213,88 @@ class OfflineLibraryStorage {
     }
   }
 
+  /// Remove unfinished plans and partial files without deleting downloaded songs
+  /// or their library metadata, artwork, likes, and playlist memberships.
+  Future<void> clearUnfinishedDownloads() async {
+    if (kIsWeb) return;
+    Database? db;
+    try {
+      final locations = await resolveStorageLocations();
+      final deleteRoots = await _managedDeleteRootPaths();
+      db = await _openDatabase();
+      late _OfflineDeletionDraft draft;
+      _transaction(db, () {
+        draft = _removeDownloadsInTransaction(
+          db!,
+          const OfflineDeletionScope.track(),
+          _readDownloads(
+            db,
+          ).where((download) => !download.isDownloaded).toList(growable: false),
+          deleteRoots,
+        );
+        for (final table in ['download_jobs', 'download_batches']) {
+          db.execute('DELETE FROM $table WHERE status != ?', [
+            OfflineDownloadStatus.downloaded.name,
+          ]);
+        }
+      });
+      final retainedPaths = {
+        for (final download in _readDownloads(db)) ...[
+          if (download.filePath != null) File(download.filePath!).absolute.path,
+          if (download.partialPath != null)
+            File(download.partialPath!).absolute.path,
+        ],
+      };
+      final pendingDeletes = {
+        ...draft.pendingFileDeletes,
+        ...await readPendingFileDeletes(),
+        ...await _unusedArtworkFiles(db, deleteRoots),
+      };
+      final downloadsDir = Directory(locations.downloadsDirectory);
+      if (await downloadsDir.exists()) {
+        await for (final directory in downloadsDir.list(followLinks: false)) {
+          if (directory is! Directory ||
+              !directory.path
+                  .split(Platform.pathSeparator)
+                  .last
+                  .startsWith('server_')) {
+            continue;
+          }
+          await for (final file in directory.list(
+            recursive: true,
+            followLinks: false,
+          )) {
+            if (file is File && file.path.endsWith('.$_partialExtension')) {
+              pendingDeletes.add(file.absolute.path);
+            }
+          }
+        }
+      }
+      pendingDeletes.removeAll(retainedPaths);
+      _transaction(db, () {
+        for (final path in retainedPaths) {
+          db!.execute('DELETE FROM pending_file_deletes WHERE path = ?', [
+            path,
+          ]);
+        }
+        _recordPendingFileDeletes(
+          db!,
+          pendingDeletes,
+          DateTime.now().millisecondsSinceEpoch,
+          deleteRoots: deleteRoots,
+        );
+      });
+      for (final path in pendingDeletes) {
+        if (_managedPendingDeletePath(path, deleteRoots) != null) {
+          await _deleteFileIfExists(File(path));
+        }
+      }
+      await clearPendingFileDeletes(pendingDeletes);
+    } finally {
+      _releaseDatabase(db);
+    }
+  }
+
   Future<List<OfflineTrackDownload>> readDownloads() async {
     if (kIsWeb) {
       return const [];

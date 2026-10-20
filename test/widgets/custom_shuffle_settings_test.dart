@@ -27,6 +27,8 @@ class _ShuffleController extends Fake implements AppController {
   final bool authorized;
   final saves = <CustomShuffleSettings>[];
   int loadAllCalls = 0;
+  int loadMoreCalls = 0;
+  bool moreAvailable = false;
 
   final _artists = [
     Artist(
@@ -95,7 +97,7 @@ class _ShuffleController extends Fake implements AppController {
   Stream<bool> get artistsLoadingStream => const Stream.empty();
 
   @override
-  bool get hasMoreArtists => false;
+  bool get hasMoreArtists => moreAvailable;
 
   @override
   OfflineLibrarySnapshot get offlineLibrarySnapshot => _library;
@@ -107,6 +109,12 @@ class _ShuffleController extends Fake implements AppController {
   @override
   Future<void> loadAllArtists() async {
     loadAllCalls++;
+  }
+
+  @override
+  Future<void> loadMoreArtists() async {
+    loadMoreCalls++;
+    moreAvailable = false;
   }
 
   @override
@@ -130,6 +138,13 @@ Finder _label(String label) => find.byWidgetPredicate(
   (widget) =>
       widget is Text && widget.data?.toLowerCase() == label.toLowerCase(),
 );
+
+Finder get _pageScroll => find
+    .byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    )
+    .first;
 
 Finder _checkbox(String title) => find.descendant(
   of: find.ancestor(of: _label(title), matching: find.byType(ObsidianHoverRow)),
@@ -191,6 +206,75 @@ Future<void> _mount(
 
 void main() {
   setUp(configureTestFonts);
+
+  testWidgets('large artist catalogs build only rows near the viewport', (
+    tester,
+  ) async {
+    final controller = _ShuffleController();
+    controller._artists
+      ..clear()
+      ..addAll([
+        for (var index = 0; index < 1000; index++)
+          Artist(
+            id: 'artist-$index',
+            name: 'Artist ${index.toString().padLeft(4, '0')}',
+            albumCount: 1,
+            genres: ['Ambient'],
+          ),
+      ]);
+    await _mount(tester, controller, size: const Size(390, 844));
+    expect(
+      find.byType(ObsidianHoverRow).evaluate().length,
+      lessThan(40),
+      reason: 'Offscreen rows must not all build and lay out on every toggle.',
+    );
+    expect(find.text('Artist 0999'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Artist 0200'),
+      600,
+      scrollable: _pageScroll,
+      maxScrolls: 40,
+    );
+    await _tap(tester, 'Artist 0200');
+    await _save(tester);
+    expect(controller.value.artistIds, ['artist-200']);
+    expect(find.byType(ObsidianHoverRow).evaluate().length, lessThan(40));
+    await tester.scrollUntilVisible(
+      find.byType(TextField),
+      -600,
+      scrollable: _pageScroll,
+      maxScrolls: 40,
+    );
+    await tester.enterText(find.byType(TextField), '0999');
+    await tester.pumpAndSettle();
+    expect(find.text('Artist 0999'), findsOneWidget);
+    await _tap(tester, 'Artist 0999');
+    await _save(tester);
+    expect(controller.value.artistIds, ['artist-200', 'artist-999']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('scrolling near the last loaded artist requests the next page', (
+    tester,
+  ) async {
+    final controller = _ShuffleController()..moreAvailable = true;
+    controller._artists
+      ..clear()
+      ..addAll([
+        for (var index = 0; index < 100; index++)
+          Artist(id: 'artist-$index', name: 'Artist $index', albumCount: 1),
+      ]);
+    await _mount(tester, controller, size: const Size(390, 844));
+    expect(controller.loadMoreCalls, 0);
+    await tester.scrollUntilVisible(
+      find.text('Artist 99'),
+      600,
+      scrollable: _pageScroll,
+      maxScrolls: 20,
+    );
+    expect(controller.loadMoreCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'genre labels capitalize mixed and saved metadata while keys stay lowercase',

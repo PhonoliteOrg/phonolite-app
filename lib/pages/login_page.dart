@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/layouts/playback_content_inset.dart';
+
 import '../entities/app_controller.dart';
 import '../widgets/inputs/lucide_checkbox.dart';
 import '../widgets/inputs/obsidian_text_field.dart';
@@ -9,6 +11,7 @@ import '../widgets/modals/obsidian_dialog.dart';
 import '../widgets/modals/obsidian_modal_scope.dart';
 import '../widgets/navigation/command_link_button.dart';
 import '../widgets/ui/obsidian_theme.dart';
+import '../widgets/ui/button_haptics.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.controller});
@@ -85,9 +88,11 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: EdgeInsets.fromLTRB(
           20,
-          16,
+          16 + PlaybackContentInset.topOf(context),
           20,
-          20 + MediaQuery.of(context).viewInsets.bottom,
+          20 +
+              PlaybackContentInset.bottomOf(context) +
+              MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -321,9 +326,11 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
         ),
         const SizedBox(height: 12),
         InkWell(
-          onTap: _isSubmitting
-              ? null
-              : () => setState(() => _rememberMe = !_rememberMe),
+          onTap: withButtonHaptic(
+            _isSubmitting
+                ? null
+                : () => setState(() => _rememberMe = !_rememberMe),
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 56),
             child: Row(
@@ -400,7 +407,9 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
-                  onPressed: () => widget.controller.openAppSettings(),
+                  onPressed: withButtonHaptic(
+                    () => widget.controller.openAppSettings(),
+                  ),
                   child: const Text('Open iOS Settings'),
                 ),
               ),

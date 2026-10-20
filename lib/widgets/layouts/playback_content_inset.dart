@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 
-/// Scroll clearance for the playback controls overlaid on the page viewport.
+/// Scroll clearance for system UI and controls overlaid on the page viewport.
 class PlaybackContentInset extends InheritedWidget {
   const PlaybackContentInset({
     super.key,
     required this.bottom,
+    this.top = 0,
     required super.child,
   });
 
   final double bottom;
+  final double top;
+
+  static double topOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PlaybackContentInset>()?.top ??
+      0;
 
   static double bottomOf(BuildContext context) =>
       context
@@ -18,7 +24,17 @@ class PlaybackContentInset extends InheritedWidget {
 
   @override
   bool updateShouldNotify(PlaybackContentInset oldWidget) =>
-      bottom != oldWidget.bottom;
+      bottom != oldWidget.bottom || top != oldWidget.top;
+}
+
+/// Starts content below the status bar while letting it scroll behind it.
+class SliverPageTopInset extends StatelessWidget {
+  const SliverPageTopInset({super.key});
+
+  @override
+  Widget build(BuildContext context) => SliverToBoxAdapter(
+    child: SizedBox(height: PlaybackContentInset.topOf(context)),
+  );
 }
 
 /// Keeps the last row scrollable above the playbar without shrinking the view.

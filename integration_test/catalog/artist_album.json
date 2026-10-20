@@ -1,0 +1,228 @@
+{
+  "feature": "artist_album",
+  "sources": [
+    "lib/pages/artist_detail_screen.dart",
+    "lib/pages/local_artist_detail_screen.dart",
+    "lib/pages/album_detail_screen.dart",
+    "lib/pages/local_album_detail_screen.dart",
+    "lib/widgets/display/artist_hero.dart",
+    "lib/widgets/display/album_hero.dart"
+  ],
+  "interactions": [
+    {
+      "id": "artist.back",
+      "action": "Tap Back to library",
+      "expected": "Return to originating library/detail route",
+      "availability": "Artist detail",
+      "risk": "browse",
+      "journeys": [
+        "library.artist_navigation",
+        "library.album_navigation"
+      ]
+    },
+    {
+      "id": "artist.scroll",
+      "action": "Scroll artist releases and credits",
+      "expected": "Show further albums, collaborations, appearances and credits",
+      "availability": "Artist detail",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.about",
+      "action": "Expand/collapse About artist",
+      "expected": "Reveal/hide compact artist metadata",
+      "availability": "Metadata available",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.summary",
+      "action": "Tap Read more or Collapse",
+      "expected": "Expand/collapse long biography",
+      "availability": "Wide desktop layout; phone uses expandable metadata instead",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.album_open",
+      "action": "Tap album card or row",
+      "expected": "Open selected local/server album",
+      "availability": "Album loaded",
+      "risk": "browse",
+      "journeys": [
+        "library.album_navigation"
+      ]
+    },
+    {
+      "id": "artist.collaboration_open",
+      "action": "Tap collaboration/appearance/credit release",
+      "expected": "Open matching release without losing return path",
+      "availability": "Matching release loaded",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.collection_view",
+      "action": "Switch release cards/list",
+      "expected": "Change and retain shared collection layout",
+      "availability": "Artist detail",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "artist.download_open",
+      "action": "Tap Download artist",
+      "expected": "Open confirmation with download plan",
+      "availability": "Connected artist",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.download_confirm",
+      "action": "Confirm artist download",
+      "expected": "Queue eligible artist albums",
+      "availability": "Connected artist",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "artist.edit",
+      "action": "Tap Edit",
+      "expected": "Select downloaded albums for removal",
+      "availability": "Downloaded albums",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.select_album",
+      "action": "Toggle album checkbox",
+      "expected": "Change selected albums",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.select_all",
+      "action": "Select all or Deselect all albums",
+      "expected": "Update eligible selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.remove_selected",
+      "action": "Tap Remove selected",
+      "expected": "Show confirmation for downloaded albums",
+      "availability": "Selection exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "artist.cancel_selection",
+      "action": "Cancel album selection",
+      "expected": "Return to artist without deletion",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.back",
+      "action": "Tap Back to artist",
+      "expected": "Return to preceding route",
+      "availability": "Album detail",
+      "risk": "browse",
+      "journeys": [
+        "library.album_navigation"
+      ]
+    },
+    {
+      "id": "album.scroll",
+      "action": "Scroll album track list",
+      "expected": "Reveal further tracks",
+      "availability": "Enough tracks",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.details",
+      "action": "Expand/collapse Album details",
+      "expected": "Reveal/hide compact album metadata",
+      "availability": "Metadata available",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.summary",
+      "action": "Tap Read more or Collapse",
+      "expected": "Expand/collapse album summary",
+      "availability": "Wide desktop layout; phone uses expandable metadata instead",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.play",
+      "action": "Tap Play album",
+      "expected": "Start first track with the album queue",
+      "availability": "Playable album",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "album.download_open",
+      "action": "Tap album download action",
+      "expected": "Queue missing album downloads directly; no confirmation modal",
+      "availability": "Connected album",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.download_confirm",
+      "action": "Confirm album download",
+      "expected": "No confirmation control is mounted; retained as an audit note",
+      "availability": "Not present in current UI; album downloads queue directly",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "album.edit",
+      "action": "Tap Edit tracks",
+      "expected": "Enter downloaded-track selection",
+      "availability": "Downloaded tracks",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.select_track",
+      "action": "Tap track/checkbox in selection mode",
+      "expected": "Toggle selected track",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.select_all",
+      "action": "Select all or Deselect all tracks",
+      "expected": "Update eligible track selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.remove_selected",
+      "action": "Tap Remove selected",
+      "expected": "Show download-removal confirmation",
+      "availability": "Selection exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "album.cancel_selection",
+      "action": "Cancel track selection",
+      "expected": "Exit without removing downloads",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import Flutter
+import ImageIO
 import MediaPlayer
 import Security
 import UIKit
@@ -6,7 +7,11 @@ import UIKit
 final class NowPlayingCoordinator {
   private let injectedArtworkSession: URLSession?
   private var artworkSession: URLSession?
+  private var artworkSessionKey: NSArray?
   private var artworkTask: URLSessionDataTask?
+  private let artworkDecodeQueue = DispatchQueue(label: "phonolite.now-playing-artwork", qos: .userInitiated)
+  private let artworkCache = NSCache<NSArray, CachedNowPlayingArtwork>()
+  private var currentArtworkCacheKey: NSArray?
   private var artworkGeneration = 0
   private var artworkLoading = false
   private var currentArtworkData: Data?
@@ -30,6 +35,8 @@ final class NowPlayingCoordinator {
 
   init(artworkSession: URLSession? = nil) {
     self.injectedArtworkSession = artworkSession
+    artworkCache.countLimit = 8
+    artworkCache.totalCostLimit = 20 * 1024 * 1024
   }
 
   deinit {
@@ -94,6 +101,12 @@ final class NowPlayingCoordinator {
       currentArtwork = nil
       currentArtworkData = nil
       currentMediaArtwork = nil
+      let cacheKey = [normalizedArtworkKey ?? "", artworkUrl ?? "", artworkPath ?? "",
+                      token ?? "", serverPin ?? ""] as NSArray
+      currentArtworkCacheKey = cacheKey
+      if let cached = artworkCache.object(forKey: cacheKey) {
+        useArtwork(cached)
+      }
     }
 
     if let typedData = args["artworkBytes"] as? FlutterStandardTypedData,
@@ -122,6 +135,11 @@ final class NowPlayingCoordinator {
 
   func clear(carPlaySceneDelegate: CarPlaySceneDelegate?) {
     cancelArtworkRequest()
+    if injectedArtworkSession == nil { artworkSession?.invalidateAndCancel() }
+    artworkSession = nil
+    artworkSessionKey = nil
+    artworkCache.removeAllObjects()
+    currentArtworkCacheKey = nil
     currentArtworkPath = nil
     currentArtworkData = nil
     currentMediaArtwork = nil
@@ -253,23 +271,33 @@ final class NowPlayingCoordinator {
     artworkGeneration += 1
     artworkTask?.cancel()
     artworkTask = nil
-    if injectedArtworkSession == nil { artworkSession?.invalidateAndCancel() }
-    artworkSession = nil
     artworkLoading = false
   }
 
-  private func installArtwork(_ image: UIImage, data: Data) {
-    currentArtwork = image
-    currentArtworkData = data
-    // Keep the artwork object stable across position-only updates.
-    currentMediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { size in
-      guard size.width > 0, size.height > 0 else { return image }
-      let format = UIGraphicsImageRendererFormat()
-      format.scale = 1
-      return UIGraphicsImageRenderer(size: size, format: format).image { _ in
-        image.draw(in: CGRect(origin: .zero, size: size))
-      }
+  private func useArtwork(_ artwork: CachedNowPlayingArtwork) {
+    currentArtwork = artwork.image
+    currentArtworkData = artwork.data
+    currentMediaArtwork = artwork.mediaArtwork
+  }
+
+  private func installArtwork(_ image: UIImage, data: Data? = nil) {
+    let artwork = CachedNowPlayingArtwork(image: image, data: data)
+    useArtwork(artwork)
+    if let key = currentArtworkCacheKey {
+      artworkCache.setObject(artwork, forKey: key, cost: artwork.cost)
     }
+  }
+
+  private static func decodeArtwork(_ data: Data) -> UIImage? {
+    guard let source = CGImageSourceCreateWithData(
+      data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary
+    ), let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: 1024,
+      kCGImageSourceShouldCacheImmediately: true,
+    ] as CFDictionary) else { return nil }
+    return UIImage(cgImage: image)
   }
 
   private func fetchArtwork(
@@ -283,43 +311,60 @@ final class NowPlayingCoordinator {
     guard localPath != nil || urlString != nil else { return }
     artworkLoading = true
     let generation = artworkGeneration
+    let decodeQueue = artworkDecodeQueue
     let complete: (Data?) -> Void = { [weak self, weak carPlaySceneDelegate] data in
-      DispatchQueue.main.async {
-        guard let self, self.artworkGeneration == generation,
-              self.currentArtworkKey == artworkKey else { return }
-        self.artworkLoading = false
-        self.artworkTask = nil
-        // A failed request may retry on the next metadata update.
-        guard let data, let image = UIImage(data: data) else { return }
-        self.installArtwork(image, data: data)
-        self.applyNowPlayingInfo()
-        self.updateCarPlayPresentation(
-          carPlaySceneDelegate: carPlaySceneDelegate,
-          artwork: image
-        )
+      decodeQueue.async {
+        let image = data.flatMap { Self.decodeArtwork($0) }
+        DispatchQueue.main.async {
+          guard let self, self.artworkGeneration == generation,
+                self.currentArtworkKey == artworkKey else { return }
+          self.artworkLoading = false
+          self.artworkTask = nil
+          // A failed request may retry on the next metadata update.
+          guard let image else { return }
+          self.installArtwork(image)
+          self.applyNowPlayingInfo()
+          self.updateCarPlayPresentation(
+            carPlaySceneDelegate: carPlaySceneDelegate,
+            artwork: image
+          )
+        }
       }
     }
     if let localPath {
-      DispatchQueue.global(qos: .utility).async {
+      decodeQueue.async {
         complete(try? Data(contentsOf: URL(fileURLWithPath: localPath)))
       }
       return
     }
     guard let urlString, let url = URL(string: urlString), url.scheme == "https",
-          let serverPin,
-          let session = injectedArtworkSession ?? PinnedArtworkSession.make(url: url, pin: serverPin) else {
+          let serverPin else {
       artworkLoading = false
       return
+    }
+    let session: URLSession
+    if let injectedArtworkSession {
+      session = injectedArtworkSession
+    } else {
+      let sessionKey = [url.host?.lowercased() ?? "", String(url.port ?? 443),
+                        serverPin, token ?? ""] as NSArray
+      if artworkSessionKey != sessionKey {
+        artworkSession?.invalidateAndCancel()
+        artworkSession = PinnedArtworkSession.make(url: url, pin: serverPin)
+        artworkSessionKey = sessionKey
+      }
+      guard let artworkSession else {
+        artworkLoading = false
+        return
+      }
+      session = artworkSession
     }
     var request = URLRequest(url: url)
     request.timeoutInterval = 15
     if let token {
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
-    artworkSession = session
-    let invalidateSession = injectedArtworkSession == nil
     let task = session.dataTask(with: request) { data, response, error in
-      if invalidateSession { session.finishTasksAndInvalidate() }
       guard error == nil, let response = response as? HTTPURLResponse,
             (200..<300).contains(response.statusCode) else {
         complete(nil)
@@ -342,6 +387,36 @@ final class NowPlayingCoordinator {
     }
     lastReportedPosition = clamped
     return clamped
+  }
+}
+
+/// Keep decoded covers and MediaPlayer's artwork objects reusable across albums.
+private final class CachedNowPlayingArtwork {
+  let image: UIImage
+  let data: Data?
+  let mediaArtwork: MPMediaItemArtwork
+  let cost: Int
+
+  init(image: UIImage, data: Data?) {
+    self.image = image
+    self.data = data
+    self.cost = (image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0) + (data?.count ?? 0)
+    let resizedImages = NSCache<NSString, UIImage>()
+    resizedImages.countLimit = 4
+    resizedImages.totalCostLimit = 2 * 1024 * 1024
+    mediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { size in
+      guard size.width > 0, size.height > 0 else { return image }
+      let key = "\(size.width)x\(size.height)" as NSString
+      if let cached = resizedImages.object(forKey: key) { return cached }
+      let format = UIGraphicsImageRendererFormat()
+      format.scale = 1
+      let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+        image.draw(in: CGRect(origin: .zero, size: size))
+      }
+      let cost = resized.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+      resizedImages.setObject(resized, forKey: key, cost: cost)
+      return resized
+    }
   }
 }
 
