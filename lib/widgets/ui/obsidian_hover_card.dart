@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'hoverable.dart';
+import 'button_haptics.dart';
 
 class ObsidianHoverCard extends StatelessWidget {
   const ObsidianHoverCard({
@@ -40,7 +41,7 @@ class ObsidianHoverCard extends StatelessWidget {
 
         if (enableHover) {
           return GestureDetector(
-            onTap: onTap,
+            onTap: withButtonHaptic(onTap),
             onLongPress: onLongPress,
             behavior: HitTestBehavior.opaque,
             child: card,
@@ -50,7 +51,7 @@ class ObsidianHoverCard extends StatelessWidget {
         return Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onTap,
+            onTap: withButtonHaptic(onTap),
             onLongPress: onLongPress,
             splashColor: splashColor,
             child: card,

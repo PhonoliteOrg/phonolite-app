@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../ui/phonolite_icons.dart';
+import '../ui/button_haptics.dart';
 
 class SearchFilterChips extends StatelessWidget {
   const SearchFilterChips({
@@ -26,7 +27,7 @@ class SearchFilterChips extends StatelessWidget {
               avatar: activeFilter == filter
                   ? const Icon(PhonoliteIcons.check, size: 18)
                   : null,
-              onSelected: (_) => onChanged(filter),
+              onSelected: withSelectionHaptic((_) => onChanged(filter)),
             ),
           )
           .toList(),

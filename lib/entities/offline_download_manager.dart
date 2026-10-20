@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:convert' show utf8;
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:isolate';
@@ -7,9 +7,11 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
 import 'app_log.dart';
+import 'download_progress_throttle.dart';
 import 'models.dart';
 import 'offline_library.dart';
 import 'offline_library_views.dart' as offline_views;
+import 'offline_metadata_comparison.dart';
 import 'offline_storage_settings.dart';
 import 'server_connection.dart';
 import 'server_trust.dart';
@@ -24,7 +26,9 @@ class OfflineDownloadManager {
            : _OfflineDownloadActorCore(
                connection: connection,
                storage: storage,
-             );
+             ) {
+    _listenToInlineCore();
+  }
 
   static const int maxParallelDownloadsPerServer = 1;
 
@@ -81,6 +85,75 @@ class OfflineDownloadManager {
   final Map<int, Completer<Object?>> _pending = <int, Completer<Object?>>{};
   int _nextCommandId = 1;
   bool _disposed = false;
+  final _inlineSubscriptions = <StreamSubscription<dynamic>>[];
+  Timer? _inlineDownloadTimer;
+  Timer? _inlineLibraryTimer;
+  int _inlineRevision = 0;
+
+  void _listenToInlineCore() {
+    final core = _inlineCore;
+    if (core == null) return;
+    _inlineSubscriptions.addAll([
+      core.stream.listen((_) {
+        _scheduleInlineDownloadSnapshot();
+        _scheduleInlineLibrarySnapshot();
+      }),
+      core.batchStream.listen((_) => _scheduleInlineDownloadSnapshot()),
+      core.jobStream.listen((_) => _scheduleInlineDownloadSnapshot()),
+      core.localLikedStream.listen((_) => _scheduleInlineLibrarySnapshot()),
+      core.localPlaylistsStream.listen((_) => _scheduleInlineLibrarySnapshot()),
+      core.localPlaylistTracksStream.listen(
+        (_) => _scheduleInlineLibrarySnapshot(),
+      ),
+    ]);
+  }
+
+  void _scheduleInlineDownloadSnapshot() {
+    if (_disposed || _inlineDownloadTimer != null) return;
+    _inlineDownloadTimer = Timer(
+      _OfflineDownloadActorCore._stateEmitCoalesceDelay,
+      () {
+        _inlineDownloadTimer = null;
+        if (_disposed) return;
+        _applyDownloadState(
+          _OfflineActorDownloadState.fromCore(_inlineCore!, ++_inlineRevision),
+        );
+      },
+    );
+  }
+
+  void _scheduleInlineLibrarySnapshot() {
+    if (_disposed || _inlineLibraryTimer != null) return;
+    _inlineLibraryTimer = Timer(
+      _OfflineDownloadActorCore._stateEmitCoalesceDelay,
+      () {
+        _inlineLibraryTimer = null;
+        if (_disposed) return;
+        final core = _inlineCore!;
+        final tracks = core.localDownloadedTracks();
+        // Progress-only changes must not rebuild the artist/album groups.
+        if (_sameTrackSnapshots(_librarySnapshot.tracks, tracks) &&
+            _sameTrackSnapshots(_localLiked, core.localLiked) &&
+            _samePlaylistSnapshots(_localPlaylists, core.localPlaylists) &&
+            _sameTrackSnapshots(
+              _localPlaylistTracks,
+              core.localPlaylistTracks,
+            )) {
+          return;
+        }
+        _applyLibraryState(
+          _OfflineActorLibraryState(
+            localLiked: core.localLiked,
+            localPlaylists: core.localPlaylists,
+            localPlaylistTracks: core.localPlaylistTracks,
+            localDownloadedTracks: tracks,
+            offlineArtistGroups: offline_views.offlineArtistGroups(tracks),
+            revision: ++_inlineRevision,
+          ),
+        );
+      },
+    );
+  }
 
   static bool _canUseActor(OfflineLibraryStorage storage) {
     return storage.runtimeType == OfflineLibraryStorage &&
@@ -336,6 +409,12 @@ class OfflineDownloadManager {
   Future<void> resetLocalData() =>
       _commandOrInline('resetLocalData', null, (core) => core.resetLocalData());
 
+  Future<void> clearUnfinishedDownloads() => _commandOrInline(
+    'clearUnfinishedDownloads',
+    null,
+    (core) => core.clearUnfinishedDownloads(),
+  );
+
   Future<void> loadLocalPlaylists() => _commandOrInline(
     'loadLocalPlaylists',
     null,
@@ -468,6 +547,12 @@ class OfflineDownloadManager {
 
   Future<void> dispose() async {
     _disposed = true;
+    _inlineDownloadTimer?.cancel();
+    _inlineLibraryTimer?.cancel();
+    for (final subscription in _inlineSubscriptions) {
+      await subscription.cancel();
+    }
+    _inlineSubscriptions.clear();
     final core = _inlineCore;
     if (core != null) {
       await core.dispose();
@@ -834,7 +919,7 @@ class OfflineDownloadManager {
         a.title == b.title &&
         a.artist == b.artist &&
         a.artistId == b.artistId &&
-        _sameCreditMetadata(a, b) &&
+        sameTrackCreditMetadata(a, b) &&
         a.album == b.album &&
         a.albumId == b.albumId &&
         a.durationMs == b.durationMs &&
@@ -1331,6 +1416,7 @@ bool _offlineActorCommandMayChangeLibraryState(String name) {
     'removeTrack' ||
     'removeDownloads' ||
     'clearFailedAndCorrupt' ||
+    'clearUnfinishedDownloads' ||
     'resetLocalData' ||
     'loadLocalPlaylists' ||
     'loadLocalPlaylistTracks' ||
@@ -1359,18 +1445,6 @@ bool _actorSameTrackSnapshots(List<Track> left, List<Track> right) {
   return true;
 }
 
-bool _sameCreditMetadata(Track a, Track b) {
-  Object metadata(Track track) => [
-    track.artistIds,
-    track.artistNames,
-    track.artistCredits.map((credit) => credit.toJson()).toList(),
-    track.offlineAlbum?.toJson(),
-    track.offlineArtist?.toJson(),
-    track.offlineArtists.map((artist) => artist.toJson()).toList(),
-  ];
-  return jsonEncode(metadata(a)) == jsonEncode(metadata(b));
-}
-
 bool _actorSameTrackSnapshot(Track a, Track b) {
   return a.id == b.id &&
       a.localId == b.localId &&
@@ -1379,7 +1453,7 @@ bool _actorSameTrackSnapshot(Track a, Track b) {
       a.title == b.title &&
       a.artist == b.artist &&
       a.artistId == b.artistId &&
-      _sameCreditMetadata(a, b) &&
+      sameTrackCreditMetadata(a, b) &&
       a.album == b.album &&
       a.albumId == b.albumId &&
       a.durationMs == b.durationMs &&
@@ -1493,6 +1567,9 @@ Future<Object?> _handleOfflineActorCommand(
     case 'resetLocalData':
       await core.resetLocalData();
       return null;
+    case 'clearUnfinishedDownloads':
+      await core.clearUnfinishedDownloads();
+      return null;
     case 'loadLocalPlaylists':
       await core.loadLocalPlaylists();
       return null;
@@ -1555,11 +1632,10 @@ class _OfflineDownloadActorCore {
   }) : _storage = storage;
 
   static const int maxParallelDownloadsPerServer = 1;
-  static const Duration _progressEmitInterval = Duration(seconds: 3);
+  static const Duration _progressEmitInterval = Duration(milliseconds: 200);
   static const Duration _artworkHydrationDelay = Duration(milliseconds: 500);
   static const Duration _localUserDataReloadDelay = Duration(milliseconds: 800);
   static const Duration _stateEmitCoalesceDelay = Duration(milliseconds: 80);
-  static const int _progressEmitMinBytes = 4 * 1024 * 1024;
   static const int _diskFlushBytes = 8 * 1024 * 1024;
   static const int _queuePersistChunkSize = 20;
   static const int _rollingWindowSize = 20;
@@ -1616,6 +1692,7 @@ class _OfflineDownloadActorCore {
   final Map<String, String?> _artistArtPathByKey = <String, String?>{};
   Future<void>? _loadFuture;
   Future<void>? _resetLocalDataFuture;
+  bool _clearingUnfinishedDownloads = false;
   final Set<Future<dynamic>> _pendingStorageOperations = {};
   int _localDataRevision = 0;
   Future<void>? _metadataRepairFuture;
@@ -2999,7 +3076,11 @@ class _OfflineDownloadActorCore {
 
   Future<void> resetLocalData() {
     final existing = _resetLocalDataFuture;
-    if (existing != null) return existing;
+    if (existing != null) {
+      return _clearingUnfinishedDownloads
+          ? existing.then((_) => resetLocalData())
+          : existing;
+    }
     final future = _resetLocalData();
     _resetLocalDataFuture = future.whenComplete(() {
       _resetLocalDataFuture = null;
@@ -3007,7 +3088,20 @@ class _OfflineDownloadActorCore {
     return _resetLocalDataFuture!;
   }
 
-  Future<void> _resetLocalData() async {
+  Future<void> clearUnfinishedDownloads() {
+    final existing = _resetLocalDataFuture;
+    if (existing != null) return existing;
+    _clearingUnfinishedDownloads = true;
+    _resetLocalDataFuture = _resetLocalData(unfinishedOnly: true).whenComplete(
+      () {
+        _resetLocalDataFuture = null;
+        _clearingUnfinishedDownloads = false;
+      },
+    );
+    return _resetLocalDataFuture!;
+  }
+
+  Future<void> _resetLocalData({bool unfinishedOnly = false}) async {
     await _ensureLoaded();
     _resettingLocalData = true;
     _localDataRevision++;
@@ -3018,6 +3112,7 @@ class _OfflineDownloadActorCore {
       _pendingFileCleanupRequested = false;
       _topUpRequested = false;
       for (final download in _downloads) {
+        if (unfinishedOnly && download.isDownloaded) continue;
         final key = _downloadKey(download);
         _removedDownloadKeys.add(key);
         _cancelRequested.add(key);
@@ -3035,17 +3130,31 @@ class _OfflineDownloadActorCore {
         );
       }
       await _storage.close();
-      await _storage.resetLocalData();
-      _downloads = const <OfflineTrackDownload>[];
-      _batches = const <OfflineDownloadBatch>[];
-      _jobs = const <OfflineDownloadJob>[];
-      _localLiked = const <Track>[];
-      _localPlaylists = const <Playlist>[];
-      _localPlaylistTracks = const <Track>[];
-      _localPlaylistTracksId = null;
+      if (unfinishedOnly) {
+        await _storage.clearUnfinishedDownloads();
+      } else {
+        await _storage.resetLocalData();
+      }
+      _downloads = await _storage.readDownloads();
+      _batches = await _storage.readDownloadBatches();
+      _jobs = await _storage.readDownloadJobs();
+      _localLiked = await _storage.readLocalLikedTracks();
+      _localPlaylists = await _storage.readLocalPlaylists();
+      if (!unfinishedOnly ||
+          !_localPlaylists.any(
+            (playlist) => playlist.id == _localPlaylistTracksId,
+          )) {
+        _localPlaylistTracksId = null;
+      }
+      _localPlaylistTracks = _localPlaylistTracksId == null
+          ? const <Track>[]
+          : await _storage.readLocalPlaylistTracks(_localPlaylistTracksId!);
       _localDownloadedTracksCache = const <Track>[];
-      _jobItemsByJobId.clear();
-      _jobSourcesByJobId.clear();
+      final retainedJobs = _jobs.map((job) => job.jobId).toSet();
+      _jobItemsByJobId.removeWhere((jobId, _) => !retainedJobs.contains(jobId));
+      _jobSourcesByJobId.removeWhere(
+        (jobId, _) => !retainedJobs.contains(jobId),
+      );
       _albumArtPathById.clear();
       _artistArtPathByKey.clear();
       _pausedServerUrls.clear();
@@ -4490,7 +4599,6 @@ class _OfflineDownloadActorCore {
           expectedBytes: download.bytesTotal,
           expectedSha256: download.expectedSha256,
           progressIntervalMs: _progressEmitInterval.inMilliseconds,
-          progressMinBytes: _progressEmitMinBytes,
           diskFlushBytes: _diskFlushBytes,
           timeoutSeconds: 30,
         ),
@@ -6202,7 +6310,6 @@ class _DownloadWorkerRequest {
     required this.trust,
     required this.partialPath,
     required this.progressIntervalMs,
-    required this.progressMinBytes,
     required this.diskFlushBytes,
     required this.timeoutSeconds,
     this.startByte,
@@ -6222,7 +6329,6 @@ class _DownloadWorkerRequest {
   final int? expectedBytes;
   final String? expectedSha256;
   final int progressIntervalMs;
-  final int progressMinBytes;
   final int diskFlushBytes;
   final int timeoutSeconds;
 }
@@ -6408,8 +6514,11 @@ Future<void> _downloadWorkerMain(_DownloadWorkerStart start) async {
           ? FileMode.append
           : FileMode.write,
     );
-    var lastProgressAt = DateTime.fromMillisecondsSinceEpoch(0);
-    var lastProgressBytes = bytesDownloaded;
+    final progressClock = Stopwatch()..start();
+    final progressThrottle = DownloadProgressThrottle(
+      interval: Duration(milliseconds: request.progressIntervalMs),
+      initialBytes: bytesDownloaded,
+    );
     var bytesSinceFlush = 0;
     await for (final chunk in response) {
       throwIfCanceled();
@@ -6425,12 +6534,12 @@ Future<void> _downloadWorkerMain(_DownloadWorkerStart start) async {
         bytesSinceFlush = 0;
         await sink.flush();
       }
-      final now = DateTime.now();
-      if (now.difference(lastProgressAt).inMilliseconds >=
-              request.progressIntervalMs &&
-          bytesDownloaded - lastProgressBytes >= request.progressMinBytes) {
-        lastProgressAt = now;
-        lastProgressBytes = bytesDownloaded;
+      // Report actual received bytes at a bounded rate, even for small files
+      // and slow transfers. Disk flushing has its own independent threshold.
+      if (progressThrottle.shouldReport(
+        receivedBytes: bytesDownloaded,
+        elapsed: progressClock.elapsed,
+      )) {
         start.sendPort.send(
           _DownloadWorkerProgress(
             bytesDownloaded: bytesDownloaded,
@@ -6448,6 +6557,19 @@ Future<void> _downloadWorkerMain(_DownloadWorkerStart start) async {
     if (expectedTotal > 0 && bytesDownloaded != expectedTotal) {
       throw _DownloadWorkerCorrupt(
         'downloaded $bytesDownloaded bytes, expected $expectedTotal',
+      );
+    }
+
+    if (progressThrottle.shouldReport(
+      receivedBytes: bytesDownloaded,
+      elapsed: progressClock.elapsed,
+      force: true,
+    )) {
+      start.sendPort.send(
+        _DownloadWorkerProgress(
+          bytesDownloaded: bytesDownloaded,
+          bytesTotal: expectedTotal,
+        ),
       );
     }
 

@@ -23,8 +23,10 @@ class PlaybackState {
     required this.duration,
     required this.bufferRatio,
     required this.volume,
-    required this.shuffleMode,
+    required ShuffleMode shuffleMode,
     required this.shuffleScope,
+    ShuffleMode? localShuffleMode,
+    ShuffleMode? serverShuffleMode,
     required this.repeatMode,
     required this.streamMode,
     required this.bitrateKbps,
@@ -34,7 +36,12 @@ class PlaybackState {
     required this.queueSourcePlaylistId,
     required this.localPlaybackSource,
     required this.isLocalPlayback,
-  });
+  }) : localShuffleMode = shuffleScope == ActionScope.local
+           ? shuffleMode
+           : localShuffleMode ?? ShuffleMode.off,
+       serverShuffleMode = shuffleScope == ActionScope.server
+           ? shuffleMode
+           : serverShuffleMode ?? ShuffleMode.off;
 
   final Track? track;
   final bool isPlaying;
@@ -43,7 +50,8 @@ class PlaybackState {
   final Duration duration;
   final double bufferRatio;
   final double volume;
-  final ShuffleMode shuffleMode;
+  final ShuffleMode localShuffleMode;
+  final ShuffleMode serverShuffleMode;
   final ActionScope shuffleScope;
   final RepeatMode repeatMode;
   final StreamMode streamMode;
@@ -54,6 +62,11 @@ class PlaybackState {
   final String? queueSourcePlaylistId;
   final LocalPlaybackSource localPlaybackSource;
   final bool isLocalPlayback;
+
+  ShuffleMode get shuffleMode => shuffleModeFor(shuffleScope);
+
+  ShuffleMode shuffleModeFor(ActionScope scope) =>
+      scope == ActionScope.local ? localShuffleMode : serverShuffleMode;
 
   bool get hasPlaylistSource =>
       (queueSourcePlaylistId?.trim().isNotEmpty ?? false) &&
@@ -81,6 +94,7 @@ class PlaybackState {
     LocalPlaybackSource? localPlaybackSource,
     bool? isLocalPlayback,
   }) {
+    final nextShuffleScope = shuffleScope ?? this.shuffleScope;
     return PlaybackState(
       track: track == _unset ? this.track : track as Track?,
       isPlaying: isPlaying ?? this.isPlaying,
@@ -89,8 +103,10 @@ class PlaybackState {
       duration: duration ?? this.duration,
       bufferRatio: bufferRatio ?? this.bufferRatio,
       volume: volume ?? this.volume,
-      shuffleMode: shuffleMode ?? this.shuffleMode,
-      shuffleScope: shuffleScope ?? this.shuffleScope,
+      shuffleMode: shuffleMode ?? shuffleModeFor(nextShuffleScope),
+      shuffleScope: nextShuffleScope,
+      localShuffleMode: localShuffleMode,
+      serverShuffleMode: serverShuffleMode,
       repeatMode: repeatMode ?? this.repeatMode,
       streamMode: streamMode ?? this.streamMode,
       bitrateKbps: bitrateKbps ?? this.bitrateKbps,

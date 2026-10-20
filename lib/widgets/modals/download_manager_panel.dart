@@ -15,11 +15,13 @@ import '../display/empty_state.dart';
 import '../display/track_row_tile.dart';
 import '../layouts/app_scope.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/obsidian_overflow_action_button.dart';
 import '../ui/obsidian_widgets.dart';
 import '../ui/tech_button.dart';
 import 'confirmation_modal.dart';
 import 'obsidian_adaptive_modal.dart';
 import 'obsidian_modal_scope.dart';
+import '../ui/button_haptics.dart';
 
 Future<void> showDownloadManagerPanel(BuildContext context) async {
   final controller = AppScope.of(context);
@@ -99,6 +101,9 @@ class DownloadManagerPanel extends StatelessWidget {
   }
 
   Widget _toolbar(BuildContext context, _DownloadManagerViewState state) {
+    final buttonSize = ObsidianModalScope.usesTouchTargets(context)
+        ? 44.0
+        : 28.0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -107,41 +112,36 @@ class DownloadManagerPanel extends StatelessWidget {
           tooltip: 'Pause all',
           icon: PhonoliteIcons.pause,
           iconOnly: true,
+          iconOnlySize: buttonSize,
           density: TechButtonDensity.compact,
           chrome: TechButtonChrome.borderless,
           onTap: controller == null || !state.hasPausable
               ? null
               : () => unawaited(controller!.pauseAllOfflineDownloads()),
         ),
-        const SizedBox(width: 4),
         TechButton(
           label: 'Resume paused',
           tooltip: 'Resume paused',
           icon: PhonoliteIcons.play,
           iconOnly: true,
+          iconOnlySize: buttonSize,
           density: TechButtonDensity.compact,
           chrome: TechButtonChrome.borderless,
           onTap: controller == null || !state.hasPaused
               ? null
               : () => unawaited(controller!.resumePausedOfflineDownloads()),
         ),
-        const SizedBox(width: 4),
         TechButton(
-          label: 'Clear partial / failed',
-          tooltip: 'Clear partial / failed',
-          icon: PhonoliteIcons.trash2,
+          label: 'Clear all jobs and cache',
+          tooltip: 'Clear all jobs and cache',
+          icon: PhonoliteIcons.listX,
           iconOnly: true,
+          iconOnlySize: buttonSize,
           density: TechButtonDensity.compact,
           chrome: TechButtonChrome.borderless,
-          onTap: controller == null || !state.hasClearable
+          onTap: controller == null || state.isEmpty
               ? null
-              : () => unawaited(
-                  _confirmClearPausedCached(
-                    context,
-                    controller!,
-                    state.clearableCount,
-                  ),
-                ),
+              : () => unawaited(_confirmClearAll(context, controller!)),
         ),
       ],
     );
@@ -167,19 +167,15 @@ class DownloadManagerPanel extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmClearPausedCached(
+  Future<void> _confirmClearAll(
     BuildContext context,
     AppController controller,
-    int clearableCount,
   ) async {
-    final itemLabel = clearableCount == 1
-        ? 'partial or failed download'
-        : 'partial or failed downloads';
     final confirmed = await ConfirmationModal.show(
       context,
-      title: 'Clear partial and failed downloads',
+      title: 'Clear all jobs and cache',
       message:
-          'Remove $clearableCount $itemLabel from this device? Completed downloads and active downloads will not be removed.',
+          'Cancel unfinished download jobs and remove their partial files? Successfully downloaded songs will be kept.',
       confirmLabel: 'Clear',
       confirmVariant: TechButtonVariant.danger,
       actionChrome: TechButtonChrome.borderless,
@@ -187,7 +183,7 @@ class DownloadManagerPanel extends StatelessWidget {
     if (!confirmed) {
       return;
     }
-    await controller.clearPausedAndCachedOfflineDownloads();
+    await controller.clearUnfinishedOfflineDownloads();
   }
 
   Widget _entry(BuildContext context, _DownloadManagerEntry entry) {
@@ -195,11 +191,8 @@ class DownloadManagerPanel extends StatelessWidget {
       key: ValueKey(entry.key),
       child: switch (entry.kind) {
         _DownloadManagerEntryKind.jobHeader => Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-          child: Text(
-            'Rolling Jobs',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
+          child: const ObsidianSectionHeader(title: 'Jobs'),
         ),
         _DownloadManagerEntryKind.job => _DownloadJobRow(
           job: entry.job!,
@@ -286,7 +279,6 @@ class _DownloadManagerViewState {
         )
         .toList(growable: false);
     final groups = _groups(visibleDownloads);
-    final needsAttention = groups[_DownloadSection.needsAttention]!;
     final pausedDownloads = groups[_DownloadSection.paused]!;
     final pausableDownloadCount = visibleDownloads
         .where(
@@ -305,8 +297,6 @@ class _DownloadManagerViewState {
 
     hasPausable = pausableDownloadCount + pausableJobCount > 0;
     hasPaused = pausedDownloads.isNotEmpty || pausedJobCount > 0;
-    clearableCount = pausedDownloads.length + needsAttention.length;
-    hasClearable = clearableCount > 0;
     isEmpty = visibleDownloads.isEmpty && visibleJobs.isEmpty;
     hasActiveWork =
         visibleDownloads.any((download) => _hasActiveWork(download.status)) ||
@@ -318,8 +308,6 @@ class _DownloadManagerViewState {
 
   late final bool hasPausable;
   late final bool hasPaused;
-  late final int clearableCount;
-  late final bool hasClearable;
   late final bool isEmpty;
   late final bool hasActiveWork;
   late final List<_DownloadManagerEntry> entries;
@@ -651,7 +639,7 @@ class _DownloadItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final actions = _DownloadActions(
+    final actions = _DownloadRetryAction(
       download: download,
       controller: controller,
     );
@@ -665,7 +653,10 @@ class _DownloadItemRow extends StatelessWidget {
       albumArtHeaders: _headers,
       subtitle: _subtitle,
       offlineDownload: download,
-      leading: _DownloadStatusGlyph(download: download),
+      albumArtOverlay: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.6),
+        child: Center(child: _DownloadStatusGlyph(download: download)),
+      ),
       trailing: actions,
     );
     return Padding(padding: const EdgeInsets.only(bottom: 8), child: row);
@@ -673,8 +664,8 @@ class _DownloadItemRow extends StatelessWidget {
 
   String get _subtitle {
     final metadata = _trackMetadataLine(download.track);
-    final status = _statusText(download);
-    return metadata.isEmpty ? status : '$metadata - $status';
+    final size = _downloadSizeText(download);
+    return [metadata, size].where((part) => part.isNotEmpty).join(' - ');
   }
 
   String? get _albumArtUrl {
@@ -712,15 +703,14 @@ class _DownloadItemRow extends StatelessWidget {
     return '$artist / $album';
   }
 
-  String _statusText(OfflineTrackDownload download) {
-    final status = download.status.name.toUpperCase();
+  String _downloadSizeText(OfflineTrackDownload download) {
     final total = download.bytesTotal;
     if (total == null || total <= 0) {
-      return status;
+      return '';
     }
     final downloadedMb = download.bytesDownloaded / (1024 * 1024);
     final totalMb = total / (1024 * 1024);
-    return '$status  ${downloadedMb.toStringAsFixed(1)} / ${totalMb.toStringAsFixed(1)} MB';
+    return '${downloadedMb.toStringAsFixed(1)} / ${totalMb.toStringAsFixed(1)} MB';
   }
 }
 
@@ -730,7 +720,12 @@ class _DownloadStatusGlyph extends StatelessWidget {
   final OfflineTrackDownload download;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Semantics(
+    label: '${download.status.name} download',
+    child: _buildGlyph(context),
+  );
+
+  Widget _buildGlyph(BuildContext context) {
     final icon = switch (download.status) {
       OfflineDownloadStatus.queued => PhonoliteIcons.clock,
       OfflineDownloadStatus.preparing => null,
@@ -753,18 +748,20 @@ class _DownloadStatusGlyph extends StatelessWidget {
               value: download.progress,
               strokeWidth: 2,
               color: ObsidianPalette.gold,
-              backgroundColor: ObsidianPalette.border.withValues(alpha: 0.4),
+              backgroundColor: Colors.white.withValues(alpha: 0.3),
             ),
           ),
         ),
       );
     }
     final color = switch (download.status) {
+      OfflineDownloadStatus.queued ||
+      OfflineDownloadStatus.preparing => ObsidianPalette.textMuted,
       OfflineDownloadStatus.failed ||
       OfflineDownloadStatus.corrupt ||
       OfflineDownloadStatus.canceled => Theme.of(context).colorScheme.error,
       OfflineDownloadStatus.downloaded => ObsidianPalette.gold,
-      _ => ObsidianPalette.textMuted,
+      _ => ObsidianPalette.textPrimary,
     };
     return download.status == OfflineDownloadStatus.preparing
         ? IconTheme.merge(
@@ -775,65 +772,45 @@ class _DownloadStatusGlyph extends StatelessWidget {
   }
 }
 
-class _DownloadActions extends StatelessWidget {
-  const _DownloadActions({required this.download, required this.controller});
+class _DownloadRetryAction extends StatelessWidget {
+  const _DownloadRetryAction({
+    required this.download,
+    required this.controller,
+  });
 
   final OfflineTrackDownload download;
   final AppController? controller;
 
   @override
   Widget build(BuildContext context) {
-    final canPause = _canPause(download.status);
-    final canResume = download.status == OfflineDownloadStatus.paused;
-    final canRetry = _canRetry(download.status);
-    final canRemove = _canRemove(download.status);
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: [
-        if (canResume)
-          _ActionButton(
-            tooltip: 'Resume',
-            icon: PhonoliteIcons.play,
-            onPressed: controller == null
-                ? null
-                : () => unawaited(controller!.resumeOfflineDownload(download)),
-          )
-        else if (canRetry)
-          _ActionButton(
-            tooltip: 'Retry',
-            iconWidget: const ReloadIcon(),
-            onPressed: controller == null
-                ? null
-                : () => unawaited(controller!.retryOfflineDownload(download)),
-          )
-        else
-          _ActionButton(
-            tooltip: 'Pause',
-            icon: PhonoliteIcons.pause,
-            onPressed: controller == null || !canPause
-                ? null
-                : () => unawaited(controller!.pauseOfflineDownload(download)),
-          ),
-        _ActionButton(
-          tooltip: 'Remove download',
-          icon: PhonoliteIcons.trash2,
-          onPressed: controller == null || !canRemove
-              ? null
-              : () => unawaited(controller!.removeOfflineDownload(download)),
+    if (!_canRetry(download.status)) {
+      return const SizedBox.shrink();
+    }
+    if (ObsidianModalScope.isCompact(context)) {
+      return SizedBox.square(
+        dimension: 44,
+        child: ObsidianOverflowActionButton(
+          tooltip: 'Track actions',
+          modalTitle: download.track.title,
+          actions: [
+            ObsidianMenuAction(
+              label: 'Retry download',
+              iconWidget: const ReloadIcon(),
+              onTap: controller == null
+                  ? null
+                  : () => unawaited(controller!.retryOfflineDownload(download)),
+            ),
+          ],
         ),
-      ],
+      );
+    }
+    return _ActionButton(
+      tooltip: 'Retry',
+      iconWidget: const ReloadIcon(),
+      onPressed: controller == null
+          ? null
+          : () => unawaited(controller!.retryOfflineDownload(download)),
     );
-  }
-
-  static bool _canPause(OfflineDownloadStatus status) {
-    return switch (status) {
-      OfflineDownloadStatus.queued ||
-      OfflineDownloadStatus.preparing ||
-      OfflineDownloadStatus.downloading ||
-      OfflineDownloadStatus.validating => true,
-      _ => false,
-    };
   }
 
   static bool _canRetry(OfflineDownloadStatus status) {
@@ -842,14 +819,6 @@ class _DownloadActions extends StatelessWidget {
       OfflineDownloadStatus.corrupt ||
       OfflineDownloadStatus.canceled => true,
       _ => false,
-    };
-  }
-
-  static bool _canRemove(OfflineDownloadStatus status) {
-    return switch (status) {
-      OfflineDownloadStatus.removing ||
-      OfflineDownloadStatus.downloaded => false,
-      _ => true,
     };
   }
 }
@@ -880,7 +849,7 @@ class _ActionButton extends StatelessWidget {
           constraints: BoxConstraints.tightFor(width: size, height: size),
           visualDensity: VisualDensity.standard,
           iconSize: 20,
-          onPressed: onPressed,
+          onPressed: withButtonHaptic(onPressed),
           icon: iconWidget ?? Icon(icon),
         ),
       ),

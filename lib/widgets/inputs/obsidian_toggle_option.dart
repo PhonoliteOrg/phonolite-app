@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../modals/obsidian_modal_scope.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/button_haptics.dart';
 
 class ObsidianToggleOption extends StatelessWidget {
   const ObsidianToggleOption({
@@ -65,12 +66,12 @@ class ObsidianToggleOption extends StatelessWidget {
           ),
           child: icon == null
               ? TextButton(
-                  onPressed: onPressed,
+                  onPressed: withButtonHaptic(onPressed),
                   style: style,
                   child: labelWidget,
                 )
               : TextButton.icon(
-                  onPressed: onPressed,
+                  onPressed: withButtonHaptic(onPressed),
                   style: style,
                   icon: icon!,
                   label: labelWidget,

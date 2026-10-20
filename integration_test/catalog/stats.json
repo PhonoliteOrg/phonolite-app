@@ -1,0 +1,119 @@
+{
+  "feature": "stats",
+  "sources": [
+    "lib/pages/stats_page.dart",
+    "lib/widgets/display/stats_cards.dart"
+  ],
+  "interactions": [
+    {
+      "id": "stats.scroll",
+      "action": "Scroll charts and rankings",
+      "expected": "Reveal lower ranking sections",
+      "availability": "Statistics enabled",
+      "risk": "browse",
+      "journeys": [
+        "stats.scroll"
+      ]
+    },
+    {
+      "id": "stats.previous_month",
+      "action": "Tap previous month",
+      "expected": "Load preceding month/all-month selection",
+      "availability": "Statistics enabled",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "stats.next_month",
+      "action": "Tap next month",
+      "expected": "Load following month/all-month selection",
+      "availability": "Statistics enabled",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "stats.previous_year",
+      "action": "Tap previous year",
+      "expected": "Load preceding year",
+      "availability": "Statistics enabled",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "stats.next_year",
+      "action": "Tap next year",
+      "expected": "Load following year",
+      "availability": "Statistics enabled",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "stats.refresh",
+      "action": "Tap Refresh listening history",
+      "expected": "Reload current period",
+      "availability": "Statistics enabled",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "stats.status_open",
+      "action": "Tap Listening history status",
+      "expected": "Open synchronization/collection details",
+      "availability": "Statistics enabled",
+      "risk": "browse",
+      "journeys": [
+        "stats.status"
+      ]
+    },
+    {
+      "id": "stats.status_close",
+      "action": "Tap Close",
+      "expected": "Return to statistics",
+      "availability": "Status dialog",
+      "risk": "browse",
+      "journeys": [
+        "stats.status"
+      ]
+    },
+    {
+      "id": "stats.import_open",
+      "action": "Tap Add local history",
+      "expected": "Open import confirmation",
+      "availability": "Eligible local history and signed-in session",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "stats.import_confirm",
+      "action": "Confirm Add history",
+      "expected": "Merge device listening history into account",
+      "availability": "Disposable history",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "stats.import_cancel",
+      "action": "Cancel import",
+      "expected": "Retain separate local/account history",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "stats.artist_open",
+      "action": "Tap ranked artist",
+      "expected": "Open artist details",
+      "availability": "Ranked artist resolvable",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "stats.track_open",
+      "action": "Tap ranked track",
+      "expected": "Open corresponding detail/playback path",
+      "availability": "Ranked track resolvable",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

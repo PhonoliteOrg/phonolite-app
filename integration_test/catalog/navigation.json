@@ -1,0 +1,85 @@
+{
+  "feature": "navigation",
+  "sources": [
+    "lib/pages/home_page.dart",
+    "lib/widgets/navigation/adaptive_scaffold.dart"
+  ],
+  "interactions": [
+    {
+      "id": "navigation.library",
+      "action": "Tap Library",
+      "expected": "Show Library and retain its navigation stack",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "navigation.primary_tabs"
+      ]
+    },
+    {
+      "id": "navigation.playlists",
+      "action": "Tap Playlists",
+      "expected": "Show Playlists and retain its navigation stack",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "navigation.primary_tabs"
+      ]
+    },
+    {
+      "id": "navigation.liked",
+      "action": "Tap Liked",
+      "expected": "Show Liked Tracks",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "navigation.primary_tabs"
+      ]
+    },
+    {
+      "id": "navigation.stats",
+      "action": "Tap Stats",
+      "expected": "Show Listening Statistics",
+      "availability": "Statistics enabled",
+      "risk": "browse",
+      "journeys": [
+        "navigation.stats_tab"
+      ]
+    },
+    {
+      "id": "navigation.settings",
+      "action": "Tap Settings",
+      "expected": "Show Settings",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "navigation.primary_tabs"
+      ]
+    },
+    {
+      "id": "navigation.tab_pairs",
+      "action": "Switch between every ordered pair of tabs",
+      "expected": "Destination remains usable and no Flutter exception occurs",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "navigation.ordered_tab_pairs"
+      ]
+    },
+    {
+      "id": "navigation.tab_history",
+      "action": "Open a detail screen then switch away and back",
+      "expected": "Selected tab retains its detail route",
+      "availability": "Loaded catalog",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "navigation.system_back",
+      "action": "Use system back or supported route-back gesture",
+      "expected": "Return one route without leaving the app unexpectedly",
+      "availability": "Platform-dependent back support",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

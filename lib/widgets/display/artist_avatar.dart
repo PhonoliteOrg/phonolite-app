@@ -59,27 +59,21 @@ class ArtistAvatar extends StatelessWidget {
         ? NetworkImage(imagePath, headers: headers) as ImageProvider
         : FileImage(File(imagePath));
     return ClipOval(
-      child: FutureBuilder<Color>(
-        future: resolveLogoBackdropColor(provider, imagePath),
-        builder: (context, snapshot) {
-          final backdrop = snapshot.data ?? artistLogoBackdrop;
-          return Container(
-            width: size,
-            height: size,
-            color: backdrop,
-            padding: EdgeInsets.all(size * paddingFraction),
-            child: Image(
-              image: provider,
-              width: size,
-              height: size,
-              fit: fit,
-              errorBuilder: (_, error, ___) {
-                ArtworkErrors.instance.report(imagePath, error);
-                return placeholder;
-              },
-            ),
-          );
-        },
+      child: Container(
+        width: size,
+        height: size,
+        color: resolveLogoBackdropColor(imagePath),
+        padding: EdgeInsets.all(size * paddingFraction),
+        child: Image(
+          image: provider,
+          width: size,
+          height: size,
+          fit: fit,
+          errorBuilder: (_, error, ___) {
+            ArtworkErrors.instance.report(imagePath, error);
+            return placeholder;
+          },
+        ),
       ),
     );
   }

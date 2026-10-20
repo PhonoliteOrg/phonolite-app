@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'hoverable.dart';
 import 'obsidian_theme.dart';
 import '../modals/obsidian_modal_scope.dart';
+import 'button_haptics.dart';
 
 class ObsidianHoverRow extends StatelessWidget {
   const ObsidianHoverRow({
@@ -63,7 +64,7 @@ class ObsidianHoverRow extends StatelessWidget {
         return Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: enabled ? onTap : null,
+            onTap: withButtonHaptic(enabled ? onTap : null),
             onLongPress: enabled ? onLongPress : null,
             child: AnimatedContainer(
               constraints: ObsidianModalScope.usesTouchTargets(context)

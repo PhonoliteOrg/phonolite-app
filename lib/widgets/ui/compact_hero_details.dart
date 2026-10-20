@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'obsidian_theme.dart';
 import 'phonolite_icons.dart';
+import 'button_haptics.dart';
 
 /// Keeps secondary header information available without crowding phone layouts.
 class CompactHeroDetails extends StatefulWidget {
@@ -29,7 +30,9 @@ class _CompactHeroDetailsState extends State<CompactHeroDetails> {
         Semantics(
           expanded: _expanded,
           child: TextButton(
-            onPressed: () => setState(() => _expanded = !_expanded),
+            onPressed: withButtonHaptic(
+              () => setState(() => _expanded = !_expanded),
+            ),
             style: TextButton.styleFrom(
               foregroundColor: ObsidianPalette.textMuted,
               padding: EdgeInsets.zero,

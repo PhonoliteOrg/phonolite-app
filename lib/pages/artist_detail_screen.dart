@@ -137,6 +137,7 @@ class ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         );
                         return CustomScrollView(
                           slivers: [
+                            const SliverPageTopInset(),
                             SliverPadding(
                               padding: const EdgeInsets.fromLTRB(
                                 20,
@@ -625,6 +626,7 @@ class _ArtistDownloadSummary {
     required this.downloaded,
     required this.active,
     required this.failed,
+    required this.hasActiveArtistJob,
     required this.hasDownloadScope,
   });
 
@@ -680,11 +682,13 @@ class _ArtistDownloadSummary {
         failed++;
       }
     }
+    var hasActiveArtistJob = false;
     for (final job in controller.offlineDownloadJobs) {
       final jobLabel = job.label?.trim().toLowerCase();
       final belongsToArtist =
           job.kind == 'artist' &&
-          (jobLabel == artistName || job.jobId.contains(artist.id));
+          (job.sourceId == artist.id ||
+              (job.sourceId == null && jobLabel == artistName));
       if (!belongsToArtist) {
         continue;
       }
@@ -694,7 +698,7 @@ class _ArtistDownloadSummary {
           job.status == OfflineDownloadStatus.validating ||
           job.status == OfflineDownloadStatus.paused ||
           job.status == OfflineDownloadStatus.removing) {
-        active += job.totalCount > 0 ? job.totalCount : 1;
+        hasActiveArtistJob = true;
       } else if (job.status == OfflineDownloadStatus.failed ||
           job.status == OfflineDownloadStatus.corrupt) {
         failed += job.failedCount > 0 ? job.failedCount : 1;
@@ -706,6 +710,7 @@ class _ArtistDownloadSummary {
       downloaded: downloaded,
       active: active,
       failed: failed,
+      hasActiveArtistJob: hasActiveArtistJob,
       hasDownloadScope: albums.isNotEmpty,
     );
   }
@@ -714,14 +719,18 @@ class _ArtistDownloadSummary {
   final int downloaded;
   final int active;
   final int failed;
+  final bool hasActiveArtistJob;
   final bool hasDownloadScope;
 
   bool get isComplete => total > 0 && downloaded >= total;
   bool get canStart =>
-      hasDownloadScope && active == 0 && (!isComplete || total == 0);
+      hasDownloadScope &&
+      !hasActiveArtistJob &&
+      !isComplete &&
+      (total == 0 || downloaded + active < total || failed > 0);
 
   String get label {
-    if (active > 0) {
+    if (hasActiveArtistJob || (active > 0 && !canStart)) {
       return 'Downloading';
     }
     if (isComplete) {
@@ -730,7 +739,7 @@ class _ArtistDownloadSummary {
     if (failed > 0) {
       return 'Retry Downloads';
     }
-    if (downloaded > 0) {
+    if (downloaded > 0 || active > 0) {
       return 'Download Missing';
     }
     return 'Download Artist';

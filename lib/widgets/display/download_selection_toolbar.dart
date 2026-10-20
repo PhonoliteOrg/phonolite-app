@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../ui/obsidian_widgets.dart';
 import '../ui/obsidian_theme.dart';
+import '../ui/button_haptics.dart';
 
 class DownloadSelectionToolbar extends StatelessWidget {
   const DownloadSelectionToolbar({
@@ -138,7 +139,7 @@ class _HudTextButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextButton(
-      onPressed: onPressed,
+      onPressed: withButtonHaptic(onPressed),
       style: ButtonStyle(
         animationDuration: _transition,
         foregroundColor: WidgetStateProperty.resolveWith(_colorFor),

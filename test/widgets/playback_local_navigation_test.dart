@@ -641,14 +641,13 @@ void main() {
           await tester.pumpAndSettle();
           final expanded = find.byType(NowPlayingExpandedSheet);
           expect(expanded, findsOneWidget);
-          await tester.tap(
-            find.descendant(
-              of: expanded,
-              matching: target == 'artwork'
-                  ? find.byType(AlbumArt)
-                  : find.text('${downloaded.artist} - ${downloaded.album}'),
-            ),
+          final details = find.descendant(
+            of: expanded,
+            matching: target == 'artwork'
+                ? find.byType(AlbumArt)
+                : find.text('${downloaded.artist} - ${downloaded.album}'),
           );
+          await tester.tap(details);
           await tester.pumpAndSettle();
           expect(find.byType(NowPlayingExpandedSheet), findsNothing);
           _expectLocalAlbum(tester, downloaded.id);

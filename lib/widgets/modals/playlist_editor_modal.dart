@@ -10,11 +10,13 @@ import '../../entities/models.dart';
 import '../display/album_art.dart';
 import '../inputs/obsidian_text_field.dart';
 import '../ui/obsidian_theme.dart';
-import '../ui/server_icon.dart';
+import '../../entities/playback_state.dart';
+import '../inputs/local_server_toggle.dart';
 import 'modal_action_button.dart';
 import 'obsidian_dialog.dart';
 import 'obsidian_modal_scope.dart';
 import 'playlist_image_file_picker.dart';
+import '../ui/button_haptics.dart';
 
 typedef PlaylistEditorSubmit =
     FutureOr<void> Function(
@@ -270,10 +272,16 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> {
         children: [
           if (widget.showTargetSelector) ...[
             Align(
-              alignment: Alignment.centerLeft,
-              child: _PlaylistTargetToggle(
-                value: _target,
-                onChanged: (value) => setState(() => _target = value),
+              alignment: touchLayout ? Alignment.center : Alignment.centerLeft,
+              child: LocalServerToggle(
+                value: _target == PlaylistEditorTarget.local
+                    ? ActionScope.local
+                    : ActionScope.server,
+                onChanged: (value) => setState(
+                  () => _target = value == ActionScope.local
+                      ? PlaylistEditorTarget.local
+                      : PlaylistEditorTarget.server,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -533,7 +541,7 @@ class _PlaylistImagePicker extends StatelessWidget {
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
-                onTap: onTap,
+                onTap: withButtonHaptic(onTap),
                 behavior: HitTestBehavior.opaque,
                 child: ClipRect(
                   child: Stack(
@@ -553,7 +561,7 @@ class _PlaylistImagePicker extends StatelessWidget {
                         children: [
                           const Icon(
                             PhonoliteIcons.imagePlus,
-                            color: Colors.white,
+                            color: ObsidianPalette.textMuted,
                             size: 34,
                           ),
                           const SizedBox(height: 8),
@@ -561,7 +569,7 @@ class _PlaylistImagePicker extends StatelessWidget {
                             'Choose image',
                             style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(
-                                  color: Colors.white,
+                                  color: ObsidianPalette.textMuted,
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
@@ -625,97 +633,6 @@ class _PlaylistFieldHeading extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _PlaylistTargetToggle extends StatelessWidget {
-  const _PlaylistTargetToggle({required this.value, required this.onChanged});
-
-  final PlaylistEditorTarget value;
-  final ValueChanged<PlaylistEditorTarget> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      children: [
-        _PlaylistTargetOption(
-          label: 'LOCAL',
-          icon: const Icon(PhonoliteIcons.download),
-          selected: value == PlaylistEditorTarget.local,
-          onTap: () => onChanged(PlaylistEditorTarget.local),
-        ),
-        _PlaylistTargetOption(
-          label: 'SERVER',
-          icon: const ServerIcon(),
-          selected: value == PlaylistEditorTarget.server,
-          onTap: () => onChanged(PlaylistEditorTarget.server),
-        ),
-      ],
-    );
-  }
-}
-
-class _PlaylistTargetOption extends StatelessWidget {
-  const _PlaylistTargetOption({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final Widget icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      selected: selected,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? ObsidianPalette.gold : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: TextButton.icon(
-          onPressed: onTap,
-          style: ButtonStyle(
-            foregroundColor: WidgetStateProperty.resolveWith((states) {
-              final highlighted =
-                  selected ||
-                  states.contains(WidgetState.hovered) ||
-                  states.contains(WidgetState.focused) ||
-                  states.contains(WidgetState.pressed);
-              return highlighted
-                  ? ObsidianPalette.gold
-                  : ObsidianPalette.textMuted;
-            }),
-            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            iconSize: const WidgetStatePropertyAll(18),
-            minimumSize: ObsidianModalScope.usesTouchTargets(context)
-                ? const WidgetStatePropertyAll(Size(112, 48))
-                : null,
-            visualDensity: VisualDensity.standard,
-            padding: const WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            ),
-            textStyle: WidgetStatePropertyAll(
-              Theme.of(context).textTheme.titleSmall?.copyWith(
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          icon: icon,
-          label: Text(label),
-        ),
-      ),
     );
   }
 }

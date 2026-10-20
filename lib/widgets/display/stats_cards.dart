@@ -10,10 +10,13 @@ import 'genre_text.dart';
 import '../layout/library_header.dart';
 import '../layouts/obsidian_scale.dart';
 import '../layouts/playback_content_inset.dart';
+import '../modals/modal_action_button.dart';
+import '../modals/obsidian_dialog.dart';
 import '../ui/obsidian_glass_surface.dart';
 import '../ui/hover_row.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import '../ui/button_haptics.dart';
 
 double _scaled(BuildContext context, double value) =>
     value * ObsidianScale.of(context);
@@ -59,38 +62,42 @@ class StatsCards extends StatelessWidget {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         20,
-        16,
+        16 + PlaybackContentInset.topOf(context),
         20,
         s(20) + PlaybackContentInset.bottomOf(context),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _StatsHeader(
-            stats: stats,
-            onYearChanged: onYearChanged,
-            onMonthChanged: onMonthChanged,
-            onRefresh: onRefresh,
-            historyStatus: historyStatus,
-          ),
-          SizedBox(height: s(20)),
-          _KpiGrid(stats: stats),
-          if (stats.topTracks.isEmpty &&
-              stats.totalMinutes == 0 &&
-              stats.totalListeningMs == 0) ...[
-            SizedBox(height: s(12)),
-            _emptyText('No listening in this period yet.'),
+      // These cards and selectors occupy disjoint rectangles. Their matching
+      // blur can sample the backdrop once instead of once for every panel.
+      child: BackdropGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _StatsHeader(
+              stats: stats,
+              onYearChanged: onYearChanged,
+              onMonthChanged: onMonthChanged,
+              onRefresh: onRefresh,
+              historyStatus: historyStatus,
+            ),
+            SizedBox(height: s(20)),
+            _KpiGrid(stats: stats),
+            if (stats.topTracks.isEmpty &&
+                stats.totalMinutes == 0 &&
+                stats.totalListeningMs == 0) ...[
+              SizedBox(height: s(12)),
+              _emptyText('No listening in this period yet.'),
+            ],
+            SizedBox(height: s(28)),
+            _AnalysisSection(
+              stats: stats,
+              artistCoverUrl: artistCoverUrl,
+              artistImageHeaders: artistImageHeaders,
+              onArtistTap: onArtistTap,
+            ),
+            SizedBox(height: s(28)),
+            _TopTracksSection(tracks: stats.topTracks, onTrackTap: onTrackTap),
           ],
-          SizedBox(height: s(28)),
-          _AnalysisSection(
-            stats: stats,
-            artistCoverUrl: artistCoverUrl,
-            artistImageHeaders: artistImageHeaders,
-            onArtistTap: onArtistTap,
-          ),
-          SizedBox(height: s(28)),
-          _TopTracksSection(tracks: stats.topTracks, onTrackTap: onTrackTap),
-        ],
+        ),
       ),
     );
   }
@@ -106,7 +113,6 @@ class StatsHistoryStatus extends StatelessWidget {
     required this.connected,
     required this.serverEnabled,
     this.syncing = false,
-    this.pendingCount = 0,
     this.lastSyncedAt,
     this.message,
     this.onImport,
@@ -117,14 +123,12 @@ class StatsHistoryStatus extends StatelessWidget {
   final bool connected;
   final bool serverEnabled;
   final bool syncing;
-  final int pendingCount;
   final DateTime? lastSyncedAt;
   final String? message;
   final VoidCallback? onImport;
 
   @override
   Widget build(BuildContext context) {
-    final s = (double value) => _scaled(context, value);
     final iconSize = MediaQuery.sizeOf(context).width < 640 ? 22.0 : 26.0;
     final statusIcon = !collectionEnabled
         ? PhonoliteIcons.circlePause
@@ -135,84 +139,62 @@ class StatsHistoryStatus extends StatelessWidget {
         : syncing
         ? PhonoliteIcons.cloudSync
         : PhonoliteIcons.cloudCheck;
-    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(
-      color: ObsidianPalette.textMuted,
-      height: 1.4,
+    return Tooltip(
+      message: 'Listening history status',
+      child: ObsidianHudIconButton(
+        icon: statusIcon,
+        size: iconSize,
+        onPressed: () => _showStatus(context),
+      ),
     );
-    return PopupMenuButton<String>(
-      tooltip: 'Listening history status',
-      position: PopupMenuPosition.under,
-      color: ObsidianPalette.obsidianElevated,
-      surfaceTintColor: Colors.transparent,
-      constraints: const BoxConstraints(minWidth: 200, maxWidth: 320),
-      onSelected: (_) => onImport?.call(),
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(
-          enabled: false,
-          padding: EdgeInsets.all(s(16)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                hasAccount ? 'Account history' : 'This device',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: ObsidianPalette.textPrimary,
-                ),
-              ),
-              SizedBox(height: s(8)),
-              Text(_statusText(), style: muted),
-              if (collectionEnabled && hasAccount && pendingCount > 0) ...[
-                SizedBox(height: s(8)),
-                Text(
-                  '$pendingCount listening '
-                  '${pendingCount == 1 ? 'update' : 'updates'} waiting to sync.',
-                  style: muted,
-                ),
-              ],
-              if (hasAccount && lastSyncedAt != null) ...[
-                SizedBox(height: s(8)),
-                Text(_lastSyncText(context), style: muted),
-              ],
-              if (onImport != null) ...[
-                SizedBox(height: s(8)),
-                Text(
-                  'Listening recorded before signing in stays on this device until you add it to your account.',
-                  style: muted,
-                ),
-              ],
-            ],
-          ),
-        ),
-        if (onImport != null)
-          PopupMenuItem<String>(
-            value: 'import',
-            child: Row(
+  }
+
+  Future<void> _showStatus(BuildContext context) async {
+    final importRequested = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => ObsidianAlertDialog(
+        title: const Text('Listening history'),
+        scrollable: true,
+        content: DefaultTextStyle.merge(
+          style: const TextStyle(color: ObsidianPalette.textMuted, height: 1.4),
+          child: SizedBox(
+            width: 360,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  PhonoliteIcons.cloud,
-                  size: 18,
-                  color: ObsidianPalette.gold,
-                ),
-                SizedBox(width: s(8)),
-                const Expanded(child: Text('ADD LOCAL HISTORY')),
+                Text(_statusText()),
+                if (hasAccount && lastSyncedAt != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_lastSyncText(dialogContext)),
+                ],
+                if (onImport != null) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Listening recorded before signing in stays on this device until you add it to your account.',
+                  ),
+                ],
               ],
             ),
           ),
-      ],
-      style: const ButtonStyle(
-        backgroundColor: WidgetStatePropertyAll(Colors.transparent),
-        overlayColor: WidgetStatePropertyAll(Colors.transparent),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Icon(
-          statusIcon,
-          size: iconSize,
-          color: ObsidianPalette.textMuted,
         ),
+        actions: [
+          ModalActionButton(
+            label: 'Close',
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+          ),
+          if (onImport != null)
+            ModalActionButton(
+              label: 'Add local history',
+              icon: PhonoliteIcons.cloud,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+        ],
       ),
     );
+    if (importRequested == true && context.mounted) {
+      onImport?.call();
+    }
   }
 
   String _statusText() {
@@ -398,6 +380,7 @@ class _TemporalSelector extends StatelessWidget {
     final s = (double value) => _scaled(context, value * scale);
     final iconSize = s(20);
     return ObsidianGlassSurface(
+      grouped: true,
       backgroundColor: ObsidianPalette.obsidianElevated.withValues(alpha: 0.56),
       child: Container(
         width: width,
@@ -457,7 +440,7 @@ class _SelectorIconButton extends StatelessWidget {
       width: size,
       height: size,
       child: GestureDetector(
-        onTap: onTap,
+        onTap: withButtonHaptic(onTap),
         behavior: HitTestBehavior.opaque,
         child: Icon(icon, color: ObsidianPalette.gold, size: size),
       ),
@@ -548,6 +531,7 @@ class _KpiCard extends StatelessWidget {
     final labelSize = compact ? s(10) : s(12);
     final valueSize = compact ? s(32) : s(48);
     final surface = ObsidianGlassSurface(
+      grouped: true,
       child: Padding(
         padding: padding,
         child: Column(
@@ -957,6 +941,7 @@ class _ModuleShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     return ObsidianGlassSurface(
+      grouped: true,
       child: Padding(
         padding: EdgeInsets.fromLTRB(s(18), s(16), s(18), s(18)),
         child: Column(

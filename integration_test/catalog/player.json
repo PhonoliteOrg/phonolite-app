@@ -1,0 +1,351 @@
+{
+  "feature": "player",
+  "sources": [
+    "lib/widgets/display/now_playing_bar.dart",
+    "lib/widgets/modals/device_picker_modal.dart",
+    "lib/widgets/inputs/local_server_toggle.dart"
+  ],
+  "interactions": [
+    {
+      "id": "player.expand",
+      "action": "Tap mini-player body",
+      "expected": "Open expanded player",
+      "availability": "Compact/mobile layout",
+      "risk": "browse",
+      "journeys": [
+        "player.tray_transition"
+      ],
+      "playback_journeys": [
+        "audio.expand"
+      ]
+    },
+    {
+      "id": "player.swipe_close",
+      "action": "Drag expanded player down",
+      "expected": "Dismiss tray and return to underlying page",
+      "availability": "Expanded player",
+      "risk": "browse",
+      "journeys": [
+        "player.tray_transition"
+      ],
+      "playback_journeys": [
+        "audio.dismiss"
+      ]
+    },
+    {
+      "id": "player.open_details",
+      "action": "Tap playback artwork/artist-album/source link",
+      "expected": "Navigate to the playing album or playlist",
+      "availability": "Resolvable playback source",
+      "risk": "browse",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.artwork_details"
+      ]
+    },
+    {
+      "id": "player.play_pause",
+      "action": "Tap Play/Pause",
+      "expected": "Start/resume or pause playback",
+      "availability": "Enabled transport",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.mini_pause",
+        "audio.mini_resume",
+        "audio.expanded_pause",
+        "audio.expanded_resume"
+      ]
+    },
+    {
+      "id": "player.next",
+      "action": "Tap Next song",
+      "expected": "Advance queue",
+      "availability": "Enabled queue",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.mini_next"
+      ]
+    },
+    {
+      "id": "player.previous",
+      "action": "Tap Previous",
+      "expected": "Restart/return to preceding track",
+      "availability": "Enabled queue",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.expanded_previous"
+      ]
+    },
+    {
+      "id": "player.stop",
+      "action": "Tap Stop where present",
+      "expected": "Stop playback",
+      "availability": "Layout exposing Stop",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.stop_button"
+      ]
+    },
+    {
+      "id": "player.seek",
+      "action": "Tap/drag/release progress slider",
+      "expected": "Preview then commit seek within track duration",
+      "availability": "Track loaded",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.slider_forward",
+        "audio.slider_backward"
+      ]
+    },
+    {
+      "id": "player.repeat",
+      "action": "Tap repeat control",
+      "expected": "Toggle repeat behavior",
+      "availability": "Player visible",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.repeat_button"
+      ]
+    },
+    {
+      "id": "player.like",
+      "action": "Tap Like/Unlike",
+      "expected": "Update current track's local/server liked state",
+      "availability": "Track loaded",
+      "risk": "mutation",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.like_button"
+      ]
+    },
+    {
+      "id": "player.add_to_playlist",
+      "action": "Tap playlist-add control",
+      "expected": "Open chooser for current track",
+      "availability": "Track loaded",
+      "risk": "browse",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.playlist_button"
+      ]
+    },
+    {
+      "id": "player.volume",
+      "action": "Adjust volume slider",
+      "expected": "Update playback volume",
+      "availability": "Layout exposing volume",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.volume_slider"
+      ]
+    },
+    {
+      "id": "player.tags_scroll",
+      "action": "Scroll clipped playback tags horizontally",
+      "expected": "Reveal overflow source/format tags",
+      "availability": "Overflowing tags",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.open",
+      "action": "Tap shuffle control",
+      "expected": "Show mode choices without changing mode",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "player.shuffle_dialog"
+      ],
+      "playback_journeys": [
+        "audio.shuffle_button"
+      ]
+    },
+    {
+      "id": "shuffle.scope",
+      "action": "Tap Local or Server",
+      "expected": "Change shuffle scope and restore scoped mode",
+      "availability": "Shuffle dialog",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.off",
+      "action": "Select Off",
+      "expected": "Disable shuffle for selected scope",
+      "availability": "Shuffle dialog",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.shuffle_button"
+      ]
+    },
+    {
+      "id": "shuffle.library",
+      "action": "Select Whole Library",
+      "expected": "Start/apply library shuffle",
+      "availability": "Eligible library",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.artist",
+      "action": "Select Current Artist",
+      "expected": "Apply artist shuffle",
+      "availability": "Eligible current artist",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.album",
+      "action": "Select Current Album",
+      "expected": "Apply album shuffle",
+      "availability": "Eligible current album",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.shuffle_button"
+      ]
+    },
+    {
+      "id": "shuffle.playlist",
+      "action": "Select Current Playlist",
+      "expected": "Apply playlist shuffle",
+      "availability": "Playlist queue",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.custom",
+      "action": "Select Custom",
+      "expected": "Apply configured artist/genre shuffle",
+      "availability": "Configured selections",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.liked",
+      "action": "Select Liked",
+      "expected": "Apply liked-track shuffle",
+      "availability": "Liked tracks",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "shuffle.close",
+      "action": "Tap Close or dismiss",
+      "expected": "Keep current shuffle mode",
+      "availability": "Shuffle dialog",
+      "risk": "browse",
+      "journeys": [
+        "player.shuffle_dialog"
+      ]
+    },
+    {
+      "id": "quality.open",
+      "action": "Tap stream-quality badge",
+      "expected": "Open Stream Quality",
+      "availability": "Server track",
+      "risk": "browse",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.quality_low",
+        "audio.quality_medium",
+        "audio.quality_high"
+      ]
+    },
+    {
+      "id": "quality.high",
+      "action": "Select HQ",
+      "expected": "Update streaming preference",
+      "availability": "Quality dialog",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.quality_high"
+      ]
+    },
+    {
+      "id": "quality.medium",
+      "action": "Select MQ",
+      "expected": "Update streaming preference",
+      "availability": "Quality dialog",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.quality_medium"
+      ]
+    },
+    {
+      "id": "quality.low",
+      "action": "Select LQ",
+      "expected": "Update streaming preference",
+      "availability": "Quality dialog",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.quality_low",
+        "audio.quality_while_paused"
+      ]
+    },
+    {
+      "id": "quality.close",
+      "action": "Tap Close or dismiss",
+      "expected": "Keep quality preference",
+      "availability": "Quality dialog",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "output.open",
+      "action": "Tap output speaker",
+      "expected": "Open Select output device",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "player.output_dialog"
+      ],
+      "playback_journeys": [
+        "audio.output_button"
+      ]
+    },
+    {
+      "id": "output.refresh",
+      "action": "Tap Refresh",
+      "expected": "Reload native output list",
+      "availability": "Output dialog",
+      "risk": "browse",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.output_button"
+      ]
+    },
+    {
+      "id": "output.select",
+      "action": "Tap output device",
+      "expected": "Switch selected output",
+      "availability": "Device available",
+      "risk": "playback",
+      "journeys": [],
+      "playback_journeys": [
+        "audio.output_button"
+      ]
+    },
+    {
+      "id": "output.close",
+      "action": "Tap Close or dismiss",
+      "expected": "Keep selected output",
+      "availability": "Output dialog",
+      "risk": "browse",
+      "journeys": [
+        "player.output_dialog"
+      ]
+    }
+  ]
+}

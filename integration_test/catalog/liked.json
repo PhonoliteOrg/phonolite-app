@@ -1,0 +1,99 @@
+{
+  "feature": "liked",
+  "sources": [
+    "lib/pages/liked_page.dart",
+    "lib/widgets/display/track_row_tile.dart"
+  ],
+  "interactions": [
+    {
+      "id": "liked.scroll",
+      "action": "Scroll local/server liked tracks",
+      "expected": "Reveal more liked tracks",
+      "availability": "Enough liked tracks",
+      "risk": "browse",
+      "journeys": [
+        "liked.scroll"
+      ]
+    },
+    {
+      "id": "liked.play",
+      "action": "Tap liked track",
+      "expected": "Play appropriate local/server liked queue",
+      "availability": "Liked track",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "liked.unlike",
+      "action": "Tap Unlike",
+      "expected": "Remove track from appropriate liked list",
+      "availability": "Liked track",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "liked.add_to_playlist",
+      "action": "Tap Add to playlist",
+      "expected": "Open scoped chooser",
+      "availability": "Liked track",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "liked.download",
+      "action": "Use track download action",
+      "expected": "Queue track download",
+      "availability": "Server liked track",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "liked.edit",
+      "action": "Tap Edit tracks",
+      "expected": "Enter downloaded-track selection",
+      "availability": "Downloaded liked tracks",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "liked.long_press",
+      "action": "Long-press downloaded liked track",
+      "expected": "Select it and enter edit mode",
+      "availability": "Downloaded liked track",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "liked.select",
+      "action": "Toggle a track checkbox",
+      "expected": "Change removal selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "liked.select_all",
+      "action": "Select all or Deselect all",
+      "expected": "Update downloaded-track selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "liked.remove_selected",
+      "action": "Remove selected downloads",
+      "expected": "Confirm and remove local downloaded files",
+      "availability": "Selected downloads",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "liked.cancel_selection",
+      "action": "Tap Cancel",
+      "expected": "Exit selection without removal",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}

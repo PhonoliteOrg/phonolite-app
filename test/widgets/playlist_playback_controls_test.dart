@@ -408,14 +408,7 @@ void main() {
               widget is Scrollable &&
               widget.axisDirection == AxisDirection.down,
         );
-        expect(verticalScroll, findsOneWidget);
-        expect(
-          tester
-              .state<ScrollableState>(verticalScroll)
-              .position
-              .maxScrollExtent,
-          0,
-        );
+        expect(verticalScroll, findsNothing);
         expect(find.text('SERVER'), findsOneWidget);
         expect(find.text('LOOP'), findsOneWidget);
         Rect controlRect(IconData icon) => tester.getRect(
@@ -429,10 +422,11 @@ void main() {
         final stop = controlRect(PhonoliteIcons.square);
         final repeat = controlRect(PhonoliteIcons.repeat);
         expect(previous.center.dy, next.center.dy);
-        expect(shuffle.top, greaterThan(previous.bottom));
-        expect(shuffle.center.dy, stop.center.dy);
+        expect(repeat.center.dy, previous.center.dy);
         expect(stop.center.dy, repeat.center.dy);
+        expect(shuffle.top, greaterThan(previous.bottom));
         final device = controlRect(PhonoliteIcons.speaker);
+        expect(shuffle.center.dy, device.center.dy);
         final quality = tester.getRect(
           find
               .ancestor(

@@ -5,9 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/core/artwork_errors.dart';
 import 'package:phonolite_app/core/library_helpers.dart';
+import 'package:phonolite_app/core/constants.dart';
 import 'package:phonolite_app/entities/app_log.dart';
+import 'package:phonolite_app/entities/models.dart';
 import 'package:phonolite_app/widgets/display/album_art.dart';
+import 'package:phonolite_app/widgets/display/album_hero.dart';
 import 'package:phonolite_app/widgets/display/artist_avatar.dart';
+import 'package:phonolite_app/widgets/ui/backdrop_color.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -39,6 +43,79 @@ class _MissingImageResponse extends Fake implements HttpClientResponse {
 
 void main() {
   setUp(configureTestFonts);
+
+  testWidgets(
+    'artist tint is final on its first frame and after a URL change',
+    (tester) async {
+      final original = debugNetworkImageHttpClientProvider;
+      debugNetworkImageHttpClientProvider = () => _ImageClient();
+      addTearDown(() => debugNetworkImageHttpClientProvider = original);
+      for (final url in [
+        'https://music.test/first-tint',
+        'https://music.test/replacement-tint',
+      ]) {
+        final expected = resolveLogoBackdropColor(url);
+        await tester.pumpWidget(
+          wrapInTestApp(ArtistAvatar(name: 'Artist', size: 80, imageUrl: url)),
+        );
+        final surface = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byType(ClipOval),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        expect(surface.color, expected);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+      debugNetworkImageHttpClientProvider = original;
+    },
+  );
+
+  testWidgets('album tint is final on its first frame and after a URL change', (
+    tester,
+  ) async {
+    final original = debugNetworkImageHttpClientProvider;
+    debugNetworkImageHttpClientProvider = () => _ImageClient();
+    addTearDown(() => debugNetworkImageHttpClientProvider = original);
+    final album = Album(
+      id: 'album',
+      title: 'Album',
+      artist: 'Artist',
+      artistId: 'artist',
+      trackCount: 12,
+    );
+    for (final url in [
+      '',
+      'https://music.test/first-album-tint',
+      'https://music.test/replacement-album-tint',
+      '',
+    ]) {
+      final expected = url.isEmpty ? bgDark : resolveAlbumBackdropColor(url);
+      await tester.pumpWidget(
+        wrapInTestApp(
+          Align(
+            alignment: Alignment.topLeft,
+            child: AlbumHero(album: album, coverUrl: url, headers: const {}),
+          ),
+        ),
+      );
+      final surface = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(AlbumHero),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(surface.color, expected.withValues(alpha: 0.75));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
+    debugNetworkImageHttpClientProvider = original;
+  });
 
   test(
     'missing artwork is info; other failures are warnings, without secrets',

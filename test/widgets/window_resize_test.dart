@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
 import 'package:phonolite_app/widgets/layouts/obsidian_viewport.dart';
+import 'package:phonolite_app/widgets/layouts/playback_content_inset.dart';
 import 'package:phonolite_app/widgets/layouts/retained_tab_view.dart';
 import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
 
@@ -11,6 +12,49 @@ import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  testWidgets('retained tabs preserve and update the device top inset', (
+    tester,
+  ) async {
+    _configureView(tester);
+    final topInsets = List.filled(2, -1.0);
+    final tabKey = GlobalKey();
+    final children = List.generate(
+      2,
+      (index) => Builder(
+        builder: (context) {
+          topInsets[index] = PlaybackContentInset.topOf(context);
+          return const SizedBox.expand();
+        },
+      ),
+    );
+    Future<void> showTab(int index, double topInset) async {
+      await tester.pumpWidget(
+        _app(
+          PlaybackContentInset(
+            top: topInset,
+            bottom: 100,
+            child: RetainedTabView(
+              key: tabKey,
+              index: index,
+              children: children,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await showTab(0, 44);
+    expect(topInsets[0], 44);
+    await showTab(1, 44);
+    expect(topInsets[1], 44);
+    await showTab(1, 62);
+    expect(topInsets, [44, 62]);
+    await showTab(0, 62);
+    expect(topInsets, [62, 62]);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'theme cache reuses the current scale and respects the platform',
@@ -81,111 +125,103 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.windows),
   );
 
-  testWidgets(
-    'resizing lays out only the active retained tab',
-    (tester) async {
-      _configureView(tester);
-      final layouts = List.filled(5, 0);
-      final states = List.generate(5, (_) => GlobalKey<_TabProbeState>());
-      final children = List.generate(
-        5,
-        (index) =>
-            _TabProbe(key: states[index], onLayout: () => layouts[index]++),
-      );
-      final tabKey = GlobalKey();
+  testWidgets('resizing lays out only the active retained tab', (tester) async {
+    _configureView(tester);
+    final layouts = List.filled(5, 0);
+    final states = List.generate(5, (_) => GlobalKey<_TabProbeState>());
+    final children = List.generate(
+      5,
+      (index) =>
+          _TabProbe(key: states[index], onLayout: () => layouts[index]++),
+    );
+    final tabKey = GlobalKey();
 
-      // Visit every tab so this also tests previously laid-out hidden subtrees.
-      for (var index = 0; index < children.length; index++) {
-        await tester.pumpWidget(
-          _app(RetainedTabView(key: tabKey, index: index, children: children)),
-        );
-        await tester.pumpAndSettle();
-        expect(states[index].currentState, isNotNull);
+    // Visit every tab so this also tests previously laid-out hidden subtrees.
+    for (var index = 0; index < children.length; index++) {
+      await tester.pumpWidget(
+        _app(RetainedTabView(key: tabKey, index: index, children: children)),
+      );
+      await tester.pumpAndSettle();
+      expect(states[index].currentState, isNotNull);
+    }
+    final retainedStates = states.map((key) => key.currentState).toList();
+    for (final size in const [
+      Size(1100, 740),
+      Size(880, 720),
+      Size(740, 710),
+      Size(1280, 720),
+    ]) {
+      final before = List.of(layouts);
+      tester.view.physicalSize = size;
+      await tester.pump();
+      for (var i = 0; i < 4; i++) {
+        expect(layouts[i], before[i], reason: 'Hidden tab $i at $size');
       }
-      final retainedStates = states.map((key) => key.currentState).toList();
-      for (final size in const [
-        Size(1100, 740),
-        Size(880, 720),
-        Size(740, 710),
-        Size(1280, 720),
-      ]) {
-        final before = List.of(layouts);
-        tester.view.physicalSize = size;
-        await tester.pump();
-        for (var i = 0; i < 4; i++) {
-          expect(layouts[i], before[i], reason: 'Hidden tab $i at $size');
-        }
-        expect(layouts[4], greaterThan(before[4]));
-        expect(states.map((key) => key.currentState).toList(), retainedStates);
-      }
-      expect(tester.takeException(), isNull);
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.windows),
-  );
+      expect(layouts[4], greaterThan(before[4]));
+      expect(states.map((key) => key.currentState).toList(), retainedStates);
+    }
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
-  testWidgets(
-    'tab routes survive switching and scaffold breakpoint changes',
-    (tester) async {
-      _configureView(tester);
-      final tabKey = GlobalKey();
-      final navigators = List.generate(2, (_) => GlobalKey<NavigatorState>());
-      final children = List.generate(
-        2,
-        (index) => Navigator(
-          key: navigators[index],
-          onGenerateRoute: (_) => MaterialPageRoute<void>(
-            builder: (_) => Center(child: Text('Root $index')),
-          ),
+  testWidgets('tab routes survive switching and scaffold breakpoint changes', (
+    tester,
+  ) async {
+    _configureView(tester);
+    final tabKey = GlobalKey();
+    final navigators = List.generate(2, (_) => GlobalKey<NavigatorState>());
+    final children = List.generate(
+      2,
+      (index) => Navigator(
+        key: navigators[index],
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => Center(child: Text('Root $index')),
         ),
-      );
-      Widget shell(int index) => _app(
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final tabs = RetainedTabView(
-              key: tabKey,
-              index: index,
-              children: children,
-            );
-            return constraints.maxWidth >= 980
-                ? Row(
-                    children: [
-                      const SizedBox(width: 64),
-                      Expanded(child: tabs),
-                    ],
-                  )
-                : Stack(children: [Positioned.fill(child: tabs)]);
-          },
-        ),
-      );
-      await tester.pumpWidget(shell(0));
+      ),
+    );
+    Widget shell(int index) => _app(
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final tabs = RetainedTabView(
+            key: tabKey,
+            index: index,
+            children: children,
+          );
+          return constraints.maxWidth >= 980
+              ? Row(
+                  children: [
+                    const SizedBox(width: 64),
+                    Expanded(child: tabs),
+                  ],
+                )
+              : Stack(children: [Positioned.fill(child: tabs)]);
+        },
+      ),
+    );
+    await tester.pumpWidget(shell(0));
+    await tester.pumpAndSettle();
+    final firstNavigator = navigators[0].currentState!;
+    firstNavigator.push<void>(
+      MaterialPageRoute(builder: (_) => const Center(child: Text('Detail 0'))),
+    );
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(shell(1));
+    await tester.pumpAndSettle();
+    expect(find.text('Root 1'), findsOneWidget);
+    expect(find.text('Detail 0'), findsNothing);
+    for (final width in const [979.0, 740.0, 1280.0]) {
+      tester.view.physicalSize = Size(width, 720);
       await tester.pumpAndSettle();
-      final firstNavigator = navigators[0].currentState!;
-      firstNavigator.push<void>(
-        MaterialPageRoute(
-          builder: (_) => const Center(child: Text('Detail 0')),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.pumpWidget(shell(1));
-      await tester.pumpAndSettle();
-      expect(find.text('Root 1'), findsOneWidget);
-      expect(find.text('Detail 0'), findsNothing);
-      for (final width in const [979.0, 740.0, 1280.0]) {
-        tester.view.physicalSize = Size(width, 720);
-        await tester.pumpAndSettle();
-        expect(navigators[0].currentState, same(firstNavigator));
-      }
-      await tester.pumpWidget(shell(0));
-      await tester.pumpAndSettle();
-      expect(find.text('Detail 0'), findsOneWidget);
-      expect(firstNavigator.canPop(), isTrue);
-      firstNavigator.pop();
-      await tester.pumpAndSettle();
-      expect(find.text('Root 0'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.windows),
-  );
+      expect(navigators[0].currentState, same(firstNavigator));
+    }
+    await tester.pumpWidget(shell(0));
+    await tester.pumpAndSettle();
+    expect(find.text('Detail 0'), findsOneWidget);
+    expect(firstNavigator.canPop(), isTrue);
+    firstNavigator.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Root 0'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   for (final switchTabs in [true, false]) {
     testWidgets(

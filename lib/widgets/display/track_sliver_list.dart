@@ -24,6 +24,7 @@ class TrackSliverList extends StatelessWidget {
     this.offlineDownloadForTrack,
     this.showAlbumArt = false,
     this.useAlbumTrackNumbers = false,
+    this.actionsInMenu = false,
   });
 
   final List<Track> tracks;
@@ -42,6 +43,7 @@ class TrackSliverList extends StatelessWidget {
   final ValueChanged<Track>? onTrackSelectionModeRequested;
   final OfflineTrackDownload? Function(Track track)? offlineDownloadForTrack;
   final bool showAlbumArt;
+  final bool actionsInMenu;
 
   /// Album views retain metadata numbering, including gaps in downloaded albums.
   /// Playlists use their list position instead.
@@ -67,6 +69,7 @@ class TrackSliverList extends StatelessWidget {
               ? albumTrackNumber
               : index ~/ 2 + 1,
           showAlbumArt: showAlbumArt,
+          actionsInMenu: actionsInMenu,
           isPlaying: isPlayingTrack(track),
           onTap: onTrackTap == null ? null : () => onTrackTap!(track),
           onLongPress: onTrackLongPress == null

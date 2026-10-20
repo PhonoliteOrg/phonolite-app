@@ -106,6 +106,7 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                     final headerActionSpacing = _headerActionSpacing(context);
                     return CustomScrollView(
                       slivers: [
+                        const SliverPageTopInset(),
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                           sliver: SliverToBoxAdapter(

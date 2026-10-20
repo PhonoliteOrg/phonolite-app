@@ -5,6 +5,7 @@ import '../../entities/models.dart';
 import '../ui/hoverable.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import '../ui/button_haptics.dart';
 
 class PlaylistModuleCard extends StatelessWidget {
   const PlaylistModuleCard({
@@ -57,7 +58,7 @@ class PlaylistModuleCard extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: onTap,
+                onTap: withButtonHaptic(onTap),
                 onLongPress: onLongPress,
                 child: SizedBox(
                   height: 80,

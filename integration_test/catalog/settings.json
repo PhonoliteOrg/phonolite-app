@@ -1,0 +1,412 @@
+{
+  "feature": "settings",
+  "sources": [
+    "lib/pages/settings_page.dart",
+    "lib/pages/custom_shuffle_settings_page.dart",
+    "lib/pages/logs_page.dart",
+    "lib/widgets/display/message_log.dart"
+  ],
+  "interactions": [
+    {
+      "id": "settings.scroll",
+      "action": "Scroll settings groups",
+      "expected": "Reach all General/User/Local Storage/Miscellaneous controls",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.scroll"
+      ]
+    },
+    {
+      "id": "settings.server_actions",
+      "action": "Open Server actions",
+      "expected": "Show connection-dependent server actions",
+      "availability": "Compact layout",
+      "risk": "browse",
+      "journeys": [
+        "settings.server_menu"
+      ]
+    },
+    {
+      "id": "settings.retry",
+      "action": "Tap Retry/reconnect",
+      "expected": "Attempt server reconnection",
+      "availability": "Disconnected saved session",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "settings.change_server",
+      "action": "Tap Connect/Change server",
+      "expected": "Open connection flow; may clear current session",
+      "availability": "Connection-dependent",
+      "risk": "mutation",
+      "journeys": [
+        "settings.server_menu"
+      ]
+    },
+    {
+      "id": "settings.disconnect",
+      "action": "Tap Disconnect",
+      "expected": "Sign out and update UI",
+      "availability": "Signed-in session",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "settings.custom_shuffle",
+      "action": "Tap Custom Shuffle",
+      "expected": "Open shuffle settings",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.custom_shuffle_browse",
+        "settings.custom_shuffle_scopes"
+      ]
+    },
+    {
+      "id": "settings.statistics_toggle",
+      "action": "Toggle Collect listening statistics",
+      "expected": "Persist preference and update Stats visibility",
+      "availability": "all",
+      "risk": "preference",
+      "journeys": [
+        "settings.statistics_controls"
+      ]
+    },
+    {
+      "id": "settings.statistics_reset_open",
+      "action": "Tap reset listening statistics",
+      "expected": "Show account/local reset confirmation",
+      "availability": "Statistics enabled",
+      "risk": "browse",
+      "journeys": [
+        "settings.statistics_controls"
+      ]
+    },
+    {
+      "id": "settings.statistics_reset_confirm",
+      "action": "Confirm statistics reset",
+      "expected": "Clear selected listening history",
+      "availability": "Disposable history",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "settings.statistics_reset_cancel",
+      "action": "Cancel statistics reset",
+      "expected": "Retain listening history",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": [
+        "settings.statistics_controls"
+      ]
+    },
+    {
+      "id": "settings.password_open",
+      "action": "Tap Reset user password",
+      "expected": "Open password page",
+      "availability": "Signed-in session",
+      "risk": "browse",
+      "journeys": [
+        "settings.password_browse"
+      ]
+    },
+    {
+      "id": "settings.storage_actions",
+      "action": "Open storage row actions",
+      "expected": "Show available Change/Reset path/Open folder",
+      "availability": "Platform-dependent controls",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "settings.storage_change",
+      "action": "Tap Change on metadata/audio/logs row",
+      "expected": "Open path editor or native folder selection",
+      "availability": "Writable/custom paths",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "settings.storage_path",
+      "action": "Edit Folder path",
+      "expected": "Update draft folder path",
+      "availability": "Path editor open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "settings.storage_save",
+      "action": "Save folder path",
+      "expected": "Move/switch the selected storage category",
+      "availability": "Valid path",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "settings.storage_close",
+      "action": "Close path editor",
+      "expected": "Keep current path",
+      "availability": "Path editor open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "settings.storage_reset",
+      "action": "Tap Reset path",
+      "expected": "Restore category's default storage location",
+      "availability": "Custom path",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "settings.storage_open",
+      "action": "Tap Open folder",
+      "expected": "Open platform file manager",
+      "availability": "Desktop only",
+      "risk": "native",
+      "journeys": []
+    },
+    {
+      "id": "settings.reset_open",
+      "action": "Tap Full reset",
+      "expected": "Show Reset local data confirmation",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.reset_cancel"
+      ]
+    },
+    {
+      "id": "settings.reset_confirm",
+      "action": "Confirm Reset local data",
+      "expected": "Clear local downloads/cache/history/session state as implemented",
+      "availability": "Disposable app data",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "settings.reset_cancel",
+      "action": "Cancel full reset",
+      "expected": "Retain local data",
+      "availability": "Confirmation open",
+      "risk": "browse",
+      "journeys": [
+        "settings.reset_cancel"
+      ]
+    },
+    {
+      "id": "settings.logs",
+      "action": "Tap Logs",
+      "expected": "Open log viewer",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "custom_shuffle.target",
+      "action": "Select Server or Local",
+      "expected": "Choose settings scope",
+      "availability": "Server available for server tab",
+      "risk": "browse",
+      "journeys": [
+        "settings.custom_shuffle_scopes"
+      ]
+    },
+    {
+      "id": "custom_shuffle.artists_view",
+      "action": "Select Artists tab",
+      "expected": "Show artist selection/search",
+      "availability": "Compact layout",
+      "risk": "browse",
+      "journeys": [
+        "settings.custom_shuffle_browse"
+      ]
+    },
+    {
+      "id": "custom_shuffle.genres_view",
+      "action": "Select Genres tab",
+      "expected": "Show genre selection/search",
+      "availability": "Compact layout",
+      "risk": "browse",
+      "journeys": [
+        "settings.custom_shuffle_browse"
+      ]
+    },
+    {
+      "id": "custom_shuffle.search",
+      "action": "Type/clear artist or genre query",
+      "expected": "Filter available options without modifying selections",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.custom_shuffle_browse"
+      ]
+    },
+    {
+      "id": "custom_shuffle.scroll",
+      "action": "Scroll available artists/genres",
+      "expected": "Reveal more choices",
+      "availability": "Enough options",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "custom_shuffle.artist_toggle",
+      "action": "Tap artist checkbox",
+      "expected": "Persist chosen artists",
+      "availability": "Artist available",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "custom_shuffle.genre_toggle",
+      "action": "Tap genre checkbox",
+      "expected": "Persist chosen genres",
+      "availability": "Genre available",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "custom_shuffle.select_all",
+      "action": "Tap Select all in current section",
+      "expected": "Persist all choices",
+      "availability": "Options available",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "custom_shuffle.clear",
+      "action": "Tap Clear in current section",
+      "expected": "Clear persisted selection",
+      "availability": "Selection exists",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "custom_shuffle.back",
+      "action": "Tap Back to settings",
+      "expected": "Return to Settings",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.custom_shuffle_browse"
+      ]
+    },
+    {
+      "id": "logs.filter_all",
+      "action": "Tap All",
+      "expected": "Show combined log history",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.filter_info",
+      "action": "Tap Info",
+      "expected": "Show informational entries",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.filter_activities",
+      "action": "Tap Activities",
+      "expected": "Show status/activity entries",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.filter_warnings",
+      "action": "Tap Warnings",
+      "expected": "Show warning entries",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.filter_errors",
+      "action": "Tap Errors",
+      "expected": "Show error entries",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.filter_issues",
+      "action": "Tap Issues",
+      "expected": "Show warnings and errors",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.filter_debug",
+      "action": "Tap Debug",
+      "expected": "Show debug entries",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    },
+    {
+      "id": "logs.scroll",
+      "action": "Scroll log entries",
+      "expected": "Reveal older/newer retained entries",
+      "availability": "Enough log entries",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "logs.copy",
+      "action": "Tap Copy All",
+      "expected": "Copy current filtered history to clipboard",
+      "availability": "all",
+      "risk": "clipboard",
+      "journeys": []
+    },
+    {
+      "id": "logs.clear",
+      "action": "Tap Clear",
+      "expected": "Delete persisted log history",
+      "availability": "all",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "logs.select_text",
+      "action": "Long-press/select log text",
+      "expected": "Expose supported selection/copy actions",
+      "availability": "Platform text selection",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "logs.back",
+      "action": "Tap Back to settings",
+      "expected": "Return to Settings",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "settings.logs_filters"
+      ]
+    }
+  ]
+}

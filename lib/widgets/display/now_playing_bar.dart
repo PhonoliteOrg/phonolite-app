@@ -14,6 +14,7 @@ import '../../entities/models.dart';
 import '../../core/library_helpers.dart';
 import '../layouts/app_scope.dart';
 import '../layouts/obsidian_scale.dart';
+import '../inputs/local_server_toggle.dart';
 import '../modals/add_to_playlist_modal.dart';
 import '../modals/device_picker_modal.dart';
 import '../modals/modal_action_button.dart';
@@ -28,6 +29,7 @@ import '../ui/marquee_text.dart';
 import '../ui/obsidian_glass_surface.dart';
 import '../ui/obsidian_theme.dart';
 import '../ui/obsidian_widgets.dart';
+import '../ui/button_haptics.dart';
 
 double _scaled(BuildContext context, double value) =>
     value * ObsidianScale.of(context);
@@ -169,31 +171,22 @@ ActionScope _actionScopeForPlayback(PlaybackState state) {
   return ActionScope.server;
 }
 
-String _shuffleLabel(
-  ShuffleMode mode, {
-  ActionScope scope = ActionScope.server,
-}) {
+String _shuffleLabel(ShuffleMode mode) {
   switch (mode) {
     case ShuffleMode.off:
-      return 'Shuffle: Off';
+      return 'Off';
     case ShuffleMode.all:
-      return scope == ActionScope.local
-          ? 'Shuffle: All Local Library'
-          : 'Shuffle: All';
+      return 'Whole Library';
     case ShuffleMode.artist:
-      return 'Shuffle: Current Artist';
+      return 'Current Artist';
     case ShuffleMode.album:
-      return 'Shuffle: Current Album';
+      return 'Current Album';
     case ShuffleMode.currentPlaylist:
-      return scope == ActionScope.local
-          ? 'Shuffle: Local Playlist'
-          : 'Shuffle: Current Playlist';
+      return 'Current Playlist';
     case ShuffleMode.custom:
-      return 'Shuffle: Custom';
+      return 'Custom';
     case ShuffleMode.liked:
-      return scope == ActionScope.local
-          ? 'Shuffle: Local Liked'
-          : 'Shuffle: Liked';
+      return 'Liked';
   }
 }
 
@@ -324,13 +317,7 @@ String? _bufferAheadLabel(PlaybackState state) {
 List<Widget> _buildTechTags(PlaybackState state) {
   final tags = <Widget>[];
   if (state.shuffleMode != ShuffleMode.off) {
-    tags.add(
-      _TechTag(
-        label:
-            'SHUFF: ${_shuffleLabel(state.shuffleMode, scope: state.shuffleScope).replaceFirst('Shuffle: ', '')}',
-        highlight: true,
-      ),
-    );
+    tags.add(const _TechTag(label: 'SHUFFLE', highlight: true));
   }
   if (state.repeatMode == RepeatMode.one) {
     tags.add(const _TechTag(label: 'LOOP', highlight: true));
@@ -363,7 +350,7 @@ String? _queueSourceLabel(PlaybackState state) {
     case PlaybackQueueSource.none:
       return null;
     case PlaybackQueueSource.liked:
-      return 'SOURCE: LIKED';
+      return 'LIKED TRACKS';
     case PlaybackQueueSource.playlist:
       return null;
     case PlaybackQueueSource.offline:
@@ -398,14 +385,15 @@ List<Widget> _buildQueueSourceTags(PlaybackState state) {
   if (label == null) {
     return const [];
   }
-  final isLocalLiked =
-      state.queueSource == PlaybackQueueSource.offline &&
-      state.localPlaybackSource == LocalPlaybackSource.liked;
+  final isLikedSource =
+      state.queueSource == PlaybackQueueSource.liked ||
+      (state.queueSource == PlaybackQueueSource.offline &&
+          state.localPlaybackSource == LocalPlaybackSource.liked);
   return [
     _TechTag(
       label: label,
-      highlight: isLocalLiked,
-      outlineColor: isLocalLiked ? null : _queueSourceGreen.withOpacity(0.7),
+      highlight: isLikedSource,
+      outlineColor: isLikedSource ? null : _queueSourceGreen.withOpacity(0.7),
     ),
   ];
 }
@@ -502,37 +490,19 @@ Widget _techTagRow(
 
 Future<void> _showShuffleModal(
   BuildContext context, {
-  required ShuffleMode current,
   required ShuffleModeChanged onSelected,
 }) async {
   final controller = AppScope.of(context);
-  final playback = controller.playbackState;
-  final scope = _actionScopeForPlayback(playback);
-  final serverScope = scope == ActionScope.server;
-  final serverAvailable = serverScope && controller.authState.isAuthorized;
+  var scope = controller.playbackState.shuffleScope;
   _warmShuffleLikedState(
     controller,
-    serverScope: serverScope,
-    serverAvailable: serverAvailable,
+    serverScope: scope == ActionScope.server,
+    serverAvailable: controller.authState.isAuthorized,
   );
   if (!context.mounted) {
     return;
   }
-  final customSettings = controller.customShuffleSettings;
-  final customEnabled = serverScope
-      ? customSettings.artistIds.isNotEmpty || customSettings.genres.isNotEmpty
-      : customSettings.localArtistIds.isNotEmpty ||
-            customSettings.localGenres.isNotEmpty;
-  final downloadedEnabled = controller.offlineTracks.isNotEmpty;
-  final localContextEnabled =
-      downloadedEnabled &&
-      _localTrackAvailableForShuffle(controller, playback.track);
-  final currentPlaylistEnabled = serverScope
-      ? playback.queueSource == PlaybackQueueSource.playlist &&
-            (playback.queueSourcePlaylistId?.isNotEmpty ?? false)
-      : playback.queueSource == PlaybackQueueSource.offline &&
-            (playback.queueSourcePlaylistId?.isNotEmpty ?? false);
-  final result = await showDialog<ShuffleMode>(
+  final result = await showDialog<({ShuffleMode mode, ActionScope scope})>(
     context: context,
     builder: (dialogContext) {
       const items = [
@@ -544,69 +514,130 @@ Future<void> _showShuffleModal(
         ShuffleMode.custom,
         ShuffleMode.liked,
       ];
-      return ObsidianAlertDialog(
-        title: Text(serverScope ? 'Server Shuffle Mode' : 'Local Shuffle Mode'),
-        actions: [
-          ModalActionButton(
-            label: 'Close',
-            onPressed: () => Navigator.of(dialogContext).pop(),
-          ),
-        ],
-        content: SizedBox(
-          width: _scaled(dialogContext, 320),
-          child: StreamBuilder<List<Track>>(
-            stream: serverScope
-                ? controller.likedStream
-                : controller.localLikedStream,
-            initialData: serverScope ? controller.liked : controller.localLiked,
-            builder: (context, likedSnapshot) {
-              final likedEnabled =
-                  (likedSnapshot.data ?? const <Track>[]).isNotEmpty;
-              return ListView(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                children: items.map((mode) {
-                  final enabled = switch (mode) {
-                    _
-                        when serverScope &&
-                            !serverAvailable &&
-                            mode != ShuffleMode.off =>
-                      false,
-                    ShuffleMode.all when !serverScope => downloadedEnabled,
-                    ShuffleMode.artist when !serverScope => localContextEnabled,
-                    ShuffleMode.album when !serverScope => localContextEnabled,
-                    ShuffleMode.custom when !serverScope =>
-                      downloadedEnabled && customEnabled,
-                    ShuffleMode.custom => customEnabled,
-                    ShuffleMode.liked => likedEnabled,
-                    ShuffleMode.currentPlaylist => currentPlaylistEnabled,
-                    _ => true,
-                  };
-                  return _HudModalListRow(
-                    enabled: enabled,
-                    title: _shuffleLabel(mode, scope: scope),
-                    isSelected: mode == current,
-                    trailing: mode == current
-                        ? const Icon(
-                            PhonoliteIcons.check,
-                            color: ObsidianPalette.gold,
-                          )
-                        : const SizedBox.shrink(),
-                    onTap: enabled
-                        ? () => Navigator.of(dialogContext).pop(mode)
-                        : null,
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ),
+      return StatefulBuilder(
+        builder: (context, setModalState) {
+          final playback = controller.playbackState;
+          final serverScope = scope == ActionScope.server;
+          final serverAvailable = controller.authState.isAuthorized;
+          final customSettings = controller.customShuffleSettings;
+          final customEnabled = serverScope
+              ? customSettings.artistIds.isNotEmpty ||
+                    customSettings.genres.isNotEmpty
+              : customSettings.localArtistIds.isNotEmpty ||
+                    customSettings.localGenres.isNotEmpty;
+          final downloadedEnabled = controller.offlineTracks.isNotEmpty;
+          final localContextEnabled =
+              downloadedEnabled &&
+              _localTrackAvailableForShuffle(controller, playback.track);
+          final currentPlaylistEnabled = serverScope
+              ? playback.queueSource == PlaybackQueueSource.playlist &&
+                    (playback.queueSourcePlaylistId?.isNotEmpty ?? false)
+              : playback.queueSource == PlaybackQueueSource.offline &&
+                    (playback.queueSourcePlaylistId?.isNotEmpty ?? false);
+          return ObsidianAlertDialog(
+            title: const Text('Shuffle'),
+            scrollable: true,
+            actions: [
+              ModalActionButton(
+                label: 'Close',
+                onPressed: () => Navigator.of(dialogContext).pop(),
+              ),
+            ],
+            content: SizedBox(
+              width: _scaled(dialogContext, 320),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: LocalServerToggle(
+                      value: scope,
+                      onChanged: (value) {
+                        if (value == scope) return;
+                        onSelected(
+                          controller.playbackState.shuffleModeFor(value),
+                          scope: value,
+                        );
+                        setModalState(() => scope = value);
+                        _warmShuffleLikedState(
+                          controller,
+                          serverScope: value == ActionScope.server,
+                          serverAvailable: controller.authState.isAuthorized,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  StreamBuilder<List<Track>>(
+                    key: ValueKey(scope),
+                    stream: serverScope
+                        ? controller.likedStream
+                        : controller.localLikedStream,
+                    initialData: serverScope
+                        ? controller.liked
+                        : controller.localLiked,
+                    builder: (context, likedSnapshot) {
+                      final likedEnabled =
+                          (likedSnapshot.data ?? const <Track>[]).isNotEmpty;
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: items.map((mode) {
+                          final selected =
+                              mode == playback.shuffleModeFor(scope);
+                          final enabled = switch (mode) {
+                            _
+                                when serverScope &&
+                                    !serverAvailable &&
+                                    mode != ShuffleMode.off =>
+                              false,
+                            ShuffleMode.all when !serverScope =>
+                              downloadedEnabled,
+                            ShuffleMode.artist when !serverScope =>
+                              localContextEnabled,
+                            ShuffleMode.album when !serverScope =>
+                              localContextEnabled,
+                            ShuffleMode.artist ||
+                            ShuffleMode.album => playback.track != null,
+                            ShuffleMode.custom when !serverScope =>
+                              downloadedEnabled && customEnabled,
+                            ShuffleMode.custom => customEnabled,
+                            ShuffleMode.liked => likedEnabled,
+                            ShuffleMode.currentPlaylist =>
+                              currentPlaylistEnabled,
+                            _ => true,
+                          };
+                          return _HudModalListRow(
+                            enabled: enabled,
+                            title: _shuffleLabel(mode),
+                            isSelected: selected,
+                            trailing: selected
+                                ? const Icon(
+                                    PhonoliteIcons.check,
+                                    color: ObsidianPalette.gold,
+                                  )
+                                : const SizedBox.shrink(),
+                            onTap: enabled
+                                ? () => Navigator.of(
+                                    dialogContext,
+                                  ).pop((mode: mode, scope: scope))
+                                : null,
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       );
     },
   );
   if (result != null &&
-      (result != current || scope != controller.playbackState.shuffleScope)) {
-    onSelected(result, scope: scope);
+      (result.mode != controller.playbackState.shuffleMode ||
+          result.scope != controller.playbackState.shuffleScope)) {
+    onSelected(result.mode, scope: result.scope);
   }
 }
 
@@ -647,49 +678,49 @@ Future<void> showNowPlayingExpandedSheet(
       constraints: const BoxConstraints(maxWidth: double.infinity),
       useSafeArea: useNativeMobileTreatment,
       backgroundColor: Colors.transparent,
-      barrierColor: useNativeMobileTreatment
-          ? Colors.black
-          : Colors.black.withOpacity(0.65),
+      barrierColor: Colors.black.withValues(alpha: 0.45),
       builder: (sheetContext) {
-        return StreamBuilder<PlaybackState>(
-          stream: controller.playbackStream,
-          initialData: controller.playbackState,
-          builder: (context, snapshot) {
-            final playback = snapshot.data ?? controller.playbackState;
-            final openAlbum = onOpenAlbum;
-            final expandedOpenAlbum = openAlbum == null
-                ? null
-                : () {
-                    Navigator.of(sheetContext).pop();
-                    Future<void>.microtask(openAlbum);
-                  };
-            return NowPlayingExpandedSheet(
-              state: playback,
-              useNativeMobileTreatment: useNativeMobileTreatment,
-              onOpenAlbum: expandedOpenAlbum,
-              onPlayPause: () => controller.pause(playback.isPlaying),
-              onNext: controller.nextTrack,
-              onPrev: controller.prevTrack,
-              onStop: controller.stop,
-              onSeek: controller.seekTo,
-              onSeekPreview: controller.previewSeek,
-              onShuffleChanged: controller.updateShuffleMode,
-              onToggleRepeat: controller.toggleRepeatMode,
-              onStreamModeChanged: controller.updateStreamMode,
-              onVolumeChanged: controller.setVolume,
-              onToggleLike: () {
-                final track = playback.track;
-                if (track != null) {
-                  if (playback.isLocalPlayback ||
-                      playback.queueSource == PlaybackQueueSource.offline) {
-                    controller.toggleLocalLike(track);
-                  } else {
-                    controller.toggleLike(track);
+        return _NowPlayingTrayTransition(
+          child: StreamBuilder<PlaybackState>(
+            stream: controller.playbackStream,
+            initialData: controller.playbackState,
+            builder: (context, snapshot) {
+              final playback = snapshot.data ?? controller.playbackState;
+              final openAlbum = onOpenAlbum;
+              final expandedOpenAlbum = openAlbum == null
+                  ? null
+                  : () {
+                      Navigator.of(sheetContext).pop();
+                      Future<void>.microtask(openAlbum);
+                    };
+              return NowPlayingExpandedSheet(
+                state: playback,
+                useNativeMobileTreatment: useNativeMobileTreatment,
+                onOpenAlbum: expandedOpenAlbum,
+                onPlayPause: () => controller.pause(playback.isPlaying),
+                onNext: controller.nextTrack,
+                onPrev: controller.prevTrack,
+                onStop: controller.stop,
+                onSeek: controller.seekTo,
+                onSeekPreview: controller.previewSeek,
+                onShuffleChanged: controller.updateShuffleMode,
+                onToggleRepeat: controller.toggleRepeatMode,
+                onStreamModeChanged: controller.updateStreamMode,
+                onVolumeChanged: controller.setVolume,
+                onToggleLike: () {
+                  final track = playback.track;
+                  if (track != null) {
+                    if (playback.isLocalPlayback ||
+                        playback.queueSource == PlaybackQueueSource.offline) {
+                      controller.toggleLocalLike(track);
+                    } else {
+                      controller.toggleLike(track);
+                    }
                   }
-                }
-              },
-            );
-          },
+                },
+              );
+            },
+          ),
         );
       },
     );
@@ -702,6 +733,67 @@ Future<void> showNowPlayingExpandedSheet(
       _nowPlayingSheetCompleter = null;
     }
   }
+}
+
+/// Marks movement rather than button presses, including interactive drags.
+/// These async spans identify transitions in DevTools; they are not CPU time.
+class _NowPlayingTrayTransition extends StatefulWidget {
+  const _NowPlayingTrayTransition({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_NowPlayingTrayTransition> createState() =>
+      _NowPlayingTrayTransitionState();
+}
+
+class _NowPlayingTrayTransitionState extends State<_NowPlayingTrayTransition> {
+  Animation<double>? _animation;
+  developer.TimelineTask? _transition;
+  double _previousValue = 0;
+  bool _closing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (kReleaseMode) return;
+    final animation = ModalRoute.of(context)?.animation;
+    if (identical(animation, _animation)) return;
+    _animation?.removeListener(_recordMovement);
+    _finishTransition(interrupted: true);
+    _animation = animation;
+    _previousValue = animation?.value ?? 0;
+    animation?.addListener(_recordMovement);
+  }
+
+  void _recordMovement() {
+    final value = _animation!.value;
+    if (value == _previousValue) return;
+    final closing = value < _previousValue;
+    if (_transition == null || closing != _closing) {
+      _finishTransition(interrupted: true);
+      _closing = closing;
+      _transition = developer.TimelineTask()
+        ..start('nowPlaying.tray.${closing ? 'close' : 'open'}');
+    }
+    _previousValue = value;
+    if (value == 0 || value == 1) _finishTransition();
+  }
+
+  void _finishTransition({bool interrupted = false}) {
+    _transition?.finish(arguments: {'interrupted': interrupted});
+    _transition = null;
+  }
+
+  @override
+  void dispose() {
+    _animation?.removeListener(_recordMovement);
+    _finishTransition(interrupted: true);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class NowPlayingBar extends StatelessWidget {
@@ -774,13 +866,7 @@ class NowPlayingBar extends StatelessWidget {
 
     final techTags = <Widget>[];
     if (state.shuffleMode != ShuffleMode.off) {
-      techTags.add(
-        _TechTag(
-          label:
-              'SHUFF: ${_shuffleLabel(state.shuffleMode, scope: state.shuffleScope).replaceFirst('Shuffle: ', '')}',
-          highlight: true,
-        ),
-      );
+      techTags.add(const _TechTag(label: 'SHUFFLE', highlight: true));
     }
     if (state.repeatMode == RepeatMode.one) {
       techTags.add(const _TechTag(label: 'LOOP', highlight: true));
@@ -845,7 +931,6 @@ class NowPlayingBar extends StatelessWidget {
                           onNext: onNext,
                           onShuffle: () => _showShuffleModal(
                             context,
-                            current: state.shuffleMode,
                             onSelected: onShuffleChanged,
                           ),
                           onRepeat: onToggleRepeat,
@@ -918,7 +1003,6 @@ class NowPlayingBar extends StatelessWidget {
                                   onStop: onStop,
                                   onShuffle: () => _showShuffleModal(
                                     context,
-                                    current: state.shuffleMode,
                                     onSelected: onShuffleChanged,
                                   ),
                                   onRepeat: onToggleRepeat,
@@ -1035,16 +1119,18 @@ class NowPlayingMiniBar extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onExpand,
+            onTap: withButtonHaptic(onExpand),
             child: Container(
               height: _height,
               padding: EdgeInsets.symmetric(horizontal: s(14)),
               child: Row(
                 children: [
                   GestureDetector(
-                    onTap: track != null && state.hasPlaylistSource
-                        ? onOpenAlbum
-                        : null,
+                    onTap: withButtonHaptic(
+                      track != null && state.hasPlaylistSource
+                          ? onOpenAlbum
+                          : null,
+                    ),
                     behavior: HitTestBehavior.opaque,
                     child: ClipRect(
                       child: Container(
@@ -1111,7 +1197,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                   ),
                   SizedBox(width: s(8)),
                   GestureDetector(
-                    onTap: playEnabled ? onPlayPause : null,
+                    onTap: withButtonHaptic(playEnabled ? onPlayPause : null),
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
                       padding: EdgeInsets.all(playPadding),
@@ -1217,7 +1303,9 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final headers = hasLocalImage
         ? const <String, String>{}
         : authHeaders(AppScope.of(context));
-    final preferredArtSize = math.min(size.width * 0.78, 320.0);
+    final artSize = usesTouchTargets
+        ? math.min(size.width - 32, 480.0)
+        : math.min(size.width * 0.78, 320.0);
 
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: s(10),
@@ -1228,203 +1316,227 @@ class NowPlayingExpandedSheet extends StatelessWidget {
       secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
     );
 
-    final sheetBody = Container(
-      color: useNativeMobileTreatment
-          ? ObsidianPalette.obsidianElevated
-          : ObsidianPalette.obsidianElevated.withOpacity(0.95),
-      child: Column(
-        children: [
-          SizedBox(height: s(12)),
-          Container(
-            width: s(64),
-            height: s(6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.35),
-              borderRadius: BorderRadius.circular(s(6)),
-            ),
-          ),
-          SizedBox(height: s(12)),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final contentPadding = EdgeInsets.fromLTRB(
-                  s(16),
-                  s(12),
-                  s(16),
-                  s(12),
-                );
-                final contentHeight = math.max(
-                  0.0,
-                  constraints.maxHeight - contentPadding.vertical,
-                );
-                final textScale = math.max(
-                  1.0,
-                  MediaQuery.textScalerOf(context).scale(14) / 14,
-                );
-                final artSize = usesTouchTargets
-                    ? math.min(
-                        preferredArtSize,
-                        math.max(96.0, contentHeight - s(184) * textScale),
-                      )
-                    : preferredArtSize;
-                return ScrollConfiguration(
-                  behavior: ScrollConfiguration.of(
-                    context,
-                  ).copyWith(scrollbars: false),
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    padding: contentPadding,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: contentHeight),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          MouseRegion(
-                            cursor: canOpenAlbum
-                                ? SystemMouseCursors.click
-                                : SystemMouseCursors.basic,
-                            child: GestureDetector(
-                              onTap: canOpenAlbum ? onOpenAlbum : null,
-                              behavior: HitTestBehavior.opaque,
-                              child: Container(
-                                width: artSize,
-                                height: artSize,
-                                color: ObsidianPalette.obsidianGlass
-                                    .withOpacity(0.6),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    if (track != null)
-                                      AlbumArt(
-                                        title: track.album,
-                                        size: artSize,
-                                        imageUrl: imageUrl,
-                                        headers: headers,
-                                      ),
-                                    if (state.isLoading)
-                                      ColoredBox(
-                                        color: Colors.black.withOpacity(0.34),
-                                        child: Center(
-                                          child: SizedBox(
-                                            width: s(28),
-                                            height: s(28),
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: s(2.6),
-                                              valueColor:
-                                                  const AlwaysStoppedAnimation<
-                                                    Color
-                                                  >(ObsidianPalette.gold),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: s(22)),
-                          MarqueeText(
-                            text: track?.title ?? 'Nothing playing',
-                            style: GoogleFonts.rajdhani(
-                              fontSize: s(26),
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: s(1.1),
-                            ),
-                            velocity: s(28),
-                            gap: s(28),
-                          ),
-                          if (track != null) ...[
-                            SizedBox(height: s(10)),
-                            MouseRegion(
-                              cursor: canOpenAlbum
-                                  ? SystemMouseCursors.click
-                                  : SystemMouseCursors.basic,
-                              child: GestureDetector(
-                                onTap: canOpenAlbum ? onOpenAlbum : null,
-                                behavior: HitTestBehavior.opaque,
-                                child: MarqueeText(
-                                  text: '${track.artist} - ${track.album}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: s(15),
-                                    color: ObsidianPalette.textMuted,
-                                  ),
-                                  velocity: s(28 * _subtitleMarqueeSpeedFactor),
-                                  gap: s(24),
-                                ),
-                              ),
-                            ),
-                          ],
-                          if (inlineTags.isNotEmpty) ...[
-                            SizedBox(height: s(10)),
-                            _techTagRow(
-                              context,
-                              inlineTags,
-                              center: true,
-                              wrap: usesTouchTargets,
-                            ),
-                          ],
-                          SizedBox(height: s(usesTouchTargets ? 12 : 20)),
-                        ],
+    Widget artwork(double artSize) => MouseRegion(
+      cursor: canOpenAlbum
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: withButtonHaptic(canOpenAlbum ? onOpenAlbum : null),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: artSize,
+          height: artSize,
+          color: ObsidianPalette.obsidianGlass.withOpacity(0.6),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (track != null)
+                AlbumArt(
+                  title: track.album,
+                  size: artSize,
+                  imageUrl: imageUrl,
+                  headers: headers,
+                ),
+              if (state.isLoading)
+                ColoredBox(
+                  color: Colors.black.withOpacity(0.34),
+                  child: Center(
+                    child: SizedBox(
+                      width: s(28),
+                      height: s(28),
+                      child: CircularProgressIndicator(
+                        strokeWidth: s(2.6),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          ObsidianPalette.gold,
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final details = <Widget>[
+      MarqueeText(
+        text: track?.title ?? 'Nothing playing',
+        style: GoogleFonts.rajdhani(
+          fontSize: s(26),
+          fontWeight: FontWeight.w700,
+          letterSpacing: s(1.1),
+        ),
+        velocity: s(28),
+        gap: s(28),
+      ),
+      if (track != null) ...[
+        SizedBox(height: s(10)),
+        MouseRegion(
+          cursor: canOpenAlbum
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+          child: GestureDetector(
+            onTap: withButtonHaptic(canOpenAlbum ? onOpenAlbum : null),
+            behavior: HitTestBehavior.opaque,
+            child: MarqueeText(
+              text: '${track.artist} - ${track.album}',
+              style: GoogleFonts.poppins(
+                fontSize: s(15),
+                color: ObsidianPalette.textMuted,
+              ),
+              velocity: s(28 * _subtitleMarqueeSpeedFactor),
+              gap: s(24),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              s(usesTouchTargets ? 12 : 20),
-              s(6),
-              s(usesTouchTargets ? 12 : 20),
-              s(usesTouchTargets ? 12 : 20) + padding.bottom,
+        ),
+      ],
+      if (inlineTags.isNotEmpty) ...[
+        SizedBox(height: s(10)),
+        _techTagRow(context, inlineTags, center: true, wrap: usesTouchTargets),
+      ],
+      SizedBox(height: s(usesTouchTargets ? 12 : 20)),
+    ];
+
+    final sheetBody = ObsidianGlassSurface(
+      // The backdrop must follow the tray, but static foreground paint can be
+      // retained while the bottom-sheet route moves it on every drag frame.
+      child: RepaintBoundary(
+        child: Column(
+          children: [
+            SizedBox(height: s(12)),
+            Container(
+              width: s(64),
+              height: s(6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(s(6)),
+              ),
             ),
-            child: Column(
-              children: [
-                _ProgressBar(
-                  sliderTheme: sliderTheme,
-                  maxSeconds: maxSeconds,
-                  position: state.position,
-                  duration: state.duration,
-                  animate: track != null && state.isPlaying && !state.isLoading,
-                  bufferedPositionSeconds: bufferedPositionSeconds,
-                  onSeek: onSeek,
-                  onSeekPreview: onSeekPreview,
-                  enabled: track != null,
-                ),
-                SizedBox(height: s(usesTouchTargets ? 12 : 22)),
-                _ExpandedControls(
-                  state: state,
-                  onPlayPause: onPlayPause,
-                  onPrev: onPrev,
-                  onNext: onNext,
-                  onStop: onStop,
-                  onShuffle: () => _showShuffleModal(
-                    context,
-                    current: state.shuffleMode,
-                    onSelected: onShuffleChanged,
-                  ),
-                  onRepeat: onToggleRepeat,
-                ),
-                SizedBox(height: s(usesTouchTargets ? 8 : 20)),
-                _ExpandedExtras(
-                  state: state,
-                  onToggleLike: onToggleLike,
-                  onStreamModeChanged: onStreamModeChanged,
-                  onVolumeChanged: onVolumeChanged,
-                  onAddToPlaylist: () => showAddToPlaylistModalForTrack(
-                    context,
-                    state.track,
-                    scope: _actionScopeForPlayback(state),
-                  ),
-                  onShowDevicePicker: () => _showDevicePicker(context),
-                ),
-              ],
+            SizedBox(height: s(12)),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final contentPadding = EdgeInsets.fromLTRB(
+                    s(16),
+                    s(12),
+                    s(16),
+                    s(12),
+                  );
+                  if (usesTouchTargets) {
+                    return Padding(
+                      padding: contentPadding,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, artConstraints) {
+                                final fittedSize = math.max(
+                                  0.0,
+                                  math.min(
+                                    artSize,
+                                    math.min(
+                                      artConstraints.maxWidth,
+                                      artConstraints.maxHeight,
+                                    ),
+                                  ),
+                                );
+                                return Center(child: artwork(fittedSize));
+                              },
+                            ),
+                          ),
+                          SizedBox(height: s(22)),
+                          ...details,
+                        ],
+                      ),
+                    );
+                  }
+                  final contentHeight = math.max(
+                    0.0,
+                    constraints.maxHeight - contentPadding.vertical,
+                  );
+                  return ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false),
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      padding: contentPadding,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: contentHeight),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            artwork(artSize),
+                            SizedBox(height: s(22)),
+                            ...details,
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                s(usesTouchTargets ? 12 : 20),
+                s(6),
+                s(usesTouchTargets ? 12 : 20),
+                s(usesTouchTargets ? 16 : 20) + padding.bottom,
+              ),
+              child: Column(
+                children: [
+                  RepaintBoundary(
+                    child: _ProgressBar(
+                      sliderTheme: sliderTheme,
+                      maxSeconds: maxSeconds,
+                      position: state.position,
+                      duration: state.duration,
+                      animate:
+                          track != null && state.isPlaying && !state.isLoading,
+                      bufferedPositionSeconds: bufferedPositionSeconds,
+                      onSeek: onSeek,
+                      onSeekPreview: onSeekPreview,
+                      enabled: track != null,
+                    ),
+                  ),
+                  SizedBox(height: s(usesTouchTargets ? 18 : 22)),
+                  _ExpandedControls(
+                    state: state,
+                    onPlayPause: onPlayPause,
+                    onPrev: onPrev,
+                    onNext: onNext,
+                    onStop: onStop,
+                    onShuffle: () => _showShuffleModal(
+                      context,
+                      onSelected: onShuffleChanged,
+                    ),
+                    onRepeat: onToggleRepeat,
+                  ),
+                  SizedBox(height: s(usesTouchTargets ? 16 : 20)),
+                  _ExpandedExtras(
+                    state: state,
+                    onShuffle: () => _showShuffleModal(
+                      context,
+                      onSelected: onShuffleChanged,
+                    ),
+                    onToggleLike: onToggleLike,
+                    onStreamModeChanged: onStreamModeChanged,
+                    onVolumeChanged: onVolumeChanged,
+                    onAddToPlaylist: () => showAddToPlaylistModalForTrack(
+                      context,
+                      state.track,
+                      scope: _actionScopeForPlayback(state),
+                    ),
+                    onShowDevicePicker: () => _showDevicePicker(context),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -1436,9 +1548,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
         child: SizedBox(
           height: height,
           width: double.infinity,
-          child: useNativeMobileTreatment
-              ? sheetBody
-              : ClipRect(child: maybeBlur(sigma: 40, child: sheetBody)),
+          child: sheetBody,
         ),
       ),
     );
@@ -1520,7 +1630,7 @@ class _IntelZone extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: withButtonHaptic(onTap),
           borderRadius: BorderRadius.circular(s(12)),
           child: paddedContent,
         ),
@@ -1719,12 +1829,6 @@ class _ExpandedControls extends StatelessWidget {
     final playEnabled = transportEnabled && !state.isLoading;
 
     if (ObsidianModalScope.usesTouchTargets(context)) {
-      final shuffle = ObsidianHudIconButton(
-        icon: PhonoliteIcons.shuffle,
-        size: 22,
-        isActive: state.shuffleMode != ShuffleMode.off,
-        onPressed: onShuffle,
-      );
       final previous = ObsidianHudIconButton(
         icon: PhonoliteIcons.skipBack,
         size: 24,
@@ -1751,19 +1855,9 @@ class _ExpandedControls extends StatelessWidget {
         isActive: state.repeatMode == RepeatMode.one,
         onPressed: onRepeat,
       );
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [previous, play, next],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [shuffle, stop, repeat],
-          ),
-        ],
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [previous, repeat, play, stop, next],
       );
     }
 
@@ -1868,6 +1962,7 @@ class _ExpandedControls extends StatelessWidget {
 class _ExpandedExtras extends StatelessWidget {
   const _ExpandedExtras({
     required this.state,
+    required this.onShuffle,
     required this.onToggleLike,
     required this.onAddToPlaylist,
     required this.onShowDevicePicker,
@@ -1876,6 +1971,7 @@ class _ExpandedExtras extends StatelessWidget {
   });
 
   final PlaybackState state;
+  final VoidCallback onShuffle;
   final VoidCallback onToggleLike;
   final VoidCallback onAddToPlaylist;
   final VoidCallback onShowDevicePicker;
@@ -1886,19 +1982,18 @@ class _ExpandedExtras extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = (double value) => _scaled(context, value);
     final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
-    final actionSize = usesTouchTargets ? 22.0 : s(32);
+    final actionSize = usesTouchTargets ? 24.0 : s(32);
     final trackAvailable = state.track != null;
-    final volumeTheme = SliderTheme.of(context).copyWith(
-      trackHeight: s(7),
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(10)),
-      thumbColor: Colors.white,
-      overlayShape: SliderComponentShape.noOverlay,
-      inactiveTrackColor: Colors.white.withOpacity(0.1),
-      activeTrackColor: Colors.white.withOpacity(0.6),
-    );
 
     final userActionsEnabled = trackAvailable;
     final actions = <Widget>[
+      if (usesTouchTargets)
+        ObsidianHudIconButton(
+          icon: PhonoliteIcons.shuffle,
+          isActive: state.shuffleMode != ShuffleMode.off,
+          onPressed: onShuffle,
+          size: actionSize,
+        ),
       ObsidianHudIconButton(
         iconWidget: const PlaylistAddIcon(),
         onPressed: userActionsEnabled ? onAddToPlaylist : null,
@@ -1925,35 +2020,46 @@ class _ExpandedExtras extends StatelessWidget {
         ),
     ];
 
+    if (usesTouchTargets) {
+      return LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          alignment: WrapAlignment.center,
+          spacing: constraints.maxWidth < 340 ? 8 : 16,
+          runSpacing: 12,
+          children: actions,
+        ),
+      );
+    }
+
+    final volumeTheme = SliderTheme.of(context).copyWith(
+      trackHeight: s(7),
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: s(10)),
+      thumbColor: Colors.white,
+      overlayShape: SliderComponentShape.noOverlay,
+      inactiveTrackColor: Colors.white.withValues(alpha: 0.1),
+      activeTrackColor: Colors.white.withValues(alpha: 0.6),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (ObsidianModalScope.usesTouchTargets(context))
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: actions,
-          )
-        else
-          SizedBox(
-            height: s(48),
-            child: Center(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < actions.length; i++) ...[
-                      if (i > 0) SizedBox(width: s(14)),
-                      actions[i],
-                    ],
+        SizedBox(
+          height: s(48),
+          child: Center(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < actions.length; i++) ...[
+                    if (i > 0) SizedBox(width: s(14)),
+                    actions[i],
                   ],
-                ),
+                ],
               ),
             ),
           ),
-        SizedBox(height: s(usesTouchTargets ? 8 : 14)),
+        ),
+        SizedBox(height: s(14)),
         Row(
           children: [
             Icon(
@@ -2531,7 +2637,7 @@ class _HudPlayButtonState extends State<_HudPlayButton> {
       onExit: enabled ? (_) => _setHovered(false) : null,
       cursor: cursor,
       child: GestureDetector(
-        onTap: widget.onPressed,
+        onTap: withButtonHaptic(widget.onPressed),
         onTapDown: enabled ? (_) => _setPressed(true) : null,
         onTapUp: enabled ? (_) => _setPressed(false) : null,
         onTapCancel: enabled ? () => _setPressed(false) : null,
@@ -2641,15 +2747,7 @@ class _QualityBadgeState extends State<_QualityBadge> {
     final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final enabled = widget.onTap != null;
     final active = enabled && _hovered;
-    final bgColor = active
-        ? ObsidianPalette.gold
-        : Colors.white.withOpacity(0.05);
-    final borderColor = active
-        ? ObsidianPalette.gold
-        : Colors.white.withOpacity(0.12);
-    final textColor = active
-        ? Colors.black
-        : enabled
+    final textColor = enabled
         ? ObsidianPalette.gold
         : ObsidianPalette.textMuted;
 
@@ -2658,7 +2756,7 @@ class _QualityBadgeState extends State<_QualityBadge> {
       onExit: enabled ? (_) => _setHovered(false) : null,
       cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: withButtonHaptic(widget.onTap),
         behavior: HitTestBehavior.opaque,
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -2678,17 +2776,6 @@ class _QualityBadgeState extends State<_QualityBadge> {
                   horizontal: s(12),
                   vertical: s(6),
                 ),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  border: Border.all(color: borderColor),
-                  boxShadow: [
-                    if (_hovered)
-                      BoxShadow(
-                        color: ObsidianPalette.gold.withOpacity(0.35),
-                        blurRadius: s(10),
-                      ),
-                  ],
-                ),
                 child: AnimatedDefaultTextStyle(
                   duration: _transition,
                   curve: Curves.easeOut,
@@ -2697,6 +2784,13 @@ class _QualityBadgeState extends State<_QualityBadge> {
                     fontWeight: FontWeight.w600,
                     letterSpacing: s(1.2),
                     color: textColor,
+                    shadows: [
+                      if (active)
+                        Shadow(
+                          color: ObsidianPalette.gold.withValues(alpha: 0.7),
+                          blurRadius: s(10),
+                        ),
+                    ],
                   ),
                   child: Text(widget.label),
                 ),
@@ -2877,57 +2971,60 @@ class _ProgressBarState extends State<_ProgressBar> {
       activeTrackColor: ObsidianPalette.gold,
       secondaryActiveTrackColor: ObsidianPalette.gold.withOpacity(0.35),
     );
+    final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
+    final slider = SizedBox(
+      height: usesTouchTargets ? 48 : s(36),
+      child: SliderTheme(
+        data: progressTheme,
+        child: Slider(
+          value: positionSeconds,
+          max: widget.maxSeconds,
+          secondaryTrackValue: bufferedPositionSeconds,
+          onChangeStart: widget.enabled ? _beginDrag : null,
+          onChanged: widget.enabled ? _updateDrag : null,
+          onChangeEnd: widget.enabled ? _endDrag : null,
+        ),
+      ),
+    );
+    Widget timeLabel(Duration time) => Text(
+      _formatTime(time),
+      textAlign: TextAlign.center,
+      style: GoogleFonts.rajdhani(
+        fontSize: s(13),
+        // Keep the footer height stable before and after font loading.
+        height: 1.0,
+        letterSpacing: s(1.1),
+        color: ObsidianPalette.textMuted,
+      ),
+    );
     return Padding(
       padding: EdgeInsets.only(top: s(2)),
-      child: Row(
-        children: [
-          SizedBox(
-            width: s(42),
-            child: Text(
-              _formatTime(_displayPosition),
-              textAlign: TextAlign.center,
-              style: GoogleFonts.rajdhani(
-                fontSize: s(13),
-                // Keep the footer height stable before and after font loading.
-                height: 1.0,
-                letterSpacing: s(1.1),
-                color: ObsidianPalette.textMuted,
-              ),
-            ),
-          ),
-          SizedBox(width: s(12)),
-          Expanded(
-            child: SizedBox(
-              height: ObsidianModalScope.usesTouchTargets(context) ? 48 : s(36),
-              child: SliderTheme(
-                data: progressTheme,
-                child: Slider(
-                  value: positionSeconds,
-                  max: widget.maxSeconds,
-                  secondaryTrackValue: bufferedPositionSeconds,
-                  onChangeStart: widget.enabled ? _beginDrag : null,
-                  onChanged: widget.enabled ? _updateDrag : null,
-                  onChangeEnd: widget.enabled ? _endDrag : null,
+      child: usesTouchTargets
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                slider,
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: s(18)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      timeLabel(_displayPosition),
+                      timeLabel(widget.duration),
+                    ],
+                  ),
                 ),
-              ),
+              ],
+            )
+          : Row(
+              children: [
+                SizedBox(width: s(42), child: timeLabel(_displayPosition)),
+                SizedBox(width: s(12)),
+                Expanded(child: slider),
+                SizedBox(width: s(12)),
+                SizedBox(width: s(42), child: timeLabel(widget.duration)),
+              ],
             ),
-          ),
-          SizedBox(width: s(12)),
-          SizedBox(
-            width: s(42),
-            child: Text(
-              _formatTime(widget.duration),
-              textAlign: TextAlign.center,
-              style: GoogleFonts.rajdhani(
-                fontSize: s(13),
-                height: 1.0,
-                letterSpacing: s(1.1),
-                color: ObsidianPalette.textMuted,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
@@ -146,122 +147,320 @@ Future<void> _saveCompleted(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  for (final unfinishedOnly in [false, true]) {
+    test(
+      '${unfinishedOnly ? 'cache clear preserves completed downloads' : 'full reset clears all downloads'} across restart',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'phonolite_reset_states_',
+        );
+        addTearDown(() => root.delete(recursive: true));
+        final storage = OfflineLibraryStorage(baseDirectory: root);
+        final playlist = await storage.createLocalPlaylist(
+          'Keep this playlist',
+        );
+        final playlistWithImage = (await storage.updateLocalPlaylistImage(
+          playlist.id,
+          PlaylistImageEdit.replace(
+            bytes: Uint8List.fromList([1, 2, 3]),
+            contentType: 'image/png',
+          ),
+        ))!;
+        final now = DateTime.now();
+        final oldClientId = await storage.readOrCreateClientId();
+        final files = <OfflineDownloadStatus, File>{};
+        for (final status in OfflineDownloadStatus.values) {
+          final id = status.name;
+          final file = await storage.partialTrackFile(
+            serverBaseUrl: _server,
+            trackId: id,
+          );
+          await file.writeAsBytes([1, 2, 3]);
+          files[status] = file;
+          await storage.upsertDownload(
+            await storage.prepareDownload(
+              offlineTestDownload(
+                serverBaseUrl: _server,
+                batchId: id,
+                track: offlineTestTrack(id: id, title: id),
+                status: status,
+                filePath: status == OfflineDownloadStatus.downloaded
+                    ? file.path
+                    : null,
+              ).copyWith(partialPath: file.path),
+            ),
+          );
+          await storage.saveDownloadPlan(
+            job: OfflineDownloadJob(
+              jobId: id,
+              kind: 'artist',
+              serverBaseUrl: _server,
+              status: status,
+              sourceId: 'artist-$id',
+              createdAt: now,
+              updatedAt: now,
+              totalCount: status == OfflineDownloadStatus.downloaded ? 1 : 2,
+              discoveredCount: status == OfflineDownloadStatus.downloaded
+                  ? 1
+                  : 0,
+              completedCount: status == OfflineDownloadStatus.downloaded
+                  ? 1
+                  : 0,
+            ),
+            batch: OfflineDownloadBatch(
+              batchId: id,
+              serverBaseUrl: _server,
+              status: status,
+              createdAt: now,
+              updatedAt: now,
+              totalCount: status == OfflineDownloadStatus.downloaded ? 1 : 2,
+              completedCount: status == OfflineDownloadStatus.downloaded
+                  ? 1
+                  : 0,
+            ),
+            items: [
+              OfflineDownloadJobItem(
+                jobId: id,
+                position: 0,
+                serverTrackId: id,
+                status: status,
+                materialized: true,
+                createdAt: now,
+                updatedAt: now,
+              ),
+            ],
+            sources: [
+              OfflineDownloadJobSource(
+                jobId: id,
+                position: 0,
+                sourceId: 'album-$id',
+                status: status == OfflineDownloadStatus.downloaded
+                    ? OfflineDownloadStatus.downloaded
+                    : OfflineDownloadStatus.failed,
+                createdAt: now,
+                updatedAt: now,
+                error: 'cached failure',
+              ),
+            ],
+          );
+        }
+        final manager = OfflineDownloadManager(
+          connection: _Connection(),
+          storage: storage,
+        );
+        await manager.load();
+        if (unfinishedOnly) {
+          await manager.clearUnfinishedDownloads();
+          expect((await storage.readLocalPlaylists()).single.id, playlist.id);
+          expect(manager.localPlaylists.single.id, playlist.id);
+          expect(await File(playlistWithImage.imagePath!).exists(), isTrue);
+        } else {
+          await manager.resetLocalData();
+          expect(await storage.readLocalPlaylists(), isEmpty);
+        }
+        final expectedIds = unfinishedOnly ? ['downloaded'] : <String>[];
+        expect(
+          manager.downloadSnapshot.downloads.map(
+            (item) => item.track.serverTrackId ?? item.track.id,
+          ),
+          expectedIds,
+        );
+        expect(manager.downloadSnapshot.jobs, isEmpty);
+        expect(manager.downloadSnapshot.batches, isEmpty);
+        expect(manager.librarySnapshot.tracks, hasLength(expectedIds.length));
+        for (final entry in files.entries) {
+          expect(
+            await entry.value.exists(),
+            unfinishedOnly && entry.key == OfflineDownloadStatus.downloaded,
+          );
+        }
+        expect(
+          (await storage.readDownloads()).map(
+            (item) => item.track.serverTrackId ?? item.track.id,
+          ),
+          expectedIds,
+        );
+        expect(await storage.readDownloadJobs(), isEmpty);
+        expect(await storage.readDownloadBatches(), isEmpty);
+        for (final status in OfflineDownloadStatus.values) {
+          expect(await storage.readDownloadJobItems(status.name), isEmpty);
+          expect(await storage.readDownloadJobSources(status.name), isEmpty);
+        }
+        expect(
+          await storage.readOrCreateClientId(),
+          unfinishedOnly ? oldClientId : isNot(oldClientId),
+        );
+        await manager.dispose();
+        await storage.close();
+        final connection = _Connection()..setToken('restored-session');
+        final restored = OfflineDownloadManager(
+          connection: connection,
+          storage: OfflineLibraryStorage(baseDirectory: root),
+        );
+        addTearDown(restored.dispose);
+        addTearDown(storage.close);
+        await restored.load();
+        await restored.resumePausedForCurrentServer();
+        expect(
+          restored.downloads.map(
+            (item) => item.track.serverTrackId ?? item.track.id,
+          ),
+          expectedIds,
+        );
+        expect(restored.jobs, isEmpty);
+        expect(restored.batches, isEmpty);
+      },
+    );
+  }
+
   test(
-    'full reset clears every download status and plan across restart',
+    'clearing a mixed job keeps completed songs and their local library data',
     () async {
       final root = await Directory.systemTemp.createTemp(
-        'phonolite_reset_states_',
+        'phonolite_partial_clear_',
       );
-      addTearDown(() => root.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: root);
-      final now = DateTime.now();
-      final oldClientId = await storage.readOrCreateClientId();
-      final files = <File>[];
-      for (final status in OfflineDownloadStatus.values) {
-        final id = status.name;
-        final file = await storage.partialTrackFile(
-          serverBaseUrl: _server,
-          trackId: id,
-        );
-        await file.writeAsBytes([1, 2, 3]);
-        files.add(file);
-        await storage.upsertDownload(
-          await storage.prepareDownload(
-            offlineTestDownload(
-              serverBaseUrl: _server,
-              batchId: id,
-              track: offlineTestTrack(id: id, title: id),
-              status: status,
-              filePath: status == OfflineDownloadStatus.downloaded
-                  ? file.path
-                  : null,
-            ).copyWith(partialPath: file.path),
-          ),
-        );
-        await storage.saveDownloadPlan(
-          job: OfflineDownloadJob(
-            jobId: id,
-            kind: 'artist',
-            serverBaseUrl: _server,
-            status: status,
-            sourceId: 'artist-$id',
-            createdAt: now,
-            updatedAt: now,
-            totalCount: 2,
-          ),
-          batch: OfflineDownloadBatch(
-            batchId: id,
-            serverBaseUrl: _server,
-            status: status,
-            createdAt: now,
-            updatedAt: now,
-            totalCount: 2,
-          ),
-          items: [
-            OfflineDownloadJobItem(
-              jobId: id,
-              position: 0,
-              serverTrackId: id,
-              status: status,
-              materialized: true,
-              createdAt: now,
-              updatedAt: now,
-            ),
-          ],
-          sources: [
-            OfflineDownloadJobSource(
-              jobId: id,
-              position: 0,
-              sourceId: 'album-$id',
-              status: OfflineDownloadStatus.failed,
-              createdAt: now,
-              updatedAt: now,
-              error: 'cached failure',
-            ),
-          ],
-        );
-      }
       final manager = OfflineDownloadManager(
         connection: _Connection(),
         storage: storage,
       );
-      await manager.load();
-      await manager.resetLocalData();
-      expect(manager.downloadSnapshot.downloads, isEmpty);
-      expect(manager.downloadSnapshot.jobs, isEmpty);
-      expect(manager.downloadSnapshot.batches, isEmpty);
-      expect(manager.librarySnapshot.tracks, isEmpty);
-      for (final file in files) {
-        expect(await file.exists(), isFalse);
-      }
-      expect(await storage.readDownloads(), isEmpty);
-      expect(await storage.readDownloadJobs(), isEmpty);
-      expect(await storage.readDownloadBatches(), isEmpty);
-      for (final status in OfflineDownloadStatus.values) {
-        expect(await storage.readDownloadJobItems(status.name), isEmpty);
-        expect(await storage.readDownloadJobSources(status.name), isEmpty);
-      }
-      expect(await storage.readOrCreateClientId(), isNot(oldClientId));
-      await manager.dispose();
-      await storage.close();
-      final connection = _Connection()..setToken('restored-session');
-      final restored = OfflineDownloadManager(
-        connection: connection,
-        storage: OfflineLibraryStorage(baseDirectory: root),
+      addTearDown(() async {
+        await manager.dispose();
+        await storage.close();
+        await root.delete(recursive: true);
+      });
+      final art = await storage.albumArtFile(
+        albumId: 'album-1',
+        extension: 'png',
       );
-      addTearDown(restored.dispose);
-      addTearDown(storage.close);
-      await restored.load();
-      await restored.resumePausedForCurrentServer();
-      expect(restored.downloads, isEmpty);
-      expect(restored.jobs, isEmpty);
-      expect(restored.batches, isEmpty);
+      await art.writeAsBytes([4, 5, 6]);
+      final metadata = offlineTestOfflineMetadata(
+        trackId: 'song',
+        albumArtPath: art.path,
+      );
+      final file = await storage.trackFile(
+        serverBaseUrl: _server,
+        trackId: 'song',
+      );
+      await file.writeAsBytes([1, 2, 3]);
+      final completed = await storage.prepareDownload(
+        offlineTestDownload(
+          serverBaseUrl: _server,
+          batchId: 'mixed',
+          track: metadata.track,
+          filePath: file.path,
+        ).copyWith(offlineMetadata: metadata),
+      );
+      await storage.upsertDownload(completed);
+      final partial = await storage.partialTrackFile(
+        serverBaseUrl: _server,
+        trackId: 'unfinished',
+      );
+      await partial.writeAsBytes([1]);
+      await storage.upsertDownload(
+        await storage.prepareDownload(
+          offlineTestDownload(
+            serverBaseUrl: _server,
+            batchId: 'mixed',
+            track: offlineTestTrack(id: 'unfinished', title: 'Unfinished'),
+            status: OfflineDownloadStatus.paused,
+          ).copyWith(
+            partialPath: partial.path,
+            bytesDownloaded: 1,
+            bytesTotal: 3,
+          ),
+        ),
+      );
+      final orphan = await storage.partialTrackFile(
+        serverBaseUrl: _server,
+        trackId: 'orphan',
+      );
+      await orphan.writeAsBytes([7]);
+      final now = DateTime.now();
+      await storage.saveDownloadPlan(
+        job: OfflineDownloadJob(
+          jobId: 'mixed',
+          kind: 'album',
+          serverBaseUrl: _server,
+          status: OfflineDownloadStatus.paused,
+          createdAt: now,
+          updatedAt: now,
+          totalCount: 2,
+          discoveredCount: 2,
+          completedCount: 1,
+        ),
+        batch: OfflineDownloadBatch(
+          batchId: 'mixed',
+          serverBaseUrl: _server,
+          status: OfflineDownloadStatus.paused,
+          createdAt: now,
+          updatedAt: now,
+          totalCount: 2,
+          completedCount: 1,
+        ),
+        items: [
+          for (final entry in [
+            (id: 'song', status: OfflineDownloadStatus.downloaded),
+            (id: 'unfinished', status: OfflineDownloadStatus.paused),
+          ])
+            OfflineDownloadJobItem(
+              jobId: 'mixed',
+              position: entry.id == 'song' ? 0 : 1,
+              serverTrackId: entry.id,
+              status: entry.status,
+              materialized: true,
+              createdAt: now,
+              updatedAt: now,
+            ),
+        ],
+      );
+      final localId = completed.localTrackId!;
+      await storage.setLocalLike(localId, true);
+      final playlist = await storage.createLocalPlaylist('Saved songs');
+      await storage.addLocalTrackToPlaylist(playlist.id, localId);
+      await manager.load();
+      await manager.loadLocalPlaylistTracks(playlist.id);
+
+      await manager.clearUnfinishedDownloads();
+
+      expect(manager.downloads.single.localTrackId, localId);
+      expect(manager.downloads.single.status, OfflineDownloadStatus.downloaded);
+      expect(manager.librarySnapshot.tracks.single.id, localId);
+      expect(manager.localLiked.single.id, localId);
+      expect(manager.localPlaylistTracks.single.id, localId);
+      expect(manager.localPlaylists.single.id, playlist.id);
+      expect(manager.jobs, isEmpty);
+      expect(manager.batches, isEmpty);
+      expect(await File(manager.downloads.single.filePath!).readAsBytes(), [
+        1,
+        2,
+        3,
+      ]);
+      expect(await art.readAsBytes(), [4, 5, 6]);
+      expect(
+        (await storage.readDownloads()).single.offlineMetadata?.track.title,
+        metadata.track.title,
+      );
+      expect(await partial.exists(), isFalse);
+      expect(await orphan.exists(), isFalse);
+      expect(await storage.readDownloadJobItems('mixed'), isEmpty);
+
+      // Repeating the operation with only completed songs is harmless.
+      await manager.clearUnfinishedDownloads();
+      expect(manager.librarySnapshot.tracks.single.id, localId);
+      expect(await file.exists(), isTrue);
+      expect((await storage.readLocalLikedTracks()).single.id, localId);
+      expect(
+        (await storage.readLocalPlaylistTracks(playlist.id)).single.id,
+        localId,
+      );
     },
   );
 
-  for (final resetAll in [true, false]) {
+  for (final action in ['full reset', 'cache clear', 'artist deletion']) {
+    final resetAll = action != 'artist deletion';
     test(
-      'a response after ${resetAll ? 'full reset' : 'artist deletion'} cannot restore jobs or failed items',
+      'a response after $action cannot restore jobs or failed items',
       () async {
         final root = await Directory.systemTemp.createTemp(
           'phonolite_reset_response_',
@@ -289,7 +488,9 @@ void main() {
           ],
         );
         await connection.requested.future;
-        if (resetAll) {
+        if (action == 'cache clear') {
+          await manager.clearUnfinishedDownloads();
+        } else if (resetAll) {
           await manager.resetLocalData();
         } else {
           await manager.removeDownloads(
@@ -334,41 +535,44 @@ void main() {
     );
   }
 
-  test('old metadata cannot overwrite a fresh download after reset', () async {
-    final root = await Directory.systemTemp.createTemp(
-      'phonolite_reset_metadata_',
-    );
-    addTearDown(() => root.delete(recursive: true));
-    final storage = OfflineLibraryStorage(baseDirectory: root);
-    await _saveCompleted(storage);
-    final connection = _PendingMetadataConnection()..setToken('session');
-    final manager = OfflineDownloadManager(
-      connection: connection,
-      storage: storage,
-    );
-    addTearDown(manager.dispose);
-    await manager.load();
-    final repair = manager.repairOfflineMetadataFragments();
-    await connection.requested.future;
-    await manager.resetLocalData();
-    await _saveCompleted(storage, title: 'Fresh download', metadata: true);
-    await manager.load();
-    connection.response.complete(
-      offlineTestOfflineMetadata(
-        trackId: 'song',
-        trackTitle: 'Old cached title',
-      ),
-    );
-    await repair;
-    expect(
-      (await storage.readDownloads()).single.track.title,
-      'Fresh download',
-    );
-    expect(manager.downloads.single.track.title, 'Fresh download');
-  });
+  test(
+    'old metadata cannot overwrite a fresh download after cache clear',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'phonolite_reset_metadata_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: root);
+      await _saveCompleted(storage);
+      final connection = _PendingMetadataConnection()..setToken('session');
+      final manager = OfflineDownloadManager(
+        connection: connection,
+        storage: storage,
+      );
+      addTearDown(manager.dispose);
+      await manager.load();
+      final repair = manager.repairOfflineMetadataFragments();
+      await connection.requested.future;
+      await manager.clearUnfinishedDownloads();
+      await _saveCompleted(storage, title: 'Fresh download', metadata: true);
+      await manager.load();
+      connection.response.complete(
+        offlineTestOfflineMetadata(
+          trackId: 'song',
+          trackTitle: 'Old cached title',
+        ),
+      );
+      await repair;
+      expect(
+        (await storage.readDownloads()).single.track.title,
+        'Fresh download',
+      );
+      expect(manager.downloads.single.track.title, 'Fresh download');
+    },
+  );
 
   test(
-    'reset drains an active download before clearing its cached state',
+    'cache clear drains an active download before clearing its cached state',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'phonolite_reset_preparing_',
@@ -391,7 +595,7 @@ void main() {
       addTearDown(manager.dispose);
       await manager.load();
       await storage.preparing.future;
-      final reset = manager.resetLocalData();
+      final reset = manager.clearUnfinishedDownloads();
       storage.proceed.complete();
       await reset;
       expect(manager.downloads, isEmpty);
@@ -404,7 +608,7 @@ void main() {
   );
 
   test(
-    'reset waits for an already-started plan commit and removes it',
+    'cache clear waits for an already-started plan commit and removes it',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'phonolite_reset_plan_commit_',
@@ -429,7 +633,9 @@ void main() {
           ]);
       await storage.saving.future;
       var finished = false;
-      final reset = manager.resetLocalData().then((_) => finished = true);
+      final reset = manager.clearUnfinishedDownloads().then(
+        (_) => finished = true,
+      );
       await Future<void>.delayed(Duration.zero);
       expect(finished, isFalse);
       storage.proceed.complete();

@@ -109,6 +109,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                 return Scaffold(
                   body: CustomScrollView(
                     slivers: [
+                      const SliverPageTopInset(),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                         sliver: SliverToBoxAdapter(

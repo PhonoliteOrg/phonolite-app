@@ -1641,28 +1641,24 @@ class AppController {
     _pushMessage('Resumed paused downloads.');
   }
 
-  Future<void> clearPausedAndCachedOfflineDownloads() async {
-    final removable = _offlineDownloadManager.downloads
-        .where(
-          (download) =>
-              download.status == OfflineDownloadStatus.paused ||
-              download.status == OfflineDownloadStatus.failed ||
-              download.status == OfflineDownloadStatus.corrupt ||
-              download.status == OfflineDownloadStatus.canceled,
-        )
-        .toList(growable: false);
-    if (removable.isEmpty) {
-      _pushMessage('No partial or failed downloads to clear.');
-      return;
+  Future<void> clearUnfinishedOfflineDownloads() async {
+    try {
+      await _offlineDownloadManager.clearUnfinishedDownloads();
+      await loadOfflineStorageLocations();
+      _pushMessage('Cleared unfinished download jobs and partial cache.');
+    } catch (err) {
+      _pushMessage(
+        'Failed to clear download jobs and cache: $err',
+        level: LogLevel.warning,
+      );
     }
-    await _removeOfflineDownloads(removable, label: 'partial/failed downloads');
   }
 
   Future<void> resetOfflineData() async {
     try {
       if (_playbackState.isLocalPlayback ||
           _playbackState.queueSource == PlaybackQueueSource.offline) {
-        await stop();
+        await _stop(requireFileRelease: true);
       }
       await _offlineDownloadManager.resetLocalData();
       await loadOfflineStorageLocations();
@@ -2384,6 +2380,15 @@ class AppController {
             'subtitle':
                 '${artist.releaseCount} albums'
                 '${artist.collabAlbumCount == 0 ? '' : ' · ${artist.collabAlbumCount} collab albums'}',
+            if (artist.logoRef?.trim().isNotEmpty ?? false) ...{
+              'artworkUrl': connection.buildArtistCoverUrl(
+                artist.id,
+                kind: 'logo',
+                ref: artist.logoRef,
+              ),
+              'token': connection.token ?? '',
+              'serverPin': connection.trust?.spki,
+            },
           },
         )
         .toList();
@@ -2772,11 +2777,14 @@ class AppController {
         ? track.albumArtPath?.trim()
         : null;
     final token = connection.token ?? '';
-    _maybeLoadNowPlayingArtwork(
-      artworkUrl: artworkUrl,
-      localPath: localArtworkPath,
-      token: token,
-    );
+    final nativeArtwork = _nowPlayingPlatform.loadsArtworkNatively;
+    if (!nativeArtwork) {
+      _maybeLoadNowPlayingArtwork(
+        artworkUrl: artworkUrl,
+        localPath: localArtworkPath,
+        token: token,
+      );
+    }
 
     final payload = <String, dynamic>{
       'epoch': _nowPlayingEpoch,
@@ -2788,16 +2796,21 @@ class AppController {
       'position': positionMs / 1000.0,
       'isPlaying': nowPlayingIsPlaying,
       'liked': track.liked,
-      'artworkKey': _artwork.key ?? '',
-      // Let iOS load artwork even when Flutter's image decoder is suspended
-      // while the lock screen or CarPlay is in use.
+      'artworkKey':
+          NowPlayingArtwork.sourceKey(
+            url: artworkUrl,
+            localPath: localArtworkPath,
+          ) ??
+          '',
+      // iOS owns artwork loading; do not also fetch, re-encode, and resend a
+      // full PNG through Flutter on every progress update.
       if (artworkUrl != null) 'artworkUrl': artworkUrl,
       if (artworkUrl != null) 'token': token,
       if (artworkUrl != null) 'serverPin': connection.trust?.spki,
       if (localArtworkPath != null) 'artworkPath': localArtworkPath,
     };
     final artworkBytes = _artwork.bytes;
-    if (artworkBytes != null) {
+    if (!nativeArtwork && artworkBytes != null) {
       payload['artworkBytes'] = artworkBytes;
     }
     try {
@@ -4521,7 +4534,9 @@ class AppController {
     }
   }
 
-  Future<void> stop() async {
+  Future<void> stop() => _stop();
+
+  Future<void> _stop({bool requireFileRelease = false}) async {
     try {
       _resetTrackTransitionState();
       _listeningSessionContext = null;
@@ -4551,13 +4566,15 @@ class AppController {
         queueSource: PlaybackQueueSource.none,
         queueSourcePlaylistId: null,
       );
-      _audioEngine.stop();
+      await _audioEngine.stop(waitForRelease: requireFileRelease);
       _audioOutputStarted = false;
       _closeStreamControl();
     } on ApiException catch (err) {
       _handleApiError(err, context: 'stop');
+      if (requireFileRelease) rethrow;
     } catch (err) {
       _pushMessage('Failed to stop: $err');
+      if (requireFileRelease) rethrow;
     }
   }
 
@@ -4634,12 +4651,17 @@ class AppController {
   }
 
   void updateStreamMode(StreamMode mode) {
+    if (mode == _playbackState.streamMode) return;
     _updatePlayback(streamMode: mode);
     _pushMessage('Stream: ${mode.name}');
     final track = _playbackState.track;
     if (track != null &&
-        _playbackState.isPlaying &&
-        !_playbackState.isLocalPlayback) {
+        !_playbackState.isLocalPlayback &&
+        (_playbackState.isPlaying || _audioEngine.hasActivePlayer)) {
+      // A paused output must also adopt the selected encoder settings. The
+      // restart preserves _wantsPlayback, so prebuffering does not resume it.
+      // Settings changes are distinct requests even at the same track/offset.
+      _lastStartPlaybackAt = null;
       _startPlayback(track, startOffset: _playbackState.position);
     }
   }
@@ -6903,6 +6925,25 @@ class AppController {
   void _handleAudioEngineState(bool active, bool paused) {
     if (_disposed) return;
     if (active || paused) {
+      return;
+    }
+    if (_audio?.sourceRejected == true) {
+      _wantsPlayback = false;
+      _audioOutputStarted = false;
+      _awaitingStreamReconnect = false;
+      _streamRecoveryTimer?.cancel();
+      _streamRecoveryTimer = null;
+      _seekRequestGeneration++;
+      _pendingSeekGeneration = null;
+      _seeking = false;
+      _lastSeekTrackId = null;
+      _seekDirection = _SeekDirection.none;
+      _updatePlayback(
+        isPlaying: false,
+        isLoading: false,
+        streamConnected: false,
+        streamRttMs: null,
+      );
       return;
     }
     _recoverInterruptedRemoteStream();

@@ -8,6 +8,7 @@ typedef _TabViewport = ({
   MediaQueryData media,
   ThemeData theme,
   double scale,
+  double topInset,
   double playbackInset,
 });
 
@@ -79,6 +80,7 @@ class _RetainedTabViewState extends State<RetainedTabView>
             child: ObsidianScale(
               scale: viewport.scale,
               child: PlaybackContentInset(
+                top: viewport.topInset,
                 bottom: viewport.playbackInset,
                 child: ExcludeFocus(
                   excluding: !active,
@@ -202,6 +204,7 @@ class _RetainedTabViewState extends State<RetainedTabView>
       media: MediaQuery.of(context),
       theme: Theme.of(context),
       scale: ObsidianScale.of(context),
+      topInset: PlaybackContentInset.topOf(context),
       playbackInset: PlaybackContentInset.bottomOf(context),
     );
     // Covered overlay entries can still rebuild if they inherit new viewport

@@ -32,6 +32,7 @@ import 'custom_shuffle_settings_page.dart';
 import 'login_page.dart';
 import 'logs_page.dart';
 import 'reset_user_password_page.dart';
+import '../widgets/ui/button_haptics.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -55,6 +56,7 @@ class SettingsPage extends StatelessWidget {
                 : '${messages.length} log entries';
             return CustomScrollView(
               slivers: [
+                const SliverPageTopInset(),
                 const SliverPadding(
                   padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
                   sliver: SliverToBoxAdapter(
@@ -523,7 +525,7 @@ class SettingsPage extends StatelessWidget {
             SizedBox(width: trailingGap),
             IconTheme.merge(
               data: IconThemeData(size: isCompact ? 22 : 24),
-              child: trailing,
+              child: _SettingsTrailing(child: trailing),
             ),
           ],
         ],
@@ -629,15 +631,19 @@ class _ListeningStatisticsSettingState
             ),
           ),
           const SizedBox(width: 6),
-          Semantics(
-            label: 'Collect listening statistics',
-            child: Switch.adaptive(
-              key: const ValueKey('listening-statistics-switch'),
-              value: widget.enabled,
-              activeThumbColor: ObsidianPalette.gold,
-              activeTrackColor: ObsidianPalette.gold.withValues(alpha: 0.3),
-              hoverColor: Colors.transparent,
-              onChanged: _saving || _resetting ? null : _change,
+          _SettingsTrailing(
+            child: Semantics(
+              label: 'Collect listening statistics',
+              child: Switch.adaptive(
+                key: const ValueKey('listening-statistics-switch'),
+                value: widget.enabled,
+                activeThumbColor: ObsidianPalette.gold,
+                activeTrackColor: ObsidianPalette.gold.withValues(alpha: 0.3),
+                hoverColor: Colors.transparent,
+                onChanged: withSelectionHaptic(
+                  _saving || _resetting ? null : _change,
+                ),
+              ),
             ),
           ),
         ],
@@ -698,7 +704,13 @@ class _ListeningStatisticsSettingState
               ),
             ),
             SizedBox(width: compact ? 6 : 8),
-            Icon(PhonoliteIcons.trash2, size: compact ? 22 : 24, color: color),
+            _SettingsTrailing(
+              child: Icon(
+                PhonoliteIcons.trash2,
+                size: compact ? 22 : 24,
+                color: color,
+              ),
+            ),
           ],
         ),
       ),
@@ -961,7 +973,7 @@ class OfflineStorageSection extends StatelessWidget {
             SizedBox(width: trailingGap),
             IconTheme.merge(
               data: IconThemeData(size: isCompact ? 22 : 24),
-              child: trailing,
+              child: _SettingsTrailing(child: trailing),
             ),
           ],
         ],
@@ -1046,6 +1058,18 @@ class _StorageActions extends StatelessWidget {
   }
 }
 
+class _SettingsTrailing extends StatelessWidget {
+  const _SettingsTrailing({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isCompactListWidth(context)) return child;
+    return SizedBox(width: 60, child: Center(heightFactor: 1, child: child));
+  }
+}
+
 class _SettingsIconAction extends StatelessWidget {
   const _SettingsIconAction({
     required this.tooltip,
@@ -1089,7 +1113,7 @@ class _SettingsIconAction extends StatelessWidget {
         enabled: enabled,
         label: tooltip,
         child: GestureDetector(
-          onTap: onPressed,
+          onTap: withButtonHaptic(onPressed),
           behavior: HitTestBehavior.opaque,
           child: Padding(
             padding: const EdgeInsets.all(8),

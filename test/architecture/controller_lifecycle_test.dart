@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/entities/app_controller.dart';
@@ -16,6 +17,7 @@ import 'package:phonolite_app/entities/offline_storage_settings.dart';
 import 'package:phonolite_app/entities/playback_preferences.dart';
 import 'package:phonolite_app/entities/server_connection.dart';
 import 'package:phonolite_app/platform/local_network_permission_service.dart';
+import 'package:phonolite_app/platform/now_playing_artwork_loader.dart';
 import 'package:phonolite_app/platform/now_playing_platform_service.dart';
 import 'package:phonolite_app/platform/vehicle_surface_service.dart';
 import '../support/auth_test_helpers.dart';
@@ -23,6 +25,59 @@ import '../support/offline_library_test_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('paused quality selection is applied when playback resumes', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.onStats!(
+      const Duration(seconds: 5),
+      const Duration(seconds: 3),
+      160,
+      null,
+      false,
+    );
+    await harness.controller.pause(true);
+    harness.controller.updateStreamMode(StreamMode.low);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.starts.last.initialPaused, isTrue);
+    expect(harness.audio.starts.last.offset, const Duration(seconds: 5));
+    await harness.controller.pause(false);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.audio.settings.last.quality, 'low');
+    expect(harness.audio.settings.last.mode, 'fixed');
+  });
+
+  test(
+    'quality selection bypasses duplicate-start suppression at the same position',
+    () async {
+      final harness = _Harness(authenticated: true);
+      addTearDown(harness.controller.close);
+      await harness.startRemote();
+      // No clock/position advancement: selecting a different encoder setting
+      // must not be discarded as a duplicate press of the same track.
+      harness.controller.updateStreamMode(StreamMode.medium);
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.audio.settings.last.quality, 'medium');
+      expect(harness.audio.settings.last.frameMs, 20);
+      harness.controller.updateStreamMode(StreamMode.low);
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.audio.settings.last.quality, 'low');
+    },
+  );
+
+  test(
+    'selecting the current streaming quality does not restart output',
+    () async {
+      final harness = _Harness(authenticated: true);
+      addTearDown(harness.controller.close);
+      await harness.startRemote();
+      harness.controller.updateStreamMode(StreamMode.high);
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.audio.starts, hasLength(1));
+    },
+  );
 
   test(
     'construction performs no startup work and can be closed without starting',
@@ -70,6 +125,111 @@ void main() {
     expect(harness.permissions.disposals, 1);
     expect(harness.connection.onTransportFailure, isNull);
   });
+
+  for (final nativeArtwork in [true, false]) {
+    test(
+      'Now Playing loads artwork through ${nativeArtwork ? 'iOS' : 'Flutter'} only',
+      () async {
+        final loader = _ArtworkLoader();
+        final harness = _Harness(authenticated: true, artworkLoader: loader);
+        harness.nowPlaying
+          ..supported = true
+          ..nativeArtwork = nativeArtwork;
+        addTearDown(harness.controller.close);
+        await harness.startRemote();
+        await harness.controller.pause(true);
+        final updates = harness.nowPlaying.updates;
+        expect(updates, isNotEmpty);
+        expect(updates.last['artworkKey'], 'url:${updates.last['artworkUrl']}');
+        expect(updates.last['token'], harness.connection.token);
+        expect(updates.last['serverPin'], harness.connection.trust!.spki);
+        if (nativeArtwork) {
+          expect(loader.loads, 0);
+          expect(
+            updates.any((update) => update.containsKey('artworkBytes')),
+            isFalse,
+          );
+        } else {
+          expect(loader.loads, 1);
+          expect(updates.last['artworkBytes'], [1, 2, 3]);
+        }
+      },
+    );
+  }
+
+  test('local and server shuffle selections remain independent', () async {
+    final harness = _Harness();
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    final controller = harness.controller;
+    expect(controller.playbackState.localShuffleMode, ShuffleMode.off);
+    expect(controller.playbackState.serverShuffleMode, ShuffleMode.off);
+
+    controller.updateShuffleMode(ShuffleMode.liked, scope: ActionScope.local);
+    controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    expect(controller.playbackState.shuffleMode, ShuffleMode.all);
+    expect(controller.playbackState.localShuffleMode, ShuffleMode.liked);
+
+    controller.updateShuffleMode(
+      controller.playbackState.shuffleModeFor(ActionScope.local),
+      scope: ActionScope.local,
+    );
+    expect(controller.playbackState.shuffleMode, ShuffleMode.liked);
+    expect(controller.playbackState.shuffleScope, ActionScope.local);
+    expect(controller.playbackState.serverShuffleMode, ShuffleMode.all);
+
+    controller.updateShuffleMode(ShuffleMode.off);
+    controller.setVolume(0.6);
+    expect(controller.playbackState.localShuffleMode, ShuffleMode.off);
+    expect(controller.playbackState.serverShuffleMode, ShuffleMode.all);
+    controller.updateShuffleMode(
+      controller.playbackState.shuffleModeFor(ActionScope.server),
+      scope: ActionScope.server,
+    );
+    expect(controller.playbackState.shuffleMode, ShuffleMode.all);
+    expect(controller.playbackState.shuffleScope, ActionScope.server);
+  });
+
+  test(
+    'CarPlay server artists include authenticated pinned logo artwork',
+    () async {
+      final connection = _Connection()
+        ..artistsPageResponse = [
+          Artist(
+            id: 'server artist/1',
+            name: 'Artist with artwork',
+            albumCount: 2,
+            logoRef: 'logo version/2',
+          ),
+          Artist(id: 'no-logo', name: 'No logo', albumCount: 1),
+          Artist(
+            id: 'empty-logo',
+            name: 'Empty logo',
+            albumCount: 1,
+            logoRef: '  ',
+          ),
+        ];
+      final harness = _Harness(authenticated: true, connection: connection);
+      harness.vehicle.supported = true;
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+
+      final response =
+          await harness.vehicle.handler!('getArtists', {'scope': 'server'})
+              as Map;
+      final items = (response['items'] as List).cast<Map>();
+      expect(items, hasLength(3));
+      final artwork = Uri.parse(items.first['artworkUrl'] as String);
+      expect(artwork.pathSegments, contains('server artist/1'));
+      expect(artwork.queryParameters['kind'], 'logo');
+      expect(artwork.queryParameters['v'], 'logo version/2');
+      expect(items.first['token'], 'test-token');
+      expect(items.first['serverPin'], testServerTrust.spki);
+      expect(items[1].containsKey('artworkUrl'), isFalse);
+      expect(items[2].containsKey('artworkUrl'), isFalse);
+    },
+  );
 
   for (final initiallyAvailable in [true, false]) {
     test(
@@ -579,6 +739,162 @@ void main() {
     },
   );
 
+  test('clearing unfinished downloads preserves local playback', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'keep_download_playback_',
+    );
+    final storage = OfflineLibraryStorage(baseDirectory: root);
+    final connection = _Connection();
+    final file = await storage.trackFile(
+      serverBaseUrl: connection.baseUrl,
+      trackId: 'saved',
+    );
+    await file.writeAsBytes([1, 2, 3]);
+    final completed = await storage.prepareDownload(
+      offlineTestDownload(
+        serverBaseUrl: connection.baseUrl,
+        track: offlineTestTrack(id: 'saved'),
+        filePath: file.path,
+      ),
+    );
+    await storage.upsertDownload(completed);
+    final manager = OfflineDownloadManager(
+      connection: connection,
+      storage: storage,
+    );
+    final harness = _Harness(
+      connection: connection,
+      offlineDownloadManager: manager,
+      offlineStorage: storage,
+    );
+    addTearDown(() async {
+      await harness.controller.close();
+      await storage.close();
+      await root.delete(recursive: true);
+    });
+    await harness.controller.initialize();
+    await harness.controller.playOfflineTrack(completed.localTrackId!);
+    harness.onStarted!();
+    expect(harness.controller.playbackState.isLocalPlayback, isTrue);
+    expect(harness.audio.active, isTrue);
+    final previousStops = harness.audio.stops;
+    final playingTrack = harness.controller.playbackState.track!.id;
+
+    await harness.controller.clearUnfinishedOfflineDownloads();
+
+    expect(harness.audio.stops, previousStops);
+    expect(harness.audio.active, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.controller.playbackState.track!.id, playingTrack);
+    expect(await file.exists(), isTrue);
+  });
+
+  for (final failStop in [false, true]) {
+    test(
+      'full local reset waits for audio file release, stop fails: $failStop',
+      () async {
+        final root = await Directory.systemTemp.createTemp('local_reset_stop_');
+        final storage = OfflineLibraryStorage(baseDirectory: root);
+        final connection = _Connection();
+        final file = await storage.trackFile(
+          serverBaseUrl: connection.baseUrl,
+          trackId: 'saved',
+        );
+        await file.writeAsBytes([1, 2, 3]);
+        final completed = await storage.prepareDownload(
+          offlineTestDownload(
+            serverBaseUrl: connection.baseUrl,
+            track: offlineTestTrack(id: 'saved'),
+            filePath: file.path,
+          ),
+        );
+        await storage.upsertDownload(completed);
+        final manager = OfflineDownloadManager(
+          connection: connection,
+          storage: storage,
+        );
+        final harness = _Harness(
+          connection: connection,
+          offlineDownloadManager: manager,
+          offlineStorage: storage,
+        );
+        addTearDown(() async {
+          harness.audio.stopGate = null;
+          await harness.controller.close();
+          await storage.close();
+          await root.delete(recursive: true);
+        });
+        await harness.controller.initialize();
+        await harness.controller.playOfflineTrack(completed.localTrackId!);
+        harness.onStarted!();
+        final stopGate = Completer<void>();
+        harness.audio.stopGate = stopGate.future;
+        final previousStops = harness.audio.stops;
+
+        final resetting = harness.controller.resetOfflineData();
+        await offlineTestWaitFor(() => harness.audio.stops > previousStops);
+        expect(harness.audio.lastStopWaitForRelease, isTrue);
+        expect(await file.exists(), isTrue);
+        expect(manager.downloads, hasLength(1));
+        if (failStop) {
+          stopGate.completeError(StateError('stop failed'));
+        } else {
+          stopGate.complete();
+        }
+        await resetting;
+        expect(await file.exists(), failStop);
+        expect(manager.downloads, hasLength(failStop ? 1 : 0));
+        if (failStop) {
+          expect(
+            harness.controller.messages.last.message,
+            contains('Failed to reset local data:'),
+          );
+        } else {
+          expect(harness.audio.active, isFalse);
+          expect(harness.controller.playbackState.track, isNull);
+        }
+      },
+    );
+  }
+
+  test('clearing all download jobs and cache keeps log history', () async {
+    final harness = _Harness();
+    await harness.controller.initialize();
+    addTearDown(harness.controller.close);
+    await harness.controller.clearMessages();
+    AppLogger.warning('existing warning');
+
+    await harness.controller.clearUnfinishedOfflineDownloads();
+
+    expect(harness.downloads.resets, 1);
+    expect(harness.controller.messages.first.message, 'existing warning');
+    expect(
+      harness.controller.messages.last.message,
+      'Cleared unfinished download jobs and partial cache.',
+    );
+  });
+
+  test(
+    'failed download cache clear reports the failure and keeps logs',
+    () async {
+      final harness = _Harness();
+      await harness.controller.initialize();
+      addTearDown(harness.controller.close);
+      await harness.controller.clearMessages();
+      AppLogger.warning('existing warning');
+      harness.downloads.failReset = true;
+
+      await harness.controller.clearUnfinishedOfflineDownloads();
+
+      expect(harness.downloads.resets, 1);
+      expect(harness.controller.messages.first.message, 'existing warning');
+      expect(
+        harness.controller.messages.last.message,
+        contains('Failed to clear download jobs and cache:'),
+      );
+    },
+  );
+
   test('reset local data clears log history in every category', () async {
     final harness = _Harness();
     await harness.controller.initialize();
@@ -621,6 +937,53 @@ void main() {
       contains('Failed to reset local data:'),
     );
   });
+
+  for (final afterOutput in [false, true]) {
+    test(
+      'server request rejection stops playback without reconnecting afterOutput=$afterOutput',
+      () async {
+        final harness = _Harness(authenticated: true);
+        addTearDown(harness.controller.close);
+        await harness.controller.initialize();
+        await harness.controller.restoreSession();
+        await harness.controller.queueAlbum('album');
+        if (afterOutput) harness.onStarted!();
+        harness.audio.sourceRejected = true;
+        harness.failTransport();
+        expect(harness.audio.starts, hasLength(1));
+        expect(harness.controller.playbackState.track, isNotNull);
+        expect(harness.controller.playbackState.isPlaying, isFalse);
+        expect(harness.controller.playbackState.isLoading, isFalse);
+        await harness.controller.refreshServerAvailability();
+        expect(harness.audio.starts, hasLength(1));
+        await harness.controller.pause(
+          false,
+        ); // Explicit user retry remains available.
+        expect(harness.audio.starts, hasLength(2));
+        expect(harness.controller.playbackState.isPlaying, isTrue);
+      },
+    );
+  }
+
+  test(
+    'source rejection during a seek does not restart a failed request',
+    () async {
+      final harness = _Harness(authenticated: true);
+      await harness.startRemote();
+      addTearDown(harness.controller.close);
+      final result = Completer<bool>();
+      harness.audio.seekResults.add(result.future);
+      final seek = harness.controller.seekTo(const Duration(seconds: 40));
+      await Future<void>.delayed(Duration.zero);
+      harness.audio.sourceRejected = true;
+      harness.failTransport();
+      result.complete(false);
+      await seek;
+      expect(harness.audio.starts, hasLength(1));
+      expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.controller.playbackState.isLoading, isFalse);
+    },
+  );
 
   test(
     'transport failure during rapid seeks restarts at the latest target',
@@ -1560,6 +1923,7 @@ class _Harness {
     _Connection? connection,
     OfflineDownloadManager? offlineDownloadManager,
     OfflineLibraryStorage? offlineStorage,
+    NowPlayingArtworkLoader? artworkLoader,
   }) : connection = connection ?? _Connection(),
        auth = _MemoryAuth(authenticated) {
     controller = AppController(
@@ -1580,6 +1944,7 @@ class _Harness {
       customShuffleStorage: shuffle,
       connectivitySignalSource: connectivity,
       nowPlayingPlatformService: nowPlaying,
+      nowPlayingArtworkLoader: artworkLoader,
       vehicleSurfaceService: vehicle,
       localNetworkPermissionService: permissions,
       playbackClock: () => playbackTime,
@@ -1635,9 +2000,15 @@ class _Audio implements AudioEngine {
   double? volume;
   bool active = false;
   bool paused = false;
+  @override
+  bool sourceRejected = false;
   int pauses = 0;
   int resumes = 0;
+  int stops = 0;
+  Future<void>? stopGate;
+  bool lastStopWaitForRelease = false;
   final seekResults = <Future<bool>>[];
+  final settings = <StreamSettings>[];
   final starts =
       <
         ({String trackId, Duration offset, bool quickStart, bool initialPaused})
@@ -1658,6 +2029,8 @@ class _Audio implements AudioEngine {
     bool quickStart = true,
     bool initialPaused = false,
   }) async {
+    this.settings.add(settings);
+    sourceRejected = false;
     active = true;
     paused = initialPaused;
     starts.add((
@@ -1673,6 +2046,18 @@ class _Audio implements AudioEngine {
       seekResults.isEmpty ? active : await seekResults.removeAt(0);
 
   @override
+  Future<void> playLocalFile({
+    required Track track,
+    required String filePath,
+    String? contentType,
+    Duration startOffset = Duration.zero,
+    bool initialPaused = false,
+  }) async {
+    active = true;
+    paused = initialPaused;
+  }
+
+  @override
   void pause() {
     pauses++;
     paused = true;
@@ -1685,7 +2070,11 @@ class _Audio implements AudioEngine {
   }
 
   @override
-  Future<void> stop() async {
+  Future<void> stop({bool waitForRelease = false}) async {
+    stops++;
+    lastStopWaitForRelease = waitForRelease;
+    final gate = stopGate;
+    if (gate != null) await gate;
     active = false;
     paused = false;
   }
@@ -1724,6 +2113,8 @@ class _Downloads implements OfflineDownloadManager {
   @override
   List<OfflineTrackDownload> get downloads => const [];
   @override
+  List<Track> localDownloadedTracks() => const [];
+  @override
   OfflineTrackDownload? findForCurrentServer(String trackId) => null;
   @override
   OfflineTrackDownload? findLocal(String trackId) => null;
@@ -1756,6 +2147,12 @@ class _Downloads implements OfflineDownloadManager {
 
   @override
   Future<void> resetLocalData() async {
+    resets++;
+    if (failReset) throw StateError('reset failed');
+  }
+
+  @override
+  Future<void> clearUnfinishedDownloads() async {
     resets++;
     if (failReset) throw StateError('reset failed');
   }
@@ -2122,21 +2519,60 @@ class _Connectivity extends ConnectivitySignalSource {
 
 class _NowPlaying extends NowPlayingPlatformService {
   int disposals = 0;
+  bool supported = false;
+  bool nativeArtwork = false;
+  final updates = <Map<String, dynamic>>[];
   @override
-  bool get isSupported => false;
+  bool get isSupported => supported;
+  @override
+  bool get loadsArtworkNatively => nativeArtwork;
+  @override
+  void setRemoteCommandHandler(
+    Future<void> Function(NativeRemoteCommand) handler,
+  ) {}
+  @override
+  Future<void> setNowPlaying(Map<String, dynamic> payload) async =>
+      updates.add(payload);
+  @override
+  Future<void> clearNowPlaying() async {}
   @override
   void dispose() {
     disposals++;
   }
 }
 
+class _ArtworkLoader extends NowPlayingArtworkLoader {
+  int loads = 0;
+  @override
+  Future<Uint8List?> loadRemote(String url, {required String token}) async {
+    loads++;
+    return Uint8List.fromList([1, 2, 3]);
+  }
+}
+
 class _Vehicle extends VehicleSurfaceService {
   int disposals = 0;
+  bool supported = false;
+  Future<dynamic> Function(String method, Map<String, dynamic> arguments)?
+  handler;
   @override
-  bool get isSupported => false;
+  bool get isSupported => supported;
+  @override
+  void setMethodHandler(
+    Future<dynamic> Function(String method, Map<String, dynamic> arguments)
+    handler,
+  ) {
+    this.handler = handler;
+  }
+
+  @override
+  Future<void> notifyState(Map<String, dynamic> payload) async {}
+  @override
+  Future<void> notifyAuthorization(bool authorized) async {}
   @override
   void dispose() {
     disposals++;
+    handler = null;
   }
 }
 

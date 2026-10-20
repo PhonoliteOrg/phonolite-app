@@ -300,6 +300,30 @@ class Artist {
   final String? logoRef;
   final String? bannerRef;
 
+  /// Compares persisted metadata without constructing JSON maps or strings.
+  bool hasSameMetadata(Artist other) {
+    if (identical(this, other)) return true;
+    if (id != other.id ||
+        name != other.name ||
+        albumCount != other.albumCount ||
+        collabAlbumCount != other.collabAlbumCount ||
+        appearanceCount != other.appearanceCount ||
+        otherCreditCount != other.otherCreditCount ||
+        _releaseCount != other._releaseCount ||
+        summary != other.summary ||
+        logoRef != other.logoRef ||
+        bannerRef != other.bannerRef ||
+        genres.length != other.genres.length) {
+      return false;
+    }
+    if (!identical(genres, other.genres)) {
+      for (var i = 0; i < genres.length; i++) {
+        if (genres[i] != other.genres[i]) return false;
+      }
+    }
+    return true;
+  }
+
   factory Artist.fromJson(Map<String, dynamic> json) {
     return Artist(
       id: json['id'] as String,

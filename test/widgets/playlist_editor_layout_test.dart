@@ -58,9 +58,10 @@ void main() {
               expect(photo.bottom, lessThan(formTop));
             }
             if (creating) {
+              final toggle = tester.getRect(find.byType(Wrap));
               expect(
-                tester.getRect(find.byType(Wrap)).left,
-                closeTo(name.left, 0.1),
+                width < 820 ? toggle.center.dx : toggle.left,
+                closeTo(width < 820 ? name.center.dx : name.left, 0.1),
               );
               expect(formTop, lessThan(heading.top));
             }

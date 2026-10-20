@@ -33,6 +33,7 @@ DownloadJobV2 _job(
   String requestId, {
   bool old = false,
   int sequence = 1,
+  List<String> trackIds = const ['song', 'done'],
 }) {
   final now = DateTime.now();
   return DownloadJobV2(
@@ -45,13 +46,13 @@ DownloadJobV2 _job(
     status: 'ready_to_download',
     createdAt: now,
     updatedAt: now,
-    totalCount: 2,
-    readyCount: old ? 1 : 2,
+    totalCount: trackIds.length,
+    readyCount: old ? 1 : trackIds.length,
     completedCount: 0,
     failedCount: old ? 1 : 0,
     eventCursor: 0,
     items: [
-      for (final (position, id) in ['song', 'done'].indexed)
+      for (final (position, id) in trackIds.indexed)
         DownloadJobItemV2(
           position: position,
           trackId: id,
@@ -157,6 +158,22 @@ class _PendingConnection extends _Connection {
     final job = await response.future;
     setToken(null);
     return job;
+  }
+}
+
+class _OverlappingConnection extends _Connection {
+  @override
+  Future<DownloadJobV2> createDownloadJob({
+    required String clientId,
+    required String clientRequestId,
+    required DownloadJobScopeV2 scope,
+  }) async {
+    setToken(null);
+    return _job(
+      clientId,
+      clientRequestId,
+      trackIds: ['song', 'done', 'missing'],
+    );
   }
 }
 
@@ -278,6 +295,115 @@ Future<File> _seedOldState(OfflineLibraryStorage storage) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'artist queue preserves album downloads and adds only missing tracks',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'phonolite_artist_overlap_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: root);
+      final partial = await storage.partialTrackFile(
+        serverBaseUrl: _server,
+        trackId: 'song',
+      );
+      await partial.writeAsBytes([1, 2]);
+      final completed = await storage.trackFile(
+        serverBaseUrl: _server,
+        trackId: 'done',
+      );
+      await completed.writeAsBytes([3, 4, 5]);
+      await storage.upsertDownloads(
+        await storage.prepareDownloads([
+          offlineTestDownload(
+            serverBaseUrl: _server,
+            track: _metadata('song').track,
+            batchId: 'album-job',
+            status: OfflineDownloadStatus.queued,
+          ).copyWith(partialPath: partial.path, bytesDownloaded: 2),
+          offlineTestDownload(
+            serverBaseUrl: _server,
+            track: _metadata('done').track,
+            filePath: completed.path,
+          ),
+        ]),
+      );
+      final now = DateTime.now();
+      await storage.saveDownloadPlan(
+        job: OfflineDownloadJob(
+          jobId: 'album-job',
+          kind: 'album',
+          serverBaseUrl: _server,
+          sourceId: _album.id,
+          status: OfflineDownloadStatus.queued,
+          createdAt: now,
+          updatedAt: now,
+          totalCount: 1,
+        ),
+        batch: OfflineDownloadBatch(
+          batchId: 'album-job',
+          serverBaseUrl: _server,
+          status: OfflineDownloadStatus.queued,
+          createdAt: now,
+          updatedAt: now,
+          totalCount: 1,
+        ),
+        items: [
+          OfflineDownloadJobItem(
+            jobId: 'album-job',
+            position: 0,
+            serverTrackId: 'song',
+            status: OfflineDownloadStatus.queued,
+            materialized: true,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+      );
+      final connection = _OverlappingConnection();
+      final manager = OfflineDownloadManager(
+        connection: connection,
+        storage: storage,
+      );
+      try {
+        await manager.load();
+        connection.setToken('session');
+        await manager.queueArtist(_artist, [_album]);
+        expect(manager.downloads.map((download) => download.track.id).toSet(), {
+          'song',
+          'done',
+          'missing',
+        });
+        expect(manager.downloads, hasLength(3));
+        final queued = manager.downloads.singleWhere(
+          (download) => download.track.id == 'song',
+        );
+        expect(queued.batchId, 'album-job');
+        expect(queued.bytesDownloaded, 2);
+        expect(queued.partialPath, partial.path);
+        final done = manager.downloads.singleWhere(
+          (download) => download.track.id == 'done',
+        );
+        expect(done.status, OfflineDownloadStatus.downloaded);
+        expect(done.filePath, completed.path);
+        expect(await completed.readAsBytes(), [3, 4, 5]);
+        final missing = manager.downloads.singleWhere(
+          (download) => download.track.id == 'missing',
+        );
+        expect(missing.status, OfflineDownloadStatus.queued);
+        expect(missing.batchId, isNot('album-job'));
+        expect(
+          manager.jobs.map((job) => job.kind),
+          containsAll(['album', 'artist']),
+        );
+        expect(await manager.queueArtist(_artist, [_album]), 0);
+      } finally {
+        await manager.dispose();
+        await storage.close();
+      }
+    },
+  );
 
   for (final resetAll in [false, true]) {
     test(

@@ -56,6 +56,86 @@ final class RunnerTests: XCTestCase {
     XCTAssertNil(artwork())
   }
 
+  func testConsecutiveTracksInAnAlbumKeepTheArtworkObject() {
+    var args = metadata()
+    args["artworkBytes"] = FlutterStandardTypedData(bytes: imageData())
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    let first = artwork()
+    args["trackId"] = "track-b"
+    args["title"] = "Track B"
+    args["epoch"] = 2
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    XCTAssertTrue(first === artwork())
+    XCTAssertEqual(coordinator.buildNowPlayingInfo()[MPMediaItemPropertyTitle] as? String, "Track B")
+  }
+
+  func testReturningToAnAlbumReusesDecodedArtworkWithoutReadingTheFileAgain() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try imageData().write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+    var args = metadata()
+    args["artworkPath"] = url.path
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    expectation(for: NSPredicate { [weak self] _, _ in self?.artwork() != nil }, evaluatedWith: nil)
+    waitForExpectations(timeout: 3)
+    let first = artwork()
+
+    coordinator.update(args: metadata(key: "album-b"), carPlaySceneDelegate: nil)
+    XCTAssertNil(artwork())
+    try FileManager.default.removeItem(at: url)
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    XCTAssertTrue(first === artwork())
+
+    coordinator.clear(carPlaySceneDelegate: nil)
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    XCTAssertNil(artwork(), "Clearing Now Playing must also discard cached covers")
+  }
+
+  func testLargeArtworkIsDownsampledBeforePublishing() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 2400, height: 1200), format: format).image { context in
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 2400, height: 1200))
+    }
+    try image.pngData()!.write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+    var args = metadata()
+    args["artworkPath"] = url.path
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    expectation(for: NSPredicate { [weak self] _, _ in self?.artwork() != nil }, evaluatedWith: nil)
+    waitForExpectations(timeout: 3)
+    XCTAssertEqual(artwork()?.bounds.size, CGSize(width: 1024, height: 512))
+  }
+
+  func testRapidTrackChangeCannotInstallAnEarlierCover() throws {
+    let first = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let second = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try imageData().write(to: first)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 40), format: format).image { context in
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 80, height: 40))
+    }
+    try image.pngData()!.write(to: second)
+    defer {
+      try? FileManager.default.removeItem(at: first)
+      try? FileManager.default.removeItem(at: second)
+    }
+    var args = metadata()
+    args["artworkPath"] = first.path
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    args["artworkKey"] = "album-b"
+    args["trackId"] = "track-b"
+    args["artworkPath"] = second.path
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    expectation(for: NSPredicate { [weak self] _, _ in self?.artwork() != nil }, evaluatedWith: nil)
+    waitForExpectations(timeout: 3)
+    XCTAssertEqual(artwork()?.bounds.size, image.size)
+  }
+
   func testCorruptBytesDoNotDiscardAValidCover() {
     var args = metadata()
     args["artworkBytes"] = FlutterStandardTypedData(bytes: imageData())
@@ -119,6 +199,45 @@ final class RunnerTests: XCTestCase {
     }, evaluatedWith: nil)
     waitForExpectations(timeout: 3)
     XCTAssertEqual(attempts, 2)
+  }
+
+  func testRemoteCacheReusesAlbumsAndSeparatesCredentialsAndPins() {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [ArtworkURLProtocol.self]
+    let session = URLSession(configuration: configuration)
+    defer {
+      session.invalidateAndCancel()
+      ArtworkURLProtocol.respond = nil
+    }
+    coordinator = NowPlayingCoordinator(artworkSession: session)
+    let png = imageData()
+    var requests = 0
+    ArtworkURLProtocol.respond = { _ in
+      requests += 1
+      return (200, png)
+    }
+    var args = metadata()
+    args["artworkUrl"] = "https://artwork.invalid/cover"
+    args["token"] = "first-session"
+    args["serverPin"] = String(repeating: "a", count: 64)
+    let load = {
+      self.coordinator.update(args: args, carPlaySceneDelegate: nil)
+      self.expectation(for: NSPredicate { [weak self] _, _ in self?.artwork() != nil }, evaluatedWith: nil)
+      self.waitForExpectations(timeout: 3)
+    }
+    load()
+    let first = artwork()
+    coordinator.update(args: metadata(key: "album-b"), carPlaySceneDelegate: nil)
+    coordinator.update(args: args, carPlaySceneDelegate: nil)
+    XCTAssertTrue(first === artwork())
+    XCTAssertEqual(requests, 1)
+
+    args["token"] = "second-session"
+    load()
+    XCTAssertEqual(requests, 2)
+    args["serverPin"] = String(repeating: "b", count: 64)
+    load()
+    XCTAssertEqual(requests, 3)
   }
 
   func testClearInvalidatesPendingLocalArtworkAndCarPlayRefreshStaysEmpty() throws {

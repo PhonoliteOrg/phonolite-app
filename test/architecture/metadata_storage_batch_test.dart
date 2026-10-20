@@ -8,6 +8,7 @@ import 'package:phonolite_app/entities/offline_library.dart';
 import 'package:phonolite_app/entities/server_connection.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../support/auth_test_helpers.dart';
 import '../support/offline_library_test_helpers.dart';
 
 const _server = 'https://server.test/api/v1';
@@ -34,7 +35,9 @@ class _CountingStorage extends OfflineLibraryStorage {
 }
 
 class _RepairConnection extends ServerConnection {
-  _RepairConnection({this.release}) : super(baseUrl: _server);
+  _RepairConnection({this.release}) : super(baseUrl: _server) {
+    setTrust(testServerTrust);
+  }
 
   final Completer<void>? release;
   final requested = Completer<void>();
@@ -53,7 +56,9 @@ class _RepairConnection extends ServerConnection {
 }
 
 class _ArtworkRefreshConnection extends ServerConnection {
-  _ArtworkRefreshConnection() : super(baseUrl: _server);
+  _ArtworkRefreshConnection() : super(baseUrl: _server) {
+    setTrust(testServerTrust);
+  }
 
   final oldArtworkRequested = Completer<void>();
   final releaseOldArtwork = Completer<void>();

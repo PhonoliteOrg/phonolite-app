@@ -1,0 +1,169 @@
+{
+  "feature": "library",
+  "sources": [
+    "lib/pages/library_page.dart",
+    "lib/widgets/inputs/search_hud.dart",
+    "lib/widgets/layout/search_results_sliver.dart"
+  ],
+  "interactions": [
+    {
+      "id": "library.scroll",
+      "action": "Scroll artists and downloaded music down/up",
+      "expected": "Content moves and remains hittable",
+      "availability": "Enough content to scroll",
+      "risk": "browse",
+      "journeys": [
+        "library.scroll"
+      ]
+    },
+    {
+      "id": "library.search_focus",
+      "action": "Tap library search",
+      "expected": "Field receives focus and keyboard opens",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "library.search"
+      ]
+    },
+    {
+      "id": "library.search_type",
+      "action": "Enter or edit search text",
+      "expected": "Local/server results reflect the query",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "library.search"
+      ]
+    },
+    {
+      "id": "library.search_submit",
+      "action": "Press keyboard Search",
+      "expected": "Submit current query",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "library.search"
+      ]
+    },
+    {
+      "id": "library.search_clear",
+      "action": "Tap Clear search",
+      "expected": "Empty query and restore catalog",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": [
+        "library.search"
+      ]
+    },
+    {
+      "id": "library.search_dismiss",
+      "action": "Drag list while keyboard is visible",
+      "expected": "Dismiss keyboard without losing query",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.collection_view",
+      "action": "Tap Show list or Show cards",
+      "expected": "Switch collection layout and retain preference",
+      "availability": "all",
+      "risk": "preference",
+      "journeys": [
+        "library.collection_view"
+      ]
+    },
+    {
+      "id": "library.refresh",
+      "action": "Tap Refresh library",
+      "expected": "Refresh catalog and expose busy/error state",
+      "availability": "all",
+      "risk": "network",
+      "journeys": []
+    },
+    {
+      "id": "library.artist_open",
+      "action": "Tap an artist card or row",
+      "expected": "Open local/server artist details",
+      "availability": "Artist loaded",
+      "risk": "browse",
+      "journeys": [
+        "library.artist_navigation",
+        "library.album_navigation"
+      ]
+    },
+    {
+      "id": "library.result_artist",
+      "action": "Tap an artist search result",
+      "expected": "Open matching artist",
+      "availability": "Artist search result",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.result_album",
+      "action": "Tap an album search result",
+      "expected": "Open matching album",
+      "availability": "Album search result",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.result_track",
+      "action": "Tap a track search result",
+      "expected": "Start corresponding playback",
+      "availability": "Track search result",
+      "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "library.result_actions",
+      "action": "Open search-result Track actions",
+      "expected": "Show available track actions",
+      "availability": "Track search result",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.edit",
+      "action": "Tap Edit",
+      "expected": "Enter downloaded-artist selection",
+      "availability": "Downloaded artists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.select_artist",
+      "action": "Tap artist or checkbox in selection mode",
+      "expected": "Toggle selected artist",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.select_all",
+      "action": "Tap Select all or Deselect all",
+      "expected": "Select all eligible artists or clear selection",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.remove_selected",
+      "action": "Tap Remove selected",
+      "expected": "Open download-removal confirmation",
+      "availability": "Selection exists",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
+      "id": "library.cancel_selection",
+      "action": "Tap Cancel",
+      "expected": "Exit selection and retain downloaded files",
+      "availability": "Selection mode",
+      "risk": "browse",
+      "journeys": []
+    }
+  ]
+}
