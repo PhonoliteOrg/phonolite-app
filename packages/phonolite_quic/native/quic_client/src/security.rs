@@ -61,14 +61,19 @@ impl ServerCertVerifier for ProvisionalVerifier {
             .map_err(|_| rustls::Error::General("invalid certificate".into()))?;
         let time = x509_parser::time::ASN1Time::from_timestamp(now.as_secs() as i64)
             .map_err(|_| rustls::Error::General("invalid time".into()))?;
-        if !parsed.validity().is_valid_at(time)
-            || self
-                .pin
-                .as_ref()
-                .is_some_and(|pin| spki(cert.as_ref()).as_ref() != Ok(pin))
+        if !parsed.validity().is_valid_at(time) {
+            return Err(rustls::Error::General(
+                "server certificate is expired or not yet valid; check the device date and time"
+                    .into(),
+            ));
+        }
+        if self
+            .pin
+            .as_ref()
+            .is_some_and(|pin| spki(cert.as_ref()).as_ref() != Ok(pin))
         {
             return Err(rustls::Error::General(
-                "server identity changed or certificate expired".into(),
+                "server public key does not match the saved key".into(),
             ));
         }
         Ok(ServerCertVerified::assertion())
@@ -193,9 +198,10 @@ fn connect_tls(
         TimedSocket { socket, deadline },
     );
     while stream.conn.is_handshaking() {
-        stream.conn.complete_io(&mut stream.sock).map_err(|_| {
-            "TLS handshake failed; server identity changed, expired, or unavailable"
-        })?;
+        stream
+            .conn
+            .complete_io(&mut stream.sock)
+            .map_err(|error| format!("TLS handshake failed ({:?}): {error}", error.kind()))?;
     }
     Ok(stream)
 }
