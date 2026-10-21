@@ -15,6 +15,7 @@ class ApplicationWindow {
 
   GtkWindow* window() const;
 
+  void set_icon(GdkPixbuf* icon);
   void set_content(GtkWidget* content);
   void show();
 

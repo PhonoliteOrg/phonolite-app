@@ -58,7 +58,25 @@ void FlutterHost::on_view_destroy(GtkWidget*, gpointer data) {
   g_object_set_data(G_OBJECT(host->window_.window()), host_data_key, nullptr);
 }
 
+void FlutterHost::configure_icon() {
+  // Resolve the relocatable Flutter bundle independently of the working directory.
+  g_autofree gchar* executable = g_file_read_link("/proc/self/exe", nullptr);
+  if (executable == nullptr) {
+    return;
+  }
+
+  g_autofree gchar* directory = g_path_get_dirname(executable);
+  g_autofree gchar* icon_path = g_build_filename(directory, "data", "flutter_assets", "assets", "images",
+                                                 "phonolite-logo-nobackground.png", nullptr);
+  g_autoptr(GdkPixbuf) icon = gdk_pixbuf_new_from_file(icon_path, nullptr);
+  if (icon != nullptr) {
+    window_.set_icon(icon);
+  }
+}
+
 void FlutterHost::assemble(gchar** dart_entrypoint_arguments) {
+  configure_icon();
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(project, dart_entrypoint_arguments);
 

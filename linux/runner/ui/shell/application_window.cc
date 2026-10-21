@@ -22,6 +22,10 @@ GtkWindow* ApplicationWindow::window() const {
   return window_;
 }
 
+void ApplicationWindow::set_icon(GdkPixbuf* icon) {
+  gtk_window_set_icon(window_, icon);
+}
+
 void ApplicationWindow::set_content(GtkWidget* content) {
   gtk_container_add(GTK_CONTAINER(window_), content);
 }

@@ -26,6 +26,7 @@ class FlutterHost {
   static void on_window_destroy(GtkWidget* window, gpointer data);
   static void on_view_destroy(GtkWidget* view, gpointer data);
 
+  void configure_icon();
   void assemble(gchar** dart_entrypoint_arguments);
 
   ApplicationWindow window_;
