@@ -240,6 +240,8 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
 
     final changed = await _feature.changeServer();
     if (mounted && changed) {
+      _serverHostController.clear();
+      _serverPortController.clear();
       _usernameController.clear();
       _passwordController.clear();
     }
@@ -274,16 +276,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
       return;
     }
 
-    final hasServer = _serverHostController.text.trim().isNotEmpty;
     final hasUsername = _usernameController.text.trim().isNotEmpty;
-
-    final baseUrl = saved?.baseUrl ?? widget.controller.authState.baseUrl;
-    if (!hasServer && baseUrl.trim().isNotEmpty) {
-      final address = _feature.savedAddress(baseUrl);
-
-      _serverHostController.text = address.host;
-      _serverPortController.text = address.port ?? '';
-    }
 
     if (!hasUsername && saved != null && saved.username.trim().isNotEmpty) {
       _usernameController.text = saved.username;

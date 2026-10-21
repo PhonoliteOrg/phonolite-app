@@ -34,6 +34,7 @@ import 'package:phonolite_app/application/downloads/offline_download_manager.dar
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/storage/preferences/playback_preferences.dart';
+import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/infrastructure/platform/permissions/local_network_permission_service.dart';
 import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
@@ -217,6 +218,39 @@ void main() {
     expect(connection.token, isNull);
     expect(harness.controller.authState.requiresSignIn, isTrue);
     expect(harness.auth.clears, 1);
+  });
+
+  test('startup cleanup retains a remembered connection when its server is unavailable', () async {
+    _mockTrustVault();
+    final directory = await Directory.systemTemp.createTemp('phonolite_startup_auth_');
+    addTearDown(() => directory.delete(recursive: true));
+    final storage = AuthStorage(files: SettingsFiles(directoryProvider: () async => directory));
+    final connection = _Connection()..playbackSettingsFailure = true;
+    final credentials = AuthCredentials(
+      baseUrl: connection.baseUrl,
+      token: 'saved-offline-token',
+      username: 'listener',
+      trust: testServerTrust,
+    );
+    const orphan = 'https://orphaned-startup.test:3000/api';
+    await storage.write(credentials);
+    await ServerTrustStore.write(credentials.baseUrl, credentials.trust);
+    await ServerTrustStore.write(orphan, testServerTrust);
+
+    await storage.removeOrphanedCredentials();
+    final harness = _Harness(connection: connection, authStorage: storage);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+
+    expect(harness.controller.authState.status, SessionStatus.serverUnavailable);
+    expect(harness.controller.hasSavedCredentials, isTrue);
+    expect(harness.controller.savedBaseUrl, credentials.baseUrl);
+    expect(connection.token, credentials.token);
+    expect(connection.trust?.toJson(), credentials.trust.toJson());
+    expect((await storage.read())?.toJson(), credentials.toJson());
+    expect((await ServerTrustStore.read(credentials.baseUrl))?.toJson(), credentials.trust.toJson());
+    expect(await ServerTrustStore.read(orphan), isNull);
   });
 
   test('paused quality selection is applied when playback resumes', () async {
@@ -2196,6 +2230,7 @@ class _Harness {
     OfflineDownloadManager? offlineDownloadManager,
     OfflineLibraryStorage? offlineStorage,
     NowPlayingArtworkLoader? artworkLoader,
+    AuthStorage? authStorage,
   }) : connection = connection ?? _Connection(),
        auth = _MemoryAuth(authenticated) {
     controller = AppController(
@@ -2211,7 +2246,7 @@ class _Harness {
           },
       offlineDownloadManager: offlineDownloadManager ?? downloads,
       offlineStorage: offlineStorage ?? _Storage(),
-      authStorage: auth,
+      authStorage: authStorage ?? auth,
       playbackPreferencesStorage: preferences,
       customShuffleStorage: shuffle,
       connectivitySignalSource: connectivity,
@@ -2787,6 +2822,7 @@ void _mockTrustVault() {
   final values = <String, String>{};
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, (call) async {
     final args = Map<String, dynamic>.from(call.arguments as Map);
+    if (call.method == 'readAll') return Map<String, String>.from(values);
     final key = args['key'] as String;
     if (call.method == 'read') return values[key];
     if (call.method == 'write') values[key] = args['value'] as String;

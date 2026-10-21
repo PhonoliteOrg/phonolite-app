@@ -82,7 +82,7 @@ class LoginController extends FeatureController {
       return false;
     }
 
-    final baseUrl = resolveBaseUrl(host, port);
+    final baseUrl = _connected ? app.authState.baseUrl : resolveBaseUrl(host, port);
 
     if (baseUrl.isEmpty) {
       update(() => _error = 'Server address is required');

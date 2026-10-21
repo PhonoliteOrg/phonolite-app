@@ -21,8 +21,8 @@ void main() {
           "'trust': trust.toJson()",
           "final ServerTrust trust;",
         ]);
-        expect(source, isNot(contains('auth.json')));
-        expect(source, isNot(contains('SettingsFiles')));
+        expect(source, isNot(contains('readAsString(')));
+        expect(source, isNot(contains('writeAsString(')));
         expect(source, isNot(contains('dart:io')));
       },
     );
