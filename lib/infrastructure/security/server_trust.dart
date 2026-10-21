@@ -12,6 +12,7 @@ export 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 /// pins; no system CA can override a Phonolite pin.
 class ServerTrustRegistry {
   static final Map<String, ServerTrust> _pins = {};
+  static int _generation = 0;
 
   static String origin(Uri uri) => ServerTrust.origin(uri);
 
@@ -22,10 +23,21 @@ class ServerTrustRegistry {
       throw StateError('HTTPS is required');
     }
 
-    _pins[origin(uri)] = trust;
+    final key = origin(uri);
+    final previous = _pins[key];
+    _pins[key] = trust;
+    if (previous != null && (previous.spki != trust.spki || previous.opaqueKey != trust.opaqueKey)) {
+      _generation++;
+    }
   }
 
   static ServerTrust? lookup(String baseUrl) => _pins[origin(Uri.parse(baseUrl))];
+
+  static void forget(String baseUrl) {
+    if (_pins.remove(origin(Uri.parse(baseUrl))) != null) {
+      _generation++;
+    }
+  }
 
   static void validate(Uri uri) {
     if (uri.scheme != 'https' || uri.userInfo.isNotEmpty || !_pins.containsKey(origin(uri))) {
@@ -53,21 +65,29 @@ class ServerTrustRegistry {
   }
 }
 
-void installServerTrustOverrides() {
-  HttpOverrides.global = _PinnedOverrides();
+void installServerTrustOverrides({HttpClient Function(SecurityContext)? createHttpClient}) {
+  HttpOverrides.global = _PinnedOverrides(createHttpClient);
 }
 
-http.Client pinnedApiClient(String Function() baseUrl) => _PinnedApiClient(baseUrl);
+http.Client pinnedApiClient(String Function() baseUrl, {HttpClient Function(SecurityContext)? createHttpClient}) =>
+    _PinnedApiClient(baseUrl, createHttpClient);
 
 class _PinnedOverrides extends HttpOverrides {
+  final HttpClient Function(SecurityContext)? _createHttpClient;
+
+  _PinnedOverrides([this._createHttpClient]);
+
   @override
   HttpClient createHttpClient(SecurityContext? context) {
-    final client = super.createHttpClient(SecurityContext(withTrustedRoots: false));
+    return _PinnedHttpClient(() {
+      final securityContext = SecurityContext(withTrustedRoots: false);
+      final client = _createHttpClient?.call(securityContext) ?? super.createHttpClient(securityContext);
 
-    client.badCertificateCallback = ServerTrustRegistry.accepts;
-    client.findProxy = (_) => 'DIRECT';
+      client.badCertificateCallback = ServerTrustRegistry.accepts;
+      client.findProxy = (_) => 'DIRECT';
 
-    return _PinnedHttpClient(client);
+      return client;
+    });
   }
 }
 
@@ -75,7 +95,8 @@ class _PinnedApiClient extends http.BaseClient {
   final String Function() baseUrl;
   final http.Client _inner;
 
-  _PinnedApiClient(this.baseUrl) : _inner = IOClient(_PinnedOverrides().createHttpClient(null));
+  _PinnedApiClient(this.baseUrl, HttpClient Function(SecurityContext)? createHttpClient)
+    : _inner = IOClient(_PinnedOverrides(createHttpClient).createHttpClient(null));
 
   @override
   void close() => _inner.close();
@@ -96,9 +117,30 @@ class _PinnedApiClient extends http.BaseClient {
 /// Used by Flutter NetworkImage as well as direct download clients. All request
 /// entry points require a pinned HTTPS origin and turn off automatic redirects.
 class _PinnedHttpClient implements HttpClient {
-  final HttpClient inner;
+  final HttpClient Function() _createClient;
+  HttpClient inner;
+  int _generation = ServerTrustRegistry._generation;
+  bool _closed = false;
 
-  _PinnedHttpClient(this.inner);
+  _PinnedHttpClient(this._createClient) : inner = _createClient();
+
+  void _refreshTrust() {
+    if (_generation == ServerTrustRegistry._generation || _closed) {
+      return;
+    }
+
+    final previous = inner;
+    // A pooled TLS connection does not re-run badCertificateCallback. Retire
+    // every old pool before another request can use a replaced or forgotten pin.
+    previous.close(force: true);
+    inner = _createClient()
+      ..idleTimeout = previous.idleTimeout
+      ..connectionTimeout = previous.connectionTimeout
+      ..maxConnectionsPerHost = previous.maxConnectionsPerHost
+      ..autoUncompress = previous.autoUncompress
+      ..userAgent = previous.userAgent;
+    _generation = ServerTrustRegistry._generation;
+  }
 
   @override
   Duration get idleTimeout => inner.idleTimeout;
@@ -131,12 +173,26 @@ class _PinnedHttpClient implements HttpClient {
   set userAgent(String? value) => inner.userAgent = value;
 
   @override
-  void close({bool force = false}) => inner.close(force: force);
+  void close({bool force = false}) {
+    _closed = true;
+    inner.close(force: force);
+  }
 
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    if (_closed) {
+      throw HttpException('HTTP client is closed', uri: url);
+    }
+    _refreshTrust();
     ServerTrustRegistry.validate(url);
+    final generation = _generation;
     final request = await inner.openUrl(method, url);
+    if (generation != ServerTrustRegistry._generation) {
+      _refreshTrust();
+      final error = HandshakeException('Server trust changed during the request');
+      request.abort(error);
+      throw error;
+    }
 
     request.followRedirects = false;
 

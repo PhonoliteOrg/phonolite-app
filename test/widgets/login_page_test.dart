@@ -76,6 +76,8 @@ void main() {
     await _pump(tester, controller);
     expect(find.text('SIGN IN'), findsNWidgets(2));
     expect(_input('Username'), findsOneWidget);
+    expect(_action('Change server'), findsOneWidget);
+    expect(_action('Forget server'), findsNothing);
     expect(find.textContaining('Server keys changed.'), findsOneWidget);
     await tester.enterText(_input('Username'), 'listener');
     await tester.enterText(_input('Password'), 'correct-password');
@@ -83,6 +85,80 @@ void main() {
     expect(controller.probes, isEmpty);
     expect(controller.login?.baseUrl, 'https://rotated.test:8443/api');
     expect(controller.login?.password, 'correct-password');
+  });
+
+  testWidgets('saved server without an explicit HTTPS port prefills port 443', (tester) async {
+    final controller = _LoginController()
+      .._auth = AuthState(baseUrl: 'https://fresh.test/api');
+    await _pump(tester, controller);
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, 'fresh.test');
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, '443');
+    expect(_action('Forget server'), findsNothing);
+    await _tapAction(tester, 'Connect');
+    expect(controller.probes, ['https://fresh.test']);
+    expect(_action('Forget server'), findsNothing);
+  });
+
+  testWidgets('change server disconnects and clears credentials before reconnecting', (tester) async {
+    final controller = _LoginController()
+      .._auth = AuthState(baseUrl: 'https://fresh.test:8443/api', requiresSignIn: true)
+      ..saved = const AuthCredentials(
+        baseUrl: 'https://fresh.test:8443/api',
+        token: 'old-token',
+        username: 'listener',
+        trust: testServerTrust,
+      );
+    await _pump(tester, controller);
+    await tester.enterText(_input('Password'), 'old-password');
+
+    await _tapAction(tester, 'Change server');
+    expect(controller.logouts, 1);
+    expect(controller.saved, isNull);
+    expect(controller.authState.baseUrl, isEmpty);
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, 'fresh.test');
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
+    expect(_action('Forget server'), findsNothing);
+
+    await _tapAction(tester, 'Connect');
+    expect(controller.probes, ['https://fresh.test:8443']);
+    expect(tester.widget<TextField>(_input('Username')).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(_input('Password')).controller!.text, isEmpty);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    await _tapAction(tester, 'Sign in');
+    expect(find.text('Username and password are required'), findsOneWidget);
+    expect(controller.login, isNull);
+
+    await tester.enterText(_input('Username'), 'new-listener');
+    await tester.enterText(_input('Password'), 'new-password');
+    await _tapAction(tester, 'Sign in');
+    expect(controller.login?.password, 'new-password');
+    expect(controller.login?.rememberMe, isFalse);
+  });
+
+  testWidgets('change server waits for disconnect and preserves credentials if it fails', (tester) async {
+    final pending = Completer<void>();
+    final controller = _LoginController()
+      .._auth = AuthState(baseUrl: 'https://fresh.test:3000/api', requiresSignIn: true)
+      ..logoutResult = pending.future;
+    await _pump(tester, controller);
+    await tester.enterText(_input('Username'), 'listener');
+    await tester.enterText(_input('Password'), 'entered-password');
+    final queuedChange = tester.widget<TextButton>(_action('Change server')).onPressed;
+    await tester.tap(_action('Change server'));
+    await tester.pump();
+    expect(controller.logouts, 1);
+    expect(tester.widget<TextButton>(_action('Change server')).onPressed, isNull);
+    expect(tester.widget<TextButton>(_action('Sign in')).onPressed, isNull);
+    queuedChange?.call();
+    await tester.pump();
+    expect(controller.logouts, 1);
+
+    pending.completeError(StateError('disconnect failed'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not disconnect from this server. Try again.'), findsOneWidget);
+    expect(tester.widget<TextField>(_input('Username')).controller!.text, 'listener');
+    expect(tester.widget<TextField>(_input('Password')).controller!.text, 'entered-password');
+    expect(tester.widget<TextButton>(_action('Change server')).onPressed, isNotNull);
   });
 
   for (final width in [320.0, 390.0, 700.0, 1280.0]) {
@@ -304,6 +380,8 @@ class _LoginController extends Fake implements AppController {
   AuthState _auth = AuthState(baseUrl: '');
   AuthCredentials? saved;
   Future<bool>? probeResult;
+  Future<void>? logoutResult;
+  int logouts = 0;
   final probes = <String>[];
   ({String baseUrl, String username, String password, bool rememberMe})? login;
 
@@ -323,6 +401,14 @@ class _LoginController extends Fake implements AppController {
 
   @override
   Future<AuthCredentials?> loadSavedCredentials() async => saved;
+
+  @override
+  Future<void> logout() async {
+    logouts++;
+    await (logoutResult ?? Future<void>.value());
+    saved = null;
+    _auth = AuthState(baseUrl: '');
+  }
 
   @override
   Future<bool> probeServer(String input) async {

@@ -80,6 +80,8 @@ class ServerConnection {
 
   void setTrust(ServerTrust value) => _transport.setTrust(value);
 
+  void forgetTrust(String url) => _transport.forgetTrust(url);
+
   void setBaseUrl(String baseUrl) => _transport.setBaseUrl(baseUrl);
 
   Future<String> resolveBaseUrl(String input) => _transport.resolveBaseUrl(input);

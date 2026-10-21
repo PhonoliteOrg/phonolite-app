@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/models/auth/server_trust.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
+import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
+import 'package:phonolite_app/infrastructure/security/server_trust.dart' show ServerTrustRegistry;
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_signal_source.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
@@ -41,6 +44,116 @@ import '../support/offline_library_test_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('disconnect removes the server address, session and identity while retaining other origins', () async {
+    _mockTrustVault();
+    final connection = _PasswordConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    const target = 'https://unused.test';
+    const other = 'https://another-remembered.test:3000/api';
+    await ServerTrustStore.write(target, testServerTrust);
+    await ServerTrustStore.write(other, testServerTrust);
+    ServerTrustRegistry.register(other, testServerTrust);
+    final revision = harness.connection.sessionRevision;
+
+    await harness.controller.logout();
+
+    expect(harness.connection.sessionRevision, greaterThan(revision));
+    expect(harness.connection.token, isNull);
+    expect(harness.connection.trust, isNull);
+    expect(harness.connection.baseUrl, isEmpty);
+    expect(harness.controller.authState.baseUrl, isEmpty);
+    expect(ServerTrustRegistry.lookup(target), isNull);
+    expect(await ServerTrustStore.read(target), isNull);
+    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(harness.auth.clears, 1);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+    expect(harness.controller.playbackState.track, isNull);
+    expect(connection.logoutRequests, 1);
+    expect(harness.downloads.pausedServers, contains(target));
+    expect((await ServerTrustStore.read(other))?.opaqueKey, testServerTrust.opaqueKey);
+    expect(ServerTrustRegistry.lookup(other), testServerTrust);
+  });
+
+  test('session restoration cannot reinstate an identity while disconnecting', () async {
+    _mockTrustVault();
+    final connection = _PasswordConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final clearing = Completer<void>();
+    final finishClear = Completer<void>();
+    harness.auth.clearingServer = clearing;
+    harness.auth.clearServerResponse = finishClear.future;
+
+    final disconnecting = harness.controller.logout();
+    await clearing.future;
+    await harness.controller.restoreSession();
+    await harness.controller.loginWithPassword(
+      baseUrl: 'https://unused.test', username: 'test', password: 'secret', rememberMe: true,
+    );
+    expect(harness.connection.trust, isNull);
+    expect(harness.connection.token, isNull);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+
+    finishClear.complete();
+    await disconnecting;
+    expect(harness.connection.trust, isNull);
+    expect(ServerTrustRegistry.lookup('https://unused.test'), isNull);
+    expect(harness.connection.baseUrl, isEmpty);
+    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(connection.logoutRequests, 1);
+  });
+
+  test('disconnect during post-login port discovery cannot authorize or remember the old identity', () async {
+    _mockTrustVault();
+    final connection = _DelayedLoginConnection();
+    final harness = _Harness(connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    final login = harness.controller.loginWithPassword(
+      baseUrl: 'https://unused.test', username: 'test', password: 'secret', rememberMe: true,
+    );
+    await connection.portsRequested.future;
+
+    await harness.controller.logout();
+    connection.portsResponse.complete(ServerPortsResponse(httpPort: 3000, quicPort: 3001, quicEnabled: true));
+    await login;
+
+    expect(harness.connection.token, isNull);
+    expect(harness.connection.trust, isNull);
+    expect(ServerTrustRegistry.lookup('https://unused.test'), isNull);
+    expect(harness.connection.baseUrl, isEmpty);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+    expect(harness.controller.hasSavedCredentials, isFalse);
+    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await ServerTrustStore.read('https://unused.test'), isNull);
+    expect(connection.logoutRequests, 1);
+  });
+
+  test('disconnect cancels a password login before it changes the selected server', () async {
+    _mockTrustVault();
+    final connection = _DelayedLoginConnection();
+    connection.portsResponse.complete(ServerPortsResponse(httpPort: 3000, quicPort: 3001, quicEnabled: true));
+    final harness = _Harness(connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+
+    final login = harness.controller.loginWithPassword(
+      baseUrl: 'https://new-target.test:3000/api', username: 'test', password: 'secret', rememberMe: true,
+    );
+    final disconnect = harness.controller.logout();
+    await Future.wait([login, disconnect]);
+
+    expect(connection.portsRequested.isCompleted, isFalse);
+    expect(connection.token, isNull);
+    expect(connection.baseUrl, isEmpty);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+    expect(harness.controller.hasSavedCredentials, isFalse);
+    expect(ServerTrustRegistry.lookup('https://new-target.test:3000/api'), isNull);
+  });
 
   test('key rotation disconnects remote playback and requires password sign-in', () async {
     final events = StreamController<MetadataUpdateEvent>();
@@ -441,6 +554,30 @@ void main() {
       expect(harness.controller.authState.isAuthorized, isFalse);
     },
   );
+
+  test('a late Connect health response cannot restore a disconnected server', () async {
+    _mockTrustVault();
+    final pending = Completer<void>();
+    final connection = _Connection()..pendingProbe = pending.future;
+    final harness = _Harness(connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+
+    final connecting = harness.controller.probeServer('music.test:8443');
+    await Future<void>.delayed(Duration.zero);
+    expect(connection.verifiedServers, ['https://music.test:8443/api']);
+    expect(harness.controller.authState.status, SessionStatus.checking);
+
+    await harness.controller.logout();
+    pending.complete();
+
+    expect(await connecting, isFalse);
+    expect(connection.baseUrl, isEmpty);
+    expect(connection.token, isNull);
+    expect(harness.controller.authState.status, SessionStatus.offline);
+    expect(harness.controller.authState.baseUrl, isEmpty);
+    expect(harness.controller.authState.error, isNull);
+  });
 
   for (final initiallyAvailable in [false, true]) {
     test(
@@ -867,6 +1004,61 @@ void main() {
     expect(harness.controller.playbackState.isPlaying, isTrue);
     expect(harness.controller.playbackState.track!.id, playingTrack);
     expect(await file.exists(), isTrue);
+  });
+
+  test('disconnect forgets the server while preserving downloaded local playback', () async {
+    _mockTrustVault();
+    final root = await Directory.systemTemp.createTemp('disconnect_local_playback_');
+    final storage = OfflineLibraryStorage(baseDirectory: root);
+    final connection = _PasswordConnection();
+    final file = await storage.trackFile(
+      serverBaseUrl: connection.baseUrl,
+      trackId: 'saved',
+    );
+    await file.writeAsBytes([1, 2, 3]);
+    final completed = await storage.prepareDownload(
+      offlineTestDownload(
+        serverBaseUrl: connection.baseUrl,
+        track: offlineTestTrack(id: 'saved'),
+        filePath: file.path,
+      ),
+    );
+    await storage.upsertDownload(completed);
+    final manager = OfflineDownloadManager(connection: connection, storage: storage);
+    final harness = _Harness(
+      authenticated: true,
+      connection: connection,
+      offlineDownloadManager: manager,
+      offlineStorage: storage,
+    );
+    addTearDown(() async {
+      await harness.controller.close();
+      await storage.close();
+      await root.delete(recursive: true);
+    });
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await ServerTrustStore.write(connection.baseUrl, testServerTrust);
+    await harness.controller.playOfflineTrack(completed.localTrackId!);
+    harness.onStarted!();
+    final previousStops = harness.audio.stops;
+    final playingTrack = harness.controller.playbackState.track!.id;
+
+    await harness.controller.logout();
+
+    expect(connection.baseUrl, isEmpty);
+    expect(connection.token, isNull);
+    expect(ServerTrustRegistry.lookup('https://unused.test'), isNull);
+    expect(await ServerTrustStore.read('https://unused.test'), isNull);
+    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(harness.audio.stops, previousStops);
+    expect(harness.audio.active, isTrue);
+    expect(harness.controller.playbackState.isLocalPlayback, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.controller.playbackState.track!.id, playingTrack);
+    expect(manager.downloads, hasLength(1));
+    expect(await file.exists(), isTrue);
+    expect(connection.logoutRequests, 1);
   });
 
   for (final failStop in [false, true]) {
@@ -2512,6 +2704,27 @@ class _StartupDownloadConnection extends _Connection {
   }) async => null;
 }
 
+class _DelayedLoginConnection extends _PasswordConnection {
+  final portsRequested = Completer<void>();
+  final portsResponse = Completer<ServerPortsResponse>();
+
+  @override
+  Future<String> login({required String username, required String password}) async {
+    setTrust(testServerTrust);
+    setToken('password-token');
+    return 'password-token';
+  }
+
+  @override
+  Future<ServerPortsResponse> fetchServerPorts({
+    Duration timeout = const Duration(seconds: 8),
+    bool retryable = true,
+  }) {
+    if (!portsRequested.isCompleted) portsRequested.complete();
+    return portsResponse.future;
+  }
+}
+
 class _PasswordConnection extends _Connection {
   int passwordChanges = 0;
   int logoutRequests = 0;
@@ -2540,6 +2753,8 @@ class _MemoryAuth extends AuthStorage {
   _MemoryAuth(this.authenticated);
   final bool authenticated;
   int clears = 0;
+  Completer<void>? clearingServer;
+  Future<void>? clearServerResponse;
 
   @override
   Future<AuthCredentials?> read() async => authenticated
@@ -2554,6 +2769,32 @@ class _MemoryAuth extends AuthStorage {
   Future<void> clear() async {
     clears++;
   }
+
+  @override
+  Future<void> clearForServer(String url) async {
+    clearingServer?.complete();
+    await clearServerResponse;
+    final credentials = await read();
+    if (credentials != null &&
+        ServerTrust.origin(Uri.parse(credentials.baseUrl)) == ServerTrust.origin(Uri.parse(url))) {
+      await clear();
+    }
+  }
+}
+
+void _mockTrustVault() {
+  const vault = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  final values = <String, String>{};
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, (call) async {
+    final args = Map<String, dynamic>.from(call.arguments as Map);
+    final key = args['key'] as String;
+    if (call.method == 'read') return values[key];
+    if (call.method == 'write') values[key] = args['value'] as String;
+    if (call.method == 'delete') values.remove(key);
+    return null;
+  });
+  addTearDown(() =>
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, null));
 }
 
 class _Storage extends OfflineLibraryStorage {

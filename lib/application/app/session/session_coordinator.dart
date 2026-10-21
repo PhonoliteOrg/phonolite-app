@@ -7,7 +7,12 @@ class _SessionCoordinator {
   bool _resettingUserPassword = false;
   bool _restoringSession = false;
   bool _savedCredentialsInvalidated = false;
+  int _savedCredentialsRevision = 0;
   final _sessionRestores = RequestGeneration();
+  final _serverProbes = RequestGeneration();
+  final _passwordLogins = RequestGeneration();
+  String? _passwordLoginOrigin;
+  final _disconnectingServerOrigins = <String>{};
   final _authController = StreamController<AuthState>.broadcast();
   late AuthState _authState;
   int _artistListSessionRevision = -1;
@@ -51,32 +56,56 @@ class _SessionCoordinator {
     required String password,
     bool rememberMe = false,
   }) async {
-    _host._statsServerId = _host._statsUserId = null;
-
-    if (_host._listeningStats.storageError == null) {
-      await _host._listeningStats.setAccount();
+    final origin = ServerTrust.origin(Uri.parse(baseUrl));
+    if (_host._disposed || _disconnectingServerOrigins.contains(origin)) {
+      return;
     }
 
-    _host._listeningSessionContext = null;
-
-    final playingTrack = _host._playbackState.track;
-
-    if (playingTrack != null) {
-      _host._prepareListeningSession(playingTrack, newSession: true, updateActive: true);
-    }
-
-    _setSessionStatus(SessionStatus.checking, error: null);
+    final generation = _passwordLogins.advance();
+    _passwordLoginOrigin = origin;
+    int? authenticatedRevision;
+    String? authenticatedToken;
+    bool isCurrent() =>
+        !_host._disposed &&
+        _passwordLogins.isCurrent(generation) &&
+        !_disconnectingServerOrigins.contains(origin) &&
+        (authenticatedRevision == null ||
+            (_host.connection.sessionRevision == authenticatedRevision &&
+                _host.connection.token == authenticatedToken &&
+                ServerTrust.origin(Uri.parse(_host.connection.baseUrl)) == origin));
 
     try {
+      _host._statsServerId = _host._statsUserId = null;
+
+      if (_host._listeningStats.storageError == null) {
+        await _host._listeningStats.setAccount();
+        if (!isCurrent()) return;
+      }
+
+      _host._listeningSessionContext = null;
+
+      final playingTrack = _host._playbackState.track;
+
+      if (playingTrack != null) {
+        _host._prepareListeningSession(playingTrack, newSession: true, updateActive: true);
+      }
+
+      _setSessionStatus(SessionStatus.checking, error: null);
       _host.connection.setBaseUrl(baseUrl);
 
       final token = await _host.connection.login(username: username, password: password);
+      if (!isCurrent()) return;
+      authenticatedRevision = _host.connection.sessionRevision;
+      authenticatedToken = token;
+      if (!isCurrent()) return;
 
       await _host._refreshServerPorts();
+      if (!isCurrent()) return;
       _host._serverHealthFailureCount = 0;
       _setAuthorized(true, error: null);
 
       await _host._loadPlaybackSettings();
+      if (!isCurrent()) return;
       unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
       unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
 
@@ -95,17 +124,26 @@ class _SessionCoordinator {
         await _clearSavedCredentials();
       }
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       final message = '${_host._formatApiError(err)} (OPAQUE sign-in)';
 
       _setSessionStatus(SessionStatus.serverReachable, error: message);
       _host._pushMessage('Login failed: $message', level: LogLevel.error);
     } catch (err) {
+      if (!isCurrent()) return;
       _setSessionStatus(SessionStatus.offline, error: serverFailureMessage(err));
       _host._pushMessage('Login failed: $err', level: LogLevel.error);
+    } finally {
+      if (_passwordLogins.isCurrent(generation)) {
+        _passwordLoginOrigin = null;
+      }
     }
   }
 
   void loginWithToken({required String baseUrl, required String token}) {
+    if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(baseUrl)))) return;
+    _passwordLogins.advance();
+    _passwordLoginOrigin = null;
     _host._statsServerId = _host._statsUserId = null;
     _host._listeningSessionContext = null;
     _host._audio?.configureListening(null, discardPending: false);
@@ -139,10 +177,17 @@ class _SessionCoordinator {
   }
 
   Future<bool> probeServer(String input) async {
+    final generation = _serverProbes.advance();
+    bool isCurrent() => !_host._disposed && _serverProbes.isCurrent(generation);
     _setSessionStatus(SessionStatus.checking, error: null);
 
     try {
       final resolved = await _host.connection.resolveBaseUrl(input);
+      if (!isCurrent()) return false;
+      if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(resolved)))) {
+        _setSessionStatus(SessionStatus.offline, error: 'Disconnecting from this server. Try again.');
+        return false;
+      }
 
       var identityChanged = false;
       try {
@@ -154,7 +199,7 @@ class _SessionCoordinator {
         identityChanged = true;
       }
 
-      if (_host._disposed) {
+      if (!isCurrent()) {
         return false;
       }
 
@@ -169,6 +214,7 @@ class _SessionCoordinator {
 
       return true;
     } catch (err) {
+      if (!isCurrent()) return false;
       final message = serverFailureMessage(err);
 
       _setSessionStatus(SessionStatus.offline, error: message);
@@ -178,21 +224,33 @@ class _SessionCoordinator {
     }
   }
 
-  Future<void> logout({bool clearSaved = true}) async {
+  Future<void> logout() async {
     final serverBaseUrl = _host.connection.baseUrl;
+    final origin = ServerTrust.origin(Uri.parse(serverBaseUrl));
+    if (!_disconnectingServerOrigins.add(origin)) return;
+
+    _passwordLogins.advance();
+    _passwordLoginOrigin = null;
+    _serverProbes.advance();
+    _sessionRestores.advance();
+    _restoringSession = false;
+    _savedCredentialsRevision++;
+    final saved = _savedCredentials;
+    if (saved != null && ServerTrust.origin(Uri.parse(saved.baseUrl)) == origin) {
+      _savedCredentialsInvalidated = true;
+      _savedCredentials = null;
+    }
     final preserveLocalPlayback = _host._playbackState.isLocalPlayback && _host._playbackState.track != null;
 
     _host._stopMetadataEventListener();
     _beginBestEffortServerLogout();
     _pauseDownloadsForDisconnectedServer(serverBaseUrl);
 
-    _host.connection.setToken(null);
+    _host.connection.forgetTrust(serverBaseUrl);
+    final disconnectedRevision = _host.connection.sessionRevision;
     _host._serverHealthFailureCount = 0;
     _host._serverReconnectAttempt = 0;
     _setSessionStatus(SessionStatus.offline, error: null);
-
-    await _host._detachListeningAccount();
-
     _host._quicPort = null;
 
     if (preserveLocalPlayback) {
@@ -201,8 +259,19 @@ class _SessionCoordinator {
       _clearPlaybackForServerDisconnect();
     }
 
-    if (clearSaved) {
-      await _clearSavedCredentials();
+    try {
+      await Future.wait<void>([
+        _host._detachListeningAccount(expectedSessionRevision: disconnectedRevision),
+        _queueSavedCredentialsWrite(() => _host._authStorage.clearForServer(serverBaseUrl)),
+        ServerTrustStore.remove(serverBaseUrl),
+      ]);
+      if (!_host._disposed && _host.connection.sessionRevision == disconnectedRevision) {
+        _host.connection.setBaseUrl('');
+        _setSessionStatus(SessionStatus.offline, error: null);
+      }
+    } finally {
+      _savedCredentialsRevision++;
+      _disconnectingServerOrigins.remove(origin);
     }
   }
 
@@ -250,9 +319,15 @@ class _SessionCoordinator {
       return _savedCredentials;
     }
 
+    final revision = _savedCredentialsRevision;
     final credentials = await _host._authStorage.read();
 
-    if (_savedCredentialsInvalidated) {
+    if (_savedCredentialsInvalidated || revision != _savedCredentialsRevision) {
+      return _savedCredentials;
+    }
+
+    if (credentials != null &&
+        _disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(credentials.baseUrl)))) {
       return null;
     }
 
@@ -289,15 +364,18 @@ class _SessionCoordinator {
   }
 
   Future<void> startFreshLoginFlow() async {
-    _sessionRestores.advance();
-    _restoringSession = false;
-    await _host.logout(clearSaved: true);
-    _host.connection.setBaseUrl(_host._initialBaseUrl);
-    _setAuthorized(false, error: null);
+    await _host.logout();
   }
 
   Future<void> requireSignIn({String reason = 'Server keys changed. Sign in again to verify the new server key.'}) =>
       _signOutAfterPasswordReset(reason: reason, requiresSignIn: true);
+
+  void _cancelPasswordLoginForServer(String url) {
+    if (_passwordLoginOrigin == ServerTrust.origin(Uri.parse(url))) {
+      _passwordLogins.advance();
+      _passwordLoginOrigin = null;
+    }
+  }
 
   Future<void> _signOutAfterPasswordReset({String? reason, bool requiresSignIn = false}) async {
     // Invalidate restoration before the first await. An expired/revoked session
@@ -306,13 +384,14 @@ class _SessionCoordinator {
     _restoringSession = false;
 
     final serverBaseUrl = _host.connection.baseUrl;
+    _cancelPasswordLoginForServer(serverBaseUrl);
 
     _host.connection.setToken(null);
     final disconnectedRevision = _host.connection.sessionRevision;
-    final clearSaved = _clearSavedCredentials();
+    final clearSavedCredentials = _clearSavedCredentials();
 
     if (_host._disposed) {
-      await clearSaved;
+      await clearSavedCredentials;
 
       return;
     }
@@ -333,7 +412,7 @@ class _SessionCoordinator {
     }
 
     await _host._detachListeningAccount(expectedSessionRevision: disconnectedRevision);
-    await clearSaved;
+    await clearSavedCredentials;
   }
 
   void _beginBestEffortServerLogout() {
@@ -412,7 +491,9 @@ class _SessionCoordinator {
   Future<void> _restoreSessionInternal(int revision) async {
     final credentials = await _host.loadSavedCredentials();
 
-    if (!_isRestoreSessionCurrent(revision) || credentials == null) {
+    if (!_isRestoreSessionCurrent(revision) ||
+        credentials == null ||
+        _disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(credentials.baseUrl)))) {
       if (_isRestoreSessionCurrent(revision)) {
         _setSessionStatus(SessionStatus.offline, error: null);
       }
@@ -491,12 +572,14 @@ class _SessionCoordinator {
   }
 
   Future<void> _storeSavedCredentials(AuthCredentials credentials) async {
+    _savedCredentialsRevision++;
     _savedCredentialsInvalidated = false;
     _savedCredentials = credentials;
     await _queueSavedCredentialsWrite(() => _host._authStorage.write(credentials));
   }
 
   Future<void> _clearSavedCredentials() async {
+    _savedCredentialsRevision++;
     _savedCredentialsInvalidated = true;
     _savedCredentials = null;
     await _queueSavedCredentialsWrite(_host._authStorage.clear);
@@ -627,7 +710,7 @@ mixin _SessionFacade {
 
   Future<bool> probeServer(String input) => _sessionCoordinator.probeServer(input);
 
-  Future<void> logout({bool clearSaved = true}) => _sessionCoordinator.logout(clearSaved: clearSaved);
+  Future<void> logout() => _sessionCoordinator.logout();
 
   Future<void> resetUserPassword({required String currentPassword, required String newPassword}) =>
       _sessionCoordinator.resetUserPassword(currentPassword: currentPassword, newPassword: newPassword);

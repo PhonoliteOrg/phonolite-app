@@ -18,6 +18,7 @@ import 'package:phonolite_app/application/workflows/request_generation.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/auth/local_network_permission_state.dart';
+import 'package:phonolite_app/data/models/auth/server_trust.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
@@ -44,6 +45,7 @@ import 'package:phonolite_app/data/models/preferences/offline_storage_locations.
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
+import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_storage.dart';
@@ -185,7 +187,6 @@ class AppController
   final NowPlayingArtwork _artwork;
   final VehicleSurfaceService _vehicleSurface;
   final LocalNetworkPermissionService _localNetworkPermissions;
-  late final String _initialBaseUrl;
   final AuthStorage _authStorage;
   final CustomShuffleSettingsStorage _customShuffleStorage;
   final PlaybackPreferencesStorage _playbackPreferencesStorage;
@@ -245,7 +246,6 @@ class AppController
     _sessionCoordinator = _SessionCoordinator(this);
     _statsCoordinator = _ListeningStatsCoordinator(this);
 
-    _initialBaseUrl = connection.baseUrl;
     _logListener = _addLogEntry;
     _playbackState = PlaybackState(
       track: null,

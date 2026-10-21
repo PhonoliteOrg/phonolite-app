@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
-import 'package:phonolite_app/infrastructure/security/server_trust.dart' show ServerTrustRegistry, pinnedApiClient;
+import 'package:phonolite_app/infrastructure/security/server_trust.dart'
+    show ServerTrustRegistry, installServerTrustOverrides, pinnedApiClient;
 import 'package:phonolite_quic/phonolite_quic.dart';
 
 void main() {
@@ -132,16 +134,25 @@ void main() {
   test('changed identity is typed and detection preserves old trust until password sign-in', () async {
     const url = 'https://rotated-endpoint.test:3000/api';
     await ServerTrustStore.write(url, trust);
-    final connection = ServerConnection(baseUrl: url,
+    final connection = ServerConnection(
+      baseUrl: url,
       serverProbe: ({required host, required port, expectedSpki}) async {
         expect(expectedSpki, trust.spki);
         throw ServerIdentityChangedException();
-      });
+      },
+    );
     connection.setTrust(trust);
     connection.setToken('old-session');
-    await expectLater(connection.verifyServerConnection(url), throwsA(
-      isA<ServerConnectionCheckException>().having((error) => error.reason,
-        'reason', ServerConnectionFailure.identityChanged)));
+    await expectLater(
+      connection.verifyServerConnection(url),
+      throwsA(
+        isA<ServerConnectionCheckException>().having(
+          (error) => error.reason,
+          'reason',
+          ServerConnectionFailure.identityChanged,
+        ),
+      ),
+    );
     expect(await connection.hasServerIdentityChanged(), isTrue);
     expect(connection.trust, trust);
     expect(connection.token, 'old-session');
@@ -180,6 +191,65 @@ void main() {
     expect(ServerTrustRegistry.lookup(url), isNull);
   });
 
+  test('forgetting trust removes one normalized origin and invalidates pending authentication', () async {
+    const target = 'https://forget-target.test:3000/api';
+    const otherPort = 'https://forget-target.test:3001/api';
+    final connection = ServerConnection(baseUrl: target);
+    final other = ServerConnection(baseUrl: otherPort);
+    connection.setTrust(trust);
+    other.setTrust(trust);
+    other.setToken('other-session');
+    await ServerTrustStore.write(target, trust);
+    await ServerTrustStore.write(otherPort, trust);
+    final revision = connection.sessionRevision;
+
+    connection.forgetTrust('https://FORGET-TARGET.test:3000/');
+    await ServerTrustStore.remove('https://FORGET-TARGET.test:3000/');
+
+    expect(connection.sessionRevision, revision + 1);
+    expect(connection.token, isNull);
+    expect(connection.trust, isNull);
+    expect(await ServerTrustStore.read(target), isNull);
+    expect(() => connection.setToken('old-session'), throwsStateError);
+    expect((await ServerTrustStore.read(otherPort))?.opaqueKey, trust.opaqueKey);
+    expect(other.trust, trust);
+    expect(other.token, 'other-session');
+  });
+
+  test('forgetting waits for an in-flight trust write so it cannot restore the pin', () async {
+    const target = 'https://write-then-forget.test:3000/api';
+    final enteredWrite = Completer<void>();
+    final finishWrite = Completer<void>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, (call) async {
+      final args = Map<String, dynamic>.from(call.arguments as Map);
+      final key = args['key'] as String;
+      if (call.method == 'write') {
+        enteredWrite.complete();
+        await finishWrite.future;
+        values[key] = args['value'] as String;
+      }
+      if (call.method == 'delete') values.remove(key);
+      if (call.method == 'read') return values[key];
+      return null;
+    });
+    final writing = ServerTrustStore.write(target, trust);
+    await enteredWrite.future;
+    final forgetting = ServerTrustStore.remove(target);
+    finishWrite.complete();
+    await Future.wait([writing, forgetting]);
+    expect(await ServerTrustStore.read(target), isNull);
+  });
+
+  test('forgetting clears only a matching remembered session', () async {
+    const storage = AuthStorage();
+    const target = 'https://saved-forget.test:443/api';
+    await storage.write(AuthCredentials(baseUrl: target, token: 'secret', username: 'listener', trust: trust));
+    await storage.clearForServer('https://saved-forget.test:3000/api');
+    expect((await storage.read())?.token, 'secret');
+    await storage.clearForServer('https://SAVED-FORGET.test/');
+    expect(await storage.read(), isNull);
+  });
+
   test('invalid endpoint details never run the network check', () async {
     var calls = 0;
     final connection = ServerConnection(
@@ -213,7 +283,102 @@ void main() {
     await expectLater(Future.sync(() => client.get(Uri.parse('https://attacker.test/api'))), throwsStateError);
     await expectLater(Future.sync(() => client.get(Uri.parse('http://pinned.test:3000/api'))), throwsStateError);
   });
-  test('server trust survives logout independently of the saved session', () async {
+  test('API clients retire forgotten TLS pools before reuse after fresh sign-in', () async {
+    const url = 'https://api-pool.test:3000/api';
+    final clients = <_FakeHttpClient>[];
+    final events = <String>[];
+    ServerTrustRegistry.register(url, trust);
+    final client = pinnedApiClient(
+      () => url,
+      createHttpClient: (_) {
+        final inner = _FakeHttpClient(clients.length, events);
+        clients.add(inner);
+        return inner;
+      },
+    );
+    addTearDown(client.close);
+    addTearDown(() => ServerTrustRegistry.forget(url));
+    final requestUrl = Uri.parse('$url/health');
+
+    await expectLater(client.get(requestUrl), throwsA(isA<http.ClientException>()));
+    ServerTrustRegistry.forget(url);
+    await expectLater(Future.sync(() => client.get(requestUrl)), throwsA(isA<HandshakeException>()));
+    ServerTrustRegistry.register(url, trust);
+    await expectLater(client.get(requestUrl), throwsA(isA<http.ClientException>()));
+
+    expect(events, ['open:0', 'close:0:true', 'open:1']);
+    expect(clients, hasLength(2));
+    expect(clients.last.badCertificateCallback, isNotNull);
+    expect(clients.last.findProxy!(requestUrl), 'DIRECT');
+  });
+  test('artwork clients retire replaced TLS pins and retain their configuration', () async {
+    const url = 'https://artwork-pool.test:3000/api';
+    final clients = <_FakeHttpClient>[];
+    final events = <String>[];
+    final previousOverrides = HttpOverrides.current;
+    ServerTrustRegistry.register(url, trust);
+    installServerTrustOverrides(
+      createHttpClient: (_) {
+        final inner = _FakeHttpClient(clients.length, events);
+        clients.add(inner);
+        return inner;
+      },
+    );
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    addTearDown(() => ServerTrustRegistry.forget(url));
+    final client = HttpClient()
+      ..idleTimeout = const Duration(seconds: 8)
+      ..connectionTimeout = const Duration(seconds: 3)
+      ..maxConnectionsPerHost = 2
+      ..autoUncompress = false
+      ..userAgent = 'artwork-test';
+    addTearDown(() => client.close(force: true));
+    final requestUrl = Uri.parse('$url/artwork');
+
+    await expectLater(client.getUrl(requestUrl), throwsA(isA<HttpException>()));
+    ServerTrustRegistry.register(url, trust);
+    await expectLater(client.getUrl(requestUrl), throwsA(isA<HttpException>()));
+    expect(clients, hasLength(1));
+    ServerTrustRegistry.register(url, ServerTrust(spki: 'cd' * 32, opaqueKey: trust.opaqueKey));
+    await expectLater(client.getUrl(requestUrl), throwsA(isA<HttpException>()));
+
+    expect(events, ['open:0', 'open:0', 'close:0:true', 'open:1']);
+    expect(clients.last.idleTimeout, const Duration(seconds: 8));
+    expect(clients.last.connectionTimeout, const Duration(seconds: 3));
+    expect(clients.last.maxConnectionsPerHost, 2);
+    expect(clients.last.autoUncompress, isFalse);
+    expect(clients.last.userAgent, 'artwork-test');
+    client.close(force: true);
+    ServerTrustRegistry.forget(url);
+    ServerTrustRegistry.register(url, trust);
+    await expectLater(client.getUrl(requestUrl), throwsA(isA<HttpException>()));
+    expect(clients, hasLength(2));
+  });
+  test('a request opened while trust is removed cannot escape on an old TLS connection', () async {
+    const url = 'https://pending-pool.test:3000/api';
+    final opened = Completer<HttpClientRequest>();
+    final events = <String>[];
+    final previousOverrides = HttpOverrides.current;
+    ServerTrustRegistry.register(url, trust);
+    var count = 0;
+    installServerTrustOverrides(
+      createHttpClient: (_) => _FakeHttpClient(count++, events)..pendingRequest = opened.future,
+    );
+    addTearDown(() => HttpOverrides.global = previousOverrides);
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+    final opening = client.getUrl(Uri.parse('$url/artwork'));
+    final rejected = expectLater(opening, throwsA(isA<HandshakeException>()));
+
+    ServerTrustRegistry.forget(url);
+    final request = _FakeHttpClientRequest();
+    opened.complete(request);
+    await rejected;
+
+    expect(events, ['open:0', 'close:0:true']);
+    expect(request.abortError, isA<HandshakeException>());
+  });
+  test('clearing a remembered session alone does not remove stored server trust', () async {
     const url = 'https://vault.test:3000/api';
     await ServerTrustStore.write(url, trust);
     const storage = AuthStorage();
@@ -256,4 +421,50 @@ void main() {
     await storage.clear();
     expect(values, {'phonolite.session.v1': 'unsupported old session'});
   });
+}
+
+class _FakeHttpClient implements HttpClient {
+  final int id;
+  final List<String> events;
+  Future<HttpClientRequest>? pendingRequest;
+
+  _FakeHttpClient(this.id, this.events);
+
+  @override
+  Duration idleTimeout = const Duration(seconds: 15);
+  @override
+  Duration? connectionTimeout;
+  @override
+  int? maxConnectionsPerHost;
+  @override
+  bool autoUncompress = true;
+  @override
+  String? userAgent;
+  @override
+  bool Function(X509Certificate, String, int)? badCertificateCallback;
+  @override
+  String Function(Uri)? findProxy;
+
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    events.add('open:$id');
+    if (pendingRequest != null) return pendingRequest!;
+    throw const HttpException('Fake request stopped before opening a socket');
+  }
+
+  @override
+  void close({bool force = false}) => events.add('close:$id:$force');
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeHttpClientRequest implements HttpClientRequest {
+  Object? abortError;
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) => abortError = exception;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

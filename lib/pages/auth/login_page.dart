@@ -235,6 +235,16 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
     }
   }
 
+  Future<void> _changeServer() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final changed = await _feature.changeServer();
+    if (mounted && changed) {
+      _usernameController.clear();
+      _passwordController.clear();
+    }
+  }
+
   void _handleServerHostChanged() {
     if (_normalizingAddress) {
       return;
@@ -307,7 +317,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
             if (_feature.connected)
               ModalActionButton(
                 label: 'Change server',
-                onPressed: _feature.isSubmitting ? null : _feature.changeServer,
+                onPressed: _feature.isSubmitting ? null : _changeServer,
               ),
             Stack(
               alignment: Alignment.center,
