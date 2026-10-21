@@ -6,7 +6,7 @@ enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }
 
 enum ActionScope { local, server }
 
-enum RepeatMode { off, one }
+enum PlaybackRepeatMode { off, one }
 
 enum StreamMode { auto, high, medium, low }
 
@@ -25,7 +25,7 @@ class PlaybackState {
   final ShuffleMode localShuffleMode;
   final ShuffleMode serverShuffleMode;
   final ActionScope shuffleScope;
-  final RepeatMode repeatMode;
+  final PlaybackRepeatMode repeatMode;
   final StreamMode streamMode;
   final double? bitrateKbps;
   final bool streamConnected;
@@ -89,7 +89,7 @@ class PlaybackState {
     double? volume,
     ShuffleMode? shuffleMode,
     ActionScope? shuffleScope,
-    RepeatMode? repeatMode,
+    PlaybackRepeatMode? repeatMode,
     StreamMode? streamMode,
     Object? bitrateKbps = _unset,
     bool? streamConnected,

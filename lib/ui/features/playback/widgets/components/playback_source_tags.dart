@@ -16,7 +16,7 @@ List<Widget> playbackBuildTechTags(PlaybackState state) {
     tags.add(const PlaybackTechTag(label: 'SHUFFLE', highlight: true));
   }
 
-  if (state.repeatMode == RepeatMode.one) {
+  if (state.repeatMode == PlaybackRepeatMode.one) {
     tags.add(const PlaybackTechTag(label: 'LOOP', highlight: true));
   }
 

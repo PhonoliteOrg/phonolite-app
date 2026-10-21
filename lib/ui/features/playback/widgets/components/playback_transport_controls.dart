@@ -81,7 +81,7 @@ class PlaybackCommandZone extends StatelessWidget {
             SizedBox(width: s(6)),
             ObsidianHudIconButton(
               icon: PhonoliteIcons.repeat,
-              isActive: state.repeatMode == RepeatMode.one,
+              isActive: state.repeatMode == PlaybackRepeatMode.one,
               onPressed: onRepeat,
               size: s(24),
             ),
@@ -143,7 +143,7 @@ class PlaybackExpandedControls extends StatelessWidget {
       final repeat = ObsidianHudIconButton(
         icon: PhonoliteIcons.repeat,
         size: 22,
-        isActive: state.repeatMode == RepeatMode.one,
+        isActive: state.repeatMode == PlaybackRepeatMode.one,
         onPressed: onRepeat,
       );
 
@@ -177,7 +177,7 @@ class PlaybackExpandedControls extends StatelessWidget {
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
           icon: PhonoliteIcons.repeat,
-          isActive: state.repeatMode == RepeatMode.one,
+          isActive: state.repeatMode == PlaybackRepeatMode.one,
           onPressed: onRepeat,
           size: s(32),
         ),
@@ -288,7 +288,7 @@ class PlaybackCompactControls extends StatelessWidget {
         ),
         ObsidianHudIconButton(
           icon: PhonoliteIcons.repeat,
-          isActive: state.repeatMode == RepeatMode.one,
+          isActive: state.repeatMode == PlaybackRepeatMode.one,
           onPressed: onRepeat,
           size: s(22),
         ),
