@@ -1,7 +1,7 @@
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:phonolite_app/entities/raw_opus_stream.dart';
+import 'package:phonolite_app/infrastructure/audio/protocol/raw_opus_stream_reader.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
 
 import 'observed_audio_engine.dart';

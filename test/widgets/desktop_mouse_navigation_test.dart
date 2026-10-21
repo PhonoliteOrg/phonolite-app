@@ -1,9 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/layouts/retained_tab_view.dart';
-import 'package:phonolite_app/widgets/navigation/desktop_mouse_navigation.dart';
-import 'package:phonolite_app/widgets/navigation/menu_navigation_history.dart';
+import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
+import 'package:phonolite_app/ui/navigation/desktop_mouse_navigation.dart';
+import 'package:phonolite_app/ui/navigation/menu_navigation_history.dart';
 
 void main() {
   const desktops = TargetPlatformVariant({

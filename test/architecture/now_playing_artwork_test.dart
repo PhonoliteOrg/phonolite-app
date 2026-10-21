@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/platform/now_playing_artwork.dart';
-import 'package:phonolite_app/platform/now_playing_artwork_loader.dart';
+import 'package:phonolite_app/application/playback/now_playing_artwork.dart';
+import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
 
 void main() {
   test(

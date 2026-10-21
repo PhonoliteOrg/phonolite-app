@@ -7,10 +7,13 @@ void main() {
     test(
       'auth storage uses only the new authenticated secure-storage schema',
       () {
-        final source = readProjectFile('lib/entities/auth_storage.dart');
+        final source = readProjectFiles([
+          'lib/data/models/auth/auth_credentials.dart',
+          'lib/data/storage/auth/auth_storage.dart',
+        ]);
 
         expectContainsAll(source, const [
-          "static const _vaultKey = 'phonolite.auth.session.v1';",
+          "static const String _vaultKey = 'phonolite.auth.session.v1';",
           "'profile': 'phonolite-opaque-v1'",
           "'baseUrl': baseUrl",
           "'token': token",
@@ -26,8 +29,10 @@ void main() {
 
     test('playback preferences persist volume and collection mode', () {
       final source =
-          readProjectFile('lib/entities/playback_preferences.dart') +
-          readProjectFile('lib/persistence/settings_files.dart');
+          readProjectModule(
+            'lib/data/storage/preferences/playback_preferences.dart',
+          ) +
+          readProjectModule('lib/data/storage/preferences/settings_files.dart');
 
       expectContainsAll(source, const [
         "static const String _fileName = 'playback_prefs.json';",
@@ -41,8 +46,11 @@ void main() {
 
     test('custom shuffle settings persist from cache and normalize values', () {
       final source =
-          readProjectFile('lib/entities/custom_shuffle_settings.dart') +
-          readProjectFile('lib/persistence/settings_files.dart');
+          readProjectFiles([
+            'lib/data/models/playback/custom_shuffle_settings.dart',
+            'lib/data/storage/preferences/custom_shuffle_settings_storage.dart',
+          ]) +
+          readProjectModule('lib/data/storage/preferences/settings_files.dart');
 
       expectContainsAll(source, const [
         "static const String _fileName = 'shuffle_settings.json';",
@@ -57,8 +65,18 @@ void main() {
 
     test('offline library storage records server downloads and file paths', () {
       final source =
-          readProjectFile('lib/entities/offline_library.dart') +
-          readProjectFile('lib/entities/offline_models.dart');
+          readProjectModule(
+            'lib/data/storage/offline/library/offline_library.dart',
+          ) +
+          readProjectFiles([
+            'lib/data/models/downloads/download_status.dart',
+            'lib/data/models/downloads/offline_deletion.dart',
+            'lib/data/models/downloads/download_batch.dart',
+            'lib/data/models/downloads/download_job.dart',
+            'lib/data/models/collections/local_like_state.dart',
+            'lib/data/models/downloads/offline_metadata_repair_request.dart',
+            'lib/data/models/downloads/offline_track_download.dart',
+          ]);
 
       expectContainsAll(source, const [
         'enum OfflineDownloadStatus {',
@@ -142,8 +160,13 @@ void main() {
       'offline storage settings persist separate metadata and download roots',
       () {
         final source =
-            readProjectFile('lib/entities/offline_storage_settings.dart') +
-            readProjectFile('lib/persistence/settings_files.dart');
+            readProjectFiles([
+              'lib/data/models/preferences/offline_storage_locations.dart',
+              'lib/data/storage/preferences/offline_storage_settings_storage.dart',
+            ]) +
+            readProjectModule(
+              'lib/data/storage/preferences/settings_files.dart',
+            );
 
         expectContainsAll(source, const [
           'class OfflineStorageSettings',
@@ -158,8 +181,8 @@ void main() {
     );
 
     test('offline download manager resumes and promotes track downloads', () {
-      final source = readProjectFile(
-        'lib/entities/offline_download_manager.dart',
+      final source = readProjectModule(
+        'lib/application/downloads/offline_download_manager.dart',
       );
 
       expectContainsAll(source, const [
@@ -206,7 +229,7 @@ void main() {
         'required this.rootIsolateToken,',
         'BackgroundIsolateBinaryMessenger.ensureInitialized(token);',
         '_downloadWorkerMain',
-        'connection.buildTrackDownloadUrl(_serverTrackId(download))',
+        '_host.connection.buildTrackDownloadUrl(_host._serverTrackId(download))',
         'startByte: bytesDownloaded > 0 ? bytesDownloaded : null',
         'ifRange: bytesDownloaded > 0 ? download.etag : null',
         'response.statusCode == HttpStatus.partialContent',
@@ -228,7 +251,9 @@ void main() {
     });
 
     test('library helpers disable expensive image work on web and windows', () {
-      final source = readProjectFile('lib/core/library_helpers.dart');
+      final source = readProjectModule(
+        'lib/ui/shared/music/artwork/artwork_helpers.dart',
+      );
 
       expectContainsAll(source, const [
         'controller.artworkHeaders;',
@@ -238,7 +263,10 @@ void main() {
     });
 
     test('application logger preserves bounded history and listener API', () {
-      final source = readProjectFile('lib/entities/app_log.dart');
+      final source = readProjectFiles([
+        'lib/data/models/diagnostics/log_entry.dart',
+        'lib/data/storage/logs/app_log.dart',
+      ]);
 
       expectContainsAll(source, const [
         'enum LogLevel { info, status, warning, error, debug }',

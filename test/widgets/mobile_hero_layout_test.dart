@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/widgets/display/album_art.dart';
-import 'package:phonolite_app/widgets/display/album_hero.dart';
-import 'package:phonolite_app/widgets/display/artist_avatar.dart';
-import 'package:phonolite_app/widgets/display/artist_hero.dart';
-import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
-import 'package:phonolite_app/widgets/ui/compact_hero_details.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artist_avatar.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_hero.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/music/compact_hero_details.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 
 import '../support/widget_test_helpers.dart';
 

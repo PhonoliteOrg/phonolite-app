@@ -1,10 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/pages/library_page.dart';
-import 'package:phonolite_app/pages/liked_page.dart';
-import 'package:phonolite_app/pages/playlists_page.dart';
-import 'package:phonolite_app/pages/settings_page.dart';
-import 'package:phonolite_app/pages/stats_page.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
+
+import 'package:phonolite_app/pages/favorites/liked_page.dart';
+import 'package:phonolite_app/pages/library/library_page.dart';
+import 'package:phonolite_app/pages/listening_stats/stats_page.dart';
+import 'package:phonolite_app/pages/playlists/playlists_page.dart';
+import 'package:phonolite_app/pages/settings/settings_page.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 
 import '../../support/journey.dart';
 import '../../support/ui_harness.dart';

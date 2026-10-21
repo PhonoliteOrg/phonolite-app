@@ -1,20 +1,23 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_library_views.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/library_page.dart';
-import 'package:phonolite_app/pages/local_album_detail_screen.dart';
-import 'package:phonolite_app/pages/local_artist_detail_screen.dart';
-import 'package:phonolite_app/widgets/display/search_result_tile.dart';
-import 'package:phonolite_app/widgets/inputs/search_hud.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/search_result.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/library/library_page.dart';
+import 'package:phonolite_app/pages/library/local_album_detail_screen.dart';
+import 'package:phonolite_app/pages/library/local_artist_detail_screen.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
+import 'package:phonolite_app/ui/features/search/widgets/search_result_tile.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -45,7 +48,7 @@ void main() {
                     title: 'Morning',
                     albumId: 'album',
                   ),
-                  connection: controller.connection,
+                  catalog: controller.catalog,
                   useLocalArtwork: isLocal,
                   onTap: () => openedTrack++,
                 ),

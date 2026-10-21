@@ -1,12 +1,12 @@
 {
   "feature": "shared_platform",
   "sources": [
-    "lib/widgets/ui/compact_hero_details.dart",
-    "lib/widgets/ui/dismissible_selection_area.dart",
-    "lib/widgets/navigation/desktop_mouse_navigation.dart",
-    "lib/widgets/navigation/desktop_playback_shortcuts.dart",
-    "lib/pages/search_page.dart",
-    "lib/pages/splash_page.dart"
+    "lib/ui/shared/music/compact_hero_details.dart",
+    "lib/ui/shared/design_system/interaction/dismissible_selection_area.dart",
+    "lib/ui/navigation/desktop_mouse_navigation.dart",
+    "lib/ui/navigation/desktop_playback_shortcuts.dart",
+    "lib/pages/search/search_page.dart",
+    "lib/pages/splash/splash_page.dart"
   ],
   "interactions": [
     {

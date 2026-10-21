@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/display/artist_card.dart';
-import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
-import 'package:phonolite_app/widgets/inputs/search_hud.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_card.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 
 import '../../support/journey.dart';
 import '../../support/ui_harness.dart';

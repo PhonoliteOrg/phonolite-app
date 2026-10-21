@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/navigation/desktop_playback_shortcuts.dart';
+import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
 
 void main() {
   const desktops = TargetPlatformVariant({

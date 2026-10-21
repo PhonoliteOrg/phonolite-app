@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/dismissible_selection_area.dart';
 
 void main() {
   for (final dismissLayer in [true, false]) {

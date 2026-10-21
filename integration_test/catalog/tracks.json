@@ -1,10 +1,10 @@
 {
   "feature": "tracks",
   "sources": [
-    "lib/widgets/display/track_row_tile.dart",
-    "lib/widgets/display/track_sliver_list.dart",
-    "lib/widgets/display/search_result_tile.dart",
-    "lib/widgets/modals/add_to_playlist_modal.dart"
+    "lib/ui/shared/music/tracks/track_row_tile.dart",
+    "lib/ui/shared/music/tracks/track_sliver_list.dart",
+    "lib/ui/features/search/widgets/search_result_tile.dart",
+    "lib/ui/features/playlists/widgets/add_to_playlist_modal.dart"
   ],
   "interactions": [
     {

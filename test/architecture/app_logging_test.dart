@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/log_storage_settings.dart';
-import 'package:phonolite_app/persistence/log_files.dart';
-import 'package:phonolite_app/persistence/settings_files.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
+import 'package:phonolite_app/data/storage/preferences/log_storage_settings_storage.dart';
+import 'package:phonolite_app/data/storage/logs/log_files.dart';
+import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 
 class BlockingLogFiles extends LogFiles {
   BlockingLogFiles(Directory directory)

@@ -19,3 +19,9 @@ host-only tests. They are opt-in via `flutter drive`; ordinary `flutter test`
 does not launch an iPhone or run integration journeys. See the
 [interaction inventory](../integration_test/catalog/INTERACTIONS.md) for the map
 from visible action to device journey. Existing test files retain their paths.
+
+Production code is organized under `lib/bootstrap`, `lib/pages`, `lib/ui`, `lib/application`,
+`lib/data`, and `lib/infrastructure`. Test imports and source-contract paths
+follow those locations. Existing test directories remain stable during this
+source migration; the [expected architecture](../docs/expected-architecture.md)
+explains responsibility boundaries and the verification policy.

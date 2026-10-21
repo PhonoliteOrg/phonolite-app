@@ -1,4 +1,4 @@
-import 'package:phonolite_app/entities/audio_engine.dart';
+import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 
 import 'audio_metrics.dart';
 import 'observed_audio_engine.dart';

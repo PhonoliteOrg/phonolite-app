@@ -4,8 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/layouts/obsidian_viewport.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 import '../support/widget_test_helpers.dart';
 

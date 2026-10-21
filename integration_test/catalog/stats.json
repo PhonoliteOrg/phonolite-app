@@ -1,8 +1,10 @@
 {
   "feature": "stats",
   "sources": [
-    "lib/pages/stats_page.dart",
-    "lib/widgets/display/stats_cards.dart"
+    "lib/pages/listening_stats/stats_page.dart",
+    "lib/ui/features/listening_stats/widgets/stats_cards.dart",
+    "lib/ui/shell/toolbars/base_page_toolbar.dart",
+    "lib/ui/shell/toolbars/library_header.dart"
   ],
   "interactions": [
     {

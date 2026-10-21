@@ -1,8 +1,12 @@
 {
   "feature": "authentication",
   "sources": [
-    "lib/pages/login_page.dart",
-    "lib/pages/reset_user_password_page.dart"
+    "lib/pages/auth/login_page.dart",
+    "lib/pages/auth/reset_user_password_page.dart",
+    "lib/ui/shell/base_form_page.dart",
+    "lib/ui/shell/toolbars/base_page_toolbar.dart",
+    "lib/ui/shell/toolbars/library_header.dart",
+    "lib/ui/shell/toolbars/detail_action_header.dart"
   ],
   "interactions": [
     {

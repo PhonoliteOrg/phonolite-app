@@ -1,6 +1,7 @@
-import 'package:phonolite_app/entities/audio_engine.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
+import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/playback/output_device.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 /// Test-only inspection of the exact arguments passed to the real engine.
 class StreamRequest {

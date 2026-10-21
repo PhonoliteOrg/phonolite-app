@@ -7,7 +7,7 @@ void main() {
     test(
       'manifest declares expected permissions cleartext and media service',
       () {
-        final manifest = readProjectFile(
+        final manifest = readProjectModule(
           'android/app/src/main/AndroidManifest.xml',
         );
 
@@ -28,8 +28,8 @@ void main() {
     );
 
     test('build files preserve app identity and automotive media support', () {
-      final appBuild = readProjectFile('android/app/build.gradle.kts');
-      final automotive = readProjectFile(
+      final appBuild = readProjectModule('android/app/build.gradle.kts');
+      final automotive = readProjectModule(
         'android/app/src/main/res/xml/automotive_app_desc.xml',
       );
 
@@ -44,16 +44,16 @@ void main() {
     test(
       'kotlin bridge preserves shared engine media notifications and audio control',
       () {
-        final appSource = readProjectFile(
+        final appSource = readProjectModule(
           'android/app/src/main/kotlin/com/example/phonolite_app/PhonoliteApplication.kt',
         );
-        final bridgeSource = readProjectFile(
+        final bridgeSource = readProjectModule(
           'android/app/src/main/kotlin/com/example/phonolite_app/PhonolitePlatformBridge.kt',
         );
-        final mediaSource = readProjectFile(
+        final mediaSource = readProjectModule(
           'android/app/src/main/kotlin/com/example/phonolite_app/PhonoliteMediaService.kt',
         );
-        final outputSource = readProjectFile(
+        final outputSource = readProjectModule(
           'android/app/src/main/kotlin/com/example/phonolite_app/PhonoliteAudioOutputManager.kt',
         );
 

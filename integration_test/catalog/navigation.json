@@ -1,8 +1,12 @@
 {
   "feature": "navigation",
   "sources": [
-    "lib/pages/home_page.dart",
-    "lib/widgets/navigation/adaptive_scaffold.dart"
+    "lib/pages/home/home_page.dart",
+    "lib/ui/shell/adaptive_scaffold.dart",
+    "lib/ui/navigation/tab_route_observer.dart",
+    "lib/ui/shell/navigation/base_app_navigation.dart",
+    "lib/ui/shell/navigation/app_side_navigation.dart",
+    "lib/ui/shell/navigation/app_bottom_navigation.dart"
   ],
   "interactions": [
     {

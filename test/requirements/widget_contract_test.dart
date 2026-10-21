@@ -1,41 +1,45 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
-import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
-import 'package:phonolite_app/widgets/ui/like_icon_button.dart';
-import 'package:phonolite_app/widgets/ui/svg_asset_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/log_storage_settings.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/pages/settings_page.dart';
-import 'package:phonolite_app/widgets/display/album_row_tile.dart';
-import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
-import 'package:phonolite_app/widgets/display/download_selection_toolbar.dart';
-import 'package:phonolite_app/widgets/display/empty_state.dart';
-import 'package:phonolite_app/widgets/display/search_result_tile.dart';
-import 'package:phonolite_app/widgets/display/stats_cards.dart';
-import 'package:phonolite_app/widgets/display/track_row_tile.dart';
-import 'package:phonolite_app/widgets/inputs/search_filter_chips.dart';
-import 'package:phonolite_app/widgets/inputs/search_hud.dart';
-import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
-import 'package:phonolite_app/widgets/modals/confirmation_modal.dart';
-import 'package:phonolite_app/widgets/modals/download_manager_panel.dart';
-import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_adaptive_modal.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
-import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
-import 'package:phonolite_app/widgets/ui/collection_view_toggle_button.dart';
-import 'package:phonolite_app/widgets/ui/dismissible_selection_area.dart';
-import 'package:phonolite_app/widgets/ui/expandable_summary_text.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_overflow_action_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/tech_button.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/search_result.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/pages/settings/settings_page.dart';
+import 'package:phonolite_app/ui/features/downloads/widgets/download_manager_panel.dart';
+import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
+import 'package:phonolite_app/ui/features/search/widgets/search_filter_chips.dart';
+import 'package:phonolite_app/ui/features/search/widgets/search_result_tile.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/expandable_summary_text.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/svg_asset_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/dismissible_selection_area.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_adaptive_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
+import 'package:phonolite_app/ui/shared/music/collection_view_toggle_button.dart';
+import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 
 import '../support/source_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
@@ -46,9 +50,9 @@ void main() {
   group('widget contracts', () {
     test('display genre separators use a shared unicode bullet formatter', () {
       final source = [
-        readProjectFile('lib/widgets/display/genre_text.dart'),
-        readProjectFile('lib/widgets/display/artist_hero.dart'),
-        readProjectFile('lib/widgets/display/album_hero.dart'),
+        readProjectModule('lib/application/presentation/genre_labels.dart'),
+        readProjectModule('lib/ui/shared/music/artists/artist_hero.dart'),
+        readProjectModule('lib/ui/shared/music/albums/album_hero.dart'),
       ].join('\n');
       final mojibakeBullet = String.fromCharCodes([
         0x00C3,
@@ -71,56 +75,60 @@ void main() {
     });
 
     test('now playing scrubbers hold local drag state during seeks', () {
-      final source = readProjectFile(
-        'lib/widgets/display/now_playing_bar.dart',
-      );
+      final source = readProjectFiles([
+        'lib/ui/features/playback/widgets/now_playing_bar.dart',
+        'lib/application/controllers/playback/playback_controls_controller.dart',
+      ]);
 
       expectContainsAll(source, const [
-        'class _CompactFooterRowState extends State<_CompactFooterRow>',
-        'class _ProgressBarState extends State<_ProgressBar>',
+        'class PlaybackCompactFooterRow extends PlaybackScrubber',
+        'class PlaybackProgressBar extends PlaybackScrubber',
+        'extends PlaybackScrubberState<PlaybackCompactFooterRow>',
+        'extends PlaybackScrubberState<PlaybackProgressBar>',
+        'abstract class PlaybackScrubberState<T extends PlaybackScrubber>',
         'Duration? _dragPosition;',
         'bool _isDragging = false;',
-        'const int _scrubberAuthoritativeDiscontinuityMs = 1500;',
-        'const int _scrubberMaxInterpolationLeadMs = 1500;',
-        'Duration _boundedScrubberDisplayPosition({',
-        'final leadCeilingMs = authoritativeMs + _scrubberMaxInterpolationLeadMs;',
+        "const int playbackScrubberAuthoritativeDiscontinuityMs = 1500;",
+        "const int playbackScrubberMaxInterpolationLeadMs = 1500;",
+        "Duration playbackBoundedScrubberDisplayPosition({",
+        "final leadCeilingMs =\n      authoritativeMs + playbackScrubberMaxInterpolationLeadMs;",
         'final authoritativeDeltaMs =',
         'widget.position.inMilliseconds - oldWidget.position.inMilliseconds;',
         'authoritativeDeltaMs.abs() >=',
-        '_scrubberAuthoritativeDiscontinuityMs',
-        '_boundedScrubberDisplayPosition(',
+        "playbackScrubberAuthoritativeDiscontinuityMs",
+        "playbackBoundedScrubberDisplayPosition(",
         'authoritativePosition: widget.position,',
         'if (_isDragging) {',
-        'void _beginDrag(double value)',
-        'void _updateDrag(double value)',
-        'void _endDrag(double value)',
+        'void beginDrag(double value)',
+        'void updateDrag(double value)',
+        'void endDrag(double value)',
         'widget.onSeekPreview(position);',
         'widget.onSeek(position);',
-        'onChangeStart: widget.enabled ? _beginDrag : null,',
-        'onChanged: widget.enabled ? _updateDrag : null,',
-        'onChangeEnd: widget.enabled ? _endDrag : null,',
+        'onChangeStart: widget.enabled ? beginDrag : null,',
+        'onChanged: widget.enabled ? updateDrag : null,',
+        'onChangeEnd: widget.enabled ? endDrag : null,',
       ]);
       expect(
         RegExp(r'Duration\? _dragPosition;').allMatches(source),
-        hasLength(2),
+        hasLength(1),
       );
       expect(
         RegExp(r'bool _isDragging = false;').allMatches(source),
-        hasLength(2),
+        hasLength(1),
       );
       expect(
         RegExp(
-          r'onChangeStart: widget\.enabled \? _beginDrag : null,',
+          r'onChangeStart: widget\.enabled \? beginDrag : null,',
         ).allMatches(source),
         hasLength(2),
       );
       expect(
         RegExp(r'final authoritativeDeltaMs =').allMatches(source),
-        hasLength(2),
+        hasLength(1),
       );
       expect(
         RegExp(r'authoritativePosition: widget\.position,').allMatches(source),
-        hasLength(4),
+        hasLength(2),
       );
       expect(source, isNot(contains('deltaMs >= 600')));
       expect(
@@ -134,13 +142,14 @@ void main() {
     });
 
     test('expanded now playing sheet uses glass with native mobile sizing', () {
-      final source = readProjectFile(
-        'lib/widgets/display/now_playing_bar.dart',
-      );
+      final source = readProjectFiles([
+        'lib/ui/features/playback/widgets/now_playing_bar.dart',
+        'lib/application/controllers/playback/playback_controls_controller.dart',
+      ]);
 
       expectContainsAll(source, const [
-        'const double _compactPlaybackChromeWidth = 980;',
-        'bool _usesNativeMobileExpandedSheet(BuildContext context)',
+        "const double playbackCompactPlaybackChromeWidth = 980;",
+        "bool playbackUsesNativeMobileExpandedSheet(BuildContext context)",
         'platform == TargetPlatform.iOS || platform == TargetPlatform.android',
         'useSafeArea: useNativeMobileTreatment,',
         'barrierColor: Colors.black.withValues(alpha: 0.45)',
@@ -150,9 +159,10 @@ void main() {
     });
 
     test('local shuffle modal mirrors server shuffle modes', () {
-      final source = readProjectFile(
-        'lib/widgets/display/now_playing_bar.dart',
-      ).replaceAll(RegExp(r'\s+'), ' ');
+      final source = readProjectFiles([
+        'lib/ui/features/playback/widgets/now_playing_bar.dart',
+        'lib/application/controllers/playback/playback_controls_controller.dart',
+      ]).replaceAll(RegExp(r'\s+'), ' ');
 
       expectContainsAll(source, const [
         'const items = [',
@@ -160,22 +170,23 @@ void main() {
         'ShuffleMode.album,',
         'ShuffleMode.currentPlaylist,',
         'ShuffleMode.custom,',
-        'customSettings.localArtistIds.isNotEmpty',
-        'customSettings.localGenres.isNotEmpty',
-        'ShuffleMode.artist when !serverScope => localContextEnabled',
-        'ShuffleMode.album when !serverScope => localContextEnabled',
-        'ShuffleMode.custom when !serverScope =>',
+        'settings.localArtistIds.isNotEmpty',
+        'settings.localGenres.isNotEmpty',
+        'ShuffleMode.artist || ShuffleMode.album => '
+            'serverScope ? playback.track != null : localContextEnabled',
+        'ShuffleMode.custom => serverScope ? customEnabled :',
         'downloadedEnabled && customEnabled',
       ]);
     });
 
     test('shuffle modal does not block on liked-state loads', () {
-      final source = readProjectFile(
-        'lib/widgets/display/now_playing_bar.dart',
-      );
+      final source = readProjectFiles([
+        'lib/ui/features/playback/widgets/now_playing_bar.dart',
+        'lib/application/controllers/playback/playback_controls_controller.dart',
+      ]);
 
       expectContainsAll(source, const [
-        'void _warmShuffleLikedState(',
+        'void warmShuffleLikedState(',
         'unawaited(',
         'controller.loadLocalLikedTracks()',
         'StreamBuilder<List<Track>>',
@@ -189,13 +200,14 @@ void main() {
     });
 
     test('now playing source tags show playlist names for both scopes', () {
-      final source = readProjectFile(
-        'lib/widgets/display/now_playing_bar.dart',
-      );
+      final source = readProjectFiles([
+        'lib/ui/features/playback/widgets/now_playing_bar.dart',
+        'lib/application/controllers/playback/playback_controls_controller.dart',
+      ]);
 
       expectContainsAll(source, const [
-        'String? _queueSourceLabel(PlaybackState state)',
-        '_PlaylistSourceTag(',
+        "String? playbackQueueSourceLabel(PlaybackState state)",
+        "PlaybackPlaylistSourceTag(",
         'isLocal: state.queueSource == PlaybackQueueSource.offline',
         'controller.localPlaylistsStream',
         'controller.playlistsStream',
@@ -764,12 +776,13 @@ void main() {
     });
 
     test('playlist editor uses mobile photo picker and byte MIME fallback', () {
-      final pickerSource = readProjectFile(
-        'lib/widgets/modals/playlist_image_file_picker.dart',
+      final pickerSource = readProjectModule(
+        'lib/infrastructure/platform/files/playlist_image_file_picker.dart',
       );
-      final editorSource = readProjectFile(
-        'lib/widgets/modals/playlist_editor_modal.dart',
-      );
+      final editorSource = readProjectFiles([
+        'lib/ui/features/playlists/widgets/playlist_editor_modal.dart',
+        'lib/application/controllers/playlists/playlist_editor_controller.dart',
+      ]);
 
       expectContainsAll(pickerSource, const [
         "import 'package:image_picker/image_picker.dart' as image_picker;",
@@ -780,9 +793,9 @@ void main() {
         'return await openFile(acceptedTypeGroups: acceptedTypeGroups);',
       ]);
       expectContainsAll(editorSource, const [
-        'final contentType = _contentTypeForFile(file, bytes);',
+        'final contentType = contentTypeForFile(file, bytes);',
         'file.mimeType?.split',
-        'String _contentTypeForBytes(Uint8List bytes)',
+        'String contentTypeForBytes(Uint8List bytes)',
         "return 'image/jpeg';",
         "return 'image/png';",
         "return 'image/webp';",

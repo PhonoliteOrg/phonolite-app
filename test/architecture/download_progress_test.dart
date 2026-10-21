@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/download_progress_throttle.dart';
+import 'package:phonolite_app/data/rules/downloads/download_progress_throttle.dart';
 
 void main() {
   const interval = Duration(milliseconds: 200);

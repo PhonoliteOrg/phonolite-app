@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/widgets/display/album_row_tile.dart';
-import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
-import 'package:phonolite_app/widgets/display/track_row_tile.dart';
-import 'package:phonolite_app/widgets/modals/download_manager_panel.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
-import 'package:phonolite_app/widgets/ui/tech_button.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
+import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
+import 'package:phonolite_app/ui/features/downloads/widgets/download_manager_panel.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 
 import '../support/widget_test_helpers.dart';
 

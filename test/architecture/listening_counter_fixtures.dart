@@ -1,6 +1,10 @@
 import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
-import 'package:phonolite_app/entities/listening_stats.dart';
+
+import 'package:phonolite_app/data/models/listening_stats/listening_counters.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
+import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
 
 dynamic canonicalCounterJson(dynamic value) {
   if (value is Map) {
@@ -19,9 +23,7 @@ dynamic canonicalCounterJson(dynamic value) {
   return value is List ? value.map(canonicalCounterJson).toList() : value;
 }
 
-String counterHash(dynamic value) => sha256
-    .convert(utf8.encode(jsonEncode(canonicalCounterJson(value))))
-    .toString();
+String counterHash(dynamic value) => sha256.convert(utf8.encode(jsonEncode(canonicalCounterJson(value)))).toString();
 Map<String, dynamic> counterMetadata(ListeningEvent event) => {
   for (final key in [
     'track_id',
@@ -36,54 +38,36 @@ Map<String, dynamic> counterMetadata(ListeningEvent event) => {
   ])
     key: event.toJson()[key],
 };
-Future<Map<String, dynamic>> pendingCounterBatch(
-  ListeningStatsService service,
-) async {
-  await service.counterOperation(
-    'checkpoint',
-    arguments: {
-      'checkpoint': {'upgraded': true, 'last_sequence': 0},
-      'collection_revision': 0,
-    },
+Future<Map<String, dynamic>> pendingCounterBatch(ListeningStatsService service) async {
+  await service.applyCounterCheckpoint(
+    ListeningCounterCheckpoint.fromJson({'upgraded': true, 'last_sequence': 0}),
+    collectionRevision: 0,
   );
   return Map<String, dynamic>.from(
-    await service.counterOperation(
-          'prepare',
-          arguments: {'collection_revision': 0},
-        )
-        as Map,
+    await service.prepareCounterBatch(collectionRevision: 0).then((batch) => batch?.toJson()) as Map,
   );
 }
 
 Future<void> confirmCounterBatch(ListeningStatsService service) async {
   final batch = await pendingCounterBatch(service);
   final period = (batch['contributions'] as List).first as Map;
-  await service.counterOperation(
-    'checkpoint',
-    arguments: {
-      'checkpoint': {
-        'upgraded': true,
-        'last_sequence': batch['batch_sequence'],
-      },
-      'collection_revision': 0,
-    },
+  await service.applyCounterCheckpoint(
+    ListeningCounterCheckpoint.fromJson({'upgraded': true, 'last_sequence': batch['batch_sequence']}),
+    collectionRevision: 0,
   );
-  await service.counterOperation(
-    'snapshot',
-    arguments: {
-      'after': '',
-      'page': {
-        'history_generation': service.historyGeneration,
-        'year': period['year'],
-        'month': period['month'],
-        'revision': batch['batch_sequence'],
-        'checkpoint': {'last_sequence': batch['batch_sequence']},
-        'contributions': batch['contributions'],
-        'metadata': batch['metadata'],
-        'genre_metadata': <String, dynamic>{},
-        'next_key': '',
-        'has_more': false,
-      },
-    },
+  await service.applyCounterPage(
+    ListeningCounterPage.fromJson({
+      'history_generation': service.historyGeneration,
+      'year': period['year'],
+      'month': period['month'],
+      'revision': batch['batch_sequence'],
+      'checkpoint': {'last_sequence': batch['batch_sequence']},
+      'contributions': batch['contributions'],
+      'metadata': batch['metadata'],
+      'genre_metadata': <String, dynamic>{},
+      'next_key': '',
+      'has_more': false,
+    }),
+    after: '',
   );
 }

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/listening_recorder.dart';
+import 'package:phonolite_app/data/rules/listening_stats/listening_recorder.dart';
 
 void main() {
   test(

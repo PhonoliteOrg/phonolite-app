@@ -1,9 +1,9 @@
 {
   "feature": "downloads",
   "sources": [
-    "lib/widgets/modals/download_manager_panel.dart",
-    "lib/widgets/modals/remove_download_modal.dart",
-    "lib/widgets/display/download_selection_toolbar.dart"
+    "lib/ui/features/downloads/widgets/download_manager_panel.dart",
+    "lib/ui/features/downloads/widgets/remove_download_modal.dart",
+    "lib/ui/features/downloads/widgets/download_selection_toolbar.dart"
   ],
   "interactions": [
     {

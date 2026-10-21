@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/playback_state.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_models.dart';
+import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 
 void main() {
   final track = Track.fromJson({
@@ -55,9 +56,10 @@ void main() {
     final cleared = state.copyWith(track: null, queueSourcePlaylistId: null);
     expect(cleared.track, isNull);
     expect(cleared.queueSourcePlaylistId, isNull);
-    // Preserve the existing nullable telemetry contract during extraction.
-    expect(state.copyWith(bitrateKbps: null).bitrateKbps, 128);
-    expect(state.copyWith(streamRttMs: null).streamRttMs, 20);
+    expect(copy.bitrateKbps, 128);
+    expect(copy.streamRttMs, 20);
+    expect(state.copyWith(bitrateKbps: null).bitrateKbps, isNull);
+    expect(state.copyWith(streamRttMs: null).streamRttMs, isNull);
   });
 
   test('offline values retain serialization, copy and progress contracts', () {

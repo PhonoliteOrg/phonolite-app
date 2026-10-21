@@ -1,10 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/pages/album_detail_screen.dart';
-import 'package:phonolite_app/pages/local_album_detail_screen.dart';
-import 'package:phonolite_app/widgets/display/album_card.dart';
-import 'package:phonolite_app/widgets/display/album_row_tile.dart';
-import 'package:phonolite_app/widgets/display/artist_card.dart';
-import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
+
+import 'package:phonolite_app/pages/library/album_detail_screen.dart';
+import 'package:phonolite_app/pages/library/local_album_detail_screen.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_card.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
 
 import '../../support/journey.dart';
 

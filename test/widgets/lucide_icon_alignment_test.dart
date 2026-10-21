@@ -5,7 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 
 void main() {
   testWidgets('every bundled Lucide glyph paints in the center of its icon', (

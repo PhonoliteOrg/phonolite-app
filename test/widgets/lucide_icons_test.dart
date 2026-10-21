@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/inputs/lucide_checkbox.dart';
-import 'package:phonolite_app/widgets/inputs/search_filter_chips.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.dart';
+import 'package:phonolite_app/ui/features/search/widgets/search_filter_chips.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 
 void main() {
   testWidgets('Lucide glyphs and license load from the bundled assets', (

@@ -3,12 +3,15 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
-import 'package:phonolite_app/entities/auth_storage.dart';
-import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
-import 'package:phonolite_app/entities/log_storage_settings.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/entities/playback_preferences.dart';
-import 'package:phonolite_app/persistence/settings_files.dart';
+import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
+import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_storage.dart';
+import 'package:phonolite_app/data/storage/preferences/log_storage_settings_storage.dart';
+import 'package:phonolite_app/data/storage/preferences/json_settings_file.dart';
+import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
+import 'package:phonolite_app/data/storage/preferences/playback_preferences.dart';
+import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 import '../support/auth_test_helpers.dart';
 
 void main() {
@@ -34,6 +37,17 @@ void main() {
     );
   });
   tearDown(() => temp.delete(recursive: true));
+
+  test('a failed shared file update does not poison queued updates', () async {
+    final first = JsonSettingsFile(name: 'shared.json', files: files);
+    final second = JsonSettingsFile(name: 'shared.json', files: files);
+    await first.write({'kept': 'value'});
+    final failed = first.update((value) => throw StateError('invalid update'));
+    final failure = expectLater(failed, throwsStateError);
+    final saved = second.update((value) => value['saved'] = true);
+    await Future.wait([failure, saved]);
+    expect(await first.read(), {'kept': 'value', 'saved': true});
+  });
 
   test(
     'concurrent saves across instances preserve both preference keys',

@@ -10,7 +10,7 @@ Edit the feature JSON files, implement journeys under `../journeys/`, then regen
 
 ## Artist Album
 
-Sources: [lib/pages/artist_detail_screen.dart](../../lib/pages/artist_detail_screen.dart), [lib/pages/local_artist_detail_screen.dart](../../lib/pages/local_artist_detail_screen.dart), [lib/pages/album_detail_screen.dart](../../lib/pages/album_detail_screen.dart), [lib/pages/local_album_detail_screen.dart](../../lib/pages/local_album_detail_screen.dart), [lib/widgets/display/artist_hero.dart](../../lib/widgets/display/artist_hero.dart), [lib/widgets/display/album_hero.dart](../../lib/widgets/display/album_hero.dart)
+Sources: [lib/pages/library/artist_detail_screen.dart](../../lib/pages/library/artist_detail_screen.dart), [lib/pages/library/local_artist_detail_screen.dart](../../lib/pages/library/local_artist_detail_screen.dart), [lib/pages/library/album_detail_screen.dart](../../lib/pages/library/album_detail_screen.dart), [lib/pages/library/local_album_detail_screen.dart](../../lib/pages/library/local_album_detail_screen.dart), [lib/ui/shared/music/artists/artist_hero.dart](../../lib/ui/shared/music/artists/artist_hero.dart), [lib/ui/shared/music/albums/album_hero.dart](../../lib/ui/shared/music/albums/album_hero.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/detail_action_header.dart](../../lib/ui/shell/toolbars/detail_action_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -43,7 +43,7 @@ Sources: [lib/pages/artist_detail_screen.dart](../../lib/pages/artist_detail_scr
 
 ## Authentication
 
-Sources: [lib/pages/login_page.dart](../../lib/pages/login_page.dart), [lib/pages/reset_user_password_page.dart](../../lib/pages/reset_user_password_page.dart)
+Sources: [lib/pages/auth/login_page.dart](../../lib/pages/auth/login_page.dart), [lib/pages/auth/reset_user_password_page.dart](../../lib/pages/auth/reset_user_password_page.dart), [lib/ui/shell/base_form_page.dart](../../lib/ui/shell/base_form_page.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart), [lib/ui/shell/toolbars/detail_action_header.dart](../../lib/ui/shell/toolbars/detail_action_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -68,7 +68,7 @@ Sources: [lib/pages/login_page.dart](../../lib/pages/login_page.dart), [lib/page
 
 ## Downloads
 
-Sources: [lib/widgets/modals/download_manager_panel.dart](../../lib/widgets/modals/download_manager_panel.dart), [lib/widgets/modals/remove_download_modal.dart](../../lib/widgets/modals/remove_download_modal.dart), [lib/widgets/display/download_selection_toolbar.dart](../../lib/widgets/display/download_selection_toolbar.dart)
+Sources: [lib/ui/features/downloads/widgets/download_manager_panel.dart](../../lib/ui/features/downloads/widgets/download_manager_panel.dart), [lib/ui/features/downloads/widgets/remove_download_modal.dart](../../lib/ui/features/downloads/widgets/remove_download_modal.dart), [lib/ui/features/downloads/widgets/download_selection_toolbar.dart](../../lib/ui/features/downloads/widgets/download_selection_toolbar.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -91,7 +91,7 @@ Sources: [lib/widgets/modals/download_manager_panel.dart](../../lib/widgets/moda
 
 ## Library
 
-Sources: [lib/pages/library_page.dart](../../lib/pages/library_page.dart), [lib/widgets/inputs/search_hud.dart](../../lib/widgets/inputs/search_hud.dart), [lib/widgets/layout/search_results_sliver.dart](../../lib/widgets/layout/search_results_sliver.dart)
+Sources: [lib/pages/library/library_page.dart](../../lib/pages/library/library_page.dart), [lib/ui/shared/design_system/controls/search_hud.dart](../../lib/ui/shared/design_system/controls/search_hud.dart), [lib/ui/features/search/widgets/search_results_sliver.dart](../../lib/ui/features/search/widgets/search_results_sliver.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -116,7 +116,7 @@ Sources: [lib/pages/library_page.dart](../../lib/pages/library_page.dart), [lib/
 
 ## Liked
 
-Sources: [lib/pages/liked_page.dart](../../lib/pages/liked_page.dart), [lib/widgets/display/track_row_tile.dart](../../lib/widgets/display/track_row_tile.dart)
+Sources: [lib/pages/favorites/liked_page.dart](../../lib/pages/favorites/liked_page.dart), [lib/ui/shared/music/tracks/track_row_tile.dart](../../lib/ui/shared/music/tracks/track_row_tile.dart), [lib/ui/features/favorites/widgets/liked_section.dart](../../lib/ui/features/favorites/widgets/liked_section.dart), [lib/ui/structures/sections/base_sliver_section.dart](../../lib/ui/structures/sections/base_sliver_section.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -134,7 +134,7 @@ Sources: [lib/pages/liked_page.dart](../../lib/pages/liked_page.dart), [lib/widg
 
 ## Navigation
 
-Sources: [lib/pages/home_page.dart](../../lib/pages/home_page.dart), [lib/widgets/navigation/adaptive_scaffold.dart](../../lib/widgets/navigation/adaptive_scaffold.dart)
+Sources: [lib/pages/home/home_page.dart](../../lib/pages/home/home_page.dart), [lib/ui/shell/adaptive_scaffold.dart](../../lib/ui/shell/adaptive_scaffold.dart), [lib/ui/navigation/tab_route_observer.dart](../../lib/ui/navigation/tab_route_observer.dart), [lib/ui/shell/navigation/base_app_navigation.dart](../../lib/ui/shell/navigation/base_app_navigation.dart), [lib/ui/shell/navigation/app_side_navigation.dart](../../lib/ui/shell/navigation/app_side_navigation.dart), [lib/ui/shell/navigation/app_bottom_navigation.dart](../../lib/ui/shell/navigation/app_bottom_navigation.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -149,7 +149,7 @@ Sources: [lib/pages/home_page.dart](../../lib/pages/home_page.dart), [lib/widget
 
 ## Player
 
-Sources: [lib/widgets/display/now_playing_bar.dart](../../lib/widgets/display/now_playing_bar.dart), [lib/widgets/modals/device_picker_modal.dart](../../lib/widgets/modals/device_picker_modal.dart), [lib/widgets/inputs/local_server_toggle.dart](../../lib/widgets/inputs/local_server_toggle.dart)
+Sources: [lib/ui/features/playback/widgets/now_playing_bar.dart](../../lib/ui/features/playback/widgets/now_playing_bar.dart), [lib/ui/features/playback/widgets/device_picker_modal.dart](../../lib/ui/features/playback/widgets/device_picker_modal.dart), [lib/ui/shared/music/local_server_toggle.dart](../../lib/ui/shared/music/local_server_toggle.dart), [lib/ui/features/playback/widgets/components/compact_playback_footer.dart](../../lib/ui/features/playback/widgets/components/compact_playback_footer.dart), [lib/ui/features/playback/widgets/components/playback_expanded_extras.dart](../../lib/ui/features/playback/widgets/components/playback_expanded_extras.dart), [lib/ui/features/playback/widgets/components/playback_labels.dart](../../lib/ui/features/playback/widgets/components/playback_labels.dart), [lib/ui/features/playback/widgets/components/playback_layout.dart](../../lib/ui/features/playback/widgets/components/playback_layout.dart), [lib/ui/features/playback/widgets/components/playback_output_controls.dart](../../lib/ui/features/playback/widgets/components/playback_output_controls.dart), [lib/ui/features/playback/widgets/components/playback_play_button.dart](../../lib/ui/features/playback/widgets/components/playback_play_button.dart), [lib/ui/features/playback/widgets/components/playback_progress_bar.dart](../../lib/ui/features/playback/widgets/components/playback_progress_bar.dart), [lib/ui/features/playback/widgets/components/playback_quality_badge.dart](../../lib/ui/features/playback/widgets/components/playback_quality_badge.dart), [lib/ui/features/playback/widgets/components/playback_source_tags.dart](../../lib/ui/features/playback/widgets/components/playback_source_tags.dart), [lib/ui/features/playback/widgets/components/playback_track_details.dart](../../lib/ui/features/playback/widgets/components/playback_track_details.dart), [lib/ui/features/playback/widgets/components/playback_transport_controls.dart](../../lib/ui/features/playback/widgets/components/playback_transport_controls.dart), [lib/ui/features/playback/widgets/components/playback_tray_transition.dart](../../lib/ui/features/playback/widgets/components/playback_tray_transition.dart), [lib/ui/features/playback/widgets/components/scrubber_display_position.dart](../../lib/ui/features/playback/widgets/components/scrubber_display_position.dart), [lib/ui/features/playback/widgets/modals/output_device_modal.dart](../../lib/ui/features/playback/widgets/modals/output_device_modal.dart), [lib/ui/features/playback/widgets/modals/playback_modal_row.dart](../../lib/ui/features/playback/widgets/modals/playback_modal_row.dart), [lib/ui/features/playback/widgets/modals/shuffle_picker_modal.dart](../../lib/ui/features/playback/widgets/modals/shuffle_picker_modal.dart), [lib/ui/features/playback/widgets/modals/stream_quality_modal.dart](../../lib/ui/features/playback/widgets/modals/stream_quality_modal.dart), [lib/ui/features/playback/widgets/now_playing_expanded_sheet.dart](../../lib/ui/features/playback/widgets/now_playing_expanded_sheet.dart), [lib/ui/features/playback/widgets/now_playing_mini_bar.dart](../../lib/ui/features/playback/widgets/now_playing_mini_bar.dart), [lib/ui/structures/modals/base_alert_modal.dart](../../lib/ui/structures/modals/base_alert_modal.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -188,7 +188,7 @@ Sources: [lib/widgets/display/now_playing_bar.dart](../../lib/widgets/display/no
 
 ## Playlists
 
-Sources: [lib/pages/playlists_page.dart](../../lib/pages/playlists_page.dart), [lib/pages/playlist_detail_view.dart](../../lib/pages/playlist_detail_view.dart), [lib/widgets/modals/playlist_editor_modal.dart](../../lib/widgets/modals/playlist_editor_modal.dart), [lib/widgets/display/playlist_module_card.dart](../../lib/widgets/display/playlist_module_card.dart)
+Sources: [lib/pages/playlists/playlists_page.dart](../../lib/pages/playlists/playlists_page.dart), [lib/pages/playlists/playlist_detail_view.dart](../../lib/pages/playlists/playlist_detail_view.dart), [lib/ui/features/playlists/widgets/playlist_editor_modal.dart](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart), [lib/ui/features/playlists/widgets/playlist_section.dart](../../lib/ui/features/playlists/widgets/playlist_section.dart), [lib/ui/features/playlists/widgets/empty_playlist_text.dart](../../lib/ui/features/playlists/widgets/empty_playlist_text.dart), [lib/ui/structures/sections/base_sliver_section.dart](../../lib/ui/structures/sections/base_sliver_section.dart), [lib/ui/structures/modals/base_alert_modal.dart](../../lib/ui/structures/modals/base_alert_modal.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart), [lib/ui/shell/toolbars/detail_action_header.dart](../../lib/ui/shell/toolbars/detail_action_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -221,7 +221,7 @@ Sources: [lib/pages/playlists_page.dart](../../lib/pages/playlists_page.dart), [
 
 ## Settings
 
-Sources: [lib/pages/settings_page.dart](../../lib/pages/settings_page.dart), [lib/pages/custom_shuffle_settings_page.dart](../../lib/pages/custom_shuffle_settings_page.dart), [lib/pages/logs_page.dart](../../lib/pages/logs_page.dart), [lib/widgets/display/message_log.dart](../../lib/widgets/display/message_log.dart)
+Sources: [lib/pages/settings/settings_page.dart](../../lib/pages/settings/settings_page.dart), [lib/pages/playback/custom_shuffle_settings_page.dart](../../lib/pages/playback/custom_shuffle_settings_page.dart), [lib/pages/logs/logs_page.dart](../../lib/pages/logs/logs_page.dart), [lib/ui/features/logs/widgets/message_log.dart](../../lib/ui/features/logs/widgets/message_log.dart), [lib/ui/features/settings/sections/general_settings_section.dart](../../lib/ui/features/settings/sections/general_settings_section.dart), [lib/ui/features/settings/sections/local_storage_settings_section.dart](../../lib/ui/features/settings/sections/local_storage_settings_section.dart), [lib/ui/features/settings/sections/misc_settings_section.dart](../../lib/ui/features/settings/sections/misc_settings_section.dart), [lib/ui/features/settings/sections/user_settings_section.dart](../../lib/ui/features/settings/sections/user_settings_section.dart), [lib/ui/features/settings/widgets/listening_statistics_setting.dart](../../lib/ui/features/settings/widgets/listening_statistics_setting.dart), [lib/ui/features/settings/widgets/offline_storage_section.dart](../../lib/ui/features/settings/widgets/offline_storage_section.dart), [lib/ui/features/settings/widgets/server_connection_setting.dart](../../lib/ui/features/settings/widgets/server_connection_setting.dart), [lib/ui/features/settings/widgets/settings_row.dart](../../lib/ui/features/settings/widgets/settings_row.dart), [lib/ui/features/settings/dialogs/settings_dialogs.dart](../../lib/ui/features/settings/dialogs/settings_dialogs.dart), [lib/ui/features/settings/dialogs/storage_path_dialog.dart](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart), [lib/ui/structures/sections/base_section.dart](../../lib/ui/structures/sections/base_section.dart), [lib/ui/structures/modals/base_alert_modal.dart](../../lib/ui/structures/modals/base_alert_modal.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart), [lib/ui/shell/toolbars/detail_action_header.dart](../../lib/ui/shell/toolbars/detail_action_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -272,7 +272,7 @@ Sources: [lib/pages/settings_page.dart](../../lib/pages/settings_page.dart), [li
 
 ## Shared Platform
 
-Sources: [lib/widgets/ui/compact_hero_details.dart](../../lib/widgets/ui/compact_hero_details.dart), [lib/widgets/ui/dismissible_selection_area.dart](../../lib/widgets/ui/dismissible_selection_area.dart), [lib/widgets/navigation/desktop_mouse_navigation.dart](../../lib/widgets/navigation/desktop_mouse_navigation.dart), [lib/widgets/navigation/desktop_playback_shortcuts.dart](../../lib/widgets/navigation/desktop_playback_shortcuts.dart), [lib/pages/search_page.dart](../../lib/pages/search_page.dart), [lib/pages/splash_page.dart](../../lib/pages/splash_page.dart)
+Sources: [lib/ui/shared/music/compact_hero_details.dart](../../lib/ui/shared/music/compact_hero_details.dart), [lib/ui/shared/design_system/interaction/dismissible_selection_area.dart](../../lib/ui/shared/design_system/interaction/dismissible_selection_area.dart), [lib/ui/navigation/desktop_mouse_navigation.dart](../../lib/ui/navigation/desktop_mouse_navigation.dart), [lib/ui/navigation/desktop_playback_shortcuts.dart](../../lib/ui/navigation/desktop_playback_shortcuts.dart), [lib/pages/search/search_page.dart](../../lib/pages/search/search_page.dart), [lib/pages/splash/splash_page.dart](../../lib/pages/splash/splash_page.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -293,7 +293,7 @@ Sources: [lib/widgets/ui/compact_hero_details.dart](../../lib/widgets/ui/compact
 
 ## Stats
 
-Sources: [lib/pages/stats_page.dart](../../lib/pages/stats_page.dart), [lib/widgets/display/stats_cards.dart](../../lib/widgets/display/stats_cards.dart)
+Sources: [lib/pages/listening_stats/stats_page.dart](../../lib/pages/listening_stats/stats_page.dart), [lib/ui/features/listening_stats/widgets/stats_cards.dart](../../lib/ui/features/listening_stats/widgets/stats_cards.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -313,7 +313,7 @@ Sources: [lib/pages/stats_page.dart](../../lib/pages/stats_page.dart), [lib/widg
 
 ## Tracks
 
-Sources: [lib/widgets/display/track_row_tile.dart](../../lib/widgets/display/track_row_tile.dart), [lib/widgets/display/track_sliver_list.dart](../../lib/widgets/display/track_sliver_list.dart), [lib/widgets/display/search_result_tile.dart](../../lib/widgets/display/search_result_tile.dart), [lib/widgets/modals/add_to_playlist_modal.dart](../../lib/widgets/modals/add_to_playlist_modal.dart)
+Sources: [lib/ui/shared/music/tracks/track_row_tile.dart](../../lib/ui/shared/music/tracks/track_row_tile.dart), [lib/ui/shared/music/tracks/track_sliver_list.dart](../../lib/ui/shared/music/tracks/track_sliver_list.dart), [lib/ui/features/search/widgets/search_result_tile.dart](../../lib/ui/features/search/widgets/search_result_tile.dart), [lib/ui/features/playlists/widgets/add_to_playlist_modal.dart](../../lib/ui/features/playlists/widgets/add_to_playlist_modal.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |

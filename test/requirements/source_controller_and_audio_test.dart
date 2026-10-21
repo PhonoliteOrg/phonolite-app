@@ -5,21 +5,19 @@ import '../support/source_test_helpers.dart';
 void main() {
   group('controller source contracts', () {
     test('controller preserves key enums channels and timing constants', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
-      final nowPlayingPlatform = readProjectFile(
-        'lib/platform/now_playing_platform_service.dart',
+      final source = readProjectModule('lib/application/app/app_controller.dart');
+      final nowPlayingPlatform = readProjectModule(
+        'lib/infrastructure/platform/media/now_playing_platform_service.dart',
       );
-      final vehicleSurface = readProjectFile(
-        'lib/platform/vehicle_surface_service.dart',
-      );
-      final localNetworkPermissions = readProjectFile(
-        'lib/platform/local_network_permission_service.dart',
+      final vehicleCodec = readProjectModule('lib/infrastructure/platform/media/vehicle_surface_codec.dart');
+      final nowPlayingCodec = readProjectModule('lib/infrastructure/platform/media/now_playing_codec.dart');
+      final vehicleSurface = readProjectModule('lib/infrastructure/platform/media/vehicle_surface_service.dart');
+      final localNetworkPermissions = readProjectModule(
+        'lib/infrastructure/platform/permissions/local_network_permission_service.dart',
       );
 
-      final playbackValues = readProjectFile(
-        'lib/entities/playback_state.dart',
-      );
-      expect(source, contains("export 'playback_state.dart';"));
+      final playbackValues = readProjectModule('lib/data/models/playback/playback_state.dart');
+      expect(source, contains("export 'package:phonolite_app/data/models/playback/playback_state.dart';"));
       expectContainsAll(playbackValues, const [
         'enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }',
         'enum ActionScope { local, server }',
@@ -36,17 +34,19 @@ void main() {
         'final NowPlayingPlatformService _nowPlayingPlatform;',
         'final VehicleSurfaceService _vehicleSurface;',
         'final LocalNetworkPermissionService _localNetworkPermissions;',
-        "'artworkKey': _artwork.key",
-        '_artwork.load(',
+        'NativeNowPlayingSnapshot(',
+        'artworkKey:',
+        "NowPlayingArtwork.sourceKey(",
+        '_host._artwork.load(',
         '_maybeLoadNowPlayingArtwork(',
         'final NowPlayingArtwork _artwork;',
-        'getCarPlayState',
-        '_carPlayGetArtists(_carPlayScope(args))',
-        '_carPlayPlayAlbum(_carPlayScope(args), albumId)',
-        'return _carPlayStartShuffle(',
-        "artistId: args['artistId']?.toString()",
+        'VehicleOperation.getState => _carPlayGetState()',
+        '_carPlayGetArtists(request.scope)',
+        "_carPlayPlayAlbum(request.scope, request.albumId ?? '')",
+        'VehicleOperation.startShuffle => _carPlayStartShuffle(',
+        'artistId: request.artistId',
         '_carPlayServerAvailabilityError()',
-        "'server_unavailable'",
+        'VehicleFailure.serverUnavailable',
         'playLocalPlaylistFromTop(playlistId)',
         'playOfflineTrack(album.tracks.first.id, tracks: album.tracks)',
         'artistId: artistId,',
@@ -81,7 +81,7 @@ void main() {
         "_triggerImmediateServerReconnect(reason: 'manual retry')",
         "_triggerImmediateServerReconnect(reason: 'server action')",
         "_triggerImmediateServerReconnect(reason: 'vehicle state request')",
-        'await connection.fetchCapabilities();',
+        "await _host.connection.fetchCapabilities();",
         'Future<void> _handleReconnectUnauthorized() async',
         'void _recordServerAvailabilityFailure({',
         'bool get _canAttemptRemotePlayback',
@@ -90,9 +90,20 @@ void main() {
         'void _recoverInterruptedRemoteStream()',
         "'Stream interrupted; reconnecting from current position.'",
         'quickStart: false,',
-        'if (_hasActiveRemotePlayback) {',
+        "if (_host._hasActiveRemotePlayback) {",
         'Future<void> _pollHealth() => _refreshServerAvailability(',
         'const Duration(seconds: 12)',
+      ]);
+      expectContainsAll(vehicleCodec, const [
+        "'getCarPlayState' => VehicleOperation.getState",
+        "'startShuffle' || 'startLibraryShuffle' || 'startLikedShuffle' || 'startCustomShuffle'",
+        "artistId: arguments['artistId']?.toString()",
+        "VehicleFailure.serverUnavailable => 'server_unavailable'",
+      ]);
+      expectContainsAll(nowPlayingCodec, const [
+        "'artworkKey': snapshot.artworkKey",
+        "'artworkUrl': snapshot.artworkUrl",
+        "'token': snapshot.token",
       ]);
       expectContainsAll(nowPlayingPlatform, const [
         "MethodChannel channel = const MethodChannel('phonolite/now_playing')",
@@ -126,9 +137,7 @@ void main() {
     });
 
     test('connectivity signal source wraps plugin network hints', () {
-      final source = readProjectFile(
-        'lib/entities/connectivity_signal_source.dart',
-      );
+      final source = readProjectModule('lib/infrastructure/platform/connectivity/connectivity_signal_source.dart');
 
       expectContainsAll(source, const [
         'abstract class ConnectivitySignalSource',
@@ -143,35 +152,35 @@ void main() {
     });
 
     test('controller keeps stream seek and buffer display state stable', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectFiles([
+        'lib/application/app/app_controller.dart',
+        'lib/data/models/playback/playback_workflow_values.dart',
+      ]);
 
       expectContainsAll(source, const [
-        'enum _SeekDirection { none, forward, backward }',
+        'enum SeekDirection { none, forward, backward }',
         'int _seekOriginMs = 0;',
-        '_SeekDirection _seekDirection = _SeekDirection.none;',
+        'SeekDirection _seekDirection = SeekDirection.none;',
         'static const int _seekCompletionToleranceMs = 400;',
         'int _bufferedEndHighWaterMs = 0;',
         '_seekDirection = _seekDirectionFor(_seekOriginMs, _seekTargetMs);',
         'if (!_seeking || _isScrubbing || _pendingSeekGeneration != null) {',
-        '_SeekDirection.forward =>',
-        'positionMs >= targetMs - _seekCompletionToleranceMs',
-        '_SeekDirection.backward =>',
-        'positionMs <= targetMs + _seekCompletionToleranceMs',
+        'SeekDirection.forward =>',
+        "positionMs >= targetMs - AppController._seekCompletionToleranceMs",
+        'SeekDirection.backward =>',
+        "positionMs <= targetMs + AppController._seekCompletionToleranceMs",
         '_resetPlaybackPositionTracking(position: position);',
         '_displayPositionMs = _seekTargetMs;',
         'void _resetBufferedEndHighWater({Duration position = Duration.zero})',
         'void _updateBufferedEndHighWater({',
         '_bufferedEndHighWaterMs = next.clamp(0, durationMs).toInt();',
       ]);
-      expect(
-        source,
-        isNot(contains('_displayPositionMs = max(actualMs, _seekTargetMs);')),
-      );
+      expect(source, isNot(contains('_displayPositionMs = max(actualMs, _seekTargetMs);')));
       expect(source, isNot(contains('rawBufferRatio')));
     });
 
     test('controller preserves login restore and custom shuffle update hooks', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectModule('lib/application/app/app_controller.dart');
 
       expectContainsAll(source, const [
         'Future<void> loginWithPassword({',
@@ -185,10 +194,10 @@ void main() {
         "error: 'Saved login expired'",
         'Future<void> startFreshLoginFlow() async {',
         'final preserveLocalPlayback =',
-        '_playbackState.isLocalPlayback && _playbackState.track != null;',
+        "_host._playbackState.isLocalPlayback &&\n        _host._playbackState.track != null;",
         '_beginBestEffortServerLogout();',
         '_pauseDownloadsForDisconnectedServer(serverBaseUrl);',
-        'connection.logout(timeout: _serverLogoutBestEffortTimeout)',
+        '_host.connection.logout(timeout: AppController._serverLogoutBestEffortTimeout)',
         'if (preserveLocalPlayback) {',
         '_closeStreamControl();',
         '} else {',
@@ -211,7 +220,7 @@ void main() {
         'Future<void> removeOfflineDownloads(',
         '_offlineDownloadManager.removeDownloads(',
         'scope: scope,',
-        'await stop();',
+        'await _host.stop();',
         '_pruneRemovedDownloadsFromOfflineQueue',
         'Future<void> pauseOfflineDownload(OfflineTrackDownload download) async',
         'Future<void> resumeOfflineDownload(OfflineTrackDownload download) async',
@@ -219,7 +228,7 @@ void main() {
         'Future<void> resumeOfflineDownloadJob(OfflineDownloadJob job) async',
         'Future<void> clearFailedOfflineDownloads() async',
         'Future<void> resetOfflineData() async',
-        'pauseDownloadsForServer(connection.baseUrl)',
+        'pauseDownloadsForServer(_host.connection.baseUrl)',
         'resumePausedForCurrentServer()',
         'repairOfflineMetadataFragments()',
         'Future<void> playOfflineTrack(',
@@ -243,7 +252,7 @@ void main() {
         'Future<void> addTrackToLocalPlaylist(Playlist playlist, Track track) async {',
         'bool _shouldUseLocalUserData(Track track)',
         'shuffleScope: ActionScope.server',
-        'if (_playbackState.shuffleScope == ActionScope.local)',
+        "if (_host._playbackState.shuffleScope == ActionScope.local)",
         '_playbackState.shuffleScope != ActionScope.server',
         '_playbackState.queueSource == PlaybackQueueSource.offline',
         'await _startLocalPlayback(',
@@ -261,26 +270,26 @@ void main() {
     });
 
     test('controller bounds offline refresh before server refresh', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectModule('lib/application/app/app_controller.dart');
 
       expectContainsAll(source, const [
         'Future<void> refreshLibrary() async',
-        'await _offlineDownloadManager.load().timeout(_offlineRefreshTimeout)',
-        'await loadOfflineStorageLocations().timeout(_offlineRefreshTimeout)',
+        'await _host._offlineDownloadManager.load().timeout(AppController._offlineRefreshTimeout)',
+        'await _host.loadOfflineStorageLocations().timeout(AppController._offlineRefreshTimeout)',
         'Offline library refresh timed out; continuing with server refresh.',
-        'await loadArtists(refresh: true)',
+        "await _host.loadArtists(refresh: true)",
         'Server library refreshed; offline refresh did not complete.',
       ]);
     });
 
     test('controller listens for live metadata updates', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectModule('lib/application/app/app_controller.dart');
 
       expectContainsAll(source, const [
         'late final MetadataEventListener _metadataEvents',
         'Stream<Artist> watchArtist(String artistId)',
         'Stream<Album> watchAlbum(String albumId)',
-        'openStream: connection.streamMetadataEvents,',
+        "openStream: _host.connection.streamMetadataEvents,",
         'applyEvent: _applyMetadataEvent,',
         "case 'artist':",
         "case 'album':",
@@ -290,7 +299,7 @@ void main() {
         '_albumWithListFallbacks(',
         'album.copyWith(trackCount: existing.trackCount)',
         '_albums = _sortAlbumsByReleaseYear(',
-        'await connection.fetchAlbums(artistId),',
+        "await _host.connection.fetchAlbums(artistId),",
         '_sortAlbumsByReleaseYear(next)',
         '_artistUpdatesController.add(effective)',
         '_albumUpdatesController.add(updated)',
@@ -301,7 +310,10 @@ void main() {
     });
 
     test('controller keeps local queue playback routes wired', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectFiles([
+        'lib/application/app/app_controller.dart',
+        'lib/data/models/playback/playback_workflow_values.dart',
+      ]);
 
       expectContainsAll(source, const [
         'Future<void> playOfflineTrack(',
@@ -317,26 +329,26 @@ void main() {
         "contextScope = 'localLibrary'",
         'queueSource: PlaybackQueueSource.offline',
         'localPlaybackSource: LocalPlaybackSource.none',
-        'LocalPlaybackSource _localPlaybackSourceFor(_OfflineQueueSource source)',
-        '_OfflineQueueSource.localLiked => LocalPlaybackSource.liked',
-        '_OfflineQueueSource.localPlaylist => LocalPlaybackSource.playlist',
-        '_OfflineQueueSource.tracks => LocalPlaybackSource.library',
-        'enum _OfflineQueueSource { none, tracks, localLiked, localPlaylist }',
+        'LocalPlaybackSource _localPlaybackSourceFor(OfflineQueueSource source)',
+        'OfflineQueueSource.localLiked => LocalPlaybackSource.liked',
+        'OfflineQueueSource.localPlaylist => LocalPlaybackSource.playlist',
+        'OfflineQueueSource.tracks => LocalPlaybackSource.library',
+        'enum OfflineQueueSource { none, tracks, localLiked, localPlaylist }',
         'localLikedQueue: true',
         'void _pruneTrackFromLocalLikedQueue(String localTrackId)',
-        '_offlineQueueSource != _OfflineQueueSource.localLiked',
+        '_offlineQueueSource != OfflineQueueSource.localLiked',
         'await _playCurrent();',
         'Future<void> nextTrack({bool fromAutoAdvance = false}) async {',
         'Future<void> prevTrack({bool fromAutoAdvance = false}) async {',
-        'if (_playbackState.repeatMode == RepeatMode.one) {',
-        'await _audioEngine.playLocalFile(',
+        "if (_host._playbackState.repeatMode == RepeatMode.one) {",
+        "await _host._audioEngine.playLocalFile(",
         'startOffset: startOffset,',
         'contentType: download.contentType,',
       ]);
     });
 
     test('controller updates explicit server likes with known metadata', () {
-      final source = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectModule('lib/application/app/app_controller.dart');
 
       expectContainsAll(source, const [
         'void _updateLike(String trackId, bool liked, {Track? knownTrack})',
@@ -348,100 +360,94 @@ void main() {
   });
 
   group('audio engine source contracts', () {
-    test(
-      'audio engine preserves platform output and local playback interfaces',
-      () {
-        final source = readProjectFile('lib/entities/audio_engine.dart');
+    test('audio engine preserves platform output and local playback interfaces', () {
+      final source = readProjectModule('lib/infrastructure/audio/engine/audio_engine.dart');
 
-        expectContainsAll(source, const [
-          "const MethodChannel _androidAudioOutputChannel = MethodChannel(",
-          "'phonolite/audio_output'",
-          'class _AndroidChannelPlayer implements _NativeAudioPlayer {',
-          'class _WaveOutPlayer implements _NativeAudioPlayer {',
-          'class _CoreAudioPlayer implements _NativeAudioPlayer {',
-          'const int kDefaultOutputDeviceId = -1;',
-          "OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default')",
-          'void Function(bool active, bool paused)? onState,',
-          'final void Function(bool active, bool paused)? _onState;',
-          "case 'state':",
-          "final active = message['active'] == true;",
-          "final paused = message['paused'] == true;",
-          '_onState?.call(active, paused);',
-          'bool quickStart = true,',
-          "'quick_start': quickStart,",
-          'required this.quickStart,',
-          'final bool quickStart;',
-          '_quickStart = quickStart && startOffset.inMilliseconds > 0;',
-          "quickStart: message['quick_start'] != false,",
-          "import 'package:phonolite_local_audio/phonolite_local_audio.dart';",
-          'Future<void> playLocalFile({',
-          'String? contentType,',
-          "'cmd': 'play_local'",
-          'case \'play_local\':',
-          '_PlaybackSession.local(',
-          'LocalAudioDecoder? _localDecoder;',
-          'LocalAudioDecoder.open(filePath, startOffset: startOffset)',
-          'Future<void> _runLocalFilePlayback(String filePath) async',
-          'Future<void> _applyLocalSeek(',
-          'Future<void> _createLocalPcmOutput()',
-          "'local': _isLocalFile",
-          '_createPlayer(',
-          'Future<void> flush();',
-          'abstract class AudioPcmOutput',
-          'await player.flush();',
-          'bool initialPaused = false,',
-          "initialPaused: message['initial_paused'] == true,",
-        ]);
-        expect(source, isNot(contains('package:just_audio/just_audio.dart')));
-        expect(source, isNot(contains('ja.AudioPlayer')));
-        expect(source, isNot(contains('StreamAudioSource')));
-      },
-    );
+      expectContainsAll(source, const [
+        "const MethodChannel androidAudioOutputChannel = MethodChannel(",
+        "'phonolite/audio_output'",
+        "class AndroidChannelPlayer implements AudioPcmOutput {",
+        "class WaveOutPlayer implements AudioPcmOutput {",
+        "class CoreAudioPlayer implements AudioPcmOutput {",
+        'const int kDefaultOutputDeviceId = -1;',
+        "OutputDevice(id: kDefaultOutputDeviceId, name: 'System Default')",
+        'void Function(bool active, bool paused)? onState,',
+        'final void Function(bool active, bool paused)? _onState;',
+        "case 'state':",
+        "final active = message['active'] == true;",
+        "final paused = message['paused'] == true;",
+        '_onState?.call(active, paused);',
+        'bool quickStart = true,',
+        "'quick_start': quickStart,",
+        'required this.quickStart,',
+        'final bool quickStart;',
+        '_quickStart = quickStart && startOffset.inMilliseconds > 0;',
+        "quickStart: message['quick_start'] != false,",
+        "import 'package:phonolite_local_audio/phonolite_local_audio.dart';",
+        'Future<void> playLocalFile({',
+        'String? contentType,',
+        "'cmd': 'play_local'",
+        'case \'play_local\':',
+        '_PlaybackSession.local(',
+        'LocalAudioDecoder? _localDecoder;',
+        'LocalAudioDecoder.open(filePath, startOffset: _host.startOffset)',
+        'Future<void> _runLocalFilePlayback(String filePath) async',
+        'Future<void> _applyLocalSeek(',
+        'Future<void> _createLocalPcmOutput()',
+        "'local': _host._isLocalFile",
+        "createAudioPcmOutput(",
+        'Future<void> flush();',
+        'abstract class AudioPcmOutput',
+        'await player.flush();',
+        'bool initialPaused = false,',
+        "initialPaused: message['initial_paused'] == true,",
+      ]);
+      expect(source, isNot(contains('package:just_audio/just_audio.dart')));
+      expect(source, isNot(contains('ja.AudioPlayer')));
+      expect(source, isNot(contains('StreamAudioSource')));
+    });
 
-    test(
-      'remote audio separates framed reception from cached packet decoding',
-      () {
-        final engine = readProjectFile('lib/entities/audio_engine.dart');
-        final framing = readProjectFile('lib/entities/raw_opus_stream.dart');
-        final cache = readProjectFile('lib/entities/encoded_audio_cache.dart');
+    test('remote audio separates framed reception from cached packet decoding', () {
+      final engine = readProjectModule('lib/infrastructure/audio/engine/audio_engine.dart');
+      final framing = readProjectModule('lib/infrastructure/audio/protocol/raw_opus_stream_reader.dart');
+      final cache = readProjectModule('lib/data/structures/audio/encoded_audio_cache.dart');
 
-        expectContainsAll(engine, const [
-          "import 'encoded_audio_cache.dart';",
-          "import 'raw_opus_stream.dart';",
-          '_receiveRemoteAudio(quic)',
-          '_decodeRemoteAudio()',
-          '_encodedCache.append(',
-          '_encodedCache.seek(ms)',
-          'quic.suspendAudio();',
-          'quic.pollEvent()',
-          "event['source_version']",
-          "event['range_end_ms']",
-          "event['end_of_track']",
-          'startMs: startOffset.inMilliseconds,',
-        ]);
-        expectContainsAll(framing, const [
-          'class RawOpusStreamReader',
-          'class RawOpusStreamHeader',
-          'class RawOpusPacket',
-          'class RawOpusSeekMarker',
-          'class RawOpusEnd',
-          'List<RawOpusEvent> add(Uint8List data)',
-        ]);
-        expectContainsAll(cache, const [
-          'class EncodedAudioCache',
-          'class EncodedAudioSegment',
-          'final int maxBytes;',
-          'final String sourceVersion;',
-          'EncodedAudioCursor? seek(int positionMs)',
-          'int bufferedAheadMs(int positionMs)',
-        ]);
-        expect(engine, isNot(contains('class _ByteQueue')));
-        expect(engine, isNot(contains('_requestInitialServerSeek')));
-      },
-    );
+      expectContainsAll(engine, const [
+        "import 'package:phonolite_app/data/structures/audio/encoded_audio_cache.dart';",
+        "import 'package:phonolite_app/infrastructure/audio/protocol/raw_opus_stream_reader.dart';",
+        '_receiveRemoteAudio(quic)',
+        '_decodeRemoteAudio()',
+        '_encodedCache.append(',
+        '_encodedCache.seek(ms)',
+        'quic.suspendAudio();',
+        'quic.pollEvent()',
+        "event['source_version']",
+        "event['range_end_ms']",
+        "event['end_of_track']",
+        'startMs: startOffset.inMilliseconds,',
+      ]);
+      expectContainsAll(framing, const [
+        'class RawOpusStreamReader',
+        'class RawOpusStreamHeader',
+        'class RawOpusPacket',
+        'class RawOpusSeekMarker',
+        'class RawOpusEnd',
+        'List<RawOpusEvent> add(Uint8List data)',
+      ]);
+      expectContainsAll(cache, const [
+        'class EncodedAudioCache',
+        'class EncodedAudioSegment',
+        'final int maxBytes;',
+        'final String sourceVersion;',
+        'EncodedAudioCursor? seek(int positionMs)',
+        'int bufferedAheadMs(int positionMs)',
+      ]);
+      expect(engine, isNot(contains('class _ByteQueue')));
+      expect(engine, isNot(contains('_requestInitialServerSeek')));
+    });
 
     test('seeks acknowledge buffer readiness and failures', () {
-      final engine = readProjectFile('lib/entities/audio_engine.dart');
+      final engine = readProjectModule('lib/infrastructure/audio/engine/audio_engine.dart');
       expectContainsAll(engine, const [
         'Future<bool> seekTo(Duration position)',
         'Completer<bool>()',

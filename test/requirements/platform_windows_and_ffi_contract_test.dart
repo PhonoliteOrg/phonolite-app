@@ -4,43 +4,37 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('windows platform source contracts', () {
-    test(
-      'windows runner preserves product name size and dark window behavior',
-      () {
-        final topLevel = readProjectFile('windows/CMakeLists.txt');
-        final runner = readProjectFile('windows/runner/CMakeLists.txt');
-        final mainSource = readProjectFile('windows/runner/main.cpp');
-        final win32Source = readProjectFile('windows/runner/win32_window.cpp');
+    test('windows runner preserves product name size and dark window behavior', () {
+      final topLevel = readProjectModule('windows/CMakeLists.txt');
+      final runner = readProjectModule('windows/runner/CMakeLists.txt');
+      final mainSource = readProjectModule('windows/runner/main.cpp');
+      final win32Source = readProjectModule('windows/runner/ui/shell/win32_window.cpp');
 
-        expectContainsAll(topLevel, const [
-          'project(Phonolite LANGUAGES CXX)',
-          'set(BINARY_NAME "Phonolite")',
-          'native_assets/windows/',
-        ]);
-        expectContainsAll(runner, const [
-          r'add_executable(${BINARY_NAME} WIN32',
-          r'target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)',
-        ]);
-        expectContainsAll(mainSource, const [
-          'Win32Window::Size size(1280, 720);',
-          'if (!window.Create(L"Phonolite", origin, size))',
-        ]);
-        expectContainsAll(win32Source, const [
-          'DWMWA_USE_IMMERSIVE_DARK_MODE',
-          'AppsUseLightTheme',
-          'DwmSetWindowAttribute',
-        ]);
-      },
-    );
+      expectContainsAll(topLevel, const [
+        'project(Phonolite LANGUAGES CXX)',
+        'set(BINARY_NAME "Phonolite")',
+        'native_assets/windows/',
+      ]);
+      expectContainsAll(runner, const [
+        r'add_executable(${BINARY_NAME} WIN32',
+        r'target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)',
+      ]);
+      expectContainsAll(mainSource, const [
+        'const WindowPoint origin{10, 10};',
+        'const WindowSize size{1280, 720};',
+        'if (!window.create(L"Phonolite", origin, size))',
+      ]);
+      expectContainsAll(win32Source, const [
+        'DWMWA_USE_IMMERSIVE_DARK_MODE',
+        'AppsUseLightTheme',
+        'DwmSetWindowAttribute',
+      ]);
+    });
 
     test('local audio decoder is bundled through the Windows FFI plugin', () {
-      final pubspec = readProjectFile('pubspec.yaml');
-      final pluginPubspec = readProjectFile(
-        'packages/phonolite_local_audio/pubspec.yaml',
-      );
-      final cmake = readProjectFile(
-        'packages/phonolite_local_audio/windows/CMakeLists.txt',
-      );
+      final pubspec = readProjectModule('pubspec.yaml');
+      final pluginPubspec = readProjectModule('packages/phonolite_local_audio/pubspec.yaml');
+      final cmake = readProjectModule('packages/phonolite_local_audio/windows/CMakeLists.txt');
 
       expectContainsAll(pubspec, const [
         'connectivity_plus: ^6.1.5',
@@ -48,11 +42,7 @@ void main() {
         'path: packages/phonolite_local_audio',
       ]);
       expect(pubspec, isNot(contains('just_audio_windows:')));
-      expectContainsAll(pluginPubspec, const [
-        'name: phonolite_local_audio',
-        'windows:',
-        'ffiPlugin: true',
-      ]);
+      expectContainsAll(pluginPubspec, const ['name: phonolite_local_audio', 'windows:', 'ffiPlugin: true']);
       expectContainsAll(cmake, const [
         'project(phonolite_local_audio_library LANGUAGES C)',
         'native/local_audio',
@@ -65,15 +55,9 @@ void main() {
 
   group('ffi and transport source contracts', () {
     test('opus wrapper preserves header parsing and decoder constraints', () {
-      final dartSource = readProjectFile(
-        'packages/phonolite_opus/lib/phonolite_opus.dart',
-      );
-      final cSource = readProjectFile(
-        'packages/phonolite_opus/src/phonolite_opus.c',
-      );
-      final header = readProjectFile(
-        'packages/phonolite_opus/src/phonolite_opus.h',
-      );
+      final dartSource = readProjectModule('packages/phonolite_opus/lib/phonolite_opus.dart');
+      final cSource = readProjectModule('packages/phonolite_opus/src/phonolite_opus.c');
+      final header = readProjectModule('packages/phonolite_opus/src/phonolite_opus.h');
 
       expectContainsAll(dartSource, const [
         "'OPUSR01\\u0000'",
@@ -84,11 +68,7 @@ void main() {
         "return ffi.DynamicLibrary.open('libphonolite_opus.so');",
         "return ffi.DynamicLibrary.open('phonolite_opus.dll');",
       ]);
-      expectContainsAll(cSource, const [
-        'opus_decoder_create',
-        'opus_decode',
-        'return 5760;',
-      ]);
+      expectContainsAll(cSource, const ['opus_decoder_create', 'opus_decode', 'return 5760;']);
       expectContainsAll(header, const [
         'phonolite_opus_decoder_create',
         'phonolite_opus_decode',
@@ -97,18 +77,10 @@ void main() {
     });
 
     test('quic client preserves transport configuration and ffi surface', () {
-      final dartSource = readProjectFile(
-        'packages/phonolite_quic/lib/phonolite_quic.dart',
-      );
-      final rustSource = readProjectFile(
-        'packages/phonolite_quic/native/quic_client/src/lib.rs',
-      );
-      final cargo = readProjectFile(
-        'packages/phonolite_quic/native/quic_client/Cargo.toml',
-      );
-      final header = readProjectFile(
-        'packages/phonolite_quic/src/phonolite_quic.h',
-      );
+      final dartSource = readProjectModule('packages/phonolite_quic/lib/phonolite_quic.dart');
+      final rustSource = readProjectModule('packages/phonolite_quic/native/quic_client/src/lib.rs');
+      final cargo = readProjectModule('packages/phonolite_quic/native/quic_client/Cargo.toml');
+      final header = readProjectModule('packages/phonolite_quic/src/phonolite_quic.h');
 
       expectContainsAll(dartSource, const [
         "return ffi.DynamicLibrary.open('libphonolite_quic.so');",
@@ -155,18 +127,10 @@ void main() {
     });
 
     test('local audio decoder exposes MP3 FLAC PCM and seek ffi surface', () {
-      final dartSource = readProjectFile(
-        'packages/phonolite_local_audio/lib/phonolite_local_audio.dart',
-      );
-      final rustSource = readProjectFile(
-        'packages/phonolite_local_audio/native/local_audio/src/lib.rs',
-      );
-      final cargo = readProjectFile(
-        'packages/phonolite_local_audio/native/local_audio/Cargo.toml',
-      );
-      final header = readProjectFile(
-        'packages/phonolite_local_audio/src/phonolite_local_audio.h',
-      );
+      final dartSource = readProjectModule('packages/phonolite_local_audio/lib/phonolite_local_audio.dart');
+      final rustSource = readProjectModule('packages/phonolite_local_audio/native/local_audio/src/lib.rs');
+      final cargo = readProjectModule('packages/phonolite_local_audio/native/local_audio/Cargo.toml');
+      final header = readProjectModule('packages/phonolite_local_audio/src/phonolite_local_audio.h');
 
       expectContainsAll(dartSource, const [
         'class LocalAudioDecoder',
