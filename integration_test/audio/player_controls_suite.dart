@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
@@ -432,9 +432,9 @@ class PlayerControlsSuite {
       'Repeat toggles and persists on the server, then restores',
       () async {
         final before = controller.playbackState.repeatMode;
-        final expected = before == RepeatMode.off
-            ? RepeatMode.one
-            : RepeatMode.off;
+        final expected = before == PlaybackRepeatMode.off
+            ? PlaybackRepeatMode.one
+            : PlaybackRepeatMode.off;
         await ui.tap(icon(PhonoliteIcons.repeat));
         expect(controller.playbackState.repeatMode, expected);
         await waitRemote(

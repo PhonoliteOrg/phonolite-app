@@ -150,12 +150,12 @@ class _PreferencesCoordinator {
     return result;
   }
 
-  RepeatMode _parseRepeatMode(String? value) {
+  PlaybackRepeatMode _parseRepeatMode(String? value) {
     switch (value?.toLowerCase().trim()) {
       case 'one':
-        return RepeatMode.one;
+        return PlaybackRepeatMode.one;
       default:
-        return RepeatMode.off;
+        return PlaybackRepeatMode.off;
     }
   }
 
@@ -169,9 +169,9 @@ class _PreferencesCoordinator {
     }
   }
 
-  Future<void> _persistPlaybackSettings(RepeatMode mode) async {
+  Future<void> _persistPlaybackSettings(PlaybackRepeatMode mode) async {
     try {
-      await _host.connection.updatePlaybackSettings(repeatMode: mode == RepeatMode.one ? 'one' : 'off');
+      await _host.connection.updatePlaybackSettings(repeatMode: mode == PlaybackRepeatMode.one ? 'one' : 'off');
     } catch (err) {
       _host._pushMessage('Failed to update playback settings: $err');
     }
@@ -249,9 +249,9 @@ mixin _PreferencesFacade {
   Future<void> _ensureCustomShuffleSettingsLoaded({bool force = false}) =>
       _preferencesCoordinator._ensureCustomShuffleSettingsLoaded(force: force);
 
-  RepeatMode _parseRepeatMode(String? value) => _preferencesCoordinator._parseRepeatMode(value);
+  PlaybackRepeatMode _parseRepeatMode(String? value) => _preferencesCoordinator._parseRepeatMode(value);
 
   Future<void> _loadPlaybackSettings() => _preferencesCoordinator._loadPlaybackSettings();
 
-  Future<void> _persistPlaybackSettings(RepeatMode mode) => _preferencesCoordinator._persistPlaybackSettings(mode);
+  Future<void> _persistPlaybackSettings(PlaybackRepeatMode mode) => _preferencesCoordinator._persistPlaybackSettings(mode);
 }

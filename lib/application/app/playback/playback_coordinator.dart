@@ -196,7 +196,7 @@ class _PlaybackCoordinator {
   }
 
   void toggleRepeatMode() {
-    final next = _playbackState.repeatMode == RepeatMode.off ? RepeatMode.one : RepeatMode.off;
+    final next = _playbackState.repeatMode == PlaybackRepeatMode.off ? PlaybackRepeatMode.one : PlaybackRepeatMode.off;
 
     _updatePlayback(repeatMode: next);
     _host._pushMessage('Repeat: ${next.name}');
@@ -437,7 +437,7 @@ class _PlaybackCoordinator {
     double? volume,
     ShuffleMode? shuffleMode,
     ActionScope? shuffleScope,
-    RepeatMode? repeatMode,
+    PlaybackRepeatMode? repeatMode,
     StreamMode? streamMode,
     double? bitrateKbps,
     bool? streamConnected,
@@ -770,7 +770,7 @@ mixin _PlaybackFacade {
     double? volume,
     ShuffleMode? shuffleMode,
     ActionScope? shuffleScope,
-    RepeatMode? repeatMode,
+    PlaybackRepeatMode? repeatMode,
     StreamMode? streamMode,
     double? bitrateKbps,
     bool? streamConnected,
