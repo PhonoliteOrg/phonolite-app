@@ -31,9 +31,9 @@ void main() {
   );
   final trust = ServerTrust(spki: 'ab' * 32, opaqueKey: base64Encode(List.filled(32, 1)));
   test('server entry accepts an IP and port and rejects insecure schemes', () async {
-    final connection = ServerConnection(baseUrl: 'https://127.0.0.1:3000/api/v1');
-    expect(await connection.resolveBaseUrl('192.168.1.20:3000'), 'https://192.168.1.20:3000/api/v1');
-    expect(await connection.resolveBaseUrl('[::1]:3000'), 'https://[::1]:3000/api/v1');
+    final connection = ServerConnection(baseUrl: 'https://127.0.0.1:3000/api');
+    expect(await connection.resolveBaseUrl('192.168.1.20:3000'), 'https://192.168.1.20:3000/api');
+    expect(await connection.resolveBaseUrl('[::1]:3000'), 'https://[::1]:3000/api');
     for (final input in [
       'http://host:3000',
       'https://user:password@host:3000',
@@ -44,11 +44,11 @@ void main() {
     }
   });
   test('a bearer token needs authenticated server trust and is cleared on server change', () {
-    final connection = ServerConnection(baseUrl: 'https://tokens.test:3000/api/v1');
+    final connection = ServerConnection(baseUrl: 'https://tokens.test:3000/api');
     expect(() => connection.setToken('secret'), throwsStateError);
     connection.setTrust(trust);
     connection.setToken('secret');
-    connection.setBaseUrl('https://other.test:3000/api/v1');
+    connection.setBaseUrl('https://other.test:3000/api');
     expect(connection.token, isNull);
     expect(() => connection.setToken('secret'), throwsStateError);
   });
@@ -56,9 +56,9 @@ void main() {
     final pending = Completer<void>();
     var calls = 0;
     var completed = false;
-    const target = 'https://new-endpoint.test:8443/api/v1';
+    const target = 'https://new-endpoint.test:8443/api';
     final connection = ServerConnection(
-      baseUrl: 'https://original-endpoint.test/api/v1',
+      baseUrl: 'https://original-endpoint.test/api',
       serverProbe: ({required host, required port, expectedSpki}) async {
         calls++;
         expect(host, 'new-endpoint.test');
@@ -75,18 +75,18 @@ void main() {
     expect(completed, isFalse);
     pending.complete();
     await verification;
-    expect(connection.baseUrl, 'https://original-endpoint.test/api/v1');
+    expect(connection.baseUrl, 'https://original-endpoint.test/api');
     expect(connection.token, isNull);
     expect(ServerTrustRegistry.lookup(target), isNull);
     expect(values, isEmpty);
   });
 
   test('connection verification enforces the stored pin for the entered origin', () async {
-    const target = 'https://remembered-endpoint.test:3000/api/v1';
+    const target = 'https://remembered-endpoint.test:3000/api';
     await ServerTrustStore.write(target, trust);
     var calls = 0;
     final connection = ServerConnection(
-      baseUrl: 'https://another-endpoint.test/api/v1',
+      baseUrl: 'https://another-endpoint.test/api',
       serverProbe: ({required host, required port, expectedSpki}) async {
         calls++;
         expect(host, 'remembered-endpoint.test');
@@ -102,7 +102,7 @@ void main() {
 
   test('failed connection checks preserve the session and allow retry', () async {
     var calls = 0;
-    const original = 'https://active-endpoint.test:3000/api/v1';
+    const original = 'https://active-endpoint.test:3000/api';
     final connection = ServerConnection(
       baseUrl: original,
       serverProbe: ({required host, required port, expectedSpki}) async {
@@ -129,10 +129,29 @@ void main() {
     expect(calls, 2);
   });
 
+  test('changed identity is typed and detection preserves old trust until password sign-in', () async {
+    const url = 'https://rotated-endpoint.test:3000/api';
+    await ServerTrustStore.write(url, trust);
+    final connection = ServerConnection(baseUrl: url,
+      serverProbe: ({required host, required port, expectedSpki}) async {
+        expect(expectedSpki, trust.spki);
+        throw ServerIdentityChangedException();
+      });
+    connection.setTrust(trust);
+    connection.setToken('old-session');
+    await expectLater(connection.verifyServerConnection(url), throwsA(
+      isA<ServerConnectionCheckException>().having((error) => error.reason,
+        'reason', ServerConnectionFailure.identityChanged)));
+    expect(await connection.hasServerIdentityChanged(), isTrue);
+    expect(connection.trust, trust);
+    expect(connection.token, 'old-session');
+    expect((await ServerTrustStore.read(url))!.spki, trust.spki);
+  });
+
   test('connection checks time out with a useful error', () async {
     final pending = Completer<void>();
     final connection = ServerConnection(
-      baseUrl: 'https://timeout-endpoint.test:3000/api/v1',
+      baseUrl: 'https://timeout-endpoint.test:3000/api',
       serverProbe: ({required host, required port, expectedSpki}) => pending.future,
     );
     await expectLater(
@@ -150,21 +169,21 @@ void main() {
   });
 
   test('stored and runtime trust share the same origin scope', () async {
-    const url = 'https://PIN-SCOPE.test/api/v1';
+    const url = 'https://PIN-SCOPE.test/api';
     final sameOrigin = Uri.parse('https://pin-scope.test:443/another/path');
 
     expect(ServerTrust.origin(Uri.parse(url)), ServerTrustRegistry.origin(sameOrigin));
     await ServerTrustStore.write(url, trust);
 
     expect((await ServerTrustStore.read(sameOrigin.toString()))?.spki, trust.spki);
-    expect(await ServerTrustStore.read('https://pin-scope.test:8443/api/v1'), isNull);
+    expect(await ServerTrustStore.read('https://pin-scope.test:8443/api'), isNull);
     expect(ServerTrustRegistry.lookup(url), isNull);
   });
 
   test('invalid endpoint details never run the network check', () async {
     var calls = 0;
     final connection = ServerConnection(
-      baseUrl: 'https://validation-endpoint.test:3000/api/v1',
+      baseUrl: 'https://validation-endpoint.test:3000/api',
       serverProbe: ({required host, required port, expectedSpki}) async {
         calls++;
       },
@@ -182,20 +201,20 @@ void main() {
     expect(calls, 0);
   });
   test('pins apply to exactly one HTTPS origin', () {
-    ServerTrustRegistry.register('https://pinned.test:3000/api/v1', trust);
+    ServerTrustRegistry.register('https://pinned.test:3000/api', trust);
     ServerTrustRegistry.validate(Uri.parse('https://pinned.test:3000/library'));
     for (final input in ['http://pinned.test:3000', 'https://pinned.test:3001', 'https://attacker.test:3000']) {
       expect(() => ServerTrustRegistry.validate(Uri.parse(input)), throwsA(isA<HandshakeException>()));
     }
   });
   test('API transport blocks cross-server and plaintext requests before opening sockets', () async {
-    final client = pinnedApiClient(() => 'https://pinned.test:3000/api/v1');
+    final client = pinnedApiClient(() => 'https://pinned.test:3000/api');
     addTearDown(client.close);
-    await expectLater(Future.sync(() => client.get(Uri.parse('https://attacker.test/api/v1'))), throwsStateError);
-    await expectLater(Future.sync(() => client.get(Uri.parse('http://pinned.test:3000/api/v1'))), throwsStateError);
+    await expectLater(Future.sync(() => client.get(Uri.parse('https://attacker.test/api'))), throwsStateError);
+    await expectLater(Future.sync(() => client.get(Uri.parse('http://pinned.test:3000/api'))), throwsStateError);
   });
   test('server trust survives logout independently of the saved session', () async {
-    const url = 'https://vault.test:3000/api/v1';
+    const url = 'https://vault.test:3000/api';
     await ServerTrustStore.write(url, trust);
     const storage = AuthStorage();
     await storage.write(AuthCredentials(baseUrl: url, token: 'secret', username: 'listener', trust: trust));
@@ -209,7 +228,7 @@ void main() {
   test('unsupported saved sessions are rejected without conversion', () async {
     const storage = AuthStorage();
     final valid = AuthCredentials(
-      baseUrl: 'https://secure.test:3000/api/v1',
+      baseUrl: 'https://secure.test:3000/api',
       token: 'secret',
       username: 'listener',
       trust: trust,
@@ -218,7 +237,7 @@ void main() {
       {...valid}..remove('profile'),
       {...valid}..remove('trust'),
       {...valid, 'profile': 'unsupported'},
-      {...valid, 'baseUrl': 'http://secure.test:3000/api/v1'},
+      {...valid, 'baseUrl': 'http://secure.test:3000/api'},
       {...valid, 'token': ''},
       {...valid, 'username': ''},
     ]) {

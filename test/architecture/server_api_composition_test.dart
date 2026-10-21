@@ -15,12 +15,12 @@ void main() {
       return http.Response(jsonEncode([]), 200);
     });
     addTearDown(client.close);
-    final connection = ServerConnection(baseUrl: 'http://first.test/api/v1', client: client)..setToken('first-token');
+    final connection = ServerConnection(baseUrl: 'http://first.test/api', client: client)..setToken('first-token');
 
     await connection.fetchArtistsPage();
     await connection.fetchPlaylists();
     final revision = connection.sessionRevision;
-    connection.setBaseUrl('http://second.test/api/v1');
+    connection.setBaseUrl('http://second.test/api');
     connection.setToken('second-token');
     await connection.fetchArtistsPage();
     await connection.fetchPlaylists();
@@ -86,7 +86,7 @@ void main() {
 class _OverriddenEndpointsConnection extends ServerConnection {
   final List<int> artistOffsets = [];
 
-  _OverriddenEndpointsConnection(http.Client client) : super(baseUrl: 'https://original.test/api/v1', client: client);
+  _OverriddenEndpointsConnection(http.Client client) : super(baseUrl: 'https://original.test/api', client: client);
 
   @override
   Future<List<Artist>> fetchArtistsPage({
@@ -120,7 +120,7 @@ class _OverriddenEndpointsConnection extends ServerConnection {
 }
 
 class _OverriddenLikesConnection extends ServerConnection {
-  _OverriddenLikesConnection() : super(baseUrl: 'http://example.test/api/v1');
+  _OverriddenLikesConnection() : super(baseUrl: 'http://example.test/api');
   final updates = <Map<String, bool>>[];
 
   @override

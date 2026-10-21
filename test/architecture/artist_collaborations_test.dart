@@ -74,7 +74,7 @@ void main() {
     () async {
       final requests = <String>[];
       final connection = ServerConnection(
-        baseUrl: 'http://unused.test/api/v1',
+        baseUrl: 'http://unused.test/api',
         client: MockClient((request) async {
           requests.add(request.url.path);
           return http.Response(
@@ -114,7 +114,7 @@ void main() {
       );
       expect(artists.map((artist) => artist.releaseCount), [2, 5, 0]);
       expect(artists.first.albumCount, 0);
-      expect(requests, ['/api/v1/browse/artists']);
+      expect(requests, ['/api/browse/artists']);
       final renamed = artists.first.copyWith(name: 'New name');
       expect(Artist.fromJson(renamed.toJson()).releaseCount, 2);
       expect(artists[1].toJson().containsKey('release_count'), isFalse);
@@ -300,7 +300,7 @@ void main() {
       final file = await offlineTestMediaFile(temp, 'one.mp3');
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'https://server.test/api/v1',
+          serverBaseUrl: 'https://server.test/api',
           track: metadata.track,
           filePath: file.path,
         ).copyWith(offlineMetadata: metadata),
@@ -396,7 +396,7 @@ void main() {
     () async {
       final requests = <Uri>[];
       final connection = ServerConnection(
-        baseUrl: 'https://server.test/api/v1',
+        baseUrl: 'https://server.test/api',
         client: MockClient((request) async {
           requests.add(request.url);
           if (request.url.path.endsWith('/releases')) {

@@ -47,13 +47,13 @@ class ListeningStatsApi extends JsonApiEndpoint {
       transport.post('/stats/reset', {'history_generation': historyGeneration});
 
   Future<Map<String, dynamic>> fetchListeningCounterState({required String deviceId}) =>
-      transport.get('/stats/v2/state?device_id=${Uri.encodeQueryComponent(deviceId)}', retryable: false);
+      transport.get('/stats/state?device_id=${Uri.encodeQueryComponent(deviceId)}', retryable: false);
 
   Future<Map<String, dynamic>> activateListeningCounters({required String deviceId, required int historyGeneration}) =>
-      transport.post('/stats/v2/activate', {'device_id': deviceId, 'history_generation': historyGeneration});
+      transport.post('/stats/activate', {'device_id': deviceId, 'history_generation': historyGeneration});
 
   Future<Map<String, dynamic>> uploadListeningCounters(Map<String, dynamic> batch) =>
-      transport.post('/stats/v2/batch', batch);
+      transport.post('/stats/batch', batch);
 
   Future<Map<String, dynamic>> fetchListeningCounterSnapshot({
     required String deviceId,
@@ -62,7 +62,7 @@ class ListeningStatsApi extends JsonApiEndpoint {
     int? revision,
     String after = '',
   }) => transport.get(
-    '/stats/v2/snapshot?device_id=${Uri.encodeQueryComponent(deviceId)}&year=$year&month=$month'
+    '/stats/snapshot?device_id=${Uri.encodeQueryComponent(deviceId)}&year=$year&month=$month'
     '&after=${Uri.encodeQueryComponent(after)}${revision == null ? '' : '&revision=$revision'}',
     retryable: false,
   );

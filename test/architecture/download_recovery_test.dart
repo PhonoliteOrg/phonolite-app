@@ -13,7 +13,7 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import '../support/auth_test_helpers.dart';
 import '../support/offline_library_test_helpers.dart';
 
-const _server = 'https://recovery.test:3000/api/v1';
+const _server = 'https://recovery.test:3000/api';
 const _jobId = '92fd40d2-5d72-4c00-b228-ed595abcd130';
 const _bytes = [1, 2, 3];
 

@@ -54,7 +54,7 @@ class ApiTransport {
     if (uri == null ||
         uri.scheme != 'https' ||
         uri.host.isEmpty ||
-        uri.path != '/api/v1' ||
+        uri.path != '/api' ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment) {
@@ -88,7 +88,7 @@ class ApiTransport {
   }
 
   Future<String> resolveBaseUrl(String input) async {
-    final trimmed = ApiTransport.sanitizeInput(input);
+    final trimmed = ApiTransport.sanitizeBaseUrl(input);
 
     if (trimmed.isEmpty) {
       throw ServerConnectionCheckException.forReason(ServerConnectionFailure.missingAddress);
@@ -105,7 +105,7 @@ class ApiTransport {
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment ||
-        (uri.path.isNotEmpty && uri.path != '/' && uri.path != '/api/v1')) {
+        (uri.path.isNotEmpty && uri.path != '/' && uri.path != '/api')) {
       throw ServerConnectionCheckException.forReason(ServerConnectionFailure.invalidAddress);
     }
 
@@ -128,9 +128,22 @@ class ApiTransport {
       await probeServer().timeout(timeout);
     } on TimeoutException {
       throw ServerConnectionCheckException.forReason(ServerConnectionFailure.timedOut);
+    } on ServerIdentityChangedException {
+      throw ServerConnectionCheckException.forReason(ServerConnectionFailure.identityChanged);
     } on QuicException catch (error) {
       throw ServerConnectionCheckException.forReason(ServerConnectionFailure.connectionFailed, detail: error.message);
     }
+  }
+
+  /// Public, credential-free detection only. This never replaces remembered trust.
+  Future<bool> hasServerIdentityChanged() async {
+    if (trust == null || injectedClient) return false;
+    try {
+      await verifyServerConnection(_baseUrl);
+    } on ServerConnectionCheckException catch (error) {
+      return error.reason == ServerConnectionFailure.identityChanged;
+    } catch (_) {}
+    return false;
   }
 
   void setToken(String? token) {
@@ -162,13 +175,13 @@ class ApiTransport {
     var path = uri.path;
 
     if (path.isEmpty || path == '/') {
-      path = '/api/v1';
+      path = '/api';
     } else if (path.endsWith('/')) {
       path = path.substring(0, path.length - 1);
     }
 
-    if (!path.endsWith('/api/v1')) {
-      path = '$path/api/v1';
+    if (!path.endsWith('/api')) {
+      path = '$path/api';
     }
 
     return uri.replace(path: path, query: null).toString();
@@ -178,8 +191,8 @@ class ApiTransport {
     final uri = Uri.parse(baseUrl);
     var path = uri.path;
 
-    if (path.endsWith('/api/v1')) {
-      path = path.substring(0, path.length - '/api/v1'.length);
+    if (path.endsWith('/api')) {
+      path = path.substring(0, path.length - '/api'.length);
 
       if (path.isEmpty) {
         path = '/';
@@ -490,7 +503,7 @@ String _safeRequestLabel(String label) {
     '/library/likes/batch',
     '/stats',
     '/download/batches',
-    '/download/v2/jobs',
+    '/download/jobs',
     '/server/capabilities',
     '/server/ports',
     '/player/settings',
@@ -511,7 +524,7 @@ String _safeRequestLabel(String label) {
     '/library/tracks/:id/offline-metadata',
     '/library/likes/:id',
     '/library/playlists/:id',
-    '/download/v2/jobs/:id/actions',
+    '/download/jobs/:id/actions',
   };
 
   for (final route in dynamicRoutes) {

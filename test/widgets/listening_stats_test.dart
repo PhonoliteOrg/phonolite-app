@@ -59,7 +59,7 @@ class _StatsController extends Fake implements AppController {
   final choices = <bool>[];
   AuthState auth = AuthState(baseUrl: '', status: SessionStatus.offline);
   StatsResponse value = _history();
-  final server = ServerConnection(baseUrl: 'https://music.example/api/v1');
+  final server = ServerConnection(baseUrl: 'https://music.example/api');
   List<Artist> artistMetadata = [
     Artist(id: 'artist', name: 'A very long artist name', albumCount: 0),
   ];
@@ -544,7 +544,7 @@ void main() {
   ) async {
     final controller = _StatsController()
       ..auth = AuthState(
-        baseUrl: 'https://music.example/api/v1',
+        baseUrl: 'https://music.example/api',
         status: SessionStatus.authenticated,
       )
       ..artistMetadata = [];
@@ -555,7 +555,7 @@ void main() {
     var tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
     expect(
       tile.coverUrl,
-      'https://music.example/api/v1/library/artists/artist/cover?kind=logo',
+      'https://music.example/api/library/artists/artist/cover?kind=logo',
     );
     expect(tile.headers, {'Authorization': 'Bearer test-artwork-token'});
     expect(controller.loads, 1);
@@ -573,7 +573,7 @@ void main() {
     tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
     expect(
       tile.coverUrl,
-      'https://music.example/api/v1/library/artists/artist/cover?kind=logo&v=logo%20revision%2F2',
+      'https://music.example/api/library/artists/artist/cover?kind=logo&v=logo%20revision%2F2',
     );
     expect(controller.loads, 1);
     expect(tester.takeException(), isNull);
@@ -584,7 +584,7 @@ void main() {
   ) async {
     final controller = _StatsController()
       ..auth = AuthState(
-        baseUrl: 'https://music.example/api/v1',
+        baseUrl: 'https://music.example/api',
         status: SessionStatus.serverUnavailable,
       );
     controller.server.setToken('test-artwork-token');
@@ -611,7 +611,7 @@ void main() {
           playlistTracks: [],
           revision: revision,
         );
-    controller.library = artworkLibrary('https://other.example/api/v1', 1);
+    controller.library = artworkLibrary('https://other.example/api', 1);
     await tester.pumpWidget(_app(controller, const StatsPage()));
     await tester.pumpAndSettle();
     var tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
@@ -643,7 +643,7 @@ void main() {
               durationMs: 180000,
               liked: false,
               inPlaylists: false,
-              serverBaseUrl: 'https://other.example/api/v1',
+              serverBaseUrl: 'https://other.example/api',
               artistArtPath: 'C:/test-art/artist.png',
             ),
             Track(

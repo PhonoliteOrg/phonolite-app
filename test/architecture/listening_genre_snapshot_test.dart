@@ -212,7 +212,7 @@ void main() {
       );
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: metadata.track,
           filePath: media.path,
         ).copyWith(offlineMetadata: metadata),

@@ -147,12 +147,7 @@ class _ServerAvailabilityCoordinator {
 
   void _handleApiError(ApiException err, {required String context}) {
     if (err.statusCode == 401) {
-      unawaited(_host._offlineDownloadManager.pauseDownloadsForServer(_host.connection.baseUrl));
-      _host.connection.setToken(null);
-      _serverHealthFailureCount = 0;
-      _serverReconnectAttempt = 0;
-      unawaited(_host._detachListeningAccount());
-      _host._setSessionStatus(SessionStatus.offline, error: 'Unauthorized');
+      unawaited(_host._sessionCoordinator.requireSignIn(reason: 'Your session has ended. Sign in again.'));
       _host._pushMessage('Unauthorized. Please log in.');
 
       return;
@@ -164,16 +159,7 @@ class _ServerAvailabilityCoordinator {
   }
 
   Future<void> _handleReconnectUnauthorized() async {
-    unawaited(_host._offlineDownloadManager.pauseDownloadsForServer(_host.connection.baseUrl));
-    _host.connection.setToken(null);
-    _serverHealthFailureCount = 0;
-    _serverReconnectAttempt = 0;
-
-    final detach = _host._detachListeningAccount();
-
-    await _host._clearSavedCredentials();
-    await detach;
-    _host._setSessionStatus(SessionStatus.offline, error: 'Saved login expired');
+    await _host._sessionCoordinator.requireSignIn(reason: 'Saved login expired. Sign in again.');
     _host._pushMessage('Saved login expired. Please log in.');
   }
 
@@ -283,6 +269,14 @@ class _ServerAvailabilityCoordinator {
     }
 
     _healthPingInFlight = true;
+    final revision = _host.connection.sessionRevision;
+    final baseUrl = _host.connection.baseUrl;
+    final token = _host.connection.token;
+    bool isCurrent() =>
+        !_host._disposed &&
+        _host.connection.sessionRevision == revision &&
+        _host.connection.baseUrl == baseUrl &&
+        _host.connection.token == token;
 
     if (reconnectAttempt) {
       _setServerReconnecting(true);
@@ -291,8 +285,17 @@ class _ServerAvailabilityCoordinator {
     try {
       final rttMs = await _host.connection.pingHealthMs(timeout: const Duration(seconds: 4));
 
-      if (_host._disposed) {
+      if (!isCurrent()) {
         return;
+      }
+
+      if (rttMs == null && token?.isNotEmpty == true) {
+        final identityChanged = await _host.connection.hasServerIdentityChanged();
+        if (!isCurrent()) return;
+        if (identityChanged) {
+          await _host._sessionCoordinator.requireSignIn();
+          return;
+        }
       }
 
       if (_host._authState.status == SessionStatus.serverUnavailable) {
@@ -306,6 +309,7 @@ class _ServerAvailabilityCoordinator {
         }
 
         await _host.connection.fetchCapabilities();
+        if (!isCurrent()) return;
         _serverHealthFailureCount = 0;
         _serverReconnectAttempt = 0;
         _restoreServerAvailability(rttMs: rttMs);
@@ -327,6 +331,7 @@ class _ServerAvailabilityCoordinator {
 
       _recordServerAvailabilityFailure(error: 'Server unavailable', reconnectAttempt: false);
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       if (err.statusCode == 401) {
         await _handleReconnectUnauthorized();
       } else {
@@ -336,6 +341,7 @@ class _ServerAvailabilityCoordinator {
         );
       }
     } catch (err) {
+      if (!isCurrent()) return;
       _recordServerAvailabilityFailure(error: 'Server unavailable: $err', reconnectAttempt: reconnectAttempt);
     } finally {
       _healthPingInFlight = false;

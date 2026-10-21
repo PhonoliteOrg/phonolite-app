@@ -84,7 +84,7 @@ DownloadBatchManifest offlineTestDownloadManifest({
       for (final id in ids)
         DownloadBatchItem(
           trackId: id,
-          downloadUrl: '/api/v1/download/tracks/$id',
+          downloadUrl: '/api/download/tracks/$id',
           offlineMetadata: OfflineTrackMetadata(
             schemaVersion: 1,
             track: offlineTestTrack(id: id),

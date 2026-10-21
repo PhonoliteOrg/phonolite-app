@@ -7,6 +7,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/library_navigation_controller.dart';
 import 'package:phonolite_app/application/controllers/playback/playback_controls_controller.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
@@ -43,6 +44,8 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
   AppController? _controller;
   LibraryNavigationController? _navigation;
   StreamSubscription<bool>? _statsCollectionSubscription;
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _openingSignIn = false;
   late final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(5, (_) => GlobalKey<NavigatorState>());
   final List<String?> _topRouteNames = List.filled(5, null);
   final ValueNotifier<int> _tabBackChanges = ValueNotifier(0);
@@ -83,11 +86,14 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     }
 
     _statsCollectionSubscription?.cancel();
+    _authSubscription?.cancel();
     _controller = controller;
 
     _navigation?.dispose();
 
     _navigation = LibraryNavigationController(controller);
+    _authSubscription = controller.authStream.listen(_handleAuthState);
+    _handleAuthState(controller.authState);
 
     if (!controller.statsCollectionEnabled && _selectedIndex == 3) {
       _selectedIndex = 0;
@@ -117,9 +123,35 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     controller.handleAppLifecycleState(state);
   }
 
+  void _handleAuthState(AuthState state) {
+    if (!state.requiresSignIn || _openingSignIn || !mounted) return;
+    _openingSignIn = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final controller = _controller;
+      if (!mounted || controller == null || !controller.authState.requiresSignIn) {
+        _openingSignIn = false;
+        return;
+      }
+      // A sign-in page may already be open inside a retained tab.
+      final loginTab = _topRouteNames.indexOf(LoginPage.routeName);
+      if (loginTab >= 0) {
+        setState(() => _selectedIndex = loginTab);
+        _openingSignIn = false;
+        return;
+      }
+      try {
+        setState(() => _selectedIndex = 4);
+        await _navigatorKeys[4].currentState!.push(LoginPage.route(controller));
+      } finally {
+        _openingSignIn = false;
+      }
+    });
+  }
+
   @override
   void dispose() {
     _statsCollectionSubscription?.cancel();
+    _authSubscription?.cancel();
 
     _navigation?.dispose();
     _tabBackChanges.dispose();

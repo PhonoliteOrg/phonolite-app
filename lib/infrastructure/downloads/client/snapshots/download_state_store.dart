@@ -150,9 +150,13 @@ class _DownloadStateStore {
       return false;
     }
 
-    final downloadUrl = download.downloadUrl?.trim();
+    final segments = Uri.tryParse(download.downloadUrl?.trim() ?? '')?.pathSegments;
 
-    return downloadUrl != null && downloadUrl.contains('/download/v2/');
+    return segments != null &&
+        segments.length >= 4 &&
+        segments[segments.length - 4] == 'download' &&
+        segments[segments.length - 3] == 'tracks' &&
+        segments.last == 'file';
   }
 
   void _replaceManyInMemory(List<OfflineTrackDownload> downloads) {

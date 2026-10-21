@@ -114,7 +114,7 @@ void main() {
 class _PlayingController extends AppController {
   _PlayingController()
     : super(
-        connection: ServerConnection(baseUrl: 'http://server.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server.test/api'),
       ) {
     _snapshot = super.playbackState.copyWith(
       track: Track(

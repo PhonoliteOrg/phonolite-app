@@ -32,6 +32,11 @@
 		A1C0F4E27B1D4A5E9B2C3D4E /* phonolite_audio.c in Sources */ = {isa = PBXBuildFile; fileRef = A1C0F4E07B1D4A5E9B2C3D4E /* phonolite_audio.c */; };
 		A1C0F4E57B1D4A5E9B2C3D4E /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C0F4E37B1D4A5E9B2C3D4E /* AudioToolbox.framework */; };
 		A1C0F4E67B1D4A5E9B2C3D4E /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C0F4E47B1D4A5E9B2C3D4E /* CoreAudio.framework */; };
+		A2010001A2010001A2010001 /* FlutterEngineBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2020001A2020001A2020001 /* FlutterEngineBinding.swift */; };
+		A2010002A2010002A2010002 /* DirectoriesChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2020002A2020002A2020002 /* DirectoriesChannelAdapter.swift */; };
+		A2010003A2010003A2010003 /* DirectoryLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2020003A2020003A2020003 /* DirectoryLauncher.swift */; };
+		A2010004A2010004A2010004 /* audio_queue_player.c in Sources */ = {isa = PBXBuildFile; fileRef = A2020004A2020004A2020004 /* audio_queue_player.c */; };
+		A2010005A2010005A2010005 /* audio_output_devices.c in Sources */ = {isa = PBXBuildFile; fileRef = A2020006A2020006A2020006 /* audio_output_devices.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +99,14 @@
 		A1C0F4E37B1D4A5E9B2C3D4E /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		A1C0F4E47B1D4A5E9B2C3D4E /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		A1C0F4E77B1D4A5E9B2C3D4E /* libphonolite_opus.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libphonolite_opus.a; sourceTree = "<group>"; };
+		A2020001A2020001A2020001 /* FlutterEngineBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterEngineBinding.swift; sourceTree = "<group>"; };
+		A2020002A2020002A2020002 /* DirectoriesChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoriesChannelAdapter.swift; sourceTree = "<group>"; };
+		A2020003A2020003A2020003 /* DirectoryLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryLauncher.swift; sourceTree = "<group>"; };
+		A2020004A2020004A2020004 /* audio_queue_player.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = audio_queue_player.c; sourceTree = "<group>"; };
+		A2020005A2020005A2020005 /* audio_queue_player.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = audio_queue_player.h; sourceTree = "<group>"; };
+		A2020006A2020006A2020006 /* audio_output_devices.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = audio_output_devices.c; sourceTree = "<group>"; };
+		A2020007A2020007A2020007 /* audio_output_devices.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = audio_output_devices.h; sourceTree = "<group>"; };
+		A2020008A2020008A2020008 /* build_opus_static.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build_opus_static.sh; sourceTree = "<group>"; };
 		BD7C6DEF15CD29916FFF5EB3 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		C697395EF4611C8077C59398 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -143,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				33FAB671232836740065AC1E /* Runner */,
+				A2030001A2030001A2030001 /* Scripts */,
 				33CEB47122A05771004F2AC0 /* Flutter */,
 				331C80D6294CF71000263BE5 /* RunnerTests */,
 				33CC10EE2044A3C60003C045 /* Products */,
@@ -185,10 +199,8 @@
 		33FAB671232836740065AC1E /* Runner */ = {
 			isa = PBXGroup;
 			children = (
-				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
-				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
-				A1C0F4E07B1D4A5E9B2C3D4E /* phonolite_audio.c */,
-				A1C0F4E17B1D4A5E9B2C3D4E /* phonolite_audio.h */,
+				A2030002A2030002A2030002 /* Bootstrap */,
+				A2030003A2030003A2030003 /* Infrastructure */,
 				A1C0F4E77B1D4A5E9B2C3D4E /* libphonolite_opus.a */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
@@ -196,6 +208,71 @@
 				33BA886A226E78AF003329D5 /* Configs */,
 			);
 			path = Runner;
+			sourceTree = "<group>";
+		};
+		A2030001A2030001A2030001 /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				A2020008A2020008A2020008 /* build_opus_static.sh */,
+			);
+			path = Scripts;
+			sourceTree = "<group>";
+		};
+		A2030002A2030002A2030002 /* Bootstrap */ = {
+			isa = PBXGroup;
+			children = (
+				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
+				A2020001A2020001A2020001 /* FlutterEngineBinding.swift */,
+				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+			);
+			path = Bootstrap;
+			sourceTree = "<group>";
+		};
+		A2030003A2030003A2030003 /* Infrastructure */ = {
+			isa = PBXGroup;
+			children = (
+				A2030004A2030004A2030004 /* Audio */,
+				A2030006A2030006A2030006 /* Flutter */,
+				A2030007A2030007A2030007 /* Shell */,
+			);
+			path = Infrastructure;
+			sourceTree = "<group>";
+		};
+		A2030004A2030004A2030004 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				A2030005A2030005A2030005 /* Native */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		A2030005A2030005A2030005 /* Native */ = {
+			isa = PBXGroup;
+			children = (
+				A1C0F4E07B1D4A5E9B2C3D4E /* phonolite_audio.c */,
+				A1C0F4E17B1D4A5E9B2C3D4E /* phonolite_audio.h */,
+				A2020004A2020004A2020004 /* audio_queue_player.c */,
+				A2020005A2020005A2020005 /* audio_queue_player.h */,
+				A2020006A2020006A2020006 /* audio_output_devices.c */,
+				A2020007A2020007A2020007 /* audio_output_devices.h */,
+			);
+			path = Native;
+			sourceTree = "<group>";
+		};
+		A2030006A2030006A2030006 /* Flutter */ = {
+			isa = PBXGroup;
+			children = (
+				A2020002A2020002A2020002 /* DirectoriesChannelAdapter.swift */,
+			);
+			path = Flutter;
+			sourceTree = "<group>";
+		};
+		A2030007A2030007A2030007 /* Shell */ = {
+			isa = PBXGroup;
+			children = (
+				A2020003A2020003A2020003 /* DirectoryLauncher.swift */,
+			);
+			path = Shell;
 			sourceTree = "<group>";
 		};
 		89E910520987E9910D1D2CBF /* Pods */ = {
@@ -425,7 +502,7 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(PROJECT_DIR)/Runner/build_opus_static.sh",
+				"$(PROJECT_DIR)/Scripts/build_opus_static.sh",
 			);
 			name = "Build Opus Static";
 			outputFileListPaths = (
@@ -435,7 +512,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"$PROJECT_DIR\"/Runner/build_opus_static.sh\n";
+			shellScript = "/bin/bash \"$PROJECT_DIR/Scripts/build_opus_static.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		7BDE25BA5C0E27C1F084D4EA /* [CP] Check Pods Manifest.lock */ = {
@@ -479,6 +556,11 @@
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 				A1C0F4E27B1D4A5E9B2C3D4E /* phonolite_audio.c in Sources */,
+				A2010001A2010001A2010001 /* FlutterEngineBinding.swift in Sources */,
+				A2010002A2010002A2010002 /* DirectoriesChannelAdapter.swift in Sources */,
+				A2010003A2010003A2010003 /* DirectoryLauncher.swift in Sources */,
+				A2010004A2010004A2010004 /* audio_queue_player.c in Sources */,
+				A2010005A2010005A2010005 /* audio_output_devices.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

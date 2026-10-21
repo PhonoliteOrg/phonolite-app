@@ -302,4 +302,6 @@ class ServerConnection {
 
   Future<int?> pingHealthMs({Duration timeout = const Duration(seconds: 3)}) =>
       _transport.pingHealthMs(timeout: timeout);
+
+  Future<bool> hasServerIdentityChanged() => _transport.hasServerIdentityChanged();
 }

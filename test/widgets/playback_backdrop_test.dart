@@ -332,7 +332,7 @@ void _expectTranslucentWindowsBackdrop(WidgetTester tester, Finder player) {
 
 class _LayoutProbe {
   final controller = AppController(
-    connection: ServerConnection(baseUrl: 'http://server.test/api/v1'),
+    connection: ServerConnection(baseUrl: 'http://server.test/api'),
   );
   final scroll = ScrollController();
   double playbackInset = -1;

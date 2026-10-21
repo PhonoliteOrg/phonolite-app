@@ -40,8 +40,8 @@ void main() {
       "Future<ServerCapabilities> fetchCapabilities()",
       "Future<DownloadJobV2> createDownloadJob",
       "Future<void> applyDownloadJobAction",
-      "'/download/v2/jobs'",
-      r"'/download/v2/jobs/$encoded/actions'",
+      "'/download/jobs'",
+      r"'/download/jobs/$encoded/actions'",
       "String buildDownloadUrl(String trackId, {String? downloadUrl})",
     ]);
     expectContainsAll(manager, [

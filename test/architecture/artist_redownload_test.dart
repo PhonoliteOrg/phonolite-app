@@ -16,7 +16,7 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 import '../support/offline_library_test_helpers.dart';
 
-const _server = 'https://redownload.test:3000/api/v1';
+const _server = 'https://redownload.test:3000/api';
 const _oldJobId = '92fd40d2-5d72-4c00-b228-ed595abcd130';
 final _artist = Artist(id: 'artist-1', name: 'Artist', albumCount: 1);
 final _album = Album(
@@ -131,7 +131,7 @@ class _Connection extends ServerConnection {
         for (final id in trackIds)
           DownloadBatchItem(
             trackId: id,
-            downloadUrl: '/api/v1/download/tracks/$id',
+            downloadUrl: '/api/download/tracks/$id',
             offlineMetadata: _metadata(id),
             byteLength: 3,
             contentType: 'audio/mpeg',

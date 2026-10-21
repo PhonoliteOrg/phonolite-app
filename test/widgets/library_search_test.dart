@@ -450,7 +450,7 @@ class _Controller extends AppController {
 }
 
 class _SearchConnection extends ServerConnection {
-  _SearchConnection() : super(baseUrl: 'http://server.test/api/v1');
+  _SearchConnection() : super(baseUrl: 'http://server.test/api');
 
   int trackFetches = 0;
   bool failTrackFetch = false;

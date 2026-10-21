@@ -28,7 +28,7 @@ Future<AppController> startAudioTestHost(AudioProbe probe) async {
     connection: ServerConnection(
       baseUrl: const String.fromEnvironment(
         'PHONOLITE_URL',
-        defaultValue: 'https://127.0.0.1:3000/api/v1',
+        defaultValue: 'https://127.0.0.1:3000/api',
       ),
     ),
     audioEngineFactory: probe.createEngine,

@@ -12,6 +12,7 @@ class MetadataEventListener {
   final bool Function(String, String) _isSessionCurrent;
   final Future<void> Function(MetadataUpdateEvent) _applyEvent;
   final void Function(String) _onDiagnostic;
+  final void Function()? _onSessionInvalidated;
   final Duration debounceDelay;
   final Duration reconnectDelay;
   StreamSubscription<MetadataUpdateEvent>? _subscription;
@@ -27,12 +28,14 @@ class MetadataEventListener {
     required bool Function(String baseUrl, String token) isSessionCurrent,
     required Future<void> Function(MetadataUpdateEvent) applyEvent,
     required void Function(String) onDiagnostic,
+    void Function()? onSessionInvalidated,
     this.debounceDelay = const Duration(milliseconds: 250),
     this.reconnectDelay = const Duration(seconds: 3),
   }) : _openStream = openStream,
        _isSessionCurrent = isSessionCurrent,
        _applyEvent = applyEvent,
-       _onDiagnostic = onDiagnostic;
+       _onDiagnostic = onDiagnostic,
+       _onSessionInvalidated = onSessionInvalidated;
 
   void start({required String baseUrl, required String token}) {
     if (token.isEmpty) {
@@ -71,6 +74,11 @@ class MetadataEventListener {
 
       void handleMetadataEvent(MetadataUpdateEvent event) {
         if (_isCurrent(generation)) {
+          if (event.kind == 'session_invalidated' && event.id == 'server_keys_rotated') {
+            stop();
+            _onSessionInvalidated?.call();
+            return;
+          }
           _queue(event, generation);
         }
       }

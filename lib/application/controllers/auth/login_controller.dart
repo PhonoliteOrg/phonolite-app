@@ -12,7 +12,12 @@ class LoginController extends FeatureController {
   bool _connected = false;
   bool _rememberMe = false;
 
-  LoginController(this.app);
+  LoginController(this.app) {
+    if (app.authState.requiresSignIn) {
+      _connected = true;
+      _error = app.authState.error;
+    }
+  }
 
   bool get isSubmitting => _isSubmitting;
 
@@ -165,7 +170,7 @@ class LoginController extends FeatureController {
     }
 
     value = value.replaceAll(RegExp(r'/+$'), '');
-    value = value.replaceAll(RegExp(r'/api/v1$'), '');
+    value = value.replaceAll(RegExp(r'/api$'), '');
     value = value.replaceAll(RegExp(r'/+$'), '');
 
     return value;

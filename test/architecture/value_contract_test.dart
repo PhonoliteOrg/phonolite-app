@@ -64,7 +64,7 @@ void main() {
 
   test('offline values retain serialization, copy and progress contracts', () {
     final download = OfflineTrackDownload(
-      serverBaseUrl: 'https://server.test/api/v1',
+      serverBaseUrl: 'https://server.test/api',
       track: track,
       status: OfflineDownloadStatus.downloaded,
       createdAt: DateTime.fromMillisecondsSinceEpoch(1),

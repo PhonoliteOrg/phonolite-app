@@ -1789,7 +1789,7 @@ OfflineTrackDownload _download(
   int updatedAtMs = 2,
 }) {
   return OfflineTrackDownload(
-    serverBaseUrl: 'http://server.test/api/v1',
+    serverBaseUrl: 'http://server.test/api',
     track: Track(
       id: id,
       title: 'Track $id',
@@ -1812,7 +1812,7 @@ OfflineDownloadJob _job(String id, String kind, OfflineDownloadStatus status) {
   return OfflineDownloadJob(
     jobId: id,
     kind: kind,
-    serverBaseUrl: 'http://server.test/api/v1',
+    serverBaseUrl: 'http://server.test/api',
     status: status,
     createdAt: DateTime.fromMillisecondsSinceEpoch(1),
     updatedAt: DateTime.fromMillisecondsSinceEpoch(2),

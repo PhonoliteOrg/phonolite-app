@@ -41,7 +41,7 @@
 - CREDIT-007: Session and profile changes shall supersede stale in-flight page/relationship replies; metadata events shall refresh visible artist sections, individual profiles and persisted offline credits.
 
 ## Startup, Session, and Authentication
-- AUTH-001: The app shall derive its initial server base URL from the compile-time environment variable `PHONOLITE_URL`, defaulting to `http://127.0.0.1:3000/api/v1`.
+- AUTH-001: The app shall derive its initial server base URL from the compile-time environment variable `PHONOLITE_URL`, defaulting to `https://127.0.0.1:3000/api`.
 - AUTH-002: On startup, the app shall attempt saved-session restoration before showing the main authenticated experience.
 - AUTH-003: Session restoration shall show a branded splash screen while attempting reconnection.
 - AUTH-004: Session restoration shall time out after `10s` and fall back to a fresh login flow rather than hanging indefinitely.
@@ -49,7 +49,7 @@
 - AUTH-006: If saved credentials are missing, invalid, or cannot pass playback-settings validation, the app shall reset into a fresh login flow.
 - AUTH-007: Fresh-login reset shall clear active playback state, clear queues, clear now playing state, and restore the controller to an unauthorized state.
 - AUTH-008: The login flow shall be two-stage: connect to a server first, then show username and password entry after the server probe succeeds.
-- AUTH-009: The login screen shall accept either host-and-port input or a pasted URL and normalize it into the app's `/api/v1` base URL.
+- AUTH-009: The login screen shall accept either host-and-port input or a pasted URL and normalize it into the app's `/api` base URL.
 - AUTH-010: The login screen shall provide an explicit HTTP/HTTPS scheme toggle using the same labeled choices and gold selection underline as Custom Shuffle Settings. Its page heading, labeled text fields, and actions shall use the shared page and modal styles, with full-size touch targets on mobile.
 - AUTH-011: The login screen shall validate ports into the range `1..65535`.
 - AUTH-012: The login screen shall offer a "remember me" option controlling whether credentials are persisted.
@@ -58,6 +58,7 @@
 - AUTH-015: Token-based login shall also be supported internally for restored sessions and trusted handoff flows.
 - AUTH-016: Logout shall optionally clear persisted credentials and shall always disconnect the current client session.
 - AUTH-017: The app shall surface authorization failure and server-connection errors through the login UI rather than failing silently.
+- AUTH-018: Server key regeneration shall end the server session, clear saved bearer credentials, stop remote playback and downloads, cancel reconnect attempts, and open password sign-in while preserving the server address, offline library and remembered server identity. Clients missing the rotation notice shall detect a changed TLS key during reconnect or saved-session restoration. Explicit password sign-in may refresh the TLS pin only after OPAQUE authenticates the remembered server key on the current TLS exporter; changed OPAQUE identities shall remain rejected.
 
 ## Navigation and App Structure
 - NAV-001: The authenticated shell shall expose five top-level destinations: Library, Playlists, Liked, Stats, and Settings.
@@ -197,9 +198,9 @@
 - PLAY-039: Downloaded-file playback shall load audio through a platform-aware local source that reads seekable byte ranges in bounded chunks before falling back to direct file access.
 
 ## Network and Server Contract
-- NET-001: The client shall treat the canonical API base as a URL ending in `/api/v1`.
-- NET-002: When given a raw host or root URL, the client shall normalize it to `/api/v1` before storing it as the active base URL.
-- NET-003: Server probing shall accept either the root `/health` endpoint or the `/api/v1/health` endpoint as a successful connection target.
+- NET-001: The client shall treat the canonical API base as a URL ending in `/api`; download jobs and listening counters shall share this unversioned baseline.
+- NET-002: When given a raw host or root URL, the client shall normalize it to `/api` before storing it as the active base URL.
+- NET-003: Server probing shall accept either the root `/health` endpoint or the `/api/health` endpoint as a successful connection target.
 - NET-004: Server login shall use `POST /auth/login` and shall require a non-empty `token` in the response payload.
 - NET-005: Artist browsing shall use `GET /browse/artists?limit={limit}&offset={offset}`.
 - NET-006: Artist detail sections shall load through `GET /browse/artists/{artistId}/releases`, accepting solo albums and collaboration contributions; headline album loading shall remain available through `GET /browse/artists/{artistId}/albums`.

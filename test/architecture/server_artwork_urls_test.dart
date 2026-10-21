@@ -8,7 +8,7 @@ import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_urls.dart';
 
 void main() {
-  const baseUrl = 'https://saved.test/api/v1';
+  const baseUrl = 'https://saved.test/api';
   final timestamp = DateTime.utc(2026);
 
   OfflineDownloadJob job(String kind, {String? sourceId = ' item/# '}) => OfflineDownloadJob(

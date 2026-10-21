@@ -11,7 +11,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../support/auth_test_helpers.dart';
 import '../support/offline_library_test_helpers.dart';
 
-const _server = 'https://server.test/api/v1';
+const _server = 'https://server.test/api';
 
 class _CountingStorage extends OfflineLibraryStorage {
   _CountingStorage(Directory directory)
@@ -198,7 +198,7 @@ void main() {
         expect(download.offlineMetadata?.track.serverBaseUrl, _server);
       }
       final otherSource = await storage
-          .upsertOfflineMetadataFragments('https://other.test/api/v1', {
+          .upsertOfflineMetadataFragments('https://other.test/api', {
             'track-0': offlineTestOfflineMetadata(
               trackId: 'track-0',
               artistSummary: 'Wrong source.',

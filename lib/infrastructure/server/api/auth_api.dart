@@ -18,8 +18,8 @@ class AuthApi {
     final url = _transport.baseUrl;
     final uri = Uri.parse(url);
 
-    if (uri.scheme != 'https' || uri.path != '/api/v1' || uri.userInfo.isNotEmpty) {
-      throw StateError('HTTPS /api/v1 is required');
+    if (uri.scheme != 'https' || uri.path != '/api' || uri.userInfo.isNotEmpty) {
+      throw StateError('HTTPS /api is required');
     }
 
     _transport.setToken(null);

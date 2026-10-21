@@ -76,7 +76,7 @@ DownloadManagerPanel _downloadManager([
   presentation: presentation,
   downloadsOverride: [
     OfflineTrackDownload(
-      serverBaseUrl: 'https://unused.test/api/v1',
+      serverBaseUrl: 'https://unused.test/api',
       track: Track(
         id: 'layout-track',
         title: 'A long track title that needs to fit beside the controls',
@@ -99,7 +99,7 @@ DownloadManagerPanel _downloadManager([
         jobId: kind,
         kind: kind,
         label: 'A long $kind name that needs to fit beside the controls',
-        serverBaseUrl: 'https://unused.test/api/v1',
+        serverBaseUrl: 'https://unused.test/api',
         status: OfflineDownloadStatus.queued,
         createdAt: DateTime.fromMillisecondsSinceEpoch(1),
         updatedAt: DateTime.fromMillisecondsSinceEpoch(2),

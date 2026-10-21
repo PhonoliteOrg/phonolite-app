@@ -12,6 +12,8 @@ The [macOS native specification](macos-native-specification.md) defines the corr
 
 The [Android native specification](android-native-specification.md) applies these principles to Kotlin packages, Android component lifetimes, shared engine ownership, audio resources and system media presentation.
 
+The [Linux native C++ specification](linux-native-specification.md) defines the GTK/Flutter host boundaries, GObject and C++ ownership, directory transport, CMake integration and future Linux playback responsibilities.
+
 The directory tree should explain the app before someone reads its implementation. A reader should be able to locate a responsibility, understand a page's assembly, and follow named components into the details.
 
 ## Governing rule: abstraction, specialization and assembly throughout the app

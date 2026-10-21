@@ -14,7 +14,7 @@ void main() {
     final released = Completer<void>();
     final seen = <String>[];
     final connection = ServerConnection(
-      baseUrl: 'https://server.test/api/v1',
+      baseUrl: 'https://server.test/api',
       client: MockClient((request) async {
         seen.add(request.url.path);
         await released.future;
@@ -49,7 +49,7 @@ void main() {
     final released = Completer<void>();
     var requests = 0;
     final connection = ServerConnection(
-      baseUrl: 'https://server.test/api/v1',
+      baseUrl: 'https://server.test/api',
       client: MockClient((_) async {
         requests++;
         if (requests == 1) {
@@ -113,7 +113,7 @@ void main() {
     final pending = <Completer<http.Response>>[];
     final seen = <http.Request>[];
     final connection = ServerConnection(
-      baseUrl: 'https://first.test/api/v1',
+      baseUrl: 'https://first.test/api',
       client: MockClient((request) {
         seen.add(request);
         final completer = Completer<http.Response>();
@@ -125,7 +125,7 @@ void main() {
     final old = connection.fetchTrackById('track');
     connection.setToken('new');
     final newToken = connection.fetchTrackById('track');
-    connection.setBaseUrl('https://second.test/api/v1');
+    connection.setBaseUrl('https://second.test/api');
     expect(connection.token, isNull);
 
     final newServer = connection.fetchTrackById('track');
@@ -142,7 +142,7 @@ void main() {
     final pending = <Completer<http.Response>>[];
     var requests = 0;
     final connection = ServerConnection(
-      baseUrl: 'https://server.test/api/v1',
+      baseUrl: 'https://server.test/api',
       client: MockClient((_) {
         requests++;
         final completer = Completer<http.Response>();
@@ -168,11 +168,11 @@ void main() {
     final seen = <http.Request>[];
     late final ServerConnection connection;
     connection = ServerConnection(
-      baseUrl: 'https://first.test/api/v1',
+      baseUrl: 'https://first.test/api',
       client: MockClient((request) async {
         seen.add(request);
         if (seen.length == 1) {
-          connection.setBaseUrl('https://second.test/api/v1');
+          connection.setBaseUrl('https://second.test/api');
           connection.setToken('new');
           return http.Response('retry', 503);
         }
@@ -188,7 +188,7 @@ void main() {
   test('metadata events supersede pending reads without changing session', () async {
     final pending = <Completer<http.Response>>[];
     final connection = ServerConnection(
-      baseUrl: 'https://server.test/api/v1',
+      baseUrl: 'https://server.test/api',
       client: MockClient((_) {
         final completer = Completer<http.Response>();
         pending.add(completer);
@@ -221,7 +221,7 @@ class _ControlledMetadataTransport extends ApiTransport {
 
   _ControlledMetadataTransport()
     : super(
-        baseUrl: 'https://server.test/api/v1',
+        baseUrl: 'https://server.test/api',
         client: MockClient((_) async => throw StateError('Unexpected HTTP request')),
       );
 

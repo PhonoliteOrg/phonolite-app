@@ -33,7 +33,7 @@ void main() {
         final media = await offlineTestMediaFile(root, 'completed.mp3');
         final download = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://unused.test/api/v1',
+            serverBaseUrl: 'http://unused.test/api',
             track: offlineTestTrack(id: 'song'),
             filePath: media.path,
           ),
@@ -70,7 +70,7 @@ void main() {
       await audio.writeAsBytes([1, 2, 3]);
       final download = await storage.prepareDownload(
         OfflineTrackDownload(
-          serverBaseUrl: 'http://unused.test/api/v1',
+          serverBaseUrl: 'http://unused.test/api',
           track: Track(
             id: 'song',
             title: 'Song',

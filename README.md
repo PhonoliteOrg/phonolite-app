@@ -11,8 +11,9 @@ The [coding standards](docs/coding-standards.md) specify member ordering,
 formatting, naming, encapsulation, readable assembly, and lifecycle expectations.
 The [iOS and Swift specification](docs/ios-swift-specification.md),
 [Windows native C++ specification](docs/windows-native-specification.md),
-[macOS native specification](docs/macos-native-specification.md) and
-[Android native specification](docs/android-native-specification.md) extend these
+[macOS native specification](docs/macos-native-specification.md),
+[Android native specification](docs/android-native-specification.md) and
+[Linux native C++ specification](docs/linux-native-specification.md) extend these
 rules to each native Flutter host.
 
 ## UI interaction inventory and device profiling
@@ -39,10 +40,14 @@ page does nothing.
 ## Encrypted server connections
 
 Enter the server IP/host and port (default `3000`), then your username and password.
-Connect opens a TLS 1.3 connection and checks `/api/v1/health` before showing
+The app and server share an unversioned `/api` baseline, including download jobs
+and listening counters. Update both builds together when changing from versioned
+URLs, and reconnect saved connections using the server address or `/api` URL.
+
+Connect opens a TLS 1.3 connection and checks `/api/health` before showing
 the sign-in form. A spinner stays in the button while checking; unreachable
 addresses, invalid health responses, expired certificates, and changed saved
-certificate pins leave the address form open with an error. This public check
+certificate pins require password sign-in to verify the replacement. This public check
 sends no credentials and does not establish new server trust.
 Sign-in runs OPAQUE in the native
 Rust package, binds the proof to the TLS connection, verifies the server, and
@@ -53,8 +58,12 @@ redirects carrying credentials to another server are blocked.
 
 Server pins are retained in OS secure storage even without **Remember me**.
 Remember me additionally stores the bearer session there. Passwords are not saved.
-A changed server identity fails closed; restore the original server key and database
-backup. A new certificate with the same key keeps the same pin.
+Regenerating server keys disconnects clients and clears remembered sessions. The
+app opens sign-in and refreshes the TLS pin only after password authentication
+proves the remembered OPAQUE server identity on the new TLS connection. Clients
+that missed the rotation notice detect the changed key when reconnecting. A
+changed OPAQUE identity still fails closed; restore the server security backup.
+A new certificate with the same key keeps the same pin.
 
 Settings groups listening statistics and their reset actions under **User**, below
 **General**. **Reset user password** appears only while connected and opens its

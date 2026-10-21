@@ -390,7 +390,7 @@ class _Controller extends Fake implements AppController {
   Completer<void>? pending;
 
   @override
-  final connection = ServerConnection(baseUrl: 'https://settings.test/api/v1');
+  final connection = ServerConnection(baseUrl: 'https://settings.test/api');
   @override
   AuthState get authState =>
       AuthState(baseUrl: connection.baseUrl, status: status);

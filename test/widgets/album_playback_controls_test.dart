@@ -477,7 +477,7 @@ class _AlbumController extends AppController {
 }
 
 class _AlbumConnection extends ServerConnection {
-  _AlbumConnection() : super(baseUrl: 'http://server.test/api/v1');
+  _AlbumConnection() : super(baseUrl: 'http://server.test/api');
 
   @override
   String buildAlbumCoverUrl(String albumId) => '';

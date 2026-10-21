@@ -19,7 +19,7 @@ import '../support/offline_library_test_helpers.dart';
 class _Connection extends ServerConnection {
   _Connection({this.tracksPerAlbum = 1})
     : super(
-        baseUrl: 'https://restart.test:3000/api/v1',
+        baseUrl: 'https://restart.test:3000/api',
         client: MockClient(
           (_) async => throw StateError('Unexpected HTTP request'),
         ),

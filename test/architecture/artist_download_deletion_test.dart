@@ -21,7 +21,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart'
 import '../support/offline_library_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
 
-const _server = 'https://deletion.test:3000/api/v1';
+const _server = 'https://deletion.test:3000/api';
 final _artist = Artist(id: 'artist-1', name: 'The Artist', albumCount: 1);
 final _album = Album(
   id: 'album-1',
@@ -64,6 +64,16 @@ class _GatedConnection extends _Connection {
       batchId: clientBatchId!,
       trackId: trackIds.single,
     );
+  }
+}
+
+class _RetiringConnection extends _Connection {
+  final retiredJobs = <String>[];
+
+  @override
+  Future<void> applyDownloadJobAction({required String jobId, required String action}) async {
+    expect(action, 'delete');
+    retiredJobs.add(jobId);
   }
 }
 
@@ -176,6 +186,40 @@ Future<void> _seedArtist(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(configureTestFonts);
+
+  test('removal retires unversioned job downloads and preserves direct batch semantics', () async {
+    final root = await Directory.systemTemp.createTemp('phonolite_job_url_delete_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = OfflineLibraryStorage(baseDirectory: root);
+    const jobId = '92fd40d2-5d72-4c00-b228-ed595abcd130';
+    const batchId = '92fd40d2-5d72-4c00-b228-ed595abcd131';
+    await storage.upsertDownloads(
+      await storage.prepareDownloads([
+        offlineTestDownload(
+          serverBaseUrl: _server,
+          batchId: jobId,
+          track: offlineTestTrack(id: 'job-track'),
+          status: OfflineDownloadStatus.failed,
+        ).copyWith(downloadUrl: '/api/download/tracks/job-track/file'),
+        offlineTestDownload(
+          serverBaseUrl: _server,
+          batchId: batchId,
+          track: offlineTestTrack(id: 'batch-track'),
+          status: OfflineDownloadStatus.failed,
+        ).copyWith(downloadUrl: '/api/download/tracks/batch-track'),
+      ]),
+    );
+    final connection = _RetiringConnection();
+    final manager = OfflineDownloadManager(connection: connection, storage: storage);
+    addTearDown(manager.dispose);
+    await manager.load();
+    connection.setToken('session');
+
+    await manager.removeDownloads(manager.downloads);
+
+    expect(connection.retiredJobs, [jobId]);
+    expect(manager.downloads, isEmpty);
+  });
 
   for (final keepPlan in [true, false]) {
     testWidgets(
@@ -345,7 +389,7 @@ void main() {
       await _seedArtist(
         storage,
         root,
-        server: 'https://other.test/api/v1',
+        server: 'https://other.test/api',
         jobId: 'other-server-job',
       );
       final manager = OfflineDownloadManager(

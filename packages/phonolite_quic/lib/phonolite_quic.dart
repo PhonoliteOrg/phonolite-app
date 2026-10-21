@@ -83,6 +83,9 @@ Map<String, dynamic> _securityRequest(
         jsonDecode(output.toDartString()) as Map,
       );
       if (response['ok'] != true) {
+        if (response['code'] == 'server_identity_changed') {
+          throw ServerIdentityChangedException();
+        }
         throw QuicException(response['error']?.toString() ?? failure);
       }
       return response;
@@ -132,6 +135,13 @@ class QuicException implements Exception {
 
   @override
   String toString() => 'QuicException: $message';
+}
+
+class ServerIdentityChangedException extends QuicException {
+  ServerIdentityChangedException()
+    : super(
+        'Server identity changed. Sign in again to verify the new server key.',
+      );
 }
 
 class QuicClient {

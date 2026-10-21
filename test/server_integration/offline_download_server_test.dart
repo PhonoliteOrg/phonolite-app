@@ -56,7 +56,7 @@ void main() {
       addTearDown(server.close);
       final storage = OfflineLibraryStorage(baseDirectory: temp);
       final connection = ServerConnection(
-        baseUrl: 'http://${server.address.address}:${server.port}/api/v1',
+        baseUrl: 'http://${server.address.address}:${server.port}/api',
       )..setToken('token-1');
       final manager = OfflineDownloadManager(
         connection: connection,
@@ -138,7 +138,7 @@ void main() {
         addTearDown(server.close);
         final storage = OfflineLibraryStorage(baseDirectory: temp);
         final connection = ServerConnection(
-          baseUrl: 'http://${server.address.address}:${server.port}/api/v1',
+          baseUrl: 'http://${server.address.address}:${server.port}/api',
         )..setToken('token-1');
         final manager = OfflineDownloadManager(
           connection: connection,
@@ -211,7 +211,7 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final subscription = server.listen((request) async {
         authorization = request.headers.value(HttpHeaders.authorizationHeader);
-        if (request.uri.path == '/api/v1/download/tracks/server-track-1') {
+        if (request.uri.path == '/api/download/tracks/server-track-1') {
           request.response.headers.contentType = ContentType('audio', 'mpeg');
           request.response.contentLength = body.length;
           request.response.add(body);
@@ -225,7 +225,7 @@ void main() {
       addTearDown(() => server.close(force: true));
 
       final connection = ServerConnection(
-        baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+        baseUrl: 'http://127.0.0.1:${server.port}/api',
       )..setToken('token-1');
       final manager = OfflineDownloadManager(
         connection: connection,
@@ -274,7 +274,7 @@ void main() {
         var downloadRequests = 0;
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         final subscription = server.listen((request) async {
-          if (request.uri.path == '/api/v1/download/tracks/server-track-1') {
+          if (request.uri.path == '/api/download/tracks/server-track-1') {
             downloadRequests += 1;
             request.response.headers.contentType = ContentType('audio', 'mpeg');
             request.response.contentLength = body.length;
@@ -289,7 +289,7 @@ void main() {
         addTearDown(() => server.close(force: true));
 
         final connection = ServerConnection(
-          baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+          baseUrl: 'http://127.0.0.1:${server.port}/api',
         )..setToken('token-1');
         final manager = OfflineDownloadManager(
           connection: connection,
@@ -357,7 +357,7 @@ void main() {
         var sawBatchRequest = false;
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         final subscription = server.listen((request) async {
-          if (request.uri.path == '/api/v1/download/tracks/server-track-1') {
+          if (request.uri.path == '/api/download/tracks/server-track-1') {
             request.response.headers.contentType = ContentType('audio', 'mpeg');
             request.response.contentLength = body.length;
             request.response.add(body);
@@ -371,7 +371,7 @@ void main() {
         addTearDown(() => server.close(force: true));
 
         final connection = SingleBatchTestConnection(
-          baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+          baseUrl: 'http://127.0.0.1:${server.port}/api',
           manifest: offlineTestDownloadManifest(
             batchId: 'single-batch',
             trackId: 'server-track-1',
@@ -421,7 +421,7 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final subscription = server.listen((request) async {
         try {
-          if (request.uri.path == '/api/v1/download/tracks/server-track-1') {
+          if (request.uri.path == '/api/download/tracks/server-track-1') {
             request.response.headers.contentType = ContentType('audio', 'mpeg');
             request.response.contentLength = 6;
             request.response.add(<int>[1, 2, 3]);
@@ -446,7 +446,7 @@ void main() {
       addTearDown(() => server.close(force: true));
 
       final connection = ServerConnection(
-        baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+        baseUrl: 'http://127.0.0.1:${server.port}/api',
       )..setToken('token-1');
       final manager = OfflineDownloadManager(
         connection: connection,
@@ -507,7 +507,7 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final subscription = server.listen((request) async {
         try {
-          if (request.uri.path == '/api/v1/download/tracks/server-track-1') {
+          if (request.uri.path == '/api/download/tracks/server-track-1') {
             requestCount += 1;
             request.response.headers.contentType = ContentType('audio', 'mpeg');
             request.response.contentLength = 6;
@@ -538,7 +538,7 @@ void main() {
       addTearDown(() => server.close(force: true));
 
       final connection = ServerConnection(
-        baseUrl: 'http://127.0.0.1:${server.port}/api/v1',
+        baseUrl: 'http://127.0.0.1:${server.port}/api',
       )..setToken('token-1');
       final manager = OfflineDownloadManager(
         connection: connection,

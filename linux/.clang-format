@@ -1,0 +1,10 @@
+# Use clang-format 19.1.5 for handwritten runner C++.
+BasedOnStyle: LLVM
+IndentWidth: 2
+AccessModifierOffset: -1
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+DerivePointerAlignment: false
+PointerAlignment: Left
+MaxEmptyLinesToKeep: 1
+AllowShortFunctionsOnASingleLine: Empty

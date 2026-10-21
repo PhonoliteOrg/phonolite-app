@@ -1,0 +1,10 @@
+# Use clang-format 19.1.5 for handwritten Runner native C.
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+DerivePointerAlignment: false
+PointerAlignment: Right
+MaxEmptyLinesToKeep: 1
+AllowShortFunctionsOnASingleLine: Empty
+IncludeBlocks: Preserve

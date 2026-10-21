@@ -188,7 +188,7 @@ class _Controller extends Fake implements AppController {
   final updates = StreamController<AuthState>.broadcast();
   @override
   final connection = ServerConnection(
-    baseUrl: 'https://fixture.invalid/api/v1',
+    baseUrl: 'https://fixture.invalid/api',
   );
   @override
   AuthState get authState => AuthState(
