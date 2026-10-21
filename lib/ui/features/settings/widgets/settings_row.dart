@@ -7,6 +7,13 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
+class SettingsDivider extends StatelessWidget {
+  const SettingsDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Divider(height: 1);
+}
+
 class SettingsTrailing extends StatelessWidget {
   final Widget child;
 

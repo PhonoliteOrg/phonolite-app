@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
@@ -61,7 +62,14 @@ class SettingsPage extends BaseStatelessPage {
                 const SizedBox(height: 24),
                 LocalStorageSettingsSection(controller: controller),
                 const SizedBox(height: 24),
-                MiscSettingsSection(logLabel: logLabel, onOpenLogs: () => Navigator.of(context).push(LogsPage.route())),
+                FutureBuilder<String>(
+                  future: SettingsController.instance.loadAppVersion(),
+                  builder: (context, versionSnapshot) => MiscSettingsSection(
+                    logLabel: logLabel,
+                    appVersion: versionSnapshot.data ?? (versionSnapshot.hasError ? 'Unavailable' : 'Loading…'),
+                    onOpenLogs: () => Navigator.of(context).push(LogsPage.route()),
+                  ),
+                ),
               ],
             ),
           ),

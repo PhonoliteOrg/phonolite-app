@@ -210,7 +210,7 @@ class SettingsListeningStatisticsSettingState extends State<ListeningStatisticsS
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         settingsCollectionTile(context),
-        if (widget.enabled && widget.onReset != null) ...[const SizedBox(height: 12), settingsResetTile(context)],
+        if (widget.enabled && widget.onReset != null) ...[const SettingsDivider(), settingsResetTile(context)],
       ],
     );
   }

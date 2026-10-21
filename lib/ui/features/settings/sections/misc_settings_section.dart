@@ -6,9 +6,10 @@ import 'package:phonolite_app/ui/structures/sections/base_section.dart';
 
 class MiscSettingsSection extends BaseSection {
   final String logLabel;
+  final String appVersion;
   final VoidCallback onOpenLogs;
 
-  const MiscSettingsSection({super.key, required this.logLabel, required this.onOpenLogs});
+  const MiscSettingsSection({super.key, required this.logLabel, required this.appVersion, required this.onOpenLogs});
 
   @override
   String get sectionTitle => 'Miscellaneous';
@@ -25,6 +26,8 @@ class MiscSettingsSection extends BaseSection {
           trailing: const Icon(PhonoliteIcons.chevronRight),
           onTap: onOpenLogs,
         ),
+        const SettingsDivider(),
+        buildSettingsRow(context, leading: const Icon(PhonoliteIcons.tag), title: 'App version', subtitle: appVersion),
       ],
     ),
   ];
