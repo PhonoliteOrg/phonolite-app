@@ -174,7 +174,7 @@ class OfflineStorageSection extends StatelessWidget {
               onOpen: onOpenMetadata,
             ),
           ),
-          const Divider(height: 1),
+          const SettingsDivider(),
           settingsSectionRow(
             context,
             leading: const Icon(PhonoliteIcons.folder),
@@ -186,7 +186,7 @@ class OfflineStorageSection extends StatelessWidget {
               onOpen: onOpenDownloads,
             ),
           ),
-          const Divider(height: 1),
+          const SettingsDivider(),
           settingsSectionRow(
             context,
             leading: const Icon(PhonoliteIcons.receiptText),
@@ -194,7 +194,7 @@ class OfflineStorageSection extends StatelessWidget {
             subtitle: settingsDirectorySubtitle(logsLocation?.directory, isDefault: logsLocation?.isDefault ?? true),
             trailing: SettingsStorageActions(onChange: onChangeLogs, onReset: onResetLogs, onOpen: onOpenLogs),
           ),
-          const Divider(height: 1),
+          const SettingsDivider(),
         ],
         settingsSectionRow(
           context,

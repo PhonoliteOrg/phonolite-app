@@ -34,7 +34,7 @@ class GeneralSettingsSection extends BaseSection {
       subtitle: 'Your server provides access to your music library.',
       trailing: settingsServerActions(context, controller: controller, authState: authState, onLogin: onLogin),
     ),
-    const SizedBox(height: 12),
+    const SettingsDivider(),
     buildSettingsRow(
       context,
       leading: const Icon(PhonoliteIcons.shuffle),

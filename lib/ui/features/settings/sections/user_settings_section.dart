@@ -44,7 +44,7 @@ class UserSettingsSection extends BaseSection {
       ),
     ),
     if (authState.isAuthorized) ...[
-      const SizedBox(height: 12),
+      const SettingsDivider(),
       KeyedSubtree(
         key: const ValueKey('reset-user-password'),
         child: buildSettingsRow(
