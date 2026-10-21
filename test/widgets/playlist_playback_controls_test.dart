@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
@@ -384,7 +384,7 @@ void main() {
             onOpenAlbum: null,
             state: controller.playbackState.copyWith(
               shuffleMode: ShuffleMode.custom,
-              repeatMode: RepeatMode.one,
+              repeatMode: PlaybackRepeatMode.one,
               streamRttMs: 28,
               bufferRatio: 0.5,
             ),

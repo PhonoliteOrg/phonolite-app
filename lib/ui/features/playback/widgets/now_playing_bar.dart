@@ -97,7 +97,7 @@ class NowPlayingBar extends StatelessWidget {
       techTags.add(const PlaybackTechTag(label: 'SHUFFLE', highlight: true));
     }
 
-    if (state.repeatMode == RepeatMode.one) {
+    if (state.repeatMode == PlaybackRepeatMode.one) {
       techTags.add(const PlaybackTechTag(label: 'LOOP', highlight: true));
     }
 

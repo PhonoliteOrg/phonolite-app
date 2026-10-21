@@ -257,7 +257,7 @@ class AppController
       volume: 1.0,
       shuffleMode: ShuffleMode.off,
       shuffleScope: ActionScope.server,
-      repeatMode: RepeatMode.off,
+      repeatMode: PlaybackRepeatMode.off,
       streamMode: StreamMode.high,
       bitrateKbps: null,
       streamConnected: false,
