@@ -75,6 +75,16 @@ class ApiTransport {
 
   void setTrust(ServerTrust value) => ServerTrustRegistry.register(_baseUrl, value);
 
+  /// Invalidate pending authentication even when this origin has no bearer token.
+  void forgetTrust(String url) {
+    ServerTrustRegistry.forget(url);
+
+    if (ServerTrust.origin(Uri.parse(url)) == ServerTrust.origin(Uri.parse(_baseUrl))) {
+      _token = null;
+      invalidateMetadataRequests();
+    }
+  }
+
   void setBaseUrl(String baseUrl) {
     final sanitized = ApiTransport.sanitizeBaseUrl(baseUrl);
 

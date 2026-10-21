@@ -56,14 +56,22 @@ of the password. API calls, artwork, SSE, downloads and QUIC audio
 require the authenticated identity. HTTP fallback, unverified streaming, and
 redirects carrying credentials to another server are blocked.
 
-Server pins are retained in OS secure storage even without **Remember me**.
-Remember me additionally stores the bearer session there. Passwords are not saved.
+Server pins are retained in OS secure storage while connected, even without
+**Remember me**. Remember me additionally stores the bearer session there, so an
+existing connection can be restored after restarting the app. Passwords are not saved.
 Regenerating server keys disconnects clients and clears remembered sessions. The
 app opens sign-in and refreshes the TLS pin only after password authentication
 proves the remembered OPAQUE server identity on the new TLS connection. Clients
 that missed the rotation notice detect the changed key when reconnecting. A
-changed OPAQUE identity still fails closed; restore the server security backup.
+changed OPAQUE identity still fails closed; restore the server security backup to
+retain the original server identity.
 A new certificate with the same key keeps the same pin.
+
+Explicitly disconnecting removes that server's saved identity, matching remembered
+sign-in, and saved address from this device. If you intentionally start a fresh
+server database at the same address, disconnect and connect again through the
+existing controls. Sign in to authenticate the fresh server; its new identity is
+saved only after successful password authentication.
 
 Settings groups listening statistics and their reset actions under **User**, below
 **General**. **Reset user password** appears only while connected and opens its

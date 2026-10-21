@@ -191,7 +191,7 @@ void main() {
         'SessionStatus.serverUnavailable',
         "'Saved server unavailable'",
         'err.statusCode == 401',
-        "error: 'Saved login expired'",
+        "await requireSignIn(reason: 'Saved login expired. Sign in again.');",
         'Future<void> startFreshLoginFlow() async {',
         'final preserveLocalPlayback =',
         "_host._playbackState.isLocalPlayback &&\n        _host._playbackState.track != null;",

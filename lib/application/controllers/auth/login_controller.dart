@@ -27,7 +27,30 @@ class LoginController extends FeatureController {
 
   bool get rememberMe => _rememberMe;
 
-  void changeServer() => update(_resetServerConnection);
+  Future<bool> changeServer() async {
+    if (_isSubmitting) {
+      return false;
+    }
+
+    update(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    try {
+      await app.logout();
+      update(() {
+        _resetServerConnection();
+        _rememberMe = false;
+      });
+      return true;
+    } catch (_) {
+      update(() => _error = 'Could not disconnect from this server. Try again.');
+      return false;
+    } finally {
+      update(() => _isSubmitting = false);
+    }
+  }
 
   void setRememberMe(bool value) => update(() => _rememberMe = value);
 
@@ -219,12 +242,13 @@ class LoginController extends FeatureController {
     final parsed = Uri.tryParse(baseUrl);
 
     if (parsed != null && parsed.host.isNotEmpty) {
-      final port = parsed.hasPort ? parsed.port.toString() : '';
+      final port = parsed.port.toString();
+      final host = parsed.host.contains(':') ? '[${parsed.host}]' : parsed.host;
       final path = stripApiSuffix(parsed.path);
       final query = parsed.hasQuery ? '?${parsed.query}' : '';
       final pathValue = (path.isEmpty || path == '/') ? '' : path;
 
-      return HostPortParts('${parsed.host}$pathValue$query', port);
+      return HostPortParts('$host$pathValue$query', port);
     }
 
     final withoutScheme = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
