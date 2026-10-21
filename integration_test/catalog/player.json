@@ -1,9 +1,29 @@
 {
   "feature": "player",
   "sources": [
-    "lib/widgets/display/now_playing_bar.dart",
-    "lib/widgets/modals/device_picker_modal.dart",
-    "lib/widgets/inputs/local_server_toggle.dart"
+    "lib/ui/features/playback/widgets/now_playing_bar.dart",
+    "lib/ui/features/playback/widgets/device_picker_modal.dart",
+    "lib/ui/shared/music/local_server_toggle.dart",
+    "lib/ui/features/playback/widgets/components/compact_playback_footer.dart",
+    "lib/ui/features/playback/widgets/components/playback_expanded_extras.dart",
+    "lib/ui/features/playback/widgets/components/playback_labels.dart",
+    "lib/ui/features/playback/widgets/components/playback_layout.dart",
+    "lib/ui/features/playback/widgets/components/playback_output_controls.dart",
+    "lib/ui/features/playback/widgets/components/playback_play_button.dart",
+    "lib/ui/features/playback/widgets/components/playback_progress_bar.dart",
+    "lib/ui/features/playback/widgets/components/playback_quality_badge.dart",
+    "lib/ui/features/playback/widgets/components/playback_source_tags.dart",
+    "lib/ui/features/playback/widgets/components/playback_track_details.dart",
+    "lib/ui/features/playback/widgets/components/playback_transport_controls.dart",
+    "lib/ui/features/playback/widgets/components/playback_tray_transition.dart",
+    "lib/ui/features/playback/widgets/components/scrubber_display_position.dart",
+    "lib/ui/features/playback/widgets/modals/output_device_modal.dart",
+    "lib/ui/features/playback/widgets/modals/playback_modal_row.dart",
+    "lib/ui/features/playback/widgets/modals/shuffle_picker_modal.dart",
+    "lib/ui/features/playback/widgets/modals/stream_quality_modal.dart",
+    "lib/ui/features/playback/widgets/now_playing_expanded_sheet.dart",
+    "lib/ui/features/playback/widgets/now_playing_mini_bar.dart",
+    "lib/ui/structures/modals/base_alert_modal.dart"
   ],
   "interactions": [
     {

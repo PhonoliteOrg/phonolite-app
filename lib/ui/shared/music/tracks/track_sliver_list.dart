@@ -1,0 +1,93 @@
+import 'package:flutter/material.dart';
+
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
+
+class TrackSliverList extends StatelessWidget {
+  final List<Track> tracks;
+  final bool Function(Track track) isPlayingTrack;
+  final ValueChanged<Track>? onTrackTap;
+  final ValueChanged<Track>? onTrackLongPress;
+  final ValueChanged<Track>? onTrackAddToPlaylist;
+  final ValueChanged<Track>? onTrackDownload;
+  final ValueChanged<Track>? onTrackRemoveDownload;
+  final ValueChanged<Track>? onTrackLike;
+  final ValueChanged<Track>? onTrackDelete;
+  final bool selectionMode;
+  final bool Function(Track track)? canSelectTrack;
+  final bool Function(Track track)? isTrackSelected;
+  final ValueChanged<Track>? onTrackSelectionToggle;
+  final ValueChanged<Track>? onTrackSelectionModeRequested;
+  final OfflineTrackDownload? Function(Track track)? offlineDownloadForTrack;
+  final bool showAlbumArt;
+  final bool actionsInMenu;
+
+  /// Album views retain metadata numbering, including gaps in downloaded albums.
+  /// Playlists use their list position instead.
+  final bool useAlbumTrackNumbers;
+
+  const TrackSliverList({
+    super.key,
+    required this.tracks,
+    required this.isPlayingTrack,
+    this.selectionMode = false,
+    this.showAlbumArt = false,
+    this.useAlbumTrackNumbers = false,
+    this.actionsInMenu = false,
+    this.onTrackTap,
+    this.onTrackLongPress,
+    this.onTrackAddToPlaylist,
+    this.onTrackDownload,
+    this.onTrackRemoveDownload,
+    this.onTrackLike,
+    this.onTrackDelete,
+    this.canSelectTrack,
+    this.isTrackSelected,
+    this.onTrackSelectionToggle,
+    this.onTrackSelectionModeRequested,
+    this.offlineDownloadForTrack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final itemCount = tracks.isEmpty ? 0 : tracks.length * 2 - 1;
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, index) {
+        if (index.isOdd) {
+          return const Divider(height: 1);
+        }
+
+        final track = tracks[index ~/ 2];
+        final albumTrackNumber = useAlbumTrackNumbers ? track.trackNo : null;
+        final offlineDownload = offlineDownloadForTrack?.call(track);
+        final isDeleting = offlineDownload?.status == OfflineDownloadStatus.removing;
+        final selectable = (canSelectTrack?.call(track) ?? true) && !isDeleting;
+
+        return TrackRowTile(
+          track: track,
+          index: albumTrackNumber != null && albumTrackNumber > 0 ? albumTrackNumber : index ~/ 2 + 1,
+          showAlbumArt: showAlbumArt,
+          actionsInMenu: actionsInMenu,
+          isPlaying: isPlayingTrack(track),
+          onTap: onTrackTap == null ? null : () => onTrackTap!(track),
+          onLongPress: onTrackLongPress == null ? null : () => onTrackLongPress!(track),
+          onAddToPlaylist: onTrackAddToPlaylist == null ? null : () => onTrackAddToPlaylist!(track),
+          onDownload: onTrackDownload == null ? null : () => onTrackDownload!(track),
+          onRemoveDownload: onTrackRemoveDownload == null ? null : () => onTrackRemoveDownload!(track),
+          onLike: onTrackLike == null ? null : () => onTrackLike!(track),
+          onDelete: onTrackDelete == null ? null : () => onTrackDelete!(track),
+          selectionMode: selectionMode,
+          selected: isTrackSelected?.call(track) ?? false,
+          onSelectionToggle: selectable && onTrackSelectionToggle != null ? () => onTrackSelectionToggle!(track) : null,
+          onSelectionModeRequested: selectable && onTrackSelectionModeRequested != null
+              ? () => onTrackSelectionModeRequested!(track)
+              : null,
+          offlineDownload: offlineDownload,
+        );
+      }, childCount: itemCount),
+    );
+  }
+}

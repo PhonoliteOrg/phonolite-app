@@ -4,17 +4,17 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/widgets/ui/edit_icon.dart';
-import 'package:phonolite_app/widgets/ui/like_icon_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
-import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
-import 'package:phonolite_app/widgets/ui/playlist_edit_icon.dart';
-import 'package:phonolite_app/widgets/ui/playlist_icon.dart';
-import 'package:phonolite_app/widgets/ui/reload_icon.dart';
-import 'package:phonolite_app/widgets/ui/server_icon.dart';
-import 'package:phonolite_app/widgets/ui/stats_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
+import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_edit_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/server_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/stats_icon.dart';
 
 void main() {
   const icons = {

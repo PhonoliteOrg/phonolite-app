@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 
 import '../support/offline_library_test_helpers.dart';
 

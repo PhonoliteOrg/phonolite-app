@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 
 import '../../support/journey.dart';
 import '../../support/ui_harness.dart';

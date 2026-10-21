@@ -4,58 +4,36 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('apple platform source contracts', () {
-    test(
-      'ios exports every audio FFI binding in every build configuration',
-      () {
-        final engine = readProjectFile('lib/entities/audio_engine.dart');
-        final bindings = engine.substring(
-          engine.indexOf('class _CoreAudioBindings'),
-          engine.indexOf('typedef _CoreAudioOpenNative'),
-        );
-        final symbols = RegExp(
-          r"'((?:phonolite_audio_)\w+)'",
-        ).allMatches(bindings).map((match) => match[1]!).toSet();
-        expect(symbols, isNotEmpty);
+    test('ios exports every audio FFI binding in every build configuration', () {
+      final bindings = readProjectFile('lib/infrastructure/platform/audio/apple/core_audio_bindings.dart');
+      final symbols = RegExp(r"'((?:phonolite_audio_)\w+)'").allMatches(bindings).map((match) => match[1]!).toSet();
+      expect(symbols, isNotEmpty);
 
-        final project = readProjectFile('ios/Runner.xcodeproj/project.pbxproj');
-        final configurations =
-            RegExp(r'/\* (Debug|Release|Profile) \*/ = \{([\s\S]*?)\n\t\t\};')
-                .allMatches(project)
-                .where(
-                  (match) => match[2]!.contains(
-                    'PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;',
-                  ),
-                );
-        expect(
-          configurations.map((match) => match[1]),
-          unorderedEquals(['Debug', 'Release', 'Profile']),
-        );
-        for (final configuration in configurations) {
-          for (final symbol in symbols) {
-            expect(
-              configuration[2],
-              contains('-Wl,-exported_symbol,_$symbol'),
-              reason: '${configuration[1]} must expose $symbol to Dart FFI',
-            );
-          }
+      final project = readProjectModule('ios/Runner.xcodeproj/project.pbxproj');
+      final configurations = RegExp(r'/\* (Debug|Release|Profile) \*/ = \{([\s\S]*?)\n\t\t\};')
+          .allMatches(project)
+          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;'));
+      expect(configurations.map((match) => match[1]), unorderedEquals(['Debug', 'Release', 'Profile']));
+      for (final configuration in configurations) {
+        for (final symbol in symbols) {
+          expect(
+            configuration[2],
+            contains('-Wl,-exported_symbol,_$symbol'),
+            reason: '${configuration[1]} must expose $symbol to Dart FFI',
+          );
         }
-      },
-    );
+      }
+    });
 
     test('ios primes output before starting and reports native failures', () {
-      final source = readProjectFile('ios/Runner/phonolite_audio.m');
+      final source = readProjectModule('ios/Runner/Infrastructure/Audio/Native/phonolite_audio.m');
       final open = source.substring(
-        source.indexOf(
-          'PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open',
-        ),
+        source.indexOf('PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open'),
         source.indexOf('PHONOLITE_EXPORT void phonolite_audio_close'),
       );
       expect(open, isNot(contains('AudioQueueStart(')));
       expect(source, isNot(contains('setPreferredSampleRate:')));
-      expect(
-        source,
-        isNot(contains('AVAudioSessionCategoryOptionAllowAirPlay')),
-      );
+      expect(source, isNot(contains('AVAudioSessionCategoryOptionAllowAirPlay')));
       expectContainsAll(source, const [
         'if (!phonolite_audio_prepare_session())',
         'player->paused || player->started || atomic_load(&player->in_flight) == 0',
@@ -64,69 +42,78 @@ void main() {
         'phonolite_audio_flush',
         'AudioQueueReset',
       ]);
-      final engine = readProjectFile('lib/entities/audio_engine.dart');
-      expectContainsAll(engine, const [
-        'Audio output failed:',
-        "requestStop(outcome: 'error');",
+      final engine = readProjectModule('lib/infrastructure/audio/engine/audio_engine.dart');
+      expectContainsAll(engine, const ['Audio output failed:', "requestStop(outcome: 'error');"]);
+    });
+
+    test('ios artwork fallback is authenticated and invalidates stale requests', () {
+      final controller = readProjectModule('lib/application/app/app_controller.dart');
+      final artwork = readProjectFiles(const [
+        'ios/Runner/Infrastructure/Artwork/NativeArtworkLoader.swift',
+        'ios/Runner/Infrastructure/Artwork/NowPlayingArtworkController.swift',
+        'ios/Runner/Infrastructure/Media/NowPlayingInfoPublisher.swift',
+      ]);
+      final host = readProjectModule('ios/Runner/Bootstrap/NativeHost.swift');
+      expectContainsAll(controller, const [
+        'NativeNowPlayingSnapshot(',
+        'artworkUrl: artworkUrl',
+        'token: token',
+        'artworkPath: localArtworkPath',
+      ]);
+      final codec = readProjectModule('lib/infrastructure/platform/media/now_playing_codec.dart');
+      expectContainsAll(codec, const [
+        "if (snapshot.artworkUrl != null)",
+        "'artworkUrl': snapshot.artworkUrl",
+        "'token': snapshot.token",
+        "if (snapshot.artworkPath != null) 'artworkPath': snapshot.artworkPath",
+      ]);
+      expectContainsAll(artwork, const [
+        'task?.cancel()',
+        'generation == requestGeneration',
+        'source.key == artworkKey',
+        '(200..<300).contains(response.statusCode)',
+        'isLoading = false',
+        'URL(fileURLWithPath: path)',
+        'inlineData != current?.data',
+        'request.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")',
+        'url.scheme == "https"',
+        'PinnedArtworkSession.make(url: url, pin: serverPin)',
+        'info[MPMediaItemPropertyArtwork] = artwork',
+      ]);
+      expectContainsAll(host, const [
+        'guard Thread.isMainThread else',
+        'DispatchQueue.main.async',
+        'nowPlaying.isPlaying ? .pause : .play',
       ]);
     });
 
-    test(
-      'ios artwork fallback is authenticated and invalidates stale requests',
-      () {
-        final controller = readProjectFile('lib/entities/app_controller.dart');
-        final source = readProjectFile(
-          'ios/Runner/NowPlayingCoordinator.swift',
-        );
-        final channels = readProjectFile(
-          'ios/Runner/AppDelegate+Channels.swift',
-        );
-        expectContainsAll(controller, const [
-          "if (artworkUrl != null) 'artworkUrl': artworkUrl",
-          "if (artworkUrl != null) 'token': token",
-          "if (localArtworkPath != null) 'artworkPath': localArtworkPath",
-        ]);
-        expectContainsAll(source, const [
-          'artworkTask?.cancel()',
-          'self.artworkGeneration == generation',
-          '(200..<300).contains(response.statusCode)',
-          'self.artworkLoading = false',
-          'URL(fileURLWithPath: localPath)',
-          'typedData.data != currentArtworkData',
-          'info[MPMediaItemPropertyArtwork] = artwork',
-        ]);
-        expectContainsAll(channels, const [
-          'guard Thread.isMainThread else',
-          'DispatchQueue.main.async',
-          'nowPlayingCoordinator.isPlaying ? "pause" : "play"',
-        ]);
-      },
-    );
-
     test('ios preserves audio session now playing and local network setup', () {
-      final appDelegate = readProjectFile('ios/Runner/AppDelegate.swift');
-      final audioSession = readProjectFile(
-        'ios/Runner/AppDelegate+AudioSession.swift',
-      );
-      final channels = readProjectFile('ios/Runner/AppDelegate+Channels.swift');
-      final offlineStorage = readProjectFile(
-        'ios/Runner/AppDelegate+OfflineStorage.swift',
-      );
-      final nowPlaying = readProjectFile(
-        'ios/Runner/AppDelegate+NowPlaying.swift',
-      );
-      final nowPlayingCoordinator = readProjectFile(
-        'ios/Runner/NowPlayingCoordinator.swift',
-      );
-      final permissions = readProjectFile(
-        'ios/Runner/LocalNetworkPermissionManager.swift',
-      );
-      final localAudioLink = readProjectFile(
+      final appDelegate = readProjectModule('ios/Runner/Bootstrap/AppDelegate.swift');
+      final host = readProjectModule('ios/Runner/Bootstrap/NativeHost.swift');
+      final audioSession = readProjectModule('ios/Runner/Infrastructure/Audio/AudioSessionService.swift');
+      final channels = readProjectFiles(const [
+        'ios/Runner/Infrastructure/Flutter/NowPlayingChannelAdapter.swift',
+        'ios/Runner/Infrastructure/Flutter/CarPlayChannelAdapter.swift',
+        'ios/Runner/Infrastructure/Flutter/PermissionsChannelAdapter.swift',
+      ]);
+      final offlineStorage = readProjectModule('ios/Runner/Data/Storage/Offline/OfflineBackupExclusions.swift');
+      final remoteCommands = readProjectModule('ios/Runner/Infrastructure/Media/RemoteCommandService.swift');
+      final nativeCommands = readProjectModule('ios/Runner/Data/Models/Playback/NativeRemoteCommand.swift');
+      final nowPlaying = readProjectModule('ios/Runner/Infrastructure/Media/NowPlayingCoordinator.swift');
+      final publisher = readProjectModule('ios/Runner/Infrastructure/Media/NowPlayingInfoPublisher.swift');
+      final nowPlayingCodec = readProjectModule('ios/Runner/Infrastructure/Flutter/NowPlayingCodec.swift');
+      final pinning = readProjectModule('ios/Runner/Infrastructure/Security/PinnedArtworkSession.swift');
+      final permissions = readProjectFiles(const [
+        'ios/Runner/Infrastructure/Flutter/PermissionsChannelAdapter.swift',
+        'ios/Runner/Infrastructure/Permissions/LocalNetworkPermissionProbe.swift',
+        'ios/Runner/Data/Models/Permissions/LocalNetworkPermissionStatus.swift',
+      ]);
+      final localAudioLink = readProjectModule(
         'packages/phonolite_local_audio/ios/Classes/phonolite_local_audio_link.m',
       );
-      final project = readProjectFile('ios/Runner.xcodeproj/project.pbxproj');
-      final infoPlist = readProjectFile('ios/Runner/Info.plist');
-      final sceneDelegate = readProjectFile('ios/Runner/SceneDelegate.swift');
+      final project = readProjectModule('ios/Runner.xcodeproj/project.pbxproj');
+      final infoPlist = readProjectModule('ios/Runner/Info.plist');
+      final sceneDelegate = readProjectModule('ios/Runner/Bootstrap/SceneDelegate.swift');
 
       expectContainsAll(appDelegate, const [
         'configureInitialAudioSession()',
@@ -134,50 +121,70 @@ void main() {
         'configureNowPlayingChannel()',
         'configureCarPlayChannel()',
         'configurePermissionsChannel()',
-        'localNetworkPermissions.requestPermission()',
+        'requestLocalNetworkPermission()',
         'refreshOfflineStorageBackupExclusions()',
         'applicationDidEnterBackground',
       ]);
+      final startupSteps = [
+        'GeneratedPluginRegistrant.register(with: self)',
+        'nativeHost.configureInitialAudioSession()',
+        'nativeHost.configureAudioSessionObservers()',
+        'super.application(application, didFinishLaunchingWithOptions: launchOptions)',
+        'nativeHost.configureNowPlayingChannel()',
+        'nativeHost.configureCarPlayChannel()',
+        'nativeHost.configurePermissionsChannel()',
+        'nativeHost.requestLocalNetworkPermission()',
+        'nativeHost.refreshOfflineStorageBackupExclusions()',
+      ].map(appDelegate.indexOf).toList();
+
+      expect(startupSteps, everyElement(greaterThanOrEqualTo(0)));
+      expect(startupSteps, orderedEquals([...startupSteps]..sort()));
       expectContainsAll(audioSession, const [
         'session.setCategory(.playback, mode: .default, options: [])',
-        'handleAudioSessionInterruption',
-        'handleAudioSessionRouteChange',
-        'nowPlayingCoordinator.isPlaying',
-        'sendRemoteCommandToFlutter("pause")',
+        'handleInterruption',
+        'handleRouteChange',
+        'isPlaying()',
+        'sendRemoteCommand(.pause)',
       ]);
       expectContainsAll(channels, const [
         '"phonolite/now_playing"',
         '"phonolite/carplay"',
-        'configurePermissionsChannel()',
-        'localNetworkPermissions.configureChannel(messenger: messenger)',
+        '"phonolite/permissions"',
+        'NowPlayingCodec.decode(arguments)',
       ]);
       expectContainsAll(nowPlaying, const [
-        'nowPlayingCoordinator.update(',
-        'nowPlayingCoordinator.clear(',
-        'nowPlayingCoordinator.refreshForCarPlay(',
-        'MPRemoteCommandCenter.shared()',
-        'sendRemoteCommandToFlutter("toggle")',
-        '"play"',
-        '"pause"',
-        '"next"',
-        '"prev"',
+        'state.apply(update)',
+        'artwork.clear()',
+        'publisher.clear()',
+        'refreshPresentation()',
       ]);
-      expectContainsAll(nowPlayingCoordinator, const [
-        'final class NowPlayingCoordinator',
-        'MPNowPlayingInfoCenter.default().nowPlayingInfo',
-        'currentArtworkKey',
+      expectContainsAll(host, const [
+        'nowPlaying.update(update)',
+        'nowPlaying.clear()',
+        'nowPlaying.refreshPresentation()',
+      ]);
+      expectContainsAll(remoteCommands, const [
+        'MPRemoteCommandCenter.shared()',
+        'register(commandCenter.togglePlayPauseCommand, action: .toggle)',
+        'register(commandCenter.playCommand, action: .play)',
+        'register(commandCenter.pauseCommand, action: .pause)',
+        'register(commandCenter.nextTrackCommand, action: .next)',
+        'register(commandCenter.previousTrackCommand, action: .previous)',
+      ]);
+      expectContainsAll(nativeCommands, const ['case play', 'case pause', 'case next', 'case previous = "prev"']);
+      expectContainsAll(publisher, const ['MPNowPlayingInfoCenter.default().nowPlayingInfo']);
+      expectContainsAll(nowPlayingCodec, const [
         'args["artworkKey"]',
-        'currentArtwork = nil',
-        'fetchArtwork(',
-        'artworkKey: normalizedArtworkKey',
-        'self.currentArtworkKey == artworkKey',
         'args["serverPin"]',
+        'args["artworkPath"]',
+        'FlutterStandardTypedData',
+      ]);
+      expectContainsAll(pinning, const [
         'final class PinnedArtworkSession',
         'tlsMinimumSupportedProtocolVersion = .TLSv13',
         'phonolite_security_spki(',
         'actual == pin',
         'completionHandler(.cancelAuthenticationChallenge, nil)',
-        'completionHandler(nil)',
       ]);
       expectContainsAll(permissions, const [
         '"getLocalNetworkPermission"',
@@ -189,7 +196,7 @@ void main() {
         '"denied"',
       ]);
       expectContainsAll(offlineStorage, const [
-        'OfflineStorageBackupManager',
+        'OfflineBackupExclusions',
         'appendingPathComponent("offline", isDirectory: true)',
         'appendingPathComponent("art", isDirectory: true)',
         'hasPrefix("server_")',
@@ -236,83 +243,100 @@ void main() {
     });
 
     test('carplay scene preserves home library and now playing flows', () {
-      final source = readProjectFile('ios/Runner/CarPlaySceneDelegate.swift');
-      final controller = readProjectFile('lib/entities/app_controller.dart');
+      final source = readProjectFiles(const [
+        'ios/Runner/Bootstrap/NativeHost.swift',
+        'ios/Runner/Pages/CarPlay/CarPlayRootPage.swift',
+        'ios/Runner/Pages/CarPlay/CarPlayNavigationCoordinator.swift',
+        'ios/Runner/UI/Shell/CarPlay/CarPlayShell.swift',
+        'ios/Runner/UI/Structures/CarPlay/CarPlaySourceGrid.swift',
+        'ios/Runner/UI/Structures/CarPlay/CarPlayNowPlayingPresenter.swift',
+        'ios/Runner/UI/Shared/CarPlay/CarPlayIconProvider.swift',
+        'ios/Runner/Infrastructure/Flutter/CarPlayCodec.swift',
+        'ios/Runner/Infrastructure/Artwork/CarPlayArtworkLoader.swift',
+      ]);
+      final page = readProjectModule('ios/Runner/Pages/CarPlay/CarPlayBrowsePage.swift');
+      final frame = readProjectModule('ios/Runner/UI/Structures/CarPlay/CarPlayListFrame.swift');
+      final browse = readProjectModule('ios/Runner/Application/Controllers/CarPlay/CarPlayBrowseController.swift');
+      final controller = readProjectModule('lib/application/app/app_controller.dart');
 
       expectContainsAll(source, const [
         'CPNowPlayingTemplate.shared',
-        'buildLoadingTemplate()',
-        'title: "Server"',
-        'title: "Local"',
+        'makeLoadingTemplate()',
+        '"Local" : "Server"',
         'getCarPlayState',
         'serverAvailable',
-        'showRootForCurrentState()',
-        'scope: "local"',
-        'scope: "server"',
+        'scope: .local',
+        'scope: .server',
         'CPGridTemplate(',
-        'gridButtons: buildSourceButtons(scope: scope)',
+        'gridButtons: makeButtons(scope: scope, contentStyle: contentStyle)',
         'titleVariants: ["Library"]',
         'titleVariants: ["Playlists"]',
         'titleVariants: ["Liked Songs", "Liked"]',
         'titleVariants: ["Shuffle"]',
-        'carPlayIcon(named:',
+        'templateIcon(named:',
         'UIImage(named: imageName)',
         '"LucideHeartFilled"',
         'withRenderingMode(.alwaysTemplate)',
         '"startShuffle"',
         'updateNowPlayingButtons(liked: Bool, available: Bool)',
-        'func updateNowPlayingVisibility(hasTrack _: Bool) {}',
-        'nowPlayingTemplate.setValue(true, forKey: "allowsMiniPlayer")',
+        '#available(iOS 27.0, *)',
+        'template.responds(to: NSSelectorFromString("setAllowsMiniPlayer:"))',
+        'template.setValue(true, forKey: "allowsMiniPlayer")',
         'CPTabBarTemplate(templates: templates)',
         'template.tabTitle = title',
-        'self?.refreshNowPlayingUI(force: true)',
-        'sendRemoteCommandToFlutter("toggleLike")',
+        'self?.refreshNowPlaying()',
+        'sendRemoteCommand(.toggleLike)',
         'PinnedArtworkSession.make(url: url, pin: serverPin)',
         'serverPin: entry.serverPin',
       ]);
+      expectContainsAll(page, const [
+        'let template = frame.makeLoadingTemplate()',
+        'present(template)',
+        'controller.load(request)',
+        'frame.update(template, result: result, onSelect: onSelect)',
+      ]);
+      expectContainsAll(frame, const [
+        'template.updateSections([CPListSection(items: items)])',
+        'item.isEnabled = entry.enabled',
+        'onSelect(entry)',
+        'completion()',
+      ]);
+      expectContainsAll(browse, const ['pendingRequests.removeAll()', 'self.pendingRequests.remove(requestID) != nil']);
       expect(source, isNot(contains('URLSession.shared')));
       expect(source, isNot(contains('title: "Listen"')));
       expect(source, isNot(contains('getListenActions')));
       expect(source, isNot(contains('leadingNavigationBarButtons')));
       expect(source, isNot(contains('trailingNavigationBarButtons')));
       expect(source, isNot(contains('configureNowPlayingShortcut')));
-      expect(
-        source,
-        isNot(contains('setValue(false, forKey: "allowsMiniPlayer")')),
-      );
+      expect(source, isNot(contains('setValue(false, forKey: "allowsMiniPlayer")')));
       expect(source, isNot(contains('hasNowPlayingTrack')));
       expect(source, isNot(contains('trailingNavigationBarButtons = []')));
       expect(source, isNot(contains('title: nil')));
       expect(source, isNot(contains('nowPlayingButtonVisible')));
       expect(source, isNot(contains('setShowsNowPlayingButton')));
-      expect(
-        source,
-        isNot(contains('setValue(visible, forKey: "showsNowPlayingButton")')),
-      );
+      expect(source, isNot(contains('setValue(visible, forKey: "showsNowPlayingButton")')));
 
       expectContainsAll(controller, const [
-        "case 'startShuffle':",
-        "artistId: args['artistId']?.toString()",
-        "albumId: args['albumId']?.toString()",
-        "playlistId: args['playlistId']?.toString()",
-        "if (kind == 'custom')",
+        'VehicleOperation.startShuffle => _carPlayStartShuffle(',
+        'artistId: request.artistId',
+        'albumId: request.albumId',
+        'playlistId: request.playlistId',
+        'if (kind == VehicleShuffleKind.custom)',
         '_customShuffleSettings.localArtistIds.isEmpty',
         '_customShuffleSettings.localGenres.isEmpty',
-        "'artist' => ShuffleMode.artist",
-        "'album' => ShuffleMode.album",
-        "'custom' => ShuffleMode.custom",
-        'await queueLocalShuffle(',
+        'VehicleShuffleKind.artist => ShuffleMode.artist',
+        'VehicleShuffleKind.album => ShuffleMode.album',
+        'VehicleShuffleKind.custom => ShuffleMode.custom',
+        "await _host.queueLocalShuffle(",
       ]);
     });
 
     test('macos preserves app shell and native output device enumeration', () {
-      final appDelegate = readProjectFile('macos/Runner/AppDelegate.swift');
-      final infoPlist = readProjectFile('macos/Runner/Info.plist');
-      final audioHeader = readProjectFile('macos/Runner/phonolite_audio.h');
-      final audioSource = readProjectFile('macos/Runner/phonolite_audio.c');
-      final windowSource = readProjectFile(
-        'macos/Runner/MainFlutterWindow.swift',
-      );
+      final appDelegate = readProjectModule('macos/Runner/AppDelegate.swift');
+      final infoPlist = readProjectModule('macos/Runner/Info.plist');
+      final audioHeader = readProjectModule('macos/Runner/phonolite_audio.h');
+      final audioSource = readProjectModule('macos/Runner/phonolite_audio.c');
+      final windowSource = readProjectModule('macos/Runner/MainFlutterWindow.swift');
 
       expectContainsAll(appDelegate, const [
         'applicationShouldTerminateAfterLastWindowClosed',

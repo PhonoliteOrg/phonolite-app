@@ -5,29 +5,38 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/settings_page.dart';
-import 'package:phonolite_app/pages/stats_page.dart';
-import 'package:phonolite_app/widgets/display/artist_row_tile.dart';
-import 'package:phonolite_app/widgets/display/stats_cards.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/listening_stats/stats_page.dart';
+import 'package:phonolite_app/pages/settings/settings_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
 
 import '../support/auth_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
 
 class _StatsController extends Fake implements AppController {
+  late final CatalogController _catalog = CatalogController(connection);
+  @override
+  CatalogController get catalog => _catalog;
+
   _StatsController() {
     server.setTrust(testServerTrust);
   }
@@ -660,7 +669,9 @@ void main() {
       final tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
       expect(tile.coverUrl, 'C:/test-art/artist.png');
       expect(tile.headers, isEmpty);
-      final cards = tester.widget<StatsCards>(find.byType(StatsCards));
+      final cards = tester.widget<StatsCardsContent>(
+        find.byType(StatsCardsContent),
+      );
       expect(
         cards.artistCoverUrl!(
           StatsItem(id: 'Name Only', name: 'Name Only', minutes: 1),
@@ -736,7 +747,7 @@ void main() {
     expect(find.text('<1s'), findsOneWidget);
     final bars = tester.widgetList<FractionallySizedBox>(
       find.descendant(
-        of: find.byType(StatsCards),
+        of: find.byType(StatsCardsContent),
         matching: find.byType(FractionallySizedBox),
       ),
     );
@@ -887,7 +898,7 @@ void main() {
       expect(find.text('Unclassified'), findsOneWidget);
       final bars = tester.widgetList<FractionallySizedBox>(
         find.descendant(
-          of: find.byType(StatsCards),
+          of: find.byType(StatsCardsContent),
           matching: find.byType(FractionallySizedBox),
         ),
       );
@@ -966,7 +977,7 @@ void main() {
     expect(find.text('1m 0s'), findsNothing);
     final bar = tester.widget<FractionallySizedBox>(
       find.descendant(
-        of: find.byType(StatsCards),
+        of: find.byType(StatsCardsContent),
         matching: find.byType(FractionallySizedBox),
       ),
     );

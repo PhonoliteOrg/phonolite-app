@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:phonolite_app/widgets/navigation/command_link_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/command_link_button.dart';
 
 import '../../integration_test/support/ui_harness.dart';
 

@@ -2,23 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/material.dart' hide RepeatMode;
 
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/playlist_detail_view.dart';
-import 'package:phonolite_app/pages/playlists_page.dart';
-import 'package:phonolite_app/widgets/display/album_art.dart';
-import 'package:phonolite_app/widgets/display/album_card.dart';
-import 'package:phonolite_app/widgets/display/album_hero.dart';
-import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
-import 'package:phonolite_app/widgets/ui/marquee_text.dart';
-import 'package:phonolite_app/widgets/ui/tech_button.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/playlists/playlist_detail_view.dart';
+import 'package:phonolite_app/pages/playlists/playlists_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 
 import '../support/widget_test_helpers.dart';
 

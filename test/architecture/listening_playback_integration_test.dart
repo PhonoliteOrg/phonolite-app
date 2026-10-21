@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/audio_engine.dart';
+import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 
 import '../support/streaming_test_helpers.dart';
 

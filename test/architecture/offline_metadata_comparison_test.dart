@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_metadata_comparison.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/rules/library/offline_metadata_comparison.dart';
 
 void main() {
   test('independently decoded and shared metadata compare equally', () {

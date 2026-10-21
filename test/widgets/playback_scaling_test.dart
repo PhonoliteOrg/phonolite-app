@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
-import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/widgets/display/album_art.dart';
-import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
-import 'package:phonolite_app/widgets/navigation/adaptive_scaffold.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shell/adaptive_scaffold.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -87,37 +87,41 @@ void main() {
     );
   }
 
-  testWidgets('scaled desktop controls retain their rendered hit targets', (
-    tester,
-  ) async {
-    final probe = (await tester.runAsync(() async => _PlayerProbe('server')))!;
-    _configureView(tester);
-    try {
-      await _pumpScaffold(tester, probe, width: 980);
+  testWidgets(
+    'scaled desktop controls retain their rendered hit targets',
+    (tester) async {
+      final probe = (await tester.runAsync(
+        () async => _PlayerProbe('server'),
+      ))!;
+      _configureView(tester);
+      try {
+        await _pumpScaffold(tester, probe, width: 980);
 
-      await tester.tap(find.byIcon(Icons.play_arrow));
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.byIcon(PhonoliteIcons.skipForward));
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.byIcon(PhonoliteIcons.heart));
-      await tester.pump(const Duration(milliseconds: 250));
+        await tester.tap(find.byIcon(Icons.play_arrow));
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.tap(find.byIcon(PhonoliteIcons.skipForward));
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.tap(find.byIcon(PhonoliteIcons.heart));
+        await tester.pump(const Duration(milliseconds: 250));
 
-      expect(probe.playTaps, 1);
-      expect(probe.nextTaps, 1);
-      expect(probe.likeTaps, 1);
+        expect(probe.playTaps, 1);
+        expect(probe.nextTaps, 1);
+        expect(probe.likeTaps, 1);
 
-      final volume = _renderedRect(tester, _volumeSlider());
-      await tester.tapAt(
-        Offset(volume.left + volume.width * 0.8, volume.center.dy),
-      );
-      await tester.pump();
-      expect(probe.lastVolume, isNotNull);
-      expect(probe.lastVolume!, greaterThan(0.5));
-      expect(tester.takeException(), isNull);
-    } finally {
-      await probe.dispose(tester);
-    }
-  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+        final volume = _renderedRect(tester, _volumeSlider());
+        await tester.tapAt(
+          Offset(volume.left + volume.width * 0.8, volume.center.dy),
+        );
+        await tester.pump();
+        expect(probe.lastVolume, isNotNull);
+        expect(probe.lastVolume!, greaterThan(0.5));
+        expect(tester.takeException(), isNull);
+      } finally {
+        await probe.dispose(tester);
+      }
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
 
   for (final layout in [
     (size: const Size(320, 568), textScale: 1.0),

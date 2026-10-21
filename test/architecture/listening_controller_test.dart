@@ -1,22 +1,29 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/audio_engine.dart';
-import 'package:phonolite_app/entities/auth_storage.dart';
-import 'package:phonolite_app/entities/connectivity_signal_source.dart';
-import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
-import 'package:phonolite_app/entities/listening_recorder.dart';
-import 'package:phonolite_app/entities/listening_stats.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/entities/playback_preferences.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/platform/local_network_permission_service.dart';
-import 'package:phonolite_app/platform/now_playing_platform_service.dart';
-import 'package:phonolite_app/platform/vehicle_surface_service.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
+import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_signal_source.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
+import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_storage.dart';
+import 'package:phonolite_app/data/rules/listening_stats/listening_recorder.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
+import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/data/storage/preferences/playback_preferences.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/infrastructure/platform/permissions/local_network_permission_service.dart';
+import 'package:phonolite_app/infrastructure/platform/media/now_playing_platform_service.dart';
+import 'package:phonolite_app/infrastructure/platform/media/vehicle_surface_service.dart';
 
 import '../support/streaming_test_helpers.dart' show waitUntil;
 import '../support/auth_test_helpers.dart';
@@ -764,6 +771,9 @@ class _History extends ListeningStatsService {
 }
 
 class _Audio extends Fake implements AudioEngine {
+  @override
+  Future<void> initialize() async {}
+
   @override
   bool get hasActivePlayer => false;
   @override

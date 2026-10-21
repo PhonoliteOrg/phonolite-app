@@ -1,25 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_library_views.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/album_detail_screen.dart';
-import 'package:phonolite_app/pages/local_album_detail_screen.dart';
-import 'package:phonolite_app/widgets/display/album_hero.dart';
-import 'package:phonolite_app/widgets/display/track_row_tile.dart';
-import 'package:phonolite_app/widgets/display/track_sliver_list.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/modals/add_to_playlist_modal.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
-import 'package:phonolite_app/widgets/ui/like_icon_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
-import 'package:phonolite_app/widgets/ui/playlist_add_icon.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
-import 'package:phonolite_app/widgets/ui/svg_asset_icon.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/library/album_detail_screen.dart';
+import 'package:phonolite_app/pages/library/local_album_detail_screen.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/svg_asset_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
+import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_sliver_list.dart';
 
 import '../support/widget_test_helpers.dart';
 

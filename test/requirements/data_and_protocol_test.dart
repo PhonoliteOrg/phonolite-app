@@ -1,10 +1,16 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
-import 'package:phonolite_app/entities/models.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 
 void main() {

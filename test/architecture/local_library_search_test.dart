@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/local_library_search.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_library_views.dart';
+import 'package:phonolite_app/data/queries/library/local_library_search.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/library/search_result.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 
 void main() {
   test(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/inputs/obsidian_text_field.dart';
-import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
 
 import '../support/widget_test_helpers.dart';
 

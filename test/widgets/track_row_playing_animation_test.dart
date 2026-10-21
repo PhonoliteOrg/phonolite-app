@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/widgets/display/track_row_tile.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 
 import '../support/widget_test_helpers.dart';
 

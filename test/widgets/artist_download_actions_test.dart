@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/artist_detail_screen.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/ui/tech_button.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/library/artist_detail_screen.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 
 import '../support/offline_library_test_helpers.dart';
 import '../support/widget_test_helpers.dart';

@@ -2,16 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/settings_page.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
-import 'package:phonolite_app/widgets/ui/tech_button.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/settings/settings_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -174,6 +176,10 @@ Future<void> _pump(
 }
 
 class _Controller extends Fake implements AppController {
+  late final CatalogController _catalog = CatalogController(connection);
+  @override
+  CatalogController get catalog => _catalog;
+
   _Controller(this.status);
   SessionStatus status;
   bool reconnecting = false;

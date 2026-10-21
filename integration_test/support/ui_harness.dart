@@ -3,13 +3,14 @@ import 'dart:ui' show FramePhase, FrameTiming;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/pages/home_page.dart';
-import 'package:phonolite_app/widgets/display/download_selection_toolbar.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/navigation/command_link_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/pages/home/home_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/command_link_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 
 import 'frame_metrics.dart';
 import 'journey.dart';

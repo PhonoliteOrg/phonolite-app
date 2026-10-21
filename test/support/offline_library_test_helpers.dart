@@ -2,11 +2,17 @@ import 'dart:async';
 import 'dart:io';
 import 'package:http/testing.dart';
 
-import 'package:phonolite_app/persistence/settings_files.dart';
+import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
+import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
+import 'package:phonolite_app/data/models/server/server_capabilities.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 Track offlineTestTrack({
   required String id,

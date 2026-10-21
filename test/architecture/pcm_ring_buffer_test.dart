@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/pcm_ring_buffer.dart';
+import 'package:phonolite_app/data/structures/audio/pcm_ring_buffer.dart';
 
 void main() {
   test('growth preserves wrapped samples and pending producer reference', () {

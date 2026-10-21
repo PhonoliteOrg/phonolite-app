@@ -2,6 +2,19 @@
 
 Phonolite Flutter client.
 
+## Source organization
+
+The [expected architecture](docs/expected-architecture.md) defines source ownership,
+shared extension contracts, dependency rules, and when to introduce an abstraction.
+It includes the rationale from Katiby and the changes made in Phonolite.
+The [coding standards](docs/coding-standards.md) specify member ordering,
+formatting, naming, encapsulation, readable assembly, and lifecycle expectations.
+The [iOS and Swift specification](docs/ios-swift-specification.md),
+[Windows native C++ specification](docs/windows-native-specification.md),
+[macOS native specification](docs/macos-native-specification.md) and
+[Android native specification](docs/android-native-specification.md) extend these
+rules to each native Flutter host.
+
 ## UI interaction inventory and device profiling
 
 See the [interaction inventory](integration_test/catalog/INTERACTIONS.md) for

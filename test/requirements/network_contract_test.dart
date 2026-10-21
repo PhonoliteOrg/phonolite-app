@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
+import 'package:phonolite_app/data/models/library/track_match.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 import '../support/source_test_helpers.dart';
 
@@ -19,24 +19,27 @@ void main() {
       expect(connection.baseUrl, 'http://example.test/api/v1');
     });
 
-    test('resolveBaseUrl uses HTTPS and waits for OPAQUE to authenticate', () async {
-      final requested = <String>[];
-      final connection = ServerConnection(
-        baseUrl: 'http://placeholder.test/api/v1',
-        client: MockClient((request) async {
-          requested.add(request.url.toString());
-          if (request.url.toString().contains('/api/v1/health')) {
-            return http.Response('ok', 200);
-          }
-          return http.Response('missing', 404);
-        }),
-      );
+    test(
+      'resolveBaseUrl uses HTTPS and waits for OPAQUE to authenticate',
+      () async {
+        final requested = <String>[];
+        final connection = ServerConnection(
+          baseUrl: 'http://placeholder.test/api/v1',
+          client: MockClient((request) async {
+            requested.add(request.url.toString());
+            if (request.url.toString().contains('/api/v1/health')) {
+              return http.Response('ok', 200);
+            }
+            return http.Response('missing', 404);
+          }),
+        );
 
-      final resolved = await connection.resolveBaseUrl('example.test');
+        final resolved = await connection.resolveBaseUrl('example.test');
 
-      expect(resolved, 'https://example.test/api/v1');
-      expect(requested, isEmpty);
-    });
+        expect(resolved, 'https://example.test/api/v1');
+        expect(requested, isEmpty);
+      },
+    );
 
     test('pingHealthMs accepts api health when root health fails', () async {
       final requested = <String>[];
@@ -712,19 +715,21 @@ void main() {
   });
 
   group('server connection source contracts', () {
-    final source = readProjectFile('lib/entities/server_connection.dart');
+    final source = readProjectModule(
+      'lib/infrastructure/server/server_connection.dart',
+    );
 
     test('defines expected endpoints, timeouts, and retry behavior', () {
       expectContainsAll(source, const [
-        'static const Duration _defaultRequestTimeout = Duration(seconds: 8);',
-        'static const Duration _healthRequestTimeout = Duration(seconds: 2);',
-        'static const int _maxGetAttempts = 3;',
+        "static const Duration defaultRequestTimeout = Duration(seconds: 8);",
+        "static const Duration healthRequestTimeout = Duration(seconds: 2);",
+        "static const int maxGetAttempts = 3;",
         "authenticateServer(",
         "'/auth/logout'",
         'Future<void> logout({',
-        'Duration timeout = _defaultRequestTimeout,',
-        "await _postVoid('/auth/logout', {}, timeout: timeout);",
-        'Duration timeout = _defaultRequestTimeout,',
+        "Duration timeout = defaultRequestTimeout,",
+        "await _transport.postVoid('/auth/logout', {}, timeout: timeout);",
+        "Duration timeout = defaultRequestTimeout,",
         'timeout: timeout,',
         "'/browse/artists?limit=\$limit&offset=\$offset&include_contributors=\$includeContributors'",
         "'/library/playlists'",
@@ -733,16 +738,16 @@ void main() {
         "'/library/search?query=\$encoded&limit=50'",
         "'/library/tracks/\$encoded/offline-metadata'",
         "'/download/batches'",
-        "return '\$_baseUrl/download/tracks/\$encoded';",
+        "return '\${transport.baseUrl}/download/tracks/\$encoded';",
         'Future<ServerArtwork?> fetchAlbumCoverBytes',
         'Future<ServerArtwork?> fetchArtistCoverBytes',
-        'Future<ServerArtwork?> _fetchArtworkUrl',
+        "Future<ServerArtwork?> fetchArtworkUrl",
         "'/player/settings'",
         "'/server/ports'",
         "'Authorization': 'Bearer \$_token'",
         "request.headers[HttpHeaders.rangeHeader] = 'bytes=\$startByte-';",
         "request.headers[HttpHeaders.ifRangeHeader] = ifRange.trim();",
-        'final maxAttempts = retryable ? _maxGetAttempts : 1;',
+        'final maxAttempts = retryable ? ApiTransport.maxGetAttempts : 1;',
       ]);
     });
   });

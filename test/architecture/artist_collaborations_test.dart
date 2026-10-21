@@ -5,12 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/local_library_selection.dart';
-import 'package:phonolite_app/entities/offline_library_views.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/widgets/display/artist_release_sections.dart';
+import 'package:phonolite_app/data/models/library/artist_credit.dart';
+import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
+import 'package:phonolite_app/data/models/library/local_library_selection.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/ui/features/library/widgets/artist_release_sections.dart';
 
 import '../support/offline_library_test_helpers.dart';
 

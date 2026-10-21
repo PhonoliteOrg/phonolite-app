@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/modals/playlist_editor_modal.dart';
-import 'package:phonolite_app/widgets/display/album_card.dart';
-import 'package:phonolite_app/widgets/display/album_row_tile.dart';
-import 'package:phonolite_app/pages/playlist_detail_view.dart';
+
+import 'package:phonolite_app/pages/playlists/playlist_detail_view.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 
 import '../../support/journey.dart';
 import '../../support/ui_harness.dart';

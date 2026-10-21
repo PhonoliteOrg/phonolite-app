@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/platform/desktop_directory_service.dart';
+import 'package:phonolite_app/infrastructure/platform/files/desktop_directory_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

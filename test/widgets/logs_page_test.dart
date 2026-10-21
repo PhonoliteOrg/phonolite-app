@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/pages/logs_page.dart';
-import 'package:phonolite_app/widgets/display/message_log.dart';
-import 'package:phonolite_app/widgets/inputs/obsidian_toggle_option.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/pages/logs/logs_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/logs/widgets/message_log.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_option.dart';
 
 import '../support/widget_test_helpers.dart';
 

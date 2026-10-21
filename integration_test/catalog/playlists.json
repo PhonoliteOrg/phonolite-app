@@ -1,10 +1,16 @@
 {
   "feature": "playlists",
   "sources": [
-    "lib/pages/playlists_page.dart",
-    "lib/pages/playlist_detail_view.dart",
-    "lib/widgets/modals/playlist_editor_modal.dart",
-    "lib/widgets/display/playlist_module_card.dart"
+    "lib/pages/playlists/playlists_page.dart",
+    "lib/pages/playlists/playlist_detail_view.dart",
+    "lib/ui/features/playlists/widgets/playlist_editor_modal.dart",
+    "lib/ui/features/playlists/widgets/playlist_section.dart",
+    "lib/ui/features/playlists/widgets/empty_playlist_text.dart",
+    "lib/ui/structures/sections/base_sliver_section.dart",
+    "lib/ui/structures/modals/base_alert_modal.dart",
+    "lib/ui/shell/toolbars/base_page_toolbar.dart",
+    "lib/ui/shell/toolbars/library_header.dart",
+    "lib/ui/shell/toolbars/detail_action_header.dart"
   ],
   "interactions": [
     {

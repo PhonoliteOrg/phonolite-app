@@ -2,22 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/auth_storage.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/pages/login_page.dart';
-import 'package:phonolite_app/pages/reset_user_password_page.dart';
-import 'package:phonolite_app/pages/settings_page.dart';
-import 'package:phonolite_app/widgets/inputs/obsidian_text_field.dart';
-import 'package:phonolite_app/widgets/layout/library_header.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
-import 'package:phonolite_app/widgets/navigation/command_link_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
+import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/auth/login_page.dart';
+import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
+import 'package:phonolite_app/pages/settings/settings_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/command_link_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 
 import '../support/auth_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
@@ -372,6 +374,10 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
 }
 
 class _Controller extends Fake implements AppController {
+  late final CatalogController _catalog = CatalogController(connection);
+  @override
+  CatalogController get catalog => _catalog;
+
   _Controller(this.status) {
     connection.setTrust(testServerTrust);
     if (status == SessionStatus.authenticated) connection.setToken('session');

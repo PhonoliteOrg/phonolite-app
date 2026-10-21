@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/local_library_selection.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_library_views.dart';
+import 'package:phonolite_app/data/models/library/local_library_selection.dart';
+import 'package:phonolite_app/data/models/library/artist_credit.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 
 void main() {
   final local =

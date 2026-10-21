@@ -4,10 +4,15 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
+import 'package:phonolite_app/data/models/server/server_capabilities.dart';
+import 'package:phonolite_app/data/models/server/download_job_v2.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 import '../support/offline_library_test_helpers.dart';
 

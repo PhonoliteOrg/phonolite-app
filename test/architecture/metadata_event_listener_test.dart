@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/metadata_event_listener.dart';
-import 'package:phonolite_app/entities/models.dart';
+import 'package:phonolite_app/application/library/metadata_event_listener.dart';
+import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 
 MetadataUpdateEvent event(String id, int revision, {String kind = 'album'}) =>
     MetadataUpdateEvent(revision: revision, kind: kind, id: id, updatedAt: 0);

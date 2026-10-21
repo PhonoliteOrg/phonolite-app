@@ -4,7 +4,7 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('requirements document', () {
-    final requirements = readProjectFile('REQUIREMENTS.md');
+    final requirements = readProjectModule('REQUIREMENTS.md');
 
     test('exists with the expected top-level sections', () {
       expectContainsAll(requirements, const [

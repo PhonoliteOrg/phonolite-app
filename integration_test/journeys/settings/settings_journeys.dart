@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/pages/custom_shuffle_settings_page.dart';
-import 'package:phonolite_app/pages/logs_page.dart';
-import 'package:phonolite_app/pages/login_page.dart';
-import 'package:phonolite_app/pages/reset_user_password_page.dart';
-import 'package:phonolite_app/widgets/modals/confirmation_modal.dart';
-import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
-import 'package:phonolite_app/widgets/inputs/obsidian_toggle_option.dart';
+
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/pages/auth/login_page.dart';
+import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
+import 'package:phonolite_app/pages/logs/logs_page.dart';
+import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_option.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 
 import '../../support/journey.dart';
 import '../../support/ui_harness.dart';

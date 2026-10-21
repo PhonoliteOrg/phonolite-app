@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/raw_opus_stream.dart';
+import 'package:phonolite_app/infrastructure/audio/protocol/raw_opus_stream_reader.dart';
 
 import '../support/streaming_test_helpers.dart';
 

@@ -5,9 +5,9 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:phonolite_app/platform/now_playing_artwork_loader.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/entities/server_trust.dart';
+import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/data/models/auth/server_trust.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

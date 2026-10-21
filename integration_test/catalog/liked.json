@@ -1,8 +1,12 @@
 {
   "feature": "liked",
   "sources": [
-    "lib/pages/liked_page.dart",
-    "lib/widgets/display/track_row_tile.dart"
+    "lib/pages/favorites/liked_page.dart",
+    "lib/ui/shared/music/tracks/track_row_tile.dart",
+    "lib/ui/features/favorites/widgets/liked_section.dart",
+    "lib/ui/structures/sections/base_sliver_section.dart",
+    "lib/ui/shell/toolbars/base_page_toolbar.dart",
+    "lib/ui/shell/toolbars/library_header.dart"
   ],
   "interactions": [
     {

@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/layouts/obsidian_scale.dart';
-import 'package:phonolite_app/widgets/layouts/playback_content_inset.dart';
-import 'package:phonolite_app/widgets/layouts/retained_tab_view.dart';
-import 'package:phonolite_app/widgets/navigation/adaptive_scaffold.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_glass_surface.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
+import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
+import 'package:phonolite_app/ui/shell/adaptive_scaffold.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -153,40 +153,42 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.windows),
     );
 
-    testWidgets('${layout.name} hidden player leaves no playback clearance', (
-      tester,
-    ) async {
-      final probe = (await tester.runAsync(() async => _LayoutProbe()))!;
-      try {
-        await _pumpLayout(
-          tester,
-          probe: probe,
-          size: layout.size,
-          hidePlaybackChrome: true,
-        );
-        final viewportRect = tester.getRect(find.byKey(_viewportKey));
-        final expectedBottom =
-            layout.size.height -
-            (layout.compact ? _navigationHeight + _safeAreaBottom : 0);
+    testWidgets(
+      '${layout.name} hidden player leaves no playback clearance',
+      (tester) async {
+        final probe = (await tester.runAsync(() async => _LayoutProbe()))!;
+        try {
+          await _pumpLayout(
+            tester,
+            probe: probe,
+            size: layout.size,
+            hidePlaybackChrome: true,
+          );
+          final viewportRect = tester.getRect(find.byKey(_viewportKey));
+          final expectedBottom =
+              layout.size.height -
+              (layout.compact ? _navigationHeight + _safeAreaBottom : 0);
 
-        expect(find.byType(NowPlayingBar), findsNothing);
-        expect(find.byType(NowPlayingMiniBar), findsNothing);
-        expect(probe.playbackInset, 0);
-        expect(probe.pagePadding.bottom, 0);
-        expect(viewportRect.bottom, closeTo(expectedBottom, 0.01));
+          expect(find.byType(NowPlayingBar), findsNothing);
+          expect(find.byType(NowPlayingMiniBar), findsNothing);
+          expect(probe.playbackInset, 0);
+          expect(probe.pagePadding.bottom, 0);
+          expect(viewportRect.bottom, closeTo(expectedBottom, 0.01));
 
-        probe.scroll.jumpTo(probe.scroll.position.maxScrollExtent);
-        await tester.pump();
+          probe.scroll.jumpTo(probe.scroll.position.maxScrollExtent);
+          await tester.pump();
 
-        expect(
-          tester.getRect(find.byKey(_finalRowKey)).bottom,
-          closeTo(viewportRect.bottom, 0.01),
-        );
-        expect(tester.takeException(), isNull);
-      } finally {
-        await probe.dispose(tester);
-      }
-    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+          expect(
+            tester.getRect(find.byKey(_finalRowKey)).bottom,
+            closeTo(viewportRect.bottom, 0.01),
+          );
+          expect(tester.takeException(), isNull);
+        } finally {
+          await probe.dispose(tester);
+        }
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
   }
 }
 

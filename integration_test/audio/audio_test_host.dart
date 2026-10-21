@@ -2,16 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phonolite_app/core/artwork_errors.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/entities/server_trust.dart';
-import 'package:phonolite_app/pages/home_page.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/layouts/obsidian_viewport.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_theme.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/infrastructure/security/server_trust.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/pages/home/home_page.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
 
 import 'audio_probe.dart';
 

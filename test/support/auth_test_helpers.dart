@@ -1,4 +1,4 @@
-import 'package:phonolite_app/entities/server_trust.dart';
+import 'package:phonolite_app/data/models/auth/server_trust.dart';
 
 const testServerTrust = ServerTrust(
   spki: 'abababababababababababababababababababababababababababababababab',

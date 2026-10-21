@@ -53,13 +53,13 @@ def main():
              'Candidate callback bindings in pages and widgets, including reusable wrappers. '
              'Use this to audit inventory gaps after UI changes. Entries are not test coverage.', '']
     total = 0
-    for directory in ['lib/pages', 'lib/widgets']:
+    for directory in ['lib/pages', 'lib/ui']:
         for path in sorted((ROOT / directory).rglob('*.dart')):
             matches = [(line, m.group(1)) for line, text in enumerate(path.read_text().splitlines(), 1)
                        for m in pattern.finditer(text) if not text.lstrip().startswith('//')]
             if not matches:
                 continue
-            relative = path.relative_to(ROOT)
+            relative = path.relative_to(ROOT).as_posix()
             index += [f'## {relative}', '']
             index += [f'- [{callback}, line {line}](../../{relative}#L{line})' for line, callback in matches]
             index.append('')

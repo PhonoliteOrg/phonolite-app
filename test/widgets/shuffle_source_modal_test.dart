@@ -2,16 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/widgets/display/now_playing_bar.dart';
-import 'package:phonolite_app/widgets/inputs/local_server_toggle.dart';
-import 'package:phonolite_app/widgets/layouts/app_scope.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_dialog.dart';
-import 'package:phonolite_app/widgets/ui/hover_row.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
+
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/music/local_server_toggle.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -230,10 +231,7 @@ Future<void> _switchTo(WidgetTester tester, ActionScope scope) async {
   await tester.tap(
     find.descendant(
       of: find.byType(LocalServerToggle),
-      matching: find.widgetWithText(
-        TextButton,
-        scope == ActionScope.local ? 'LOCAL' : 'SERVER',
-      ),
+      matching: find.text(scope == ActionScope.local ? 'LOCAL' : 'SERVER'),
     ),
   );
   await tester.pumpAndSettle();

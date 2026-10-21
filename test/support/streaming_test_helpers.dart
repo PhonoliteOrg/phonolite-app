@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:typed_data';
 
-import 'package:phonolite_app/entities/audio_engine.dart';
+import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
 
@@ -53,11 +53,7 @@ class MemoryQuic implements QuicClient {
   }
 
   @override
-  int seek({
-    required String trackId,
-    required int positionMs,
-    required int seekId,
-  }) {
+  int seek({required String trackId, required int positionMs, required int seekId}) {
     _generation++;
     chunks.clear();
     events.clear();
@@ -95,8 +91,7 @@ class MemoryQuic implements QuicClient {
     }
     first.add(rawHeader(durationMs: durationMs, preSkip: preSkip));
     chunks.add(first.takeBytes());
-    final frames =
-        packetCount ?? (((endMs - startMs) * 48 + preSkip) / 960).ceil();
+    final frames = packetCount ?? (((endMs - startMs) * 48 + preSkip) / 960).ceil();
     for (var i = 0; i < frames; i += 10) {
       final frameBytes = BytesBuilder();
       for (var j = i; j < frames && j < i + 10; j++) {
@@ -120,8 +115,7 @@ class MemoryQuic implements QuicClient {
   }
 
   @override
-  Map<String, Object?>? pollEvent() =>
-      events.isEmpty ? null : events.removeFirst();
+  Map<String, Object?>? pollEvent() => events.isEmpty ? null : events.removeFirst();
   @override
   void suspendAudio() {
     suspensions++;
@@ -130,20 +124,12 @@ class MemoryQuic implements QuicClient {
   }
 
   @override
-  void sendBufferStats({
-    required int bufferMs,
-    int? targetMs,
-    bool force = false,
-  }) {
+  void sendBufferStats({required int bufferMs, int? targetMs, bool force = false}) {
     bufferReports.add((bufferMs, targetMs));
   }
 
   @override
-  void sendPlayback({
-    required String trackId,
-    required int positionMs,
-    required bool playing,
-  }) {}
+  void sendPlayback({required String trackId, required int positionMs, required bool playing}) {}
   @override
   String? pollStats() => null;
   @override
@@ -173,8 +159,7 @@ class MemoryOpusDecoder implements OpusDecoder {
   @override
   Int16List decode(Uint8List packet, {int? frameSize}) {
     if (disposed) throw StateError('Disposed decoder used');
-    return Int16List((frameSize ?? 960) * channels)
-      ..fillRange(0, (frameSize ?? 960) * channels, packet.first);
+    return Int16List((frameSize ?? 960) * channels)..fillRange(0, (frameSize ?? 960) * channels, packet.first);
   }
 
   @override
@@ -195,6 +180,9 @@ class MemoryPcmOutput implements AudioPcmOutput {
   int samplesWritten = 0;
   int _done = 0;
   final values = <int>[];
+
+  @override
+  Future<void> initialize() async {}
 
   @override
   Future<void> write(Int16List samples) async {
@@ -218,7 +206,7 @@ class MemoryPcmOutput implements AudioPcmOutput {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     epoch++;
     disposed = true;
   }

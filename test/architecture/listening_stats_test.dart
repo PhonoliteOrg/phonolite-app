@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/listening_stats.dart';
-import 'package:phonolite_app/entities/models.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_stats_snapshot.dart';
+import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'listening_counter_fixtures.dart';
 
@@ -70,6 +72,53 @@ void main() {
     services.clear();
     await temporary.delete(recursive: true);
   });
+
+  test(
+    'current state and broadcast changes expose stable typed snapshots',
+    () async {
+      final service = await open(memory: true);
+      final initial = service.current;
+      final first = <ListeningStatsSnapshot>[];
+      final second = <ListeningStatsSnapshot>[];
+      final firstSubscription = service.changes.listen(first.add);
+      final secondSubscription = service.changes.listen(second.add);
+
+      await Future<void>.delayed(Duration.zero);
+      expect(first, isEmpty);
+      expect(second, isEmpty);
+
+      final disabling = service.setEnabled(false);
+      expect(service.current.enabled, isFalse);
+      expect(initial.enabled, isTrue);
+      await disabling;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(first, isNotEmpty);
+      expect(first.map((snapshot) => snapshot.enabled), everyElement(isFalse));
+      expect(first.last, service.current);
+      expect(second, first);
+      expect(initial.enabled, isTrue);
+
+      final previousEvents = first.length;
+      final enabling = service.setEnabled(true);
+      final disablingAgain = service.setEnabled(false);
+      expect(service.current.enabled, isFalse);
+      await enabling;
+      await disablingAgain;
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        first.skip(previousEvents).take(2).map((snapshot) => snapshot.enabled),
+        [true, false],
+      );
+      expect(second, first);
+
+      await firstSubscription.cancel();
+      await secondSubscription.cancel();
+      final closed = service.changes.drain<void>();
+      await service.close();
+      await closed;
+    },
+  );
 
   test(
     'cold opt-out stays disabled during initialization and after reopen',

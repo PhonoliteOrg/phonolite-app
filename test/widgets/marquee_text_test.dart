@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/ui/marquee_text.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 
 void main() {
   testWidgets('unchanged parent rebuilds reuse text measurement', (

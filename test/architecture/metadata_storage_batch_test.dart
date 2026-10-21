@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../support/auth_test_helpers.dart';

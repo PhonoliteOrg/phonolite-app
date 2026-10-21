@@ -2,19 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/widgets/inputs/lucide_checkbox.dart';
-import 'package:phonolite_app/widgets/inputs/obsidian_toggle_option.dart';
-import 'package:phonolite_app/widgets/modals/modal_action_button.dart';
-import 'package:phonolite_app/widgets/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/widgets/navigation/command_link_button.dart';
-import 'package:phonolite_app/widgets/ui/button_haptics.dart';
-import 'package:phonolite_app/widgets/ui/hover_row.dart';
-import 'package:phonolite_app/widgets/ui/like_icon_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_hover_card.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_overflow_action_button.dart';
-import 'package:phonolite_app/widgets/ui/obsidian_widgets.dart';
-import 'package:phonolite_app/widgets/ui/phonolite_icons.dart';
-import 'package:phonolite_app/widgets/ui/tech_button.dart';
+
+import 'package:phonolite_app/ui/shared/design_system/controls/command_link_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hover_card.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_option.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -70,7 +71,7 @@ void main() {
             (
               build: (action) =>
                   ModalActionButton(label: 'Action', onPressed: action),
-              target: () => find.byType(TextButton),
+              target: () => find.text('ACTION'),
             ),
             (
               build: (action) => CommandLinkButton(
@@ -78,7 +79,7 @@ void main() {
                 onTap: action ?? () {},
                 enabled: action != null,
               ),
-              target: () => find.byType(TextButton),
+              target: () => find.text('ACTION'),
             ),
             (
               build: (action) => ObsidianToggleOption(
@@ -86,7 +87,7 @@ void main() {
                 isActive: false,
                 onPressed: action,
               ),
-              target: () => find.byType(TextButton),
+              target: () => find.text('ACTION'),
             ),
             (
               build: (action) =>
@@ -115,7 +116,11 @@ void main() {
           await _pump(tester, entry.build(enabled ? () => actions++ : null));
           await tester.tap(entry.target(), warnIfMissed: false);
           await tester.pump();
-          expect(actions, enabled ? 1 : 0);
+          expect(
+            actions,
+            enabled ? 1 : 0,
+            reason: '${entry.build(null).runtimeType}, enabled: $enabled',
+          );
           expect(
             pulses,
             enabled && defaultTargetPlatform == TargetPlatform.iOS
@@ -137,38 +142,40 @@ void main() {
     }),
   );
 
-  testWidgets('nested buttons pulse once and dragging a row does not pulse', (
-    tester,
-  ) async {
-    final pulses = _capture(tester);
-    var rowActions = 0;
-    var likes = 0;
-    await _pump(
-      tester,
-      ObsidianHoverRow(
-        onTap: () => rowActions++,
-        child: Row(
-          children: [
-            const Expanded(child: Text('Open item')),
-            LikeIconButton(isLiked: false, onPressed: () => likes++),
-          ],
+  testWidgets(
+    'nested buttons pulse once and dragging a row does not pulse',
+    (tester) async {
+      final pulses = _capture(tester);
+      var rowActions = 0;
+      var likes = 0;
+      await _pump(
+        tester,
+        ObsidianHoverRow(
+          onTap: () => rowActions++,
+          child: Row(
+            children: [
+              const Expanded(child: Text('Open item')),
+              LikeIconButton(isLiked: false, onPressed: () => likes++),
+            ],
+          ),
         ),
-      ),
-    );
-    await tester.tap(find.byType(LikeIconButton));
-    await tester.pump();
-    expect(likes, 1);
-    expect(rowActions, 0);
-    expect(pulses, [_lightImpact]);
-    await tester.tap(find.text('Open item'));
-    await tester.pump();
-    expect(rowActions, 1);
-    expect(pulses, [_lightImpact, _lightImpact]);
-    await tester.drag(find.text('Open item'), const Offset(0, -80));
-    await tester.pumpAndSettle();
-    expect(rowActions, 1);
-    expect(pulses, [_lightImpact, _lightImpact]);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+      );
+      await tester.tap(find.byType(LikeIconButton));
+      await tester.pump();
+      expect(likes, 1);
+      expect(rowActions, 0);
+      expect(pulses, [_lightImpact]);
+      await tester.tap(find.text('Open item'));
+      await tester.pump();
+      expect(rowActions, 1);
+      expect(pulses, [_lightImpact, _lightImpact]);
+      await tester.drag(find.text('Open item'), const Offset(0, -80));
+      await tester.pumpAndSettle();
+      expect(rowActions, 1);
+      expect(pulses, [_lightImpact, _lightImpact]);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 
   for (final useModal in [false, true]) {
     testWidgets(
@@ -211,19 +218,21 @@ void main() {
     );
   }
 
-  testWidgets('unavailable haptics never prevent an enabled action', (
-    tester,
-  ) async {
-    _capture(tester, fail: true);
-    var actions = 0;
-    await _pump(tester, TechButton(label: 'Action', onTap: () => actions++));
-    await tester.tap(find.byType(TechButton));
-    await tester.pump();
-    expect(actions, 1);
-    expect(tester.takeException(), isNull);
-    expect(withButtonHaptic(null), isNull);
-    expect(withSelectionHaptic<bool>(null), isNull);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+  testWidgets(
+    'unavailable haptics never prevent an enabled action',
+    (tester) async {
+      _capture(tester, fail: true);
+      var actions = 0;
+      await _pump(tester, TechButton(label: 'Action', onTap: () => actions++));
+      await tester.tap(find.byType(TechButton));
+      await tester.pump();
+      expect(actions, 1);
+      expect(tester.takeException(), isNull);
+      expect(withButtonHaptic(null), isNull);
+      expect(withSelectionHaptic<bool>(null), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 }
 
 List<String> _capture(WidgetTester tester, {bool fail = false}) {

@@ -1,12 +1,14 @@
 {
   "feature": "artist_album",
   "sources": [
-    "lib/pages/artist_detail_screen.dart",
-    "lib/pages/local_artist_detail_screen.dart",
-    "lib/pages/album_detail_screen.dart",
-    "lib/pages/local_album_detail_screen.dart",
-    "lib/widgets/display/artist_hero.dart",
-    "lib/widgets/display/album_hero.dart"
+    "lib/pages/library/artist_detail_screen.dart",
+    "lib/pages/library/local_artist_detail_screen.dart",
+    "lib/pages/library/album_detail_screen.dart",
+    "lib/pages/library/local_album_detail_screen.dart",
+    "lib/ui/shared/music/artists/artist_hero.dart",
+    "lib/ui/shared/music/albums/album_hero.dart",
+    "lib/ui/shell/toolbars/base_page_toolbar.dart",
+    "lib/ui/shell/toolbars/detail_action_header.dart"
   ],
   "interactions": [
     {

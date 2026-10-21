@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/widgets/display/album_card.dart';
-import 'package:phonolite_app/widgets/display/album_labels.dart';
-import 'package:phonolite_app/widgets/display/album_row_tile.dart';
-import 'package:phonolite_app/widgets/display/artist_release_sections.dart';
+import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
+import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
+import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
+import 'package:phonolite_app/ui/features/library/widgets/artist_release_sections.dart';
 
 void main() {
   GoogleFonts.config.allowRuntimeFetching = false;

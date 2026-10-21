@@ -3,23 +3,39 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/entities/app_controller.dart';
-import 'package:phonolite_app/entities/app_log.dart';
-import 'package:phonolite_app/entities/audio_engine.dart';
-import 'package:phonolite_app/entities/auth_storage.dart';
-import 'package:phonolite_app/entities/auth_state.dart';
-import 'package:phonolite_app/entities/connectivity_signal_source.dart';
-import 'package:phonolite_app/entities/custom_shuffle_settings.dart';
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_download_manager.dart';
-import 'package:phonolite_app/entities/offline_library.dart';
-import 'package:phonolite_app/entities/offline_storage_settings.dart';
-import 'package:phonolite_app/entities/playback_preferences.dart';
-import 'package:phonolite_app/entities/server_connection.dart';
-import 'package:phonolite_app/platform/local_network_permission_service.dart';
-import 'package:phonolite_app/platform/now_playing_artwork_loader.dart';
-import 'package:phonolite_app/platform/now_playing_platform_service.dart';
-import 'package:phonolite_app/platform/vehicle_surface_service.dart';
+import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_signal_source.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
+import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_storage.dart';
+import 'package:phonolite_app/data/models/library/artist_credit.dart';
+import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
+import 'package:phonolite_app/data/models/library/search_result.dart';
+import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
+import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
+import 'package:phonolite_app/data/models/server/server_capabilities.dart';
+import 'package:phonolite_app/data/models/library/track_match.dart';
+import 'package:phonolite_app/data/models/collections/like_state.dart';
+import 'package:phonolite_app/data/models/playback/output_device.dart';
+import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/data/storage/preferences/playback_preferences.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/infrastructure/platform/permissions/local_network_permission_service.dart';
+import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
+import 'package:phonolite_app/infrastructure/platform/media/now_playing_platform_service.dart';
+import 'package:phonolite_app/infrastructure/platform/media/vehicle_surface_service.dart';
 import '../support/auth_test_helpers.dart';
 import '../support/offline_library_test_helpers.dart';
 
@@ -1983,6 +1999,9 @@ class _Harness {
 }
 
 class _Audio implements AudioEngine {
+  @override
+  Future<void> initialize() async {}
+
   @override
   void Function(Map<String, dynamic>)? onListeningSegment;
   Map<String, dynamic>? listeningContext;

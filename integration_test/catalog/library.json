@@ -1,9 +1,11 @@
 {
   "feature": "library",
   "sources": [
-    "lib/pages/library_page.dart",
-    "lib/widgets/inputs/search_hud.dart",
-    "lib/widgets/layout/search_results_sliver.dart"
+    "lib/pages/library/library_page.dart",
+    "lib/ui/shared/design_system/controls/search_hud.dart",
+    "lib/ui/features/search/widgets/search_results_sliver.dart",
+    "lib/ui/shell/toolbars/base_page_toolbar.dart",
+    "lib/ui/shell/toolbars/library_header.dart"
   ],
   "interactions": [
     {

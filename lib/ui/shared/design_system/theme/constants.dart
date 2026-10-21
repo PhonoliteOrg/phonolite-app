@@ -1,0 +1,21 @@
+import 'package:flutter/material.dart';
+
+const Color accentGold = Color(0xFFFFD700);
+const Color bgDark = Color(0xFF050505);
+const double cardTopOpacity = 0.05;
+const double cardBottomOpacity = 0.01;
+const double cardHoverOverlayTopOpacity = 0.04;
+const double cardHoverOverlayBottomOpacity = 0.02;
+const int cardOverlayAnimMs = 40;
+const int cardGlowAnimMs = 120;
+const double cardGlowBlurRadius = 9.0;
+const Color artistLogoBackdrop = Color(0xFF0B0B0B);
+const double artistLogoContainPadding = 0.12;
+const double cardBackdropBlurSigma = 14.0;
+const double albumPortraitSize = 170.0;
+const double artistBackdropMinLuminance = 0.55;
+const double artistBackdropLightenFactor = 0.9;
+const double artistBackdropDarkenFactor = 0.5;
+const double artistBackdropMinLightness = 0.62;
+const Color artistBackdropForcedLight = Color(0xFF2A2A2A);
+const double searchHudHeight = 54.0;
