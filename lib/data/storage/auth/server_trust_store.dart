@@ -10,7 +10,7 @@ class ServerTrustStore {
   static final Map<String, Future<void>> _mutations = {};
 
   static Future<ServerTrust?> read(String url) async {
-    final raw = await _vault.read(key: _key(url));
+    final raw = await _vault.read(key: keyForServer(url));
 
     return raw == null ? null : ServerTrust.fromJson(jsonDecode(raw));
   }
@@ -22,7 +22,7 @@ class ServerTrustStore {
   static Future<void> remove(String url) => _mutate(url, (key) => _vault.delete(key: key));
 
   static Future<void> _mutate(String url, Future<void> Function(String key) operation) async {
-    final key = _key(url);
+    final key = keyForServer(url);
     final pending = (_mutations[key] ?? Future<void>.value()).catchError((Object _) {}).then((_) => operation(key));
     _mutations[key] = pending;
 
@@ -35,6 +35,6 @@ class ServerTrustStore {
     }
   }
 
-  static String _key(String url) =>
+  static String keyForServer(String url) =>
       'phonolite.trust.v1.${base64Url.encode(utf8.encode(ServerTrust.origin(Uri.parse(url))))}';
 }

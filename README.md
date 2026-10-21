@@ -59,6 +59,11 @@ redirects carrying credentials to another server are blocked.
 Server pins are retained in OS secure storage while connected, even without
 **Remember me**. Remember me additionally stores the bearer session there, so an
 existing connection can be restored after restarting the app. Passwords are not saved.
+Before connecting on each startup, the app removes orphaned server identities,
+invalid saved credentials, obsolete secure-storage entries, and legacy
+`auth.json` credentials. Only a valid remembered connection and its matching
+identity are retained, even if its server is temporarily unreachable. A connection
+without Remember me is forgotten after the app restarts.
 Regenerating server keys disconnects clients and clears remembered sessions. The
 app opens sign-in and refreshes the TLS pin only after password authentication
 proves the remembered OPAQUE server identity on the new TLS connection. Clients
@@ -87,7 +92,7 @@ is lost, the session is kept; check which password took effect before trying aga
 
 This is a breaking authentication implementation for new installations. Create
 new accounts on a fresh server database; existing accounts and saved sessions are
-not migrated. Old `auth.json` files are ignored and left untouched. See the server
+not migrated. Old `auth.json` credentials are deleted during startup cleanup. See the server
 README's Authentication section for `--setup-admin` and `--renew-certificate`.
 The browser admin interface is local
 to the server at `https://127.0.0.1:3002`. TLS must terminate directly in Phonolite;

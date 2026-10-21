@@ -87,15 +87,16 @@ void main() {
     expect(controller.login?.password, 'correct-password');
   });
 
-  testWidgets('saved server without an explicit HTTPS port prefills port 443', (tester) async {
+  testWidgets('previous server address and port are not populated', (tester) async {
     final controller = _LoginController()
       .._auth = AuthState(baseUrl: 'https://fresh.test/api');
     await _pump(tester, controller);
-    expect(tester.widget<TextField>(_input('Server address')).controller!.text, 'fresh.test');
-    expect(tester.widget<TextField>(_input('Port')).controller!.text, '443');
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, isEmpty);
     expect(_action('Forget server'), findsNothing);
     await _tapAction(tester, 'Connect');
-    expect(controller.probes, ['https://fresh.test']);
+    expect(controller.probes, isEmpty);
+    expect(find.text('Server address is required'), findsOneWidget);
     expect(_action('Forget server'), findsNothing);
   });
 
@@ -115,12 +116,14 @@ void main() {
     expect(controller.logouts, 1);
     expect(controller.saved, isNull);
     expect(controller.authState.baseUrl, isEmpty);
-    expect(tester.widget<TextField>(_input('Server address')).controller!.text, 'fresh.test');
-    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, isEmpty);
     expect(_action('Forget server'), findsNothing);
 
+    await tester.enterText(_input('Server address'), 'new-server.test');
+    await tester.enterText(_input('Port'), '8443');
     await _tapAction(tester, 'Connect');
-    expect(controller.probes, ['https://fresh.test:8443']);
+    expect(controller.probes, ['https://new-server.test:8443']);
     expect(tester.widget<TextField>(_input('Username')).controller!.text, isEmpty);
     expect(tester.widget<TextField>(_input('Password')).controller!.text, isEmpty);
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
@@ -205,8 +208,9 @@ void main() {
         await _tapAction(tester, 'Change server');
         expect(
           tester.widget<TextField>(_input('Server address')).controller!.text,
-          'server.test',
+          isEmpty,
         );
+        expect(tester.widget<TextField>(_input('Port')).controller!.text, isEmpty);
         expect(tester.takeException(), isNull);
       });
     }
@@ -351,7 +355,7 @@ void main() {
     },
   );
 
-  testWidgets('remembered HTTPS address still prefills the shared fields', (
+  testWidgets('remembered sign-in leaves server address and port empty', (
     tester,
   ) async {
     final controller = _LoginController()
@@ -364,9 +368,11 @@ void main() {
     await _pump(tester, controller);
     expect(
       tester.widget<TextField>(_input('Server address')).controller!.text,
-      'saved.test',
+      isEmpty,
     );
-    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, isEmpty);
+    await tester.enterText(_input('Server address'), 'saved.test');
+    await tester.enterText(_input('Port'), '8443');
     await _tapAction(tester, 'Connect');
     expect(
       tester.widget<TextField>(_input('Username')).controller!.text,
