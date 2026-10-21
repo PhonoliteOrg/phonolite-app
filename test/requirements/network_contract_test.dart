@@ -13,10 +13,10 @@ void main() {
   group('server connection behavior', () {
     test('constructor sanitizes trailing separators from baseUrl', () {
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1///?#',
+        baseUrl: 'http://example.test/api///?#',
       );
 
-      expect(connection.baseUrl, 'http://example.test/api/v1');
+      expect(connection.baseUrl, 'http://example.test/api');
     });
 
     test(
@@ -24,10 +24,10 @@ void main() {
       () async {
         final requested = <String>[];
         final connection = ServerConnection(
-          baseUrl: 'http://placeholder.test/api/v1',
+          baseUrl: 'http://placeholder.test/api',
           client: MockClient((request) async {
             requested.add(request.url.toString());
-            if (request.url.toString().contains('/api/v1/health')) {
+            if (request.url.toString().contains('/api/health')) {
               return http.Response('ok', 200);
             }
             return http.Response('missing', 404);
@@ -36,7 +36,7 @@ void main() {
 
         final resolved = await connection.resolveBaseUrl('example.test');
 
-        expect(resolved, 'https://example.test/api/v1');
+        expect(resolved, 'https://example.test/api');
         expect(requested, isEmpty);
       },
     );
@@ -44,10 +44,10 @@ void main() {
     test('pingHealthMs accepts api health when root health fails', () async {
       final requested = <String>[];
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           requested.add(request.url.toString());
-          if (request.url.toString() == 'http://example.test/api/v1/health') {
+          if (request.url.toString() == 'http://example.test/api/health') {
             return http.Response('ok', 200);
           }
           return http.Response('missing', 404);
@@ -58,7 +58,7 @@ void main() {
 
       expect(rttMs, isNotNull);
       expect(requested, contains('http://example.test/health'));
-      expect(requested, contains('http://example.test/api/v1/health'));
+      expect(requested, contains('http://example.test/api/health'));
     });
 
     test(
@@ -67,7 +67,7 @@ void main() {
         var attempts = 0;
         final transportFailures = <Object>[];
         final connection = ServerConnection(
-          baseUrl: 'http://example.test/api/v1',
+          baseUrl: 'http://example.test/api',
           client: MockClient((_) async {
             attempts++;
             throw http.ClientException('server offline');
@@ -87,7 +87,7 @@ void main() {
 
     test('cover url builders encode identifiers and optional query params', () {
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
       );
 
       final albumUrl = connection.buildAlbumCoverUrl('album/id with spaces');
@@ -107,11 +107,11 @@ void main() {
 
       expect(
         albumUrl,
-        'http://example.test/api/v1/library/albums/album%2Fid%20with%20spaces/cover',
+        'http://example.test/api/library/albums/album%2Fid%20with%20spaces/cover',
       );
       expect(
         artistUrl,
-        'http://example.test/api/v1/library/artists/artist%2Fid%20with%20spaces/cover?kind=banner%20art',
+        'http://example.test/api/library/artists/artist%2Fid%20with%20spaces/cover?kind=banner%20art',
       );
       expect(versionedArtistUrl, '$artistUrl&v=art%3Arev%201%262');
       expect(
@@ -120,7 +120,7 @@ void main() {
       );
       expect(
         playlistUrl,
-        'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces/cover?v=rev%201',
+        'http://example.test/api/library/playlists/playlist%2Fid%20with%20spaces/cover?v=rev%201',
       );
     });
 
@@ -131,7 +131,7 @@ void main() {
       final bodies = <List<int>>[];
       final authHeaders = <String?>[];
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           requested.add(request.url.toString());
           methods.add(request.method);
@@ -156,8 +156,8 @@ void main() {
       final deleted = await connection.deletePlaylistCover('playlist/id');
 
       expect(requested, <String>[
-        'http://example.test/api/v1/library/playlists/playlist%2Fid/cover',
-        'http://example.test/api/v1/library/playlists/playlist%2Fid/cover',
+        'http://example.test/api/library/playlists/playlist%2Fid/cover',
+        'http://example.test/api/library/playlists/playlist%2Fid/cover',
       ]);
       expect(methods, <String>['PUT', 'DELETE']);
       expect(contentTypes.first, 'image/png');
@@ -171,7 +171,7 @@ void main() {
       final requested = <Uri>[];
       final authHeaders = <String?>[];
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           requested.add(request.url);
           authHeaders.add(request.headers['authorization']);
@@ -193,8 +193,8 @@ void main() {
       );
 
       expect(requested.map((uri) => uri.toString()), <String>[
-        'http://example.test/api/v1/library/albums/album%2Fid/cover',
-        'http://example.test/api/v1/library/artists/artist%2Fid/cover?kind=banner',
+        'http://example.test/api/library/albums/album%2Fid/cover',
+        'http://example.test/api/library/artists/artist%2Fid/cover?kind=banner',
       ]);
       expect(authHeaders, <String?>['Bearer token-1', 'Bearer token-1']);
       expect(album?.bytes, <int>[1, 2, 3]);
@@ -223,7 +223,7 @@ void main() {
           'updated_at': 124,
         });
         final connection = ServerConnection(
-          baseUrl: 'http://example.test/api/v1',
+          baseUrl: 'http://example.test/api',
           client: MockClient((request) async {
             requested = request.url;
             authHeader = request.headers['authorization'];
@@ -243,7 +243,7 @@ void main() {
 
         expect(
           requested.toString(),
-          'http://example.test/api/v1/library/metadata-events',
+          'http://example.test/api/library/metadata-events',
         );
         expect(authHeader, 'Bearer token-1');
         expect(events.map((event) => event.kind), <String>['artist', 'album']);
@@ -256,7 +256,7 @@ void main() {
       final requested = <String>[];
       final playlistBodies = <Map<String, dynamic>>[];
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           requested.add(request.url.toString());
           final path = request.url.path;
@@ -325,17 +325,17 @@ void main() {
       await connection.updatePlaylistTracks('playlist/id with spaces', []);
 
       expect(requested, <String>[
-        'http://example.test/api/v1/browse/artists/artist%2Fid%20with%20spaces/albums',
-        'http://example.test/api/v1/browse/albums/album%2Fid%20with%20spaces/tracks',
-        'http://example.test/api/v1/library/albums/album%2Fid%20with%20spaces',
-        'http://example.test/api/v1/browse/artists/artist%2Fid%20with%20spaces',
-        'http://example.test/api/v1/browse/tracks/track%2Fid%20with%20spaces',
-        'http://example.test/api/v1/browse/playlists/playlist%2Fid%20with%20spaces/tracks',
-        'http://example.test/api/v1/library/likes/track%2Fid%20with%20spaces',
-        'http://example.test/api/v1/library/likes/track%2Fid%20with%20spaces',
-        'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces',
-        'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces',
-        'http://example.test/api/v1/library/playlists/playlist%2Fid%20with%20spaces',
+        'http://example.test/api/browse/artists/artist%2Fid%20with%20spaces/albums',
+        'http://example.test/api/browse/albums/album%2Fid%20with%20spaces/tracks',
+        'http://example.test/api/library/albums/album%2Fid%20with%20spaces',
+        'http://example.test/api/browse/artists/artist%2Fid%20with%20spaces',
+        'http://example.test/api/browse/tracks/track%2Fid%20with%20spaces',
+        'http://example.test/api/browse/playlists/playlist%2Fid%20with%20spaces/tracks',
+        'http://example.test/api/library/likes/track%2Fid%20with%20spaces',
+        'http://example.test/api/library/likes/track%2Fid%20with%20spaces',
+        'http://example.test/api/library/playlists/playlist%2Fid%20with%20spaces',
+        'http://example.test/api/library/playlists/playlist%2Fid%20with%20spaces',
+        'http://example.test/api/library/playlists/playlist%2Fid%20with%20spaces',
       ]);
       expect(playlistBodies.single, <String, dynamic>{
         'name': 'New name',
@@ -346,7 +346,7 @@ void main() {
     test('fetchArtists paginates until the last page is short', () async {
       final offsets = <String>[];
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           offsets.add(request.url.queryParameters['offset'] ?? '');
           final offset = int.parse(
@@ -378,7 +378,7 @@ void main() {
 
     test('search filters results client side by kind', () async {
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((_) async {
           return http.Response(
             '[{"kind":"track","id":"track-1","title":"One"},'
@@ -397,7 +397,7 @@ void main() {
     test('fetchShuffleTracks encodes scope parameters', () async {
       late Uri capturedUri;
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           capturedUri = request.url;
           return http.Response('[]', 200);
@@ -412,7 +412,7 @@ void main() {
         genres: <String>['ambient', 'drum and bass'],
       );
 
-      expect(capturedUri.path, '/api/v1/library/shuffle');
+      expect(capturedUri.path, '/api/library/shuffle');
       expect(capturedUri.queryParameters['mode'], 'custom');
       expect(capturedUri.queryParameters['artist_id'], 'artist/id');
       expect(capturedUri.queryParameters['album_id'], 'album id');
@@ -428,7 +428,7 @@ void main() {
         String? capturedIfRange;
         String? capturedAuth;
         final connection = ServerConnection(
-          baseUrl: 'http://example.test/api/v1',
+          baseUrl: 'http://example.test/api',
           client: MockClient((request) async {
             capturedUri = request.url;
             capturedRange = request.headers['range'];
@@ -459,7 +459,7 @@ void main() {
 
         expect(
           capturedUri.toString(),
-          'http://example.test/api/v1/download/tracks/track%2Fid',
+          'http://example.test/api/download/tracks/track%2Fid',
         );
         expect(capturedRange, 'bytes=5-');
         expect(capturedIfRange, '"track-1-8"');
@@ -480,7 +480,7 @@ void main() {
         String? capturedAuth;
         Map<String, dynamic>? payload;
         final connection = ServerConnection(
-          baseUrl: 'http://example.test/api/v1',
+          baseUrl: 'http://example.test/api',
           client: MockClient((request) async {
             capturedUri = request.url;
             capturedAuth = request.headers['authorization'];
@@ -493,7 +493,7 @@ void main() {
                 'items': [
                   {
                     'track_id': 'track/id',
-                    'download_url': '/api/v1/download/tracks/track%2Fid',
+                    'download_url': '/api/download/tracks/track%2Fid',
                     'byte_length': 3,
                     'content_type': 'audio/mpeg',
                     'etag': '"track-1-3"',
@@ -544,7 +544,7 @@ void main() {
 
         expect(
           capturedUri.toString(),
-          'http://example.test/api/v1/download/batches',
+          'http://example.test/api/download/batches',
         );
         expect(capturedAuth, 'Bearer token-1');
         expect(payload?['client_batch_id'], 'client-batch');
@@ -561,7 +561,7 @@ void main() {
       late Uri capturedUri;
       Map<String, dynamic>? payload;
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           capturedUri = request.url;
           payload = jsonDecode(request.body) as Map<String, dynamic>;
@@ -596,7 +596,7 @@ void main() {
 
       expect(
         capturedUri.toString(),
-        'http://example.test/api/v1/library/match-tracks',
+        'http://example.test/api/library/match-tracks',
       );
       expect((payload?['tracks'] as List).single['local_track_id'], 'local-1');
       expect(matches.single.serverTrackId, 'server-1');
@@ -610,7 +610,7 @@ void main() {
         late Uri capturedUri;
         Map<String, dynamic>? payload;
         final connection = ServerConnection(
-          baseUrl: 'http://example.test/api/v1',
+          baseUrl: 'http://example.test/api',
           client: MockClient((request) async {
             capturedUri = request.url;
             payload = jsonDecode(request.body) as Map<String, dynamic>;
@@ -630,7 +630,7 @@ void main() {
 
         expect(
           capturedUri.toString(),
-          'http://example.test/api/v1/library/likes/batch',
+          'http://example.test/api/library/likes/batch',
         );
         expect((payload?['items'] as List).single['liked'], isFalse);
         expect((payload?['items'] as List).single['updated_at'], 123);
@@ -643,7 +643,7 @@ void main() {
     test('fetchOfflineMetadata hydrates the local download fragment', () async {
       late Uri capturedUri;
       final connection = ServerConnection(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: MockClient((request) async {
           capturedUri = request.url;
           return http.Response(
@@ -678,7 +678,7 @@ void main() {
 
       expect(
         capturedUri.toString(),
-        'http://example.test/api/v1/library/tracks/track%2Fid/offline-metadata',
+        'http://example.test/api/library/tracks/track%2Fid/offline-metadata',
       );
       expect(metadata.schemaVersion, 1);
       expect(metadata.track.albumId, 'album/id');
@@ -691,7 +691,7 @@ void main() {
       () async {
         var attempts = 0;
         final connection = ServerConnection(
-          baseUrl: 'http://example.test/api/v1',
+          baseUrl: 'http://example.test/api',
           client: MockClient((_) async {
             attempts += 1;
             if (attempts < 3) {

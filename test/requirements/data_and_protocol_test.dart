@@ -18,7 +18,7 @@ void main() {
     test('auth state separates retained sessions from reachable servers', () {
       final unavailable = AuthState(
         status: SessionStatus.serverUnavailable,
-        baseUrl: 'http://server.test/api/v1',
+        baseUrl: 'http://server.test/api',
       );
 
       expect(unavailable.hasSession, isTrue);

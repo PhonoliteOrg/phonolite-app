@@ -8,6 +8,20 @@ MetadataUpdateEvent event(String id, int revision, {String kind = 'album'}) =>
     MetadataUpdateEvent(revision: revision, kind: kind, id: id, updatedAt: 0);
 
 void main() {
+  testWidgets('key rotation invalidates immediately and discards pending metadata', (tester) async {
+    final harness = _Harness();
+    addTearDown(harness.dispose);
+    harness.start();
+    harness.input.add(event('queued', 1));
+    harness.input.add(event('server_keys_rotated', 2, kind: 'session_invalidated'));
+    await tester.pump();
+    expect(harness.invalidations, 1);
+    expect(harness.applied, isEmpty);
+    await tester.pump(const Duration(seconds: 4));
+    expect(harness.applied, isEmpty);
+    expect(harness.streams, hasLength(1));
+  });
+
   testWidgets('coalesces identities and applies updates in revision order', (
     tester,
   ) async {
@@ -128,6 +142,7 @@ class _Harness {
             applied.add(event);
           },
       onDiagnostic: diagnostics.add,
+      onSessionInvalidated: () => invalidations++,
     );
   }
   final streams = <StreamController<MetadataUpdateEvent>>[];
@@ -136,6 +151,7 @@ class _Harness {
   late final MetadataEventListener listener;
   String token = 'token';
   bool authorized = true;
+  int invalidations = 0;
   StreamController<MetadataUpdateEvent> get input => streams.last;
   void start() => listener.start(baseUrl: 'server', token: token);
   Future<void> dispose() async {

@@ -2,18 +2,20 @@
 
 This extends the [expected architecture](expected-architecture.md), [coding standards](coding-standards.md) and [iOS Swift specification](ios-swift-specification.md) to the Flutter macOS host. The same rule governs every responsibility: shared abstractions define common structure, design and behavior; specialized components provide meaningful differences; assembly connects them through explicit dependencies.
 
-Use the established Swift preferences: PascalCase responsibility folders and type/file names, lowerCamelCase members, ordinary methods on their owning types, focused conformance extensions, controlled state and logical spacing. Native C keeps its own language conventions and exported ABI. The layout below defines the expected refactor; the current macOS source has not yet been reorganized.
+Use the established Swift preferences: PascalCase responsibility folders and type/file names, lowerCamelCase members, ordinary methods on their owning types, focused conformance extensions, controlled state and logical spacing. Native C keeps its own language conventions and exported ABI. The source map below describes the implemented organization.
 
 ## Current source responsibilities
 
 Flutter owns application pages, navigation, playback workflows and library state. The native host supplies AppKit hosting, folder opening, PCM output and build integration.
 
-| Current source | Responsibility | Expected owner |
+| Current source | Responsibility | Owner |
 | --- | --- | --- |
-| [AppDelegate.swift](../macos/Runner/AppDelegate.swift) | Application entry point, last-window termination and secure restoration policy | Bootstrap |
-| [MainFlutterWindow.swift](../macos/Runner/MainFlutterWindow.swift) | Nib-based window entry point, Flutter view assembly, plugin registration and directory channel | Bootstrap for host assembly; Infrastructure for extracted channel and Shell operations |
-| [phonolite_audio.c](../macos/Runner/phonolite_audio.c) and [header](../macos/Runner/phonolite_audio.h) | Exported C interface, AudioQueue lifecycle, PCM buffers, completion accounting and output-device discovery | Infrastructure/Audio/Native with focused playback and device capabilities |
-| [build_opus_static.sh](../macos/Runner/build_opus_static.sh) | Compile shared Opus sources into the Runner archive | Scripts and native build configuration |
+| [AppDelegate.swift](../macos/Runner/Bootstrap/AppDelegate.swift) | Application entry point, last-window termination and secure restoration policy | Bootstrap |
+| [MainFlutterWindow.swift](../macos/Runner/Bootstrap/MainFlutterWindow.swift) and [FlutterEngineBinding.swift](../macos/Runner/Bootstrap/FlutterEngineBinding.swift) | Nib-based window assembly, plugin registration and engine-bound dependency lifetime | Bootstrap |
+| [DirectoriesChannelAdapter.swift](../macos/Runner/Infrastructure/Flutter/DirectoriesChannelAdapter.swift) and [DirectoryLauncher.swift](../macos/Runner/Infrastructure/Shell/DirectoryLauncher.swift) | Directory channel parsing/replies and a separately injected NSWorkspace capability | Infrastructure/Flutter and Infrastructure/Shell |
+| [phonolite_audio.c](../macos/Runner/Infrastructure/Audio/Native/phonolite_audio.c) and [header](../macos/Runner/Infrastructure/Audio/Native/phonolite_audio.h) | Twelve exported C operations with the existing opaque handle and ABI | Infrastructure/Audio/Native facade |
+| [audio_queue_player.c](../macos/Runner/Infrastructure/Audio/Native/audio_queue_player.c) and [audio_output_devices.c](../macos/Runner/Infrastructure/Audio/Native/audio_output_devices.c) | AudioQueue resources/accounting and independent CoreAudio output discovery | Separate infrastructure capabilities with private implementation state |
+| [build_opus_static.sh](../macos/Scripts/build_opus_static.sh) | Compile shared Opus sources into the Runner archive | Scripts and native build configuration |
 | [MainMenu.xib](../macos/Runner/Base.lproj/MainMenu.xib) | Application/delegate connections, menu responder actions and initial window configuration | AppKit resource assembly at its registered path |
 | [Info.plist](../macos/Runner/Info.plist), entitlements, [Configs](../macos/Runner/Configs/AppInfo.xcconfig) and [Xcode project](../macos/Runner.xcodeproj/project.pbxproj) | Bundle identity, startup resources, capabilities, target membership and linking | Host configuration and build integration |
 | [GeneratedPluginRegistrant.swift](../macos/Flutter/GeneratedPluginRegistrant.swift) | Generated plugin registration | Flutter-managed integration |
@@ -41,9 +43,9 @@ AppKit's NSWindow already supplies the standard window structure. A small subcla
 
 Keep native Pages and Application absent until they contain real responsibilities. Flutter pages remain under `lib/pages`; embedding Flutter does not turn every native host window into an application page.
 
-## Expected source organization
+## Source organization
 
-Use physical folders that match Xcode groups inside the existing Runner module. The initial extraction should have this shape:
+Use physical folders that match Xcode groups inside the existing Runner module:
 
 ```text
 macos/
@@ -76,6 +78,7 @@ macos/
     DebugProfile.entitlements
     Release.entitlements
   RunnerTests/
+  NativeTests/                   # Unhosted facade contracts and C++ header checks
   Flutter/                       # Managed registration, configuration and output
   Runner.xcodeproj/
   Runner.xcworkspace/
@@ -83,7 +86,7 @@ macos/
   Podfile.lock
 ```
 
-MainFlutterWindow remains the nib entry point. FlutterEngineBinding assembles and retains the channel adapter for the specific engine; the window owns its binding. It need not become a second owner of the view controller already retained by AppKit. AppDelegate keeps application policy and required framework forwarding. Add an app-scoped NativeHost only when services genuinely outlive individual windows or several bindings need shared coordination.
+MainFlutterWindow remains the nib entry point. FlutterEngineBinding assembles and retains the channel adapter for the specific engine; the window owns its binding and detaches it before teardown or view replacement. The binding does not become a second owner of the view controller already retained by AppKit. AppDelegate keeps application policy and required framework forwarding. Add an app-scoped NativeHost only when services genuinely outlive individual windows or several bindings need shared coordination.
 
 DirectoriesChannelAdapter owns wire parsing and replies. DirectoryLauncher accepts a typed URL and performs the NSWorkspace operation; returning Bool is sufficient for the current accepted/failed outcome. The C facade preserves the public ABI, the queue player owns playback resources and accounting, and the device capability owns CoreAudio enumeration. These are ordinary compilation units with headers, not included `.c` implementation fragments.
 
@@ -104,7 +107,7 @@ Consistency must come from shared code. Use Katiby's reusable frames and named a
 | Native audio capabilities | Queue ownership, buffer lifecycle and completion rules | PCM values and deliberately supported configuration |
 | Native data operations | Shared value or storage rules | Subject-specific data and schema |
 
-The current single directory adapter can own its attachment mechanics directly. Extract a common FlutterChannelAdapter when multiple adapters share actual lifecycle decisions; a generic base is not required before there is a family. A protocol defines a contract; repeated behavior still needs a shared implementation owner.
+The single directory adapter owns its idempotent attachment/detachment mechanics directly. Its injected handler setter allows contract checks without a running engine; its handler captures the opening capability rather than retaining the adapter, so an already accepted call can still reply after detachment. Extract a common FlutterChannelAdapter when multiple adapters share actual lifecycle decisions; a generic base is not required before there is a family. A protocol defines a contract; repeated behavior still needs a shared implementation owner.
 
 For native views added later, a shared page/frame must own the recurring content and toolbar arrangement, including fixed or scrolling toolbar behavior where relevant. Pages assemble content into that structure. App-level menus and navigation belong to the shell; page actions belong to the page toolbar. Keep final assembly readable through named controls and sections instead of deeply nested view or constraint construction.
 
@@ -263,7 +266,7 @@ Keep shared native packages in their own source trees:
 
 The package loaders try their packaged macOS framework and can fall back to process lookup. Preserve export names, calling conventions, linker anchors, archive retention, units and matching close/free functions. Rust-allocated QUIC strings require the package's free function. Do not move Rust implementations or upstream Opus into Runner to make the host tree symmetrical. Native C, Objective-C link anchors, shell scripts and Rust retain appropriate language conventions.
 
-The active Runner Opus phase builds `Runner/libphonolite_opus.a`, and all three configurations force-load that archive. Its script computes repository paths from its location and currently uses the host clang target without an explicit universal-architecture loop. The package podspec also defines Opus compilation with C99. Assess consolidation, architecture coverage and artifact locations as explicit build work; preserve both definitions until the chosen replacement is verified. Moving the script to Scripts requires updating its root calculation and Xcode references.
+The active Runner Opus phase builds `Runner/libphonolite_opus.a`, and all three configurations force-load that archive. The phase invokes `Scripts/build_opus_static.sh` through `/bin/bash`, preserving its interpreter even when a Windows checkout cannot retain the executable bit. The moved script remains two directories below the app root, so its existing `../..` calculation and output paths stay valid. It currently uses the host clang target without an explicit universal-architecture loop. The package podspec also defines Opus compilation with C99. Assess consolidation, architecture coverage and artifact locations as explicit build work; preserve both definitions until the chosen replacement is verified.
 
 ## Formatter configuration
 
@@ -291,21 +294,27 @@ swift format format --configuration macos/.swift-format --in-place --recursive m
 swift format lint --configuration macos/.swift-format --strict --recursive macos/Runner macos/RunnerTests
 ```
 
-Pin and verify a compatible formatter on the Apple build environment before automated enforcement. A newer formatter executable can be separate from Runner's Swift language mode. Scope it to handwritten Swift; generated registrants, Pods, native C and vendored packages remain outside this pass. C formatting requires an explicit C-aware configuration and file list rather than silently inheriting Windows pointer conventions. [Official swift-format usage](https://github.com/swiftlang/swift-format)
+Pin and verify a compatible formatter on the Apple build environment before automated enforcement. A newer formatter executable can be separate from Runner's Swift language mode. Scope it to handwritten Swift; generated registrants, Pods, native C and vendored packages remain outside this pass. [Official swift-format usage](https://github.com/swiftlang/swift-format)
 
-## Adoption and verification
+Handwritten native C uses clang-format **19.1.5** with [macos/.clang-format](../macos/.clang-format): LLVM style, two spaces, 120 columns, attached braces and right-aligned pointers. This is an explicit C choice rather than inherited Windows C++ formatting. Check only the facade, its collaborators and their portable tests; preserve logical paragraphs:
 
-Apply the refactor in coherent responsibility groups:
+```sh
+clang-format --style=file --dry-run --Werror macos/Runner/Infrastructure/Audio/Native/*.c macos/Runner/Infrastructure/Audio/Native/*.h macos/NativeTests/*.c macos/NativeTests/*.cpp
+```
 
-1. Extract the directory adapter/service and explicit engine binding while preserving startup order and replies.
-2. Move Bootstrap owners and align Xcode/XIB references without changing class identities or window/menu behavior.
-3. Separate the native audio facade, queue resource and device capability while preserving ABI and synchronization.
-4. Relocate the build script with aligned invocation and paths; keep build correctness changes separately reviewable.
-5. Apply Swift/C layout within the affected owners and add useful boundary coverage.
+## Maintenance and verification
 
-The [Apple source contracts](../test/requirements/platform_apple_contract_test.dart) and [Dart directory tests](../test/platform/desktop_directory_service_test.dart) anchor existing behavior. Update their source paths when moving owners, retaining coverage of exports, directory replies and audio accounting. Add injected channel/service checks, pure value checks and tests of failure, cleanup and stale-completion rules where a meaningful seam exists. In-memory doubles should not open Finder, create a server or require audio hardware.
+Preserve nib identities and startup order, one window-owned engine binding, typed directory access, the opaque audio resource, and separate device discovery. Keep future source moves aligned with Xcode membership, script references, header includes and exported symbols. New native features should reuse established mechanisms or introduce a shared owner when a real family appears.
 
-The current [RunnerTests](../macos/RunnerTests/RunnerTests.swift) contains a placeholder test, and its Xcode target is app-hosted. Ordinary `xcodebuild test` launches Runner. During agent work, use compilation/build-for-testing and genuinely unhosted headless checks; leave hosted execution, rendered-window checks, Finder opening and real audio/device tests to the user under the no-application-launch instruction.
+The [Apple source contracts](../test/requirements/platform_apple_contract_test.dart), [macOS architecture checks](../test/architecture/macos_architecture_test.dart) and [Dart directory tests](../test/platform/desktop_directory_service_test.dart) anchor source membership, dependency boundaries, startup, exports, channel behavior and Dart directory preparation. Native [RunnerTests](../macos/RunnerTests/RunnerTests.swift) now has ten injected directory/channel checks covering validation, replies, lifecycle and an accepted handler surviving adapter release. They open no folders, but their Xcode target remains app-hosted: ordinary `xcodebuild test` launches Runner. Use compilation/build-for-testing during agent work; leave hosted execution to the user.
+
+The [portable facade verifier](../tools/macos_checks/verify_audio_facade.py) compiles the real exported facade against typed doubles of its internal capabilities. It runs twelve forwarding cases and compiles twelve public-header C++ type assertions, preserving argument widths, handles, sample counts and return values. It does not substitute fake Apple SDK headers or compile the AudioQueue/CoreAudio implementations:
+
+```sh
+python tools/macos_checks/verify_audio_facade.py --cc clang
+```
+
+It accepts `--cc` and `--cxx` paths for an available GCC/Clang toolchain and writes disposable outputs under `.dart_tool/macos_architecture_refactor`. This is a foreground, unhosted verification executable without window, engine or audio resources.
 
 On a compatible configured Mac, compilation can use the existing CocoaPods workspace without launching the app:
 
@@ -314,4 +323,4 @@ xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Deb
 xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug build-for-testing
 ```
 
-Check Profile and Release builds, exported symbols, target membership, static archive integration and entitlements as appropriate to the changes. Use a checkout with real package symlinks and resolved dependencies. Compilation, formatter execution and native checks require the Apple build environment; this Windows documentation pass establishes neither a successful macOS build nor native runtime coverage. No apps, servers or background services should be launched during agent work.
+Source/project contracts, portable facade/header checks, C formatting and shell syntax checks passed for the refactor. Swift compilation/formatting, Apple-framework compilation, native linking and native XCTest execution require a configured Mac and remain unverified from this Windows workspace. Check Profile and Release builds, exported symbols, static archive integration and entitlements there, using a checkout with real package symlinks and resolved dependencies. Hosted execution, rendered-window checks, Finder opening and real audio/device tests remain user-controlled. No apps, servers or background services should be launched during agent work.

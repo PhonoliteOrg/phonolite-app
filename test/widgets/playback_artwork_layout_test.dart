@@ -28,7 +28,7 @@ void main() {
         // stall runAsync teardown while that clock is suspended.
         final controller = (await tester.runAsync(
           () async => AppController(
-            connection: ServerConnection(baseUrl: 'http://server.test/api/v1'),
+            connection: ServerConnection(baseUrl: 'http://server.test/api'),
           ),
         ))!;
         final directory = await tester.runAsync(

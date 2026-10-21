@@ -429,7 +429,7 @@ class _PlayerProbe {
   }
 
   final controller = AppController(
-    connection: ServerConnection(baseUrl: 'http://server.test/api/v1'),
+    connection: ServerConnection(baseUrl: 'http://server.test/api'),
   );
   late final PlaybackState state;
   int playTaps = 0;

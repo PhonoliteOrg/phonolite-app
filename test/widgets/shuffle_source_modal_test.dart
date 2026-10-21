@@ -315,7 +315,7 @@ final _track = Track(
 class _Controller extends AppController {
   _Controller(ActionScope scope, {this.authorized = true})
     : super(
-        connection: ServerConnection(baseUrl: 'http://unused.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://unused.test/api'),
       ) {
     state = super.playbackState.copyWith(
       track: _track,

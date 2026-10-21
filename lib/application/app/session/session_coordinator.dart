@@ -144,7 +144,15 @@ class _SessionCoordinator {
     try {
       final resolved = await _host.connection.resolveBaseUrl(input);
 
-      await _host.connection.verifyServerConnection(resolved);
+      var identityChanged = false;
+      try {
+        await _host.connection.verifyServerConnection(resolved);
+      } on ServerConnectionCheckException catch (error) {
+        if (error.reason != ServerConnectionFailure.identityChanged) rethrow;
+        // Reachability cannot trust this key. Only password sign-in can verify
+        // it against the saved OPAQUE identity and commit a replacement pin.
+        identityChanged = true;
+      }
 
       if (_host._disposed) {
         return false;
@@ -154,7 +162,10 @@ class _SessionCoordinator {
       _host._serverHealthFailureCount = 0;
       // Reachability is confirmed; OPAQUE sign-in authenticates the account and
       // establishes server trust before any credentials or tokens can be used.
-      _setSessionStatus(SessionStatus.serverReachable, error: null);
+      _setSessionStatus(
+        SessionStatus.serverReachable,
+        error: identityChanged ? 'Server keys changed. Sign in again to verify the new server key.' : null,
+      );
 
       return true;
     } catch (err) {
@@ -285,7 +296,10 @@ class _SessionCoordinator {
     _setAuthorized(false, error: null);
   }
 
-  Future<void> _signOutAfterPasswordReset() async {
+  Future<void> requireSignIn({String reason = 'Server keys changed. Sign in again to verify the new server key.'}) =>
+      _signOutAfterPasswordReset(reason: reason, requiresSignIn: true);
+
+  Future<void> _signOutAfterPasswordReset({String? reason, bool requiresSignIn = false}) async {
     // Invalidate restoration before the first await. An expired/revoked session
     // cannot authorize logout, so there is no additional request to send.
     _sessionRestores.advance();
@@ -309,7 +323,7 @@ class _SessionCoordinator {
     _pauseDownloadsForDisconnectedServer(serverBaseUrl);
     _host._serverHealthFailureCount = 0;
     _host._serverReconnectAttempt = 0;
-    _setSessionStatus(SessionStatus.offline, error: null);
+    _setSessionStatus(SessionStatus.offline, error: reason, requiresSignIn: requiresSignIn);
     _host._quicPort = null;
 
     if (preserveLocalPlayback) {
@@ -455,23 +469,19 @@ class _SessionCoordinator {
       _host._pushMessage('Auto-login failed: ${_host._formatApiError(err)}');
 
       if (err.statusCode == 401) {
-        _host.connection.setToken(null);
-
-        final detach = _host._detachListeningAccount();
-
-        await _clearSavedCredentials();
-        await detach;
-
-        if (!_isRestoreSessionCurrent(revision)) {
-          return;
-        }
-
-        _setSessionStatus(SessionStatus.offline, error: 'Saved login expired');
+        await requireSignIn(reason: 'Saved login expired. Sign in again.');
       } else {
         _setSessionStatus(SessionStatus.serverUnavailable, error: 'Saved server unavailable');
       }
     } catch (err) {
       if (!_isRestoreSessionCurrent(revision)) {
+        return;
+      }
+
+      final identityChanged = await _host.connection.hasServerIdentityChanged();
+      if (!_isRestoreSessionCurrent(revision)) return;
+      if (identityChanged) {
+        await requireSignIn();
         return;
       }
 
@@ -506,7 +516,7 @@ class _SessionCoordinator {
     _setSessionStatus(authorized ? SessionStatus.authenticated : SessionStatus.offline, error: error);
   }
 
-  void _setSessionStatus(SessionStatus status, {String? error, bool? isReconnecting}) {
+  void _setSessionStatus(SessionStatus status, {String? error, bool? isReconnecting, bool requiresSignIn = false}) {
     if (_host._disposed) {
       return;
     }
@@ -532,6 +542,7 @@ class _SessionCoordinator {
       baseUrl: _host.connection.baseUrl,
       error: error,
       isReconnecting: isReconnecting,
+      requiresSignIn: requiresSignIn,
     );
     _authController.add(_authState);
     _host._notifyCarPlayAuthState(_authState.isAuthorized);
@@ -629,8 +640,6 @@ mixin _SessionFacade {
 
   Future<void> _storeSavedCredentials(AuthCredentials credentials) =>
       _sessionCoordinator._storeSavedCredentials(credentials);
-
-  Future<void> _clearSavedCredentials() => _sessionCoordinator._clearSavedCredentials();
 
   void _setSessionStatus(SessionStatus status, {String? error, bool? isReconnecting}) =>
       _sessionCoordinator._setSessionStatus(status, error: error, isReconnecting: isReconnecting);

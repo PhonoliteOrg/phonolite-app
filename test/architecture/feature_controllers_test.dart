@@ -133,7 +133,7 @@ void main() {
       addTearDown(controller.dispose);
       addTearDown(app.close);
       final address = controller.normalizeAddress(
-        'https://music.test:8443/proxy/api/v1',
+        'https://music.test:8443/proxy/api',
       );
       expect(address.host, 'music.test/proxy');
       expect(address.port, '8443');

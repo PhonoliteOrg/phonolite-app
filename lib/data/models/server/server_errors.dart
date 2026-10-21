@@ -22,7 +22,7 @@ class RequestTimeoutException implements Exception {
   String toString() => 'Request timed out after ${timeout.inSeconds}s';
 }
 
-enum ServerConnectionFailure { missingAddress, invalidAddress, timedOut, connectionFailed }
+enum ServerConnectionFailure { missingAddress, invalidAddress, timedOut, connectionFailed, identityChanged }
 
 class ServerConnectionCheckException implements Exception {
   final String message;

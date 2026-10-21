@@ -4,7 +4,7 @@ This extends the [expected architecture](expected-architecture.md) and [coding s
 
 **Shared abstractions define common structure, design and behavior. Specialized components supply meaningful differences. Assembly connects them through explicit dependencies.** This applies to Kotlin functionality, system presentation, channel transport, audio resources and data operations. Consistency comes from shared owners rather than repeated implementations.
 
-Use conventional lowercase Kotlin package folders, PascalCase type/file names and lowerCamelCase members. Keep the established two-space indentation, 120-column target, logical spacing, controlled mutation and ordinary methods on owned types. The layout below defines the expected refactor; the current Android source has not yet been reorganized.
+Use conventional lowercase Kotlin package folders, PascalCase type/file names and lowerCamelCase members. Keep the established two-space indentation, 120-column target, logical spacing, controlled mutation and ordinary methods on owned types. The handwritten Android host now uses this organization. The functional assessment below identifies the explicit corrections made alongside extraction and the remaining platform differences.
 
 ## Current source responsibilities
 
@@ -12,11 +12,13 @@ Flutter owns the phone's application pages, navigation, library state and playba
 
 | Current source | Responsibilities | Expected owners |
 | --- | --- | --- |
-| [MainActivity.kt](../android/app/src/main/kotlin/com/example/phonolite_app/MainActivity.kt) | FlutterActivity presentation, borrowing the shared engine and keeping it alive after Activity destruction | Bootstrap |
-| [PhonoliteApplication.kt](../android/app/src/main/kotlin/com/example/phonolite_app/PhonoliteApplication.kt) | Flutter loader initialization, lazy shared engine, plugin registration, bridge attachment and Dart startup | Application entry point plus composed Bootstrap owners |
-| [PhonolitePlatformBridge.kt](../android/app/src/main/kotlin/com/example/phonolite_app/PhonolitePlatformBridge.kt) | Three channels, wire decoding/replies, main-thread invocation, metadata position acceptance and source authorization | Infrastructure/Flutter adapters/codecs, Data values and native functional coordination |
-| [PhonoliteAudioOutputManager.kt](../android/app/src/main/kotlin/com/example/phonolite_app/PhonoliteAudioOutputManager.kt) | Channel decoding, session registry, audio focus, noisy-device receiver, output devices, AudioTrack resources, writer thread and progress accounting | Separate Flutter, audio and data owners |
-| [PhonoliteMediaService.kt](../android/app/src/main/kotlin/com/example/phonolite_app/PhonoliteMediaService.kt) | Android service callbacks, process snapshots, media browsing, selection, session state, artwork and notifications | Bootstrap entry point, Application coordination, Infrastructure mechanisms and UI presentation builders |
+| [MainActivity](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/MainActivity.kt) | FlutterActivity presentation, borrowing the shared engine and keeping it alive after Activity destruction | Bootstrap |
+| [PhonoliteApplication](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/PhonoliteApplication.kt), [NativeHost](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/NativeHost.kt), [FlutterEngineOwner](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/FlutterEngineOwner.kt) and [binding](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/FlutterEngineBinding.kt) | Loader initialization, process composition, one shared engine, plugin registration, channel assembly and Dart startup | Bootstrap |
+| [Shared channel adapter](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/flutter/FlutterChannelAdapter.kt), family adapters/codecs and [VehicleClient](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/flutter/VehicleClient.kt) | Registration, platform-thread invocation, wire decoding/replies and typed native/Dart transport | Infrastructure/Flutter |
+| [NativeMediaController](../android/app/src/main/kotlin/com/example/phonolite_app/application/controllers/media/NativeMediaController.kt), [position state](../android/app/src/main/kotlin/com/example/phonolite_app/data/models/playback/PlaybackPositionState.kt) and [VehicleBrowseController](../android/app/src/main/kotlin/com/example/phonolite_app/application/controllers/vehicle/VehicleBrowseController.kt) | Process snapshots/source availability, position acceptance, semantic browse nodes and selection | Application coordination and standalone Data values |
+| [AudioOutputService](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioOutputService.kt), [session](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioOutputSession.kt), [focus controller](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioFocusController.kt), [device catalog](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/OutputDeviceCatalog.kt) and [progress](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioPlaybackProgress.kt) | Registry, focus/noisy receiver, device enumeration, AudioTrack/writer ownership and progress accounting through an injected playback probe | Infrastructure/Audio; configuration/device values live in Data |
+| [PhonoliteMediaService](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/PhonoliteMediaService.kt), [service connection](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/media/MediaServiceConnection.kt) and [media-session controller](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/media/MediaSessionController.kt) | Android callbacks, bound/started ownership, foreground policy, session publication and composed presentation | Bootstrap and Infrastructure/Media |
+| [MediaItemFactory](../android/app/src/main/kotlin/com/example/phonolite_app/ui/media/MediaItemFactory.kt) and [PlaybackNotificationFactory](../android/app/src/main/kotlin/com/example/phonolite_app/ui/media/PlaybackNotificationFactory.kt) | Shared display labels/flags, media style, icons, action arrangements and final system-facing presentation assembly | UI/Media |
 | [AndroidManifest.xml](../android/app/src/main/AndroidManifest.xml) and [automotive descriptor](../android/app/src/main/res/xml/automotive_app_desc.xml) | Framework component identities, permissions, launch configuration, media-service discovery and Android Auto registration | Android configuration/resources |
 | [App Gradle build](../android/app/build.gradle.kts), [settings](../android/settings.gradle.kts) and native package builds | Dependencies, toolchain selection, source sets, native artifacts and APK output | Build configuration and owning packages |
 
@@ -46,7 +48,7 @@ Kotlin subpackages organize source but do not enforce module isolation. `interna
 
 ## Expected source organization
 
-Keep Android's required source sets and resource layout. The first refactor should separate the existing responsibilities into this shape, adding each owner as its responsibility is extracted:
+Keep Android's required source sets and resource layout. This map shows the primary owners; small independent value contracts remain in their corresponding Data directories:
 
 ```text
 android/
@@ -71,11 +73,14 @@ android/
           data/models/
             playback/
               NativeNowPlayingState.kt
+              NativeRemoteCommand.kt
               PlaybackPositionState.kt
               SourceAvailability.kt
             vehicle/
               VehicleEntry.kt
               VehicleBrowseResult.kt
+              VehicleBrowseNode.kt
+              VehicleMediaIds.kt
             audio/
               OutputDevice.kt
           application/controllers/
@@ -84,6 +89,8 @@ android/
           infrastructure/
             flutter/
               FlutterChannelAdapter.kt
+              FlutterChannelEndpoint.kt
+              MethodChannelEndpoint.kt
               NowPlayingChannelAdapter.kt
               NowPlayingCodec.kt
               VehicleChannelAdapter.kt
@@ -97,9 +104,17 @@ android/
               AudioFocusController.kt
               OutputDeviceCatalog.kt
               AudioPlaybackProgress.kt
+              AudioPlaybackProbe.kt
+              AudioTrackPlaybackProbe.kt
             media/
               MediaSessionController.kt
               MediaServiceGateway.kt
+              MediaServiceConnection.kt
+              MediaServiceObserver.kt
+              MediaServiceActions.kt
+              MediaPendingIntents.kt
+              PlaybackNotificationController.kt
+              ArtworkDecoder.kt
               MediaMetadataFactory.kt
           ui/media/
             MediaItemFactory.kt
@@ -111,17 +126,17 @@ android/
           xml/automotive_app_desc.xml
       debug/AndroidManifest.xml
       profile/AndroidManifest.xml
-      test/kotlin/com/example/phonolite_app/         # Local JVM tests when added
+      test/kotlin/com/example/phonolite_app/         # Headless JVM contract checks
       androidTest/kotlin/com/example/phonolite_app/  # Device tests when added
 ```
 
 The root package and namespace stay intact. For example, moving MainActivity to the bootstrap package gives it the fully qualified name `com.example.phonolite_app.bootstrap.MainActivity`. Update the manifest's relative/FQCN reference and explicit Intent/class references together. The Gradle namespace/applicationId need not change. Resource imports still use the configured namespace, such as `com.example.phonolite_app.R`.
 
-Move standalone data definitions out of the existing bridge/service files. Keep raw MethodCall/Result and Any-based wire representations inside transport. Expose a typed VehicleBrowseResult to functional code rather than making BridgeInvokeResult's raw value a general application contract. A small transport-only reply helper may stay private beside its adapter.
+Standalone data definitions live outside transport/service owners. Keep raw MethodCall/Result and Any-based wire representations inside transport. VehicleClient exposes typed results and operations to functional code; the former BridgeInvokeResult envelope is no longer a general application contract. A small transport-only reply helper may stay private beside its adapter.
 
 NativeHost composes the process's native capabilities and state. FlutterEngineOwner owns engine creation; FlutterEngineBinding connects adapters to that engine. The media service attaches its service-scoped session/presentation collaborators to those existing process capabilities. Independent owners receive narrow dependencies rather than a NativeHost service locator.
 
-AudioPlaybackProgress should own an independently meaningful progress mechanism when extracted; purely mathematical/data rules can live with a Data value instead. Queue chunks containing an active generation/ownership handoff belong beside the writer. An AudioTrack session is a resource owner even though it contains fields that look like data.
+AudioPlaybackProgress owns progress accounting through AudioPlaybackProbe and an injected monotonic clock; AudioTrackPlaybackProbe owns Android observations. Purely mathematical/data rules can live with a Data value when appropriate. Queue chunks containing an active generation/ownership handoff belong beside the writer. An AudioTrack session is a resource owner even though it contains fields that look like data.
 
 Create native `pages`, reusable view structures and storage owners when those responsibilities actually appear. A browsable Android Auto node is not an app-owned native screen. Keep generated registration, `build`, `.gradle`, `.cxx` and package artifacts under tool ownership. Keep source documentation in `docs`, without directory READMEs or broad Utils/Common collections.
 
@@ -226,7 +241,7 @@ Keep one configuration call per line and avoid new wrapper builders around every
 | Audio session | AudioTrack, queue, writer and progress state | Explicit close/release path; callback/worker completion semantics remain visible |
 | Browse request | Detached result, scope, callback and relevance | Completes once even when its owner/request loses relevance |
 
-Preserve the current startup sequence: start Flutter loader initialization in Application.onCreate, lazily finish initialization, create the engine, register generated plugins, attach the bridge/channels, execute the default Dart entry point, then publish the initialized owner references. Preserve the existing synchronization and avoid duplicate engines during service-first startup. A concurrency/publication correction needs its own verification rather than changing this sequence incidentally.
+Start Flutter loader initialization in Application.onCreate, then lazily finish initialization, create the engine, register generated plugins, attach channels and execute the default Dart entry point. Publish the initialized engine/binding together in one volatile session under the existing synchronization. Explicit registration uses an engine with automatic registration disabled, so plugins initialize once. The media service requests this same engine before assembling its browser, supporting service-first startup.
 
 MainActivity continues to provide the application-owned engine and return false from shouldDestroyEngineWithHost. An Activity-scoped coroutine or ViewModel is not the owner for process/service playback resources. Recreating or leaving the Activity must not silently shut down background playback. [Android Activity lifecycle](https://developer.android.com/guide/components/activities/activity-lifecycle)
 
@@ -250,6 +265,8 @@ Keep metadata's seconds-to-milliseconds conversion, clamping/rounding and zero d
 
 VehicleClient decodes typed browse results and preserves malformed-item filtering, default enabled values, empty/error messages, media IDs/prefixes and play/shuffle method selection. VehicleBrowseController can own request coordination and relevance; MediaItemFactory assembles the platform display objects. Preserve detached MediaBrowser result completion, server-before-local ordering and source availability updates. Cancellation/relevance improvements must still fulfill Android's result obligation and remain explicit changes.
 
+The root now contains browsable Server Library and Local Library destinations, at most two, with the existing categories beneath each source. Existing category/leaf IDs remain available; new source IDs are `server_root` and `local_root`. The no-source placeholder is browsable. This avoids the old seven-item mixed root hiding local destinations on hosts that normally expose at most four browsable tabs. [Android Auto root constraints](https://developer.android.com/training/cars/media/create-media-browser/content-hierarchy#structure-the-root-menu)
+
 Channel attachment should be idempotent for its engine binding, with handlers removed before that binding ends. Outgoing invocation uses the Android main thread; the current bridge posts through a main Handler. Incoming task queues and result callbacks have their own threading contracts. Preserve those boundaries when extracting, and marshal UI/service publication where required. [Flutter platform threading](https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading)
 
 ## Media service and presentation contracts
@@ -260,7 +277,9 @@ Preserve notification channel `phonolite.playback`, notification ID 3010, sessio
 
 Source availability and the latest playback snapshot belong to a clear process owner rather than a collection of mutable service companion properties. Replacing that storage must preserve service-first startup, updates while the service is absent, attach/detach notification and existing source-state merging. A weak service reference alone does not define ownership or make multi-field updates atomic.
 
-Keep the exported service permission, mediaPlayback foreground type, browser/media-button Intent filters and automotive media descriptor aligned with source moves. Runtime permission policy and foreground-start restrictions depend on API/target level. The manifest's POST_NOTIFICATIONS declaration is not an implemented permission-request workflow. Verify capability changes separately, retaining the current behavior during organization. [Android foreground-service declarations](https://developer.android.com/develop/background-work/services/fgs/declare)
+Keep the exported mediaPlayback service, browser/media-button Intent filters and automotive descriptor aligned with source moves. It does not require the former nonexistent BIND_MEDIA_BROWSER_SERVICE permission. The current browser root policy continues to accept clients; choosing package/signature restrictions is separate access policy. Runtime permission/foreground-start rules depend on API/target level. POST_NOTIFICATIONS is declared without a request workflow. [Android browser manifest](https://developer.android.com/training/cars/media/configure-manifest), [foreground-service declarations](https://developer.android.com/develop/background-work/services/fgs/declare)
+
+MediaServiceConnection distinguishes a bound-only instance from started ownership. First publication requests started ownership once, explicit onStartCommand records it, and later metadata updates avoid repeated start requests. Pending ownership survives attachment; clear/current-instance detachment resets it; failed starts can retry. Playback must keep its started lifetime after the last browser unbind. [Android bound/started service lifetimes](https://developer.android.com/develop/background-work/services/bound-services)
 
 Current Android guidance uses Media3 for new playback implementations. Adopting Media3/ExoPlayer, changing MediaSession behavior or replacing the existing Dart/AudioTrack playback path is a separate feature/migration decision. Responsibility folders do not require changing the media library. [Android Media3 guidance](https://developer.android.com/media/implement/playback-app)
 
@@ -312,7 +331,7 @@ Local-audio and QUIC preBuild hooks delete their task-owned Cargo/jniLibs output
 
 ## Kotlin formatter configuration
 
-Use ktlint with [android/.editorconfig](../android/.editorconfig). The Android Studio style provides a Kotlin/Android baseline, overridden with the project's indentation and line-width preferences:
+Use ktlint **1.7.1** with [android/.editorconfig](../android/.editorconfig). The Android Studio style provides a Kotlin/Android baseline, overridden with the project's indentation and line-width preferences:
 
 ```editorconfig
 root = true
@@ -324,22 +343,51 @@ indent_size = 2
 max_line_length = 120
 insert_final_newline = true
 ktlint_code_style = android_studio
+
+# Preserve the established app package; new responsibility segments remain lowercase words.
+[app/src/**/kotlin/com/example/phonolite_app/**/*.kt]
+ktlint_standard_package-name = disabled
 ```
 
 Under this style, signatures that fit are eligible to remain compact rather than being split solely for having multiple parameters. Preserve logical paragraph breaks manually and use the formatter's normal wrapping when a signature exceeds the limit. Verify these examples when selecting the pinned tool; no formatter can replace responsibility or readability review. [ktlint rules and configuration](https://github.com/ktlint/ktlint/blob/master/documentation/release-latest/docs/rules/standard.md#function-signature)
 
-The configuration is present, but ktlint and its Gradle integration have not been installed or version-pinned by this specification. Pin a compatible executable before automated enforcement, then run from `android` against explicit handwritten source/build-script globs:
+The [formatter helper](../tools/android_checks/format_kotlin.py) pins the Maven artifact and SHA-256, caches it under `.dart_tool/android_tools`, and selects handwritten Kotlin/test/build-script files explicitly. Run from the app root:
 
 ```sh
-ktlint "app/src/main/kotlin/**/*.kt" "*.gradle.kts" "app/*.gradle.kts"
-ktlint --format "app/src/main/kotlin/**/*.kt" "*.gradle.kts" "app/*.gradle.kts"
+python tools/android_checks/format_kotlin.py
+python tools/android_checks/format_kotlin.py --format
 ```
 
-Include test source globs when tests exist. Keep generated sources, caches, package dependencies and vendored trees outside formatting passes. EditorConfig helps editors and ktlint agree; it does not register a Gradle task, install a plugin or enforce architectural/lifetime rules. C/Rust/Groovy/XML files retain their own language tooling. [ktlint CLI](https://ktlint.github.io/ktlint/latest/install/cli/)
+The initial formatter download needs network access; later checks use the verified cache. Java must be available. The package-name rule exception is scoped to the established `phonolite_app` prefix; new responsibility segments still follow lowercase naming and architecture checks. Keep generated sources, dependencies and vendored code outside formatting passes. EditorConfig does not register a Gradle plugin or enforce lifetimes. C/Rust/Groovy/XML retain their own tools. [ktlint CLI](https://ktlint.github.io/ktlint/latest/install/cli/)
+
+## iOS reference and functional assessment
+
+The comparison used the [iOS native host](../ios/Runner/Bootstrap/NativeHost.swift), [CarPlay browse controller](../ios/Runner/Application/Controllers/CarPlay/CarPlayBrowseController.swift), [remote commands](../ios/Runner/Infrastructure/Media/RemoteCommandService.swift) and [native audio bridge](../ios/Runner/Infrastructure/Audio/Native/phonolite_audio.m), together with their shared Dart clients. The common expected behavior is server/local browsing and playback selection, now-playing metadata and epochs, remote controls, interruption/route-loss pause and bounded PCM output.
+
+The structural extraction preserves those contracts. These source-evidenced corrections were made explicitly:
+
+| Problem | Corrected behavior | Verification anchor |
+| --- | --- | --- |
+| Service-only browsing could return no sources without ever starting Flutter | Media-service creation initializes the same process engine before browser assembly; source updates refresh the tree | Startup source checks plus real SDK compilation |
+| The browser service required nonexistent BIND_MEDIA_BROWSER_SERVICE permission | Exported browser discovery uses the supported manifest contract without that blocking attribute | Manifest/resource checks and Android source contracts |
+| Default engine construction plus manual registration registered plugins twice | Automatic registration is disabled and the generated registrar runs once before channel attachment/Dart startup | Engine ordering/source contract |
+| Focus loss left cached ownership true | Loss clears ownership before requesting pause; explicit resume can reacquire focus; separate registration state preserves final abandonment; gain does not auto-resume playback | Focus callback ordering and cleanup source contract |
+| Every metadata update requested another service start | A shared connection tracks pending/started ownership, including bound-only service startup, and requests it once until clear/destruction; late start acknowledgements cannot undo a clear | Ten headless lifecycle checks |
+| Up to seven mixed root items could hide local categories in Android Auto | Two browsable source roots retain existing nested destinations and playback operations | Typed browse-controller checks, presentation review and SDK compilation |
+
+Android intentionally keeps its own API behavior: system seek is supported here while the iOS remote-command service disables it; Android receives inline artwork from Dart while iOS can load artwork natively; Android uses AudioTrack/output devices while iOS uses AudioQueue/session policies. The Android metadata decoder retains its full-value/defaulting behavior, and completion/flush accounting keeps the existing Dart orchestration rather than copying iOS counters mechanically.
+
+Remaining differences are concrete follow-up work:
+
+- Android vehicle browse entries still omit the artwork URL/credential/pin presentation supported by the iOS path. Adding it needs an Android image-loading/access contract.
+- The local Android source retains Artists, Playlists and Liked destinations; it does not yet expose the local Shuffle destination available in CarPlay. Adding it requires explicit scoped browse/action support.
+- Focus denial is recorded without preventing AudioTrack playback. Android 15+ foreground eligibility and the ordering of service promotion/output startup need device validation before changing denial/retry behavior. [Android audio focus](https://developer.android.com/media/optimize/audio-focus)
+
+The service retains its existing browser-client acceptance policy. A package/signature allowlist would be an explicit access-policy change, rather than an incidental replacement for the removed permission. Native hardware, real Android Auto rendering and OS service scheduling remain outside headless verification.
 
 ## Adoption and verification
 
-Apply the refactor by responsibility while keeping wire and platform behavior stable:
+For future changes, preserve the extracted responsibility boundaries and make functional changes visible:
 
 1. Extract standalone values/codecs and shared channel mechanics, retaining exact payload/reply behavior.
 2. Separate engine/bootstrap composition while preserving one service-accessible process engine and Activity borrowing.
@@ -347,9 +395,17 @@ Apply the refactor by responsibility while keeping wire and platform behavior st
 4. Extract media state/browse coordination and shared presentation builders, leaving the framework service focused on lifecycle delegation.
 5. Move entry points with aligned manifest/Intent/package/resource references, then apply Kotlin layout within the affected owners.
 
-The [Android source contracts](../test/requirements/platform_android_contract_test.dart), [Dart output lifecycle tests](../test/architecture/audio_output_lifecycle_test.dart) and [native media codec tests](../test/architecture/native_media_codec_test.dart) anchor current behavior. Update source paths when owners move and retain their original coverage. These tests do not execute Android AudioTrack, the service or Android Auto. The current Android tree has no handwritten local JVM or instrumentation tests.
+The [Android source contracts](../test/requirements/platform_android_contract_test.dart), [architecture checks](../test/architecture/android_architecture_test.dart), [Dart output lifecycle tests](../test/architecture/audio_output_lifecycle_test.dart) and [native media codec tests](../test/architecture/native_media_codec_test.dart) anchor existing behavior. Five dependency-free test mains under `src/test/kotlin` exercise progress, metadata/source state, browse routing, transport and service lifetime. These headless checks do not execute AudioTrack, an Android service or Android Auto.
 
 Put pure Kotlin model/codec/controller tests under `src/test/kotlin`, using injected transport, clocks and capabilities. Device/emulator-dependent tests belong under `src/androidTest/kotlin`. Keep headless checks independent of listeners, real media playback and running Flutter engines. Verify source packages/imports, merged manifest identities/resources, channel contracts, compile output and packaged native symbols/ABIs as appropriate to the change.
+
+The [headless Kotlin verifier](../tools/android_checks/verify_kotlin.py) compiles all handwritten production/test Kotlin against the configured Android SDK, cached Flutter embedding and AndroidX APIs. It uses the app's cached Kotlin compiler version, aapt2-generated resource IDs and the real manifest/resources, then runs the five JVM test mains. From the app root:
+
+```sh
+python tools/android_checks/verify_kotlin.py
+```
+
+It resolves SDK paths from local.properties/environment and accepts explicit path overrides. It neither starts Gradle nor rebuilds native packages. Its resource/Kotlin compilation does not replace a complete variant APK build, manifest merge with every plugin, native ABI packaging or device testing. Kotlin and resource checks, ktlint 1.7.1 and focused Dart checks passed for the refactor.
 
 From `android`, a configured build environment can compile or run local unit tests without installing or starting the app:
 
@@ -362,4 +418,4 @@ On Windows use `gradlew.bat`. The SDK/JDK/NDK, Flutter artifacts and native pack
 
 Disable persistent Gradle reuse and use in-process Kotlin compilation for agent verification. Gradle may use a disposable JVM to honor configured JVM arguments; it stops after the build. Ensure no task-owned compiler/server process remains afterward, without stopping unrelated user work. [Gradle daemon behavior](https://docs.gradle.org/current/userguide/gradle_daemon.html), [Kotlin compiler strategy](https://kotlinlang.org/docs/compiler-execution-strategy.html)
 
-During agent work, do not run the app, media service, emulator, connected/instrumentation tests, adb server, development server or other background service. Device/Android Auto, focus/noisy-output, real playback and notification checks remain user-controlled. This specification/configuration pass does not claim Android compilation, formatter execution or native runtime coverage.
+During agent work, do not run the app, media service, emulator, connected/instrumentation tests, adb server, development server or other background service. Device/Android Auto, focus/noisy-output, real playback and notification checks remain user-controlled. Complete APK/native package builds and native runtime checks were not performed as part of the headless refactor verification.

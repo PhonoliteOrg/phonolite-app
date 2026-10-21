@@ -705,7 +705,7 @@ final _track = Track(
 class _PlaylistController extends AppController {
   _PlaylistController({this.listMode = false})
     : super(
-        connection: ServerConnection(baseUrl: 'http://server.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server.test/api'),
       ) {
     currentPlayback = super.playbackState;
   }

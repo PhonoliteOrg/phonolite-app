@@ -27,6 +27,7 @@ String serverFailureMessage(Object error) {
       ServerConnectionFailure.missingAddress => 'Exception: Server URL is required',
       ServerConnectionFailure.invalidAddress => 'Exception: Enter the server IP and HTTPS port',
       ServerConnectionFailure.timedOut => 'Connection timed out. Check the server address and port.',
+      ServerConnectionFailure.identityChanged => 'Server keys changed. Sign in again to verify the new server key.',
     };
   }
 

@@ -28,7 +28,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
 
     _logLifecycle = AppLifecycleListener(onStateChange: (_) => unawaited(AppLogger.instance.flush()));
 
-    const baseUrl = String.fromEnvironment('PHONOLITE_URL', defaultValue: 'https://127.0.0.1:3000/api/v1');
+    const baseUrl = String.fromEnvironment('PHONOLITE_URL', defaultValue: 'https://127.0.0.1:3000/api');
     final connection = ServerConnection(baseUrl: baseUrl);
 
     _controller = AppController(connection: connection);

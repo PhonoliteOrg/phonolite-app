@@ -1,0 +1,16 @@
+# Shared membership for Runner and the standalone real-SDK compilation checks.
+set(PHONOLITE_RUNNER_SOURCES
+  "main.cc"
+  "bootstrap/my_application.h"
+  "bootstrap/my_application.cc"
+  "bootstrap/flutter_host.h"
+  "bootstrap/flutter_host.cc"
+  "data/models/directories/directory_open_result.h"
+  "infrastructure/flutter/directories_channel_adapter.h"
+  "infrastructure/flutter/directories_channel_adapter.cc"
+  "infrastructure/shell/directory_launcher.h"
+  "infrastructure/shell/directory_launcher.cc"
+  "ui/shell/application_window.h"
+  "ui/shell/application_window.cc"
+  "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
+)

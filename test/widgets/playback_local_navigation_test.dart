@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
@@ -17,6 +18,7 @@ import 'package:phonolite_app/data/models/listening_stats/listening_report.dart'
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/pages/home/home_page.dart';
+import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/library/album_detail_screen.dart';
 import 'package:phonolite_app/pages/library/artist_detail_screen.dart';
 import 'package:phonolite_app/pages/library/library_page.dart';
@@ -39,6 +41,28 @@ import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  testWidgets('session invalidation opens sign-in once in settings', (tester) async {
+    final controller = (await tester.runAsync(() async => _SignInController()))!;
+    try {
+      await _pumpHome(tester, controller, width: 1280);
+      controller.invalidate();
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(find.text('SIGN IN'), findsNWidgets(2));
+      controller.invalidate();
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsOneWidget);
+      Navigator.of(tester.element(find.byType(LoginPage))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsNothing);
+      expect(controller.authState.isAuthorized, isFalse);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _dispose(tester, controller);
+      await controller.authUpdates.close();
+    }
+  });
 
   testWidgets('system back bubbles at the active tab root and requests app exit', (tester) async {
     await _withHomeNavigation(tester, (root, tab) async {
@@ -322,7 +346,7 @@ void main() {
             _track.copyWith(
               id: 'download-id',
               serverTrackId: _track.id,
-              serverBaseUrl: sameServer ? 'http://server.test/api/v1' : 'http://other.test/api/v1',
+              serverBaseUrl: sameServer ? 'http://server.test/api' : 'http://other.test/api',
             ),
           ],
         ),
@@ -1043,6 +1067,23 @@ class _Controller extends AppController {
   Future<void> loadStats({int? year, int? month}) async {}
 }
 
+class _SignInController extends _Controller {
+  _SignInController() : super(connected: false, tracks: [], playing: null);
+  final authUpdates = StreamController<AuthState>.broadcast();
+  bool invalidated = false;
+  @override
+  AuthState get authState => AuthState(baseUrl: connection.baseUrl,
+    requiresSignIn: invalidated, error: invalidated ? 'Server keys changed. Sign in again.' : null);
+  @override
+  Stream<AuthState> get authStream => authUpdates.stream;
+  @override
+  Future<AuthCredentials?> loadSavedCredentials() async => null;
+  void invalidate() {
+    invalidated = true;
+    authUpdates.add(authState);
+  }
+}
+
 class _PlaybackController extends _Controller {
   _PlaybackController() : super(connected: false, tracks: [_track], playing: _track);
 
@@ -1060,7 +1101,7 @@ class _PlaybackController extends _Controller {
 }
 
 class _Connection extends ServerConnection {
-  _Connection() : super(baseUrl: 'http://server.test/api/v1');
+  _Connection() : super(baseUrl: 'http://server.test/api');
 
   final metadataRequests = <String>[];
   bool metadataUnavailable = false;

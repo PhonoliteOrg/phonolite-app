@@ -40,7 +40,7 @@ class DownloadsApi extends JsonApiEndpoint {
     required String clientRequestId,
     required DownloadJobScopeV2 scope,
   }) async {
-    return postValue('/download/v2/jobs', {
+    return postValue('/download/jobs', {
       'client_id': clientId,
       'client_request_id': clientRequestId,
       'scope': scope.toJson(),
@@ -57,13 +57,13 @@ class DownloadsApi extends JsonApiEndpoint {
         ? ''
         : '?${query.entries.map((entry) => '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}').join('&')}';
 
-    return getValues('/download/v2/jobs$suffix', DownloadJobV2.fromJson);
+    return getValues('/download/jobs$suffix', DownloadJobV2.fromJson);
   }
 
   Future<void> applyDownloadJobAction({required String jobId, required String action}) async {
     final encoded = ApiTransport.encodePathSegment(jobId);
 
-    await transport.postVoid('/download/v2/jobs/$encoded/actions', {'action': action});
+    await transport.postVoid('/download/jobs/$encoded/actions', {'action': action});
   }
 
   String buildTrackDownloadUrl(String trackId) {

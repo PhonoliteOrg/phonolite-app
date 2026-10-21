@@ -16,7 +16,7 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 import '../support/offline_library_test_helpers.dart';
 
-const _server = 'https://reset.test:3000/api/v1';
+const _server = 'https://reset.test:3000/api';
 
 class _Connection extends ServerConnection {
   _Connection()

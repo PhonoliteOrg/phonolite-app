@@ -10,6 +10,8 @@ The [macOS native specification](macos-native-specification.md) applies the shar
 
 The [Android native specification](android-native-specification.md) defines Kotlin naming, member order, logical spacing, shared abstractions, component lifetimes and Flutter/media integration within Android's source structure.
 
+The [Linux native C++ specification](linux-native-specification.md) adapts these expectations to GTK/GObject, C++14, GLib resource ownership, platform channels and Linux build/package boundaries.
+
 These are expectations for new code and code being materially refactored. Existing source contains inconsistencies; publishing this specification does not imply that every file already conforms. Apply conventions within the affected responsibility, preserve behavior, and keep unrelated formatting or renaming out of a functional change.
 
 ## 1. Strategy and evidence

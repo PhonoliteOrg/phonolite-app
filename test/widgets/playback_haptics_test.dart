@@ -21,7 +21,7 @@ void main() {
       (tester) async {
         final controller = (await tester.runAsync(
           () async => AppController(
-            connection: ServerConnection(baseUrl: 'http://unused.test/api/v1'),
+            connection: ServerConnection(baseUrl: 'http://unused.test/api'),
           ),
         ))!;
         final haptics = _captureHaptics(tester);
@@ -101,7 +101,7 @@ void main() {
           final controller = (await tester.runAsync(
             () async => AppController(
               connection: ServerConnection(
-                baseUrl: 'http://unused.test/api/v1',
+                baseUrl: 'http://unused.test/api',
               ),
             ),
           ))!;

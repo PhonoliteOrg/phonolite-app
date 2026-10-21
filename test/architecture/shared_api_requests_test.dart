@@ -23,7 +23,7 @@ void main() {
       final client = MockClient((_) async => http.Response(body, 200));
       addTearDown(client.close);
       final transport = ApiTransport(
-        baseUrl: 'http://example.test/api/v1',
+        baseUrl: 'http://example.test/api',
         client: client,
       );
       expect(await transport.getList('/items'), [
@@ -81,7 +81,7 @@ void main() {
       final client = MockClient((request) async {
         requests.add(request);
         if (requests.length == 1) {
-          transport.setBaseUrl('http://second.test/api/v1');
+          transport.setBaseUrl('http://second.test/api');
           transport.setToken('second-token');
           return http.Response('retry', 503);
         }
@@ -109,7 +109,7 @@ void main() {
 
 class _ImmediateRetryTransport extends ApiTransport {
   _ImmediateRetryTransport(http.Client client)
-    : super(baseUrl: 'http://first.test/api/v1', client: client);
+    : super(baseUrl: 'http://first.test/api', client: client);
 
   @override
   Duration retryDelay(int attempt) => Duration.zero;

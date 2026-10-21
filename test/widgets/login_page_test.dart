@@ -69,6 +69,22 @@ Future<void> _pump(
 void main() {
   setUp(configureTestFonts);
 
+  testWidgets('forced sign-in retains the server and opens password entry directly', (tester) async {
+    final controller = _LoginController().._auth = AuthState(
+      baseUrl: 'https://rotated.test:8443/api', requiresSignIn: true,
+      error: 'Server keys changed. Sign in again to verify the new server key.');
+    await _pump(tester, controller);
+    expect(find.text('SIGN IN'), findsNWidgets(2));
+    expect(_input('Username'), findsOneWidget);
+    expect(find.textContaining('Server keys changed.'), findsOneWidget);
+    await tester.enterText(_input('Username'), 'listener');
+    await tester.enterText(_input('Password'), 'correct-password');
+    await _tapAction(tester, 'Sign in');
+    expect(controller.probes, isEmpty);
+    expect(controller.login?.baseUrl, 'https://rotated.test:8443/api');
+    expect(controller.login?.password, 'correct-password');
+  });
+
   for (final width in [320.0, 390.0, 700.0, 1280.0]) {
     for (final textScale in [1.0, 1.4]) {
       testWidgets('both login stages fit $width at text scale $textScale', (
@@ -127,7 +143,7 @@ void main() {
     await _pump(tester, controller);
     await tester.enterText(
       _input('Server address'),
-      'http://music.test:8443/api/v1',
+      'http://music.test:8443/api',
     );
     expect(
       tester.widget<TextField>(_input('Server address')).controller!.text,
@@ -264,7 +280,7 @@ void main() {
   ) async {
     final controller = _LoginController()
       ..saved = const AuthCredentials(
-        baseUrl: 'https://saved.test:8443/api/v1',
+        baseUrl: 'https://saved.test:8443/api',
         token: 'token',
         username: 'listener',
         trust: testServerTrust,

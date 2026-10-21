@@ -14,7 +14,7 @@ void main() {
       expectContainsAll(source, const [
         'GoogleFonts.config.allowRuntimeFetching = false;',
         "'PHONOLITE_URL'",
-        "'https://127.0.0.1:3000/api/v1'",
+        "'https://127.0.0.1:3000/api'",
         'await _controller.initialize();',
         'await _controller.restoreSession();',
         'home: const HomePage(),',

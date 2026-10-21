@@ -42,6 +42,70 @@ import '../support/offline_library_test_helpers.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('key rotation disconnects remote playback and requires password sign-in', () async {
+    final events = StreamController<MetadataUpdateEvent>();
+    final connection = _Connection()..metadataEvents = events.stream;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    addTearDown(events.close);
+    await harness.startRemote();
+    events.add(MetadataUpdateEvent(revision: 1, kind: 'session_invalidated',
+      id: 'server_keys_rotated', updatedAt: 0));
+    await Future<void>.delayed(Duration.zero);
+    expect(connection.token, isNull);
+    expect(harness.controller.authState.requiresSignIn, isTrue);
+    expect(harness.controller.authState.baseUrl, 'https://unused.test');
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.controller.playbackState.track, isNull);
+    expect(harness.auth.clears, 1);
+    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(connection.trust, testServerTrust);
+    connection.pendingHealth = Future.value(25);
+    await harness.controller.refreshServerAvailability();
+    expect(harness.controller.authState.requiresSignIn, isTrue);
+    expect(connection.token, isNull);
+  });
+
+  test('missed rotation notification is detected without replacing the saved pin', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.connection.identityChanged = true;
+    await harness.controller.refreshServerAvailability();
+    expect(harness.connection.token, isNull);
+    expect(harness.controller.authState.requiresSignIn, isTrue);
+    expect(harness.controller.playbackState.track, isNull);
+    expect(harness.connection.trust, testServerTrust);
+    expect(harness.auth.clears, 1);
+  });
+
+  test('a delayed identity check cannot invalidate a newer session', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final checked = Completer<bool>();
+    harness.connection.pendingIdentityCheck = checked.future;
+    final refresh = harness.controller.refreshServerAvailability();
+    await Future<void>.delayed(Duration.zero);
+    harness.controller.loginWithToken(baseUrl: 'https://unused.test', token: 'new-token');
+    checked.complete(true);
+    await refresh;
+    expect(harness.connection.token, 'new-token');
+    expect(harness.controller.authState.requiresSignIn, isFalse);
+    expect(harness.auth.clears, 0);
+  });
+
+  test('saved session with a rotated key requires sign-in on startup', () async {
+    final connection = _Connection()..identityChanged = true..playbackSettingsFailure = true;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    expect(connection.token, isNull);
+    expect(harness.controller.authState.requiresSignIn, isTrue);
+    expect(harness.auth.clears, 1);
+  });
+
   test('paused quality selection is applied when playback resumes', () async {
     final harness = _Harness(authenticated: true);
     addTearDown(harness.controller.close);
@@ -363,7 +427,7 @@ void main() {
 
       final result = harness.controller.probeServer('music.test:8443');
       await Future<void>.delayed(Duration.zero);
-      expect(connection.verifiedServers, ['https://music.test:8443/api/v1']);
+      expect(connection.verifiedServers, ['https://music.test:8443/api']);
       expect(harness.controller.authState.status, SessionStatus.checking);
       expect(connection.baseUrl, original);
 
@@ -373,7 +437,7 @@ void main() {
         harness.controller.authState.status,
         SessionStatus.serverReachable,
       );
-      expect(connection.baseUrl, 'https://music.test:8443/api/v1');
+      expect(connection.baseUrl, 'https://music.test:8443/api');
       expect(harness.controller.authState.isAuthorized, isFalse);
     },
   );
@@ -559,7 +623,7 @@ void main() {
         throwsA(isA<PasswordChangeException>()),
       );
       await harness.controller.restoreSession();
-      connection.setBaseUrl('https://different.test/api/v1');
+      connection.setBaseUrl('https://different.test/api');
       connection.setTrust(testServerTrust);
       connection.setToken('other-session');
       await expectLater(
@@ -1342,7 +1406,7 @@ void main() {
     addTearDown(harness.controller.close);
     await harness.controller.loadTracks('old-server-album');
 
-    connection.setBaseUrl('https://other.test/api/v1');
+    connection.setBaseUrl('https://other.test/api');
     connection.searchResponse = [
       SearchResult(
         kind: 'album',
@@ -2190,6 +2254,11 @@ class _Connection extends ServerConnection {
     setTrust(testServerTrust);
   }
   int pings = 0;
+  bool identityChanged = false;
+  Future<bool>? pendingIdentityCheck;
+  bool playbackSettingsFailure = false;
+  @override
+  Future<bool> hasServerIdentityChanged() async => pendingIdentityCheck ?? identityChanged;
   Future<void>? pendingProbe;
   final verifiedServers = <String>[];
 
@@ -2247,7 +2316,10 @@ class _Connection extends ServerConnection {
   Future<PlaybackSettingsResponse> fetchPlaybackSettings({
     Duration timeout = const Duration(seconds: 8),
     bool retryable = true,
-  }) async => PlaybackSettingsResponse(repeatMode: 'off');
+  }) async {
+    if (playbackSettingsFailure) throw StateError('TLS pin mismatch');
+    return PlaybackSettingsResponse(repeatMode: 'off');
+  }
   @override
   Future<ServerPortsResponse> fetchServerPorts({
     Duration timeout = const Duration(seconds: 8),

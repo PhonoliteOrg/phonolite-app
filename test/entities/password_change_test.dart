@@ -23,7 +23,7 @@ void main() {
     final client = MockClient(handler);
     addTearDown(client.close);
     final connection = ServerConnection(
-      baseUrl: baseUrl ?? 'https://password-${nextOrigin++}.test/api/v1',
+      baseUrl: baseUrl ?? 'https://password-${nextOrigin++}.test/api',
       client: client,
     );
     if (pinned) connection.setTrust(testServerTrust);
@@ -38,7 +38,7 @@ void main() {
       final connection = connectionFor((request) async {
         calls++;
         expect(request.method, 'POST');
-        expect(request.url.path, '/api/v1/auth/password');
+        expect(request.url.path, '/api/auth/password');
         expect(request.url.hasQuery, isFalse);
         expect(request.headers['Authorization'], 'Bearer original-token');
         expect(request.headers['Content-Type'], contains('application/json'));
@@ -78,7 +78,7 @@ void main() {
             return http.Response('', 204);
           },
           pinned: false,
-          baseUrl: 'http://password-http.test/api/v1',
+          baseUrl: 'http://password-http.test/api',
         ),
         connectionFor((_) async {
           calls++;
@@ -87,7 +87,7 @@ void main() {
         connectionFor((_) async {
           calls++;
           return http.Response('', 204);
-        }, baseUrl: 'https://password-query.test/api/v1?token=secret'),
+        }, baseUrl: 'https://password-query.test/api?token=secret'),
       ]) {
         expect(connection.canChangeOwnPassword, isFalse);
         await expectLater(
@@ -233,7 +233,7 @@ void main() {
         case 'token':
           connection.setToken('new-token');
         case 'origin':
-          connection.setBaseUrl('https://new-password-origin.test/api/v1');
+          connection.setBaseUrl('https://new-password-origin.test/api');
         case 'revision':
           connection.setToken('different-token');
           connection.setToken('original-token');

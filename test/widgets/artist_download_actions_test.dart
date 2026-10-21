@@ -79,7 +79,7 @@ void main() {
               kind: 'artist',
               sourceId: _artist.id,
               label: 'An earlier artist name',
-              serverBaseUrl: 'http://server.test/api/v1',
+              serverBaseUrl: 'http://server.test/api',
               status: status,
               createdAt: DateTime(2026),
               updatedAt: DateTime(2026),
@@ -153,7 +153,7 @@ List<OfflineTrackDownload> _downloads(
   for (final album in _albums.take(albumCount))
     for (var index = 1; index <= album.trackCount; index++)
       offlineTestDownload(
-        serverBaseUrl: 'http://server.test/api/v1',
+        serverBaseUrl: 'http://server.test/api',
         track: offlineTestTrack(
           id: '${album.id}-track-$index',
           artist: _artist.name,
@@ -206,7 +206,7 @@ class _ArtistController extends AppController {
 }
 
 class _ArtistConnection extends ServerConnection {
-  _ArtistConnection() : super(baseUrl: 'http://server.test/api/v1');
+  _ArtistConnection() : super(baseUrl: 'http://server.test/api');
 
   @override
   Future<Artist> fetchArtistById(String artistId) async => _artist;

@@ -259,21 +259,22 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
   Future<void> _loadSavedCredentials() async {
     final saved = await _feature.loadSavedCredentials();
 
-    if (!mounted || saved == null) {
+    if (!mounted) {
       return;
     }
 
     final hasServer = _serverHostController.text.trim().isNotEmpty;
     final hasUsername = _usernameController.text.trim().isNotEmpty;
 
-    if (!hasServer && saved.baseUrl.trim().isNotEmpty) {
-      final address = _feature.savedAddress(saved.baseUrl);
+    final baseUrl = saved?.baseUrl ?? widget.controller.authState.baseUrl;
+    if (!hasServer && baseUrl.trim().isNotEmpty) {
+      final address = _feature.savedAddress(baseUrl);
 
       _serverHostController.text = address.host;
       _serverPortController.text = address.port ?? '';
     }
 
-    if (!hasUsername && saved.username.trim().isNotEmpty) {
+    if (!hasUsername && saved != null && saved.username.trim().isNotEmpty) {
       _usernameController.text = saved.username;
     }
   }

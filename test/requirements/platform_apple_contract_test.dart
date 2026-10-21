@@ -332,11 +332,15 @@ void main() {
     });
 
     test('macos preserves app shell and native output device enumeration', () {
-      final appDelegate = readProjectModule('macos/Runner/AppDelegate.swift');
+      final appDelegate = readProjectModule('macos/Runner/Bootstrap/AppDelegate.swift');
       final infoPlist = readProjectModule('macos/Runner/Info.plist');
-      final audioHeader = readProjectModule('macos/Runner/phonolite_audio.h');
-      final audioSource = readProjectModule('macos/Runner/phonolite_audio.c');
-      final windowSource = readProjectModule('macos/Runner/MainFlutterWindow.swift');
+      final audioHeader = readProjectModule('macos/Runner/Infrastructure/Audio/Native/phonolite_audio.h');
+      final audioSource = readProjectFiles(const [
+        'macos/Runner/Infrastructure/Audio/Native/phonolite_audio.c',
+        'macos/Runner/Infrastructure/Audio/Native/audio_queue_player.c',
+        'macos/Runner/Infrastructure/Audio/Native/audio_output_devices.c',
+      ]);
+      final windowSource = readProjectModule('macos/Runner/Bootstrap/MainFlutterWindow.swift');
 
       expectContainsAll(appDelegate, const [
         'applicationShouldTerminateAfterLastWindowClosed',

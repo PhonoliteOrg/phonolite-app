@@ -15,7 +15,7 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 import '../support/offline_library_test_helpers.dart';
 
-const _baseUrl = 'http://server.test/api/v1';
+const _baseUrl = 'http://server.test/api';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -195,7 +195,7 @@ void main() {
         downloadServerBaseUrl: _baseUrl,
         downloadTrackIds: ['a'],
       );
-      await complete('a', baseUrl: 'http://other.test/api/v1');
+      await complete('a', baseUrl: 'http://other.test/api');
       expect(await storage.readLocalPlaylistTracks(local.id), isEmpty);
       await storage.deleteLocalPlaylist(local.id);
       await complete('a');

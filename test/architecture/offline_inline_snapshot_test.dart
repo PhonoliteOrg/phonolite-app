@@ -10,7 +10,7 @@ import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 import '../support/offline_library_test_helpers.dart';
 
 void main() {
-  const base = 'https://inline.invalid/api/v1';
+  const base = 'https://inline.invalid/api';
   late Directory root;
   late OfflineLibraryStorage storage;
   late OfflineDownloadManager manager;

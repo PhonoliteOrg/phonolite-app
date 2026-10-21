@@ -25,6 +25,8 @@ use zeroize::Zeroizing;
 
 const PROFILE: &str = "phonolite-opaque-v1";
 const SERVER_IDENTITY: &[u8] = b"phonolite-server-v1";
+const IDENTITY_CHANGED: &str =
+    "Server identity changed. Sign in again to verify the new server key.";
 struct Suite;
 impl CipherSuite for Suite {
     type OprfCs = Ristretto255;
@@ -203,16 +205,35 @@ fn probe(request: ProbeRequest) -> Result<serde_json::Value, String> {
         return Err("Invalid server address or port".into());
     }
     let deadline = Instant::now() + Duration::from_secs(8);
-    let stream = connect_tls(
-        &request.host,
-        request.port,
-        request.expected_spki,
-        Some(deadline),
-    )?;
+    let stream = connect_tls(&request.host, request.port, None, Some(deadline))?;
+    let cert = stream
+        .conn
+        .peer_certificates()
+        .and_then(|certs| certs.first())
+        .ok_or("Missing server identity")?;
+    check_probe_identity(cert.as_ref(), request.expected_spki.as_deref())?;
     let authority = authority(&request.host, request.port);
     check_health(&mut BufReader::new(stream), &authority)?;
     // Reachability never registers or returns a trusted server identity.
     Ok(serde_json::json!({"ok": true}))
+}
+
+fn check_probe_identity(cert: &[u8], expected: Option<&str>) -> Result<(), String> {
+    if expected.is_some_and(|expected| spki(cert).as_deref() != Ok(expected)) {
+        return Err(IDENTITY_CHANGED.into());
+    }
+    Ok(())
+}
+
+fn login_tls_pin(spki: Option<&str>, opaque: Option<&str>) -> Option<String> {
+    // A password-authenticated sign-in can renew the TLS pin only while proving
+    // the already remembered OPAQUE identity on this connection's TLS exporter.
+    // Other callers keep strict TLS pinning.
+    if opaque.is_some_and(|opaque| !opaque.is_empty()) {
+        None
+    } else {
+        spki.map(str::to_owned)
+    }
 }
 
 fn authority(host: &str, port: u16) -> String {
@@ -225,7 +246,7 @@ fn authority(host: &str, port: u16) -> String {
 
 fn check_health<T: Read + Write>(io: &mut BufReader<T>, authority: &str) -> Result<(), String> {
     let started = Instant::now();
-    write!(io.get_mut(), "GET /api/v1/health HTTP/1.1\r\nHost: {authority}\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
+    write!(io.get_mut(), "GET /api/health HTTP/1.1\r\nHost: {authority}\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
         .map_err(|_| "Server health check disconnected")?;
     io.get_mut()
         .flush()
@@ -252,7 +273,11 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
     {
         return Err("Invalid sign-in details".into());
     }
-    let stream = connect_tls(&request.host, request.port, request.expected_spki, None)?;
+    let tls_pin = login_tls_pin(
+        request.expected_spki.as_deref(),
+        request.expected_opaque.as_deref(),
+    );
+    let stream = connect_tls(&request.host, request.port, tls_pin, None)?;
     let cert = stream
         .conn
         .peer_certificates()
@@ -264,10 +289,7 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
         .conn
         .export_keying_material(&mut binding, b"EXPORTER-Channel-Binding", Some(&[]))
         .map_err(|_| "Channel binding unavailable")?;
-    let mut context = PROFILE.as_bytes().to_vec();
-    context.push(0);
-    context.extend_from_slice(&binding);
-    context.extend_from_slice(username.as_bytes());
+    let context = login_context(&binding, &username);
     let mut rng = rand08::rngs::OsRng;
     let first =
         ClientLogin::<Suite>::start(&mut rng, password.as_bytes()).map_err(|_| "Sign-in failed")?;
@@ -276,7 +298,7 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
     let start = post(
         &mut io,
         &authority,
-        "/api/v1/auth/opaque/start",
+        "/api/auth/opaque/start",
         serde_json::json!({"profile": PROFILE,"username":username,"message": STANDARD.encode(first.message.serialize())}),
     )?;
     if start["profile"] != PROFILE {
@@ -285,17 +307,58 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
     let message = STANDARD
         .decode(start["message"].as_str().ok_or("Invalid handshake")?)
         .map_err(|_| "Invalid handshake")?;
-    let hash = Argon2::new(
+    let proof = finish_login(
+        first.state,
+        password.as_bytes(),
+        &context,
+        &message,
+        request.expected_opaque.as_deref(),
+    )?;
+    let opaque = STANDARD.encode(proof.server_s_pk.serialize());
+    let mut result = post(
+        &mut io,
+        &authority,
+        "/api/auth/opaque/finish",
+        serde_json::json!({"attempt":start["attempt"],"message":STANDARD.encode(proof.message.serialize())}),
+    )?;
+    if result["token"].as_str().is_none_or(|s| s.is_empty()) {
+        return Err("Invalid sign-in response".into());
+    }
+    result["spki_sha256"] = pin.into();
+    result["opaque_key"] = opaque.into();
+    result["ok"] = true.into();
+    Ok(result)
+}
+
+fn authentication_hash() -> Argon2<'static> {
+    Argon2::new(
         Algorithm::Argon2id,
         Version::V0x13,
         Params::new(65536, 3, 1, None).unwrap(),
-    );
-    let proof = first
-        .state
+    )
+}
+
+fn login_context(binding: &[u8; 32], username: &str) -> Vec<u8> {
+    let mut context = PROFILE.as_bytes().to_vec();
+    context.push(0);
+    context.extend_from_slice(binding);
+    context.extend_from_slice(username.as_bytes());
+    context
+}
+
+fn finish_login(
+    state: ClientLogin<Suite>,
+    password: &[u8],
+    context: &[u8],
+    message: &[u8],
+    expected_opaque: Option<&str>,
+) -> Result<opaque_ke::ClientLoginFinishResult<Suite>, String> {
+    let hash = authentication_hash();
+    let proof = state
         .finish(
-            &mut rng,
-            password.as_bytes(),
-            CredentialResponse::<Suite>::deserialize(&message).map_err(|_| "Invalid handshake")?,
+            &mut rand08::rngs::OsRng,
+            password,
+            CredentialResponse::<Suite>::deserialize(message).map_err(|_| "Invalid handshake")?,
             ClientLoginFinishParameters::new(
                 Some(&context),
                 Identifiers {
@@ -307,27 +370,12 @@ fn login(request: LoginRequest) -> Result<serde_json::Value, String> {
         )
         .map_err(|_| "Unable to sign in; check credentials and server identity")?;
     let opaque = STANDARD.encode(proof.server_s_pk.serialize());
-    if request
-        .expected_opaque
-        .is_some_and(|expected| expected != opaque)
-    {
+    if expected_opaque.is_some_and(|expected| expected != opaque) {
         return Err(
             "Server authentication identity changed; restore the server security backup".into(),
         );
     }
-    let mut result = post(
-        &mut io,
-        &authority,
-        "/api/v1/auth/opaque/finish",
-        serde_json::json!({"attempt":start["attempt"],"message":STANDARD.encode(proof.message.serialize())}),
-    )?;
-    if result["token"].as_str().is_none_or(|s| s.is_empty()) {
-        return Err("Invalid sign-in response".into());
-    }
-    result["spki_sha256"] = pin.into();
-    result["opaque_key"] = opaque.into();
-    result["ok"] = true.into();
-    Ok(result)
+    Ok(proof)
 }
 
 fn post<T: Read + Write>(
@@ -408,8 +456,13 @@ pub unsafe extern "C" fn phonolite_security_probe(request: *const c_char) -> *mu
         probe(request)
     })
     .unwrap_or_else(|_| Err("Server connection check unavailable".into()));
-    let response =
-        result.unwrap_or_else(|error: String| serde_json::json!({"ok":false,"error":error}));
+    let response = result.unwrap_or_else(|error: String| {
+        if error == IDENTITY_CHANGED {
+            serde_json::json!({"ok":false,"error":error,"code":"server_identity_changed"})
+        } else {
+            serde_json::json!({"ok":false,"error":error})
+        }
+    });
     CString::new(response.to_string()).unwrap().into_raw()
 }
 
@@ -448,6 +501,137 @@ pub unsafe extern "C" fn phonolite_security_spki(cert: *const u8, len: usize) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opaque_ke::{
+        ClientRegistration, ClientRegistrationFinishParameters, ServerLogin, ServerLoginParameters,
+        ServerRegistration, ServerSetup,
+    };
+
+    fn registration(setup: &ServerSetup<Suite>) -> (ServerRegistration<Suite>, String) {
+        let mut rng = rand08::rngs::OsRng;
+        let start = ClientRegistration::<Suite>::start(&mut rng, b"correct-password").unwrap();
+        let response = ServerRegistration::start(setup, start.message, b"user-id").unwrap();
+        let hash = authentication_hash();
+        let upload = start
+            .state
+            .finish(
+                &mut rng,
+                b"correct-password",
+                response.message,
+                ClientRegistrationFinishParameters::new(
+                    Identifiers {
+                        client: None,
+                        server: Some(SERVER_IDENTITY),
+                    },
+                    Some(&hash),
+                ),
+            )
+            .unwrap();
+        let pin = STANDARD.encode(upload.server_s_pk.serialize());
+        (ServerRegistration::finish(upload.message), pin)
+    }
+
+    fn authenticate_in_memory(
+        setup: &ServerSetup<Suite>,
+        file: &ServerRegistration<Suite>,
+        password: &[u8],
+        client_context: &[u8],
+        server_context: &[u8],
+        pin: &str,
+    ) -> Result<(), String> {
+        let mut rng = rand08::rngs::OsRng;
+        let start = ClientLogin::<Suite>::start(&mut rng, password).unwrap();
+        let parameters = ServerLoginParameters {
+            context: Some(server_context),
+            identifiers: Identifiers {
+                client: None,
+                server: Some(SERVER_IDENTITY),
+            },
+        };
+        let response = ServerLogin::start(
+            &mut rng,
+            setup,
+            Some(file.clone()),
+            start.message,
+            b"user-id",
+            parameters.clone(),
+        )
+        .unwrap();
+        let proof = finish_login(
+            start.state,
+            password,
+            client_context,
+            &response.message.serialize(),
+            Some(pin),
+        )?;
+        let authenticated = response.state.finish(proof.message, parameters).unwrap();
+        assert_eq!(proof.session_key, authenticated.session_key);
+        Ok(())
+    }
+
+    #[test]
+    fn tls_key_rotation_requires_password_known_opaque_key_and_matching_channel() {
+        let old = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let new = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let old_pin = spki(old.cert.der()).unwrap();
+        let setup = ServerSetup::<Suite>::new(&mut rand08::rngs::OsRng);
+        let (file, opaque_pin) = registration(&setup);
+        assert!(handshake(Some(old_pin.clone()), &new).is_err());
+        assert_eq!(
+            check_probe_identity(new.cert.der(), Some(&old_pin)).unwrap_err(),
+            IDENTITY_CHANGED
+        );
+        assert!(check_probe_identity(old.cert.der(), Some(&old_pin)).is_ok());
+        assert_eq!(login_tls_pin(Some(&old_pin), None), Some(old_pin.clone()));
+        let pin = login_tls_pin(Some(&old_pin), Some(&opaque_pin));
+        assert!(pin.is_none());
+        let (client_binding, server_binding) = handshake(pin, &new).unwrap();
+        let context = login_context(&client_binding, "listener");
+        let server_context = login_context(&server_binding, "listener");
+        authenticate_in_memory(
+            &setup,
+            &file,
+            b"correct-password",
+            &context,
+            &server_context,
+            &opaque_pin,
+        )
+        .unwrap();
+        assert!(authenticate_in_memory(
+            &setup,
+            &file,
+            b"wrong-password",
+            &context,
+            &server_context,
+            &opaque_pin
+        )
+        .is_err());
+        let (other_channel, _) = handshake(None, &new).unwrap();
+        assert!(authenticate_in_memory(
+            &setup,
+            &file,
+            b"correct-password",
+            &context,
+            &login_context(&other_channel, "listener"),
+            &opaque_pin
+        )
+        .is_err());
+        let impostor = ServerSetup::<Suite>::new(&mut rand08::rngs::OsRng);
+        let (other_file, _) = registration(&impostor);
+        assert!(authenticate_in_memory(
+            &impostor,
+            &other_file,
+            b"correct-password",
+            &context,
+            &server_context,
+            &opaque_pin
+        )
+        .unwrap_err()
+        .contains("authentication identity changed"));
+        // The normal API/stream verifier still rejects the old pin afterwards;
+        // only the successful login result authorizes saving the replacement.
+        assert!(handshake(Some(old_pin), &new).is_err());
+    }
+
     fn handshake(
         pin: Option<String>,
         identity: &rcgen::CertifiedKey,
@@ -581,7 +765,7 @@ mod tests {
         check_health(&mut io, "localhost:3000").unwrap();
         assert_eq!(
             String::from_utf8(io.get_ref().write.clone()).unwrap(),
-            "GET /api/v1/health HTTP/1.1\r\nHost: localhost:3000\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n"
+            "GET /api/health HTTP/1.1\r\nHost: localhost:3000\r\nAccept: application/json\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n"
         );
         assert_eq!(authority("::1", 3000), "[::1]:3000");
     }
@@ -651,7 +835,7 @@ mod tests {
             assert!(post(
                 &mut io,
                 "localhost:3000",
-                "/api/v1/auth/opaque/start",
+                "/api/auth/opaque/start",
                 serde_json::json!({"message":"proof"})
             )
             .is_err());

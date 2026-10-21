@@ -7,9 +7,16 @@ class AuthState {
   final String baseUrl;
   final String? error;
   final bool isReconnecting;
+  final bool requiresSignIn;
 
-  AuthState({required this.baseUrl, bool? isAuthorized, SessionStatus? status, this.error, this.isReconnecting = false})
-    : status = status ?? (isAuthorized == true ? SessionStatus.authenticated : SessionStatus.offline);
+  AuthState({
+    required this.baseUrl,
+    bool? isAuthorized,
+    SessionStatus? status,
+    this.error,
+    this.isReconnecting = false,
+    this.requiresSignIn = false,
+  }) : status = status ?? (isAuthorized == true ? SessionStatus.authenticated : SessionStatus.offline);
 
   bool get isAuthorized => status == SessionStatus.authenticated;
 
@@ -25,6 +32,7 @@ class AuthState {
     String? baseUrl,
     Object? error = _authUnset,
     bool? isReconnecting,
+    bool? requiresSignIn,
   }) {
     final SessionStatus nextStatus;
 
@@ -41,6 +49,7 @@ class AuthState {
       baseUrl: baseUrl ?? this.baseUrl,
       error: identical(error, _authUnset) ? this.error : error as String?,
       isReconnecting: nextStatus == SessionStatus.serverUnavailable ? isReconnecting ?? this.isReconnecting : false,
+      requiresSignIn: requiresSignIn ?? this.requiresSignIn,
     );
   }
 }

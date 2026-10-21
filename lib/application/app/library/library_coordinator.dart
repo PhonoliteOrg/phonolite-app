@@ -40,6 +40,7 @@ class _LibraryCoordinator {
         _host.connection.token == token,
     applyEvent: _applyMetadataEvent,
     onDiagnostic: AppLogger.debug,
+    onSessionInvalidated: () => unawaited(_host._sessionCoordinator.requireSignIn()),
   );
 
   _LibraryCoordinator(this._host);

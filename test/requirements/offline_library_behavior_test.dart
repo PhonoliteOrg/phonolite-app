@@ -33,7 +33,7 @@ void main() {
       await mediaFile.writeAsBytes(<int>[1, 2, 3]);
 
       final legacy = OfflineTrackDownload(
-        serverBaseUrl: 'http://server-one.test/api/v1',
+        serverBaseUrl: 'http://server-one.test/api',
         track: offlineTestTrack(id: 'server-track-1'),
         status: OfflineDownloadStatus.downloaded,
         createdAt: DateTime.fromMillisecondsSinceEpoch(1),
@@ -73,7 +73,7 @@ void main() {
       final fileOne = await offlineTestMediaFile(temp, 'one.mp3');
       final first = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(id: 'server-one-track', durationMs: 180000),
           filePath: fileOne.path,
         ),
@@ -83,7 +83,7 @@ void main() {
       final fileTwo = await offlineTestMediaFile(temp, 'two.mp3');
       final second = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-two.test/api/v1',
+          serverBaseUrl: 'http://server-two.test/api',
           track: offlineTestTrack(
             id: 'server-two-track',
             title: 'The Song!',
@@ -115,7 +115,7 @@ void main() {
 
         final queued = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'queued-track'),
             status: OfflineDownloadStatus.queued,
           ),
@@ -309,7 +309,7 @@ void main() {
       final mediaFile = await offlineTestMediaFile(temp, 'completed.mp3');
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(id: 'server-track-1'),
           filePath: mediaFile.path,
         ),
@@ -347,7 +347,7 @@ void main() {
       final zetaFile = await offlineTestMediaFile(temp, 'zeta.mp3');
       final alpha = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(
             id: 'server-alpha',
             title: 'Alpha Song',
@@ -358,7 +358,7 @@ void main() {
       );
       final zeta = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(
             id: 'server-zeta',
             title: 'Zeta Song',
@@ -486,13 +486,13 @@ void main() {
         );
 
         final mediaPath = await storage.trackFile(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           trackId: 'server-track-1',
           extension: 'mp3',
         );
         final prepared = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'server-track-1'),
             filePath: mediaPath.path,
           ),
@@ -527,7 +527,7 @@ void main() {
         );
 
         final mediaFile = await storage.trackFile(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           trackId: 'server-track-1',
           extension: 'mp3',
         );
@@ -554,7 +554,7 @@ void main() {
 
         final prepared = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'server-track-1'),
             status: OfflineDownloadStatus.downloaded,
             filePath: mediaFile.path,
@@ -603,7 +603,7 @@ void main() {
       await storage.upsertDownloadBatch(
         OfflineDownloadBatch(
           batchId: 'batch-1',
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           status: OfflineDownloadStatus.queued,
           createdAt: now,
           updatedAt: now,
@@ -613,7 +613,7 @@ void main() {
       );
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(id: 'server-track-1'),
           status: OfflineDownloadStatus.paused,
         ).copyWith(
@@ -658,7 +658,7 @@ void main() {
 
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: metadata.track,
           filePath: mediaFile.path,
         ).copyWith(offlineMetadata: metadata),
@@ -689,7 +689,7 @@ void main() {
         );
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
-        const serverBaseUrl = 'http://server-one.test/api/v1';
+        const serverBaseUrl = 'http://server-one.test/api';
         final albums = <OfflineTrackMetadata>[
           offlineTestOfflineMetadata(
             trackId: 'server-track-1',
@@ -747,7 +747,7 @@ void main() {
         final mediaFile = await offlineTestMediaFile(temp, 'genres.mp3');
         final prepared = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(
               id: 'server-track-1',
               artist: 'Gorillaz',
@@ -776,7 +776,7 @@ void main() {
       );
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
-      const serverBaseUrl = 'http://server-one.test/api/v1';
+      const serverBaseUrl = 'http://server-one.test/api';
       final mediaFile = await offlineTestMediaFile(temp, 'repair.mp3');
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
@@ -868,7 +868,7 @@ void main() {
 
         final first = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: firstMetadata.track,
             filePath: firstFile.path,
           ).copyWith(offlineMetadata: firstMetadata),
@@ -876,7 +876,7 @@ void main() {
         await storage.upsertDownload(first);
         final second = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-two.test/api/v1',
+            serverBaseUrl: 'http://server-two.test/api',
             track: secondMetadata.track,
             filePath: secondFile.path,
           ).copyWith(offlineMetadata: secondMetadata),
@@ -889,7 +889,7 @@ void main() {
         final localTracks = await storage.readLocalDownloadedTracks();
 
         expect(downloads, hasLength(1));
-        expect(downloads.single.serverBaseUrl, 'http://server-two.test/api/v1');
+        expect(downloads.single.serverBaseUrl, 'http://server-two.test/api');
         expect(
           downloads.single.offlineMetadata?.artist.summary,
           'Second server artist summary.',
@@ -946,14 +946,14 @@ void main() {
       );
       final first = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: firstMetadata.track,
           filePath: (await offlineTestMediaFile(temp, 'one.mp3')).path,
         ).copyWith(offlineMetadata: firstMetadata),
       );
       final second = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: secondMetadata.track,
           filePath: (await offlineTestMediaFile(temp, 'two.mp3')).path,
         ).copyWith(offlineMetadata: secondMetadata),
@@ -1014,7 +1014,7 @@ void main() {
       );
       final download = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: metadata.track,
           filePath: (await offlineTestMediaFile(temp, 'one.mp3')).path,
         ).copyWith(offlineMetadata: metadata),
@@ -1060,7 +1060,7 @@ void main() {
         );
         final download = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: metadata.track,
             filePath: (await offlineTestMediaFile(temp, 'one.mp3')).path,
           ).copyWith(offlineMetadata: metadata),
@@ -1098,7 +1098,7 @@ void main() {
         final mediaFile = await offlineTestMediaFile(temp, 'completed.mp3');
         final prepared = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'server-track-1'),
             filePath: mediaFile.path,
           ),
@@ -1169,7 +1169,7 @@ void main() {
       final delegate = OfflineLibraryStorage(baseDirectory: temp);
       final storage = DelayedReadStorage(delegate);
       final manager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(manager.dispose);
@@ -1209,7 +1209,7 @@ void main() {
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
       final manager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(manager.dispose);
@@ -1253,7 +1253,7 @@ void main() {
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
       final firstManager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       await firstManager.load();
@@ -1269,7 +1269,7 @@ void main() {
       await firstManager.dispose();
 
       final secondManager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(secondManager.dispose);
@@ -1296,7 +1296,7 @@ void main() {
         final storage = OfflineLibraryStorage(baseDirectory: temp);
         final manager = OfflineDownloadManager(
           connection: ServerConnection(
-            baseUrl: 'http://server-one.test/api/v1',
+            baseUrl: 'http://server-one.test/api',
           ),
           storage: storage,
         );
@@ -1330,7 +1330,7 @@ void main() {
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
       final manager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(manager.dispose);
@@ -1370,7 +1370,7 @@ void main() {
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
       final manager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(manager.dispose);
@@ -1413,7 +1413,7 @@ void main() {
         );
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final connection = ArtistRetryTestConnection(
           baseUrl: serverBaseUrl,
           tracksByAlbum: <String, List<Track>>{
@@ -1493,7 +1493,7 @@ void main() {
       );
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
-      final serverBaseUrl = 'http://server-one.test/api/v1';
+      final serverBaseUrl = 'http://server-one.test/api';
       final canonicalFile = await storage.trackFile(
         serverBaseUrl: serverBaseUrl,
         trackId: 'server-track-1',
@@ -1539,7 +1539,7 @@ void main() {
         );
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final missingFile = offlineTestJoin(
           offlineTestJoin(temp.path, 'old_container'),
           'server-track-1.mp3',
@@ -1576,7 +1576,7 @@ void main() {
         );
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final canonicalFile = await storage.trackFile(
           serverBaseUrl: serverBaseUrl,
           trackId: 'server-track-1',
@@ -1638,7 +1638,7 @@ void main() {
           ),
         );
 
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final legacyStorage = OfflineLibraryStorage(
           metadataDirectory: legacyMetadata,
           downloadsDirectory: legacyDownloads,
@@ -1704,7 +1704,7 @@ void main() {
         );
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final jobId = 'job-artist-pause';
         final now = DateTime.fromMillisecondsSinceEpoch(10);
         final firstTrack = offlineTestTrack(id: 'server-track-1');
@@ -1807,7 +1807,7 @@ void main() {
       );
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
-      final serverBaseUrl = 'http://server-one.test/api/v1';
+      final serverBaseUrl = 'http://server-one.test/api';
       final jobId = 'job-server-pause-all';
       final now = DateTime.fromMillisecondsSinceEpoch(10);
       final firstTrack = offlineTestTrack(id: 'server-track-1');
@@ -1895,7 +1895,7 @@ void main() {
       );
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
-      final serverBaseUrl = 'http://server-one.test/api/v1';
+      final serverBaseUrl = 'http://server-one.test/api';
       final now = DateTime.fromMillisecondsSinceEpoch(10);
       final artist = Artist(id: 'artist-1', name: 'Gorillaz', albumCount: 2);
       final albums = <Album>[
@@ -1966,7 +1966,7 @@ void main() {
         );
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final jobId = 'job-artist-track-resume';
         final now = DateTime.fromMillisecondsSinceEpoch(10);
         final firstTrack = offlineTestTrack(id: 'server-track-1');
@@ -2055,7 +2055,7 @@ void main() {
       );
       addTearDown(() => temp.delete(recursive: true));
       final storage = OfflineLibraryStorage(baseDirectory: temp);
-      final serverBaseUrl = 'http://server-one.test/api/v1';
+      final serverBaseUrl = 'http://server-one.test/api';
       final jobId = 'job-artist-remove-completed';
       final now = DateTime.fromMillisecondsSinceEpoch(10);
       final firstFile = await offlineTestMediaFile(temp, 'first.mp3');
@@ -2151,7 +2151,7 @@ void main() {
         addTearDown(() => temp.delete(recursive: true));
         final storage = OfflineLibraryStorage(baseDirectory: temp);
         var metadataRequestCount = 0;
-        final serverBaseUrl = 'http://server-one.test/api/v1';
+        final serverBaseUrl = 'http://server-one.test/api';
         final staleMetadata = offlineTestOfflineMetadata(
           trackId: 'server-track-1',
           albumTitle: 'Gorillaz',
@@ -2221,7 +2221,7 @@ void main() {
       final mediaFile = await offlineTestMediaFile(temp, 'completed.mp3');
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(id: 'server-track-1'),
           filePath: mediaFile.path,
         ),
@@ -2280,7 +2280,7 @@ void main() {
         );
         final prepared = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'server-track-1'),
             filePath: mediaFile.path,
           ).copyWith(partialPath: partialFile.path),
@@ -2293,7 +2293,7 @@ void main() {
 
         final manager = OfflineDownloadManager(
           connection: ServerConnection(
-            baseUrl: 'http://server-one.test/api/v1',
+            baseUrl: 'http://server-one.test/api',
           ),
           storage: storage,
         );
@@ -2328,14 +2328,14 @@ void main() {
       final missing = offlineTestJoin(temp.path, 'missing.mp3');
       final prepared = await storage.prepareDownload(
         offlineTestDownload(
-          serverBaseUrl: 'http://server-one.test/api/v1',
+          serverBaseUrl: 'http://server-one.test/api',
           track: offlineTestTrack(id: 'server-track-1'),
           filePath: missing,
         ),
       );
       await storage.upsertDownload(prepared);
       final manager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(manager.dispose);
@@ -2359,14 +2359,14 @@ void main() {
         final secondFile = await offlineTestMediaFile(temp, 'second.mp3');
         final first = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'server-track-1'),
             filePath: firstFile.path,
           ),
         );
         final second = await storage.prepareDownload(
           offlineTestDownload(
-            serverBaseUrl: 'http://server-one.test/api/v1',
+            serverBaseUrl: 'http://server-one.test/api',
             track: offlineTestTrack(id: 'server-track-2', title: 'Second Song'),
             filePath: secondFile.path,
           ),
@@ -2407,7 +2407,7 @@ void main() {
       ]);
 
       final manager = OfflineDownloadManager(
-        connection: ServerConnection(baseUrl: 'http://server-one.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
       addTearDown(manager.dispose);

@@ -39,7 +39,7 @@ void main() {
         final job = OfflineDownloadJob(
           jobId: 'job',
           kind: 'artist',
-          serverBaseUrl: 'https://unused.test/api/v1',
+          serverBaseUrl: 'https://unused.test/api',
           status: OfflineDownloadStatus.downloading,
           createdAt: DateTime.fromMillisecondsSinceEpoch(1),
           updatedAt: DateTime.fromMillisecondsSinceEpoch(2),
@@ -249,7 +249,7 @@ void main() {
             final job = OfflineDownloadJob(
               jobId: 'job',
               kind: kind,
-              serverBaseUrl: 'https://unused.test/api/v1',
+              serverBaseUrl: 'https://unused.test/api',
               status: status,
               createdAt: DateTime.fromMillisecondsSinceEpoch(1),
               updatedAt: DateTime.fromMillisecondsSinceEpoch(2),
@@ -319,7 +319,7 @@ void _setViewport(WidgetTester tester, double width) {
 
 OfflineTrackDownload _download(OfflineDownloadStatus status) =>
     OfflineTrackDownload(
-      serverBaseUrl: 'https://unused.test/api/v1',
+      serverBaseUrl: 'https://unused.test/api',
       track: Track(
         id: 'track',
         title: 'Track',
@@ -339,7 +339,7 @@ OfflineTrackDownload _download(OfflineDownloadStatus status) =>
 class _DownloadActionsController extends AppController {
   _DownloadActionsController()
     : super(
-        connection: ServerConnection(baseUrl: 'https://unused.test/api/v1'),
+        connection: ServerConnection(baseUrl: 'https://unused.test/api'),
       );
 
   final removedJobs = <OfflineDownloadJob>[];
