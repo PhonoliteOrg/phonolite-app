@@ -192,22 +192,23 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
         }
 
         final state = snapshot.data ?? LocalNetworkPermissionState.unknown;
+        if (state == LocalNetworkPermissionState.granted) {
+          return const SizedBox.shrink();
+        }
+
         final theme = Theme.of(context);
-        final needsSettings = state != LocalNetworkPermissionState.granted;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (needsSettings) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: withButtonHaptic(() => widget.controller.openAppSettings()),
-                  child: const Text('Open iOS Settings'),
-                ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: withButtonHaptic(() => widget.controller.openAppSettings()),
+                child: const Text('Open iOS Settings'),
               ),
-              const SizedBox(height: 8),
-            ],
+            ),
+            const SizedBox(height: 8),
             Text(
               'Local network permission: ${state.name}',
               style: theme.textTheme.labelLarge?.copyWith(color: ObsidianPalette.textMuted, letterSpacing: 1.1),

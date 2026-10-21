@@ -24,7 +24,7 @@ void main() {
       volume: 0.7,
       shuffleMode: ShuffleMode.album,
       shuffleScope: ActionScope.local,
-      repeatMode: RepeatMode.one,
+      repeatMode: PlaybackRepeatMode.one,
       streamMode: StreamMode.high,
       bitrateKbps: 128,
       streamConnected: true,

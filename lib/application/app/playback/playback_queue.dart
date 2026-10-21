@@ -514,7 +514,7 @@ class _PlaybackQueue {
     _autoAdvanceInFlight = true;
     _host._listeningSessionContext = null;
 
-    if (_host._playbackState.repeatMode == RepeatMode.one) {
+    if (_host._playbackState.repeatMode == PlaybackRepeatMode.one) {
       final track = _host._playbackState.track;
 
       if (track == null) {

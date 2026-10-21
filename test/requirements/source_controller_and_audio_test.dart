@@ -21,7 +21,7 @@ void main() {
       expectContainsAll(playbackValues, const [
         'enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }',
         'enum ActionScope { local, server }',
-        'enum RepeatMode { off, one }',
+        'enum PlaybackRepeatMode { off, one }',
         'enum StreamMode { auto, high, medium, low }',
         'enum PlaybackQueueSource { none, liked, playlist, offline }',
         'enum LocalPlaybackSource { none, library, liked, playlist }',
@@ -340,7 +340,7 @@ void main() {
         'await _playCurrent();',
         'Future<void> nextTrack({bool fromAutoAdvance = false}) async {',
         'Future<void> prevTrack({bool fromAutoAdvance = false}) async {',
-        "if (_host._playbackState.repeatMode == RepeatMode.one) {",
+        "if (_host._playbackState.repeatMode == PlaybackRepeatMode.one) {",
         "await _host._audioEngine.playLocalFile(",
         'startOffset: startOffset,',
         'contentType: download.contentType,',

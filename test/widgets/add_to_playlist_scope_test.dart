@@ -98,7 +98,7 @@ PlaybackState _playback({required bool local}) => PlaybackState(
   volume: 1,
   shuffleMode: ShuffleMode.off,
   shuffleScope: local ? ActionScope.server : ActionScope.local,
-  repeatMode: RepeatMode.off,
+  repeatMode: PlaybackRepeatMode.off,
   streamMode: StreamMode.auto,
   bitrateKbps: null,
   streamConnected: !local,

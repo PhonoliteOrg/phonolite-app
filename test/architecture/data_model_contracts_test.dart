@@ -195,7 +195,7 @@ PlaybackState _playbackState() => PlaybackState(
   volume: 0.5,
   shuffleMode: ShuffleMode.off,
   shuffleScope: ActionScope.local,
-  repeatMode: RepeatMode.off,
+  repeatMode: PlaybackRepeatMode.off,
   streamMode: StreamMode.auto,
   bitrateKbps: 128,
   streamConnected: true,
