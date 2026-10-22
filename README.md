@@ -24,6 +24,23 @@ feature-organized iOS journeys and automatic profile-mode frame/trace reports.
 The [test index](test/README.md) explains where to find device, widget, entity,
 platform and server tests. The device harness lives outside the main app source.
 
+## iOS release verification
+
+After `flutter build ipa`, inspect the exported artifact before uploading it:
+
+```sh
+python3 ios/Scripts/verify_release_artifact.py build/ios/ipa/Phonolite.ipa
+```
+
+The check also accepts an `.xcarchive` or `.app`. It verifies the native audio,
+Opus, QUIC/authentication and SQLite entry points, Flutter plugin classes and
+registration methods, UIKit/CarPlay scene classes, bundled framework dependencies
+and matching binary architectures. Use the checkout and resolved dependencies
+that produced the artifact. Release and Profile retain
+global symbols (`STRIP_STYLE = non-global`) because Dart FFI resolves audio
+functions by name; an ordinary local release launch does not exercise archive
+stripping. This binary inspection does not launch the app or test device playback.
+
 ## Desktop controls
 
 On Windows, macOS, and Linux, press Space to pause or resume playback. Holding
