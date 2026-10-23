@@ -73,6 +73,15 @@ of the password. API calls, artwork, SSE, downloads and QUIC audio
 require the authenticated identity. HTTP fallback, unverified streaming, and
 redirects carrying credentials to another server are blocked.
 
+iOS native artwork uses an ATS exception so its authenticated pin validator can
+accept self-signed certificates from user-selected servers. The artwork session
+still requires HTTPS, TLS 1.3, an unexpired certificate, and the signed-in server's
+SPKI pin. Keep `NSAllowsLocalNetworking` and the media/web-content ATS override
+keys out of the iOS plist: their presence makes iOS ignore
+`NSAllowsArbitraryLoads` and reject these artwork connections. The App Store
+exception justification is support for user-managed servers with authenticated,
+self-signed identities rather than a fixed, app-owned server domain.
+
 Server pins are retained in OS secure storage while connected, even without
 **Remember me**. Remember me additionally stores the bearer session there, so an
 existing connection can be restored after restarting the app. Passwords are not saved.

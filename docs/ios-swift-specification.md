@@ -218,6 +218,14 @@ Create the loading template once, then update that same template as results arri
 
 [CarPlayShell](../ios/Runner/UI/Shell/CarPlay/CarPlayShell.swift) owns root/push presentation and scene template resources. [CarPlayNavigationCoordinator](../ios/Runner/Pages/CarPlay/CarPlayNavigationCoordinator.swift) selects concrete destinations and binds their supplied capabilities. Bootstrap constructs the artwork loader and adapts it to the shared frame's loading callback; pages and shared UI receive that callback without constructing the infrastructure implementation. Keep page actions distinct from the scene's app navigation, as in the Flutter shell.
 
+Local is always the default destination, including when no tracks are downloaded.
+While the server is connected and authorized, use a `CPTabBarTemplate` root with
+Local first and selected, followed by Server. Removing the last download must
+preserve both tabs while connected; this tabbed root retains the system navigation
+used by the CarPlay Now Playing presentation. Without a server connection, present
+the Local grid directly without a source selector and retain its existing
+empty-library messages.
+
 Use composition when the common responsibility can be supplied as typed inputs, a renderer or a collaborator. Use a base class when a real superclass-owned lifecycle/assembly sequence needs specialization. Swift has no direct equivalent of Dart's abstract class syntax; prefer protocols and composed implementations over required hooks whose default is `fatalError`. A shared protocol alone does not share implementation.
 
 Build named UI pieces before final assembly. Extract a repeated row, loading state, symbol treatment or action group into its owning structure. Keep substantial actions outside anonymous layout closures. Do not flatten everything into one expression or introduce a wrapper for every obvious constructor call.
@@ -427,6 +435,13 @@ Refine future variations with concrete examples and tests before broad changes. 
 ## 12. Verification and adoption
 
 The [RunnerTests](../ios/RunnerTests/RunnerTests.swift) retain all twelve original artwork/metadata cases, including authenticated request identity, downsampling, failed responses, stale artwork, seek epochs and clearing. Added cases cover borrowed-session reuse after clearing, typed presentation callbacks and the mixed metadata/artwork patch contract. [NowPlayingContractTests](../ios/RunnerTests/NowPlayingContractTests.swift) cover pure decoding/state/identity rules, and [CarPlayContractTests](../ios/RunnerTests/CarPlayContractTests.swift) cover typed browse transport and request relevance with injected clients. In-memory URLProtocol doubles do not require an HTTP listener.
+
+For an authorized device XCTest run without an attached Flutter debugger, keep
+the native `Debug` configuration and pass `FLUTTER_BUILD_MODE=profile` to
+`xcodebuild test`. This retains Swift testability while avoiding the device's
+restriction on starting a Debug Flutter engine without its debugger. RunnerTests
+uses the app's iOS 16.6 minimum, and Debug exports Runner's Swift symbols for
+`@testable import Runner`; release exports retain their existing native ABI.
 
 The [Dart Apple source contracts](../test/requirements/platform_apple_contract_test.dart) and [iOS architecture checks](../test/architecture/ios_architecture_test.dart) verify native ownership, paths, source registration and important contract details. A passing source-text check does not establish Swift compilation or runtime behavior.
 

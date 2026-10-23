@@ -1,4 +1,6 @@
+import CarPlay
 import Foundation
+import UIKit
 import XCTest
 
 import Flutter
@@ -6,6 +8,42 @@ import Flutter
 @testable import Runner
 
 final class CarPlayContractTests: XCTestCase {
+  func testRootDefaultsToLocalAndOnlyShowsSourceSelectorWhenConnected() throws {
+    let page = CarPlayRootPage(sourceGrid: CarPlaySourceGrid(
+      onLibrary: { _ in },
+      onPlaylists: { _ in },
+      onLiked: { _ in },
+      onShuffle: { _ in }
+    ))
+    let cases: [CarPlaySourceState] = [
+      CarPlaySourceState(serverAvailable: true, localAvailable: true),
+      CarPlaySourceState(serverAvailable: true, localAvailable: false),
+      CarPlaySourceState(serverAvailable: false, localAvailable: true),
+      .empty,
+    ]
+
+    for state in cases {
+      let content = page.makeContent(state: state, contentStyle: .dark)
+      let local = try XCTUnwrap(content.localTemplate)
+
+      if state.serverAvailable {
+        let tabs = try XCTUnwrap(content.template as? CPTabBarTemplate)
+        let server = try XCTUnwrap(content.serverTemplate)
+
+        XCTAssertEqual(tabs.templates.map { $0.tabTitle ?? "" }, ["Local", "Server"])
+        XCTAssertTrue(tabs.templates.first === local)
+        XCTAssertTrue(tabs.templates.last === server)
+
+        if #available(iOS 17.0, *) {
+          XCTAssertTrue(tabs.selectedTemplate === local)
+        }
+      } else {
+        XCTAssertTrue(content.template === local)
+        XCTAssertNil(content.serverTemplate)
+      }
+    }
+  }
+
   func testSourceStatePreservesExternalFlagAndAvailableSourceNormalization() {
     XCTAssertEqual(CarPlayCodec.decodeSourceState(nil), .empty)
 
