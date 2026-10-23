@@ -143,11 +143,7 @@ class _OfflineStorageRelocator {
     }
 
     if (Platform.isWindows) {
-      final localAppData = Platform.environment['LOCALAPPDATA'];
-
-      if (localAppData != null && localAppData.trim().isNotEmpty) {
-        return Directory(_host._join(localAppData, 'Phonolite'));
-      }
+      return WindowsAppStorage.directory() ?? await getApplicationSupportDirectory();
     }
 
     final supportDir = await getApplicationSupportDirectory();

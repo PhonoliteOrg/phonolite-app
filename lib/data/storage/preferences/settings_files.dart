@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'package:phonolite_app/data/storage/windows_app_storage.dart';
+
 /// Resolves settings files without owning their formats or error policies.
 ///
 /// [directoryProvider] returns the settings directory itself, allowing tests
@@ -23,6 +25,10 @@ class SettingsFiles {
   }
 
   Future<Directory> _defaultDirectory() async {
+    if (Platform.isWindows) {
+      return WindowsAppStorage.directory() ?? await getApplicationSupportDirectory();
+    }
+
     if (cacheFirst) {
       try {
         final cache = await getApplicationCacheDirectory();
@@ -30,14 +36,6 @@ class SettingsFiles {
         return Directory(_join(cache.path, 'Phonolite'));
       } catch (_) {
         // Preserve the legacy shuffle-settings fallback policy.
-      }
-    }
-
-    if (Platform.isWindows) {
-      final appData = cacheFirst ? Platform.environment['LOCALAPPDATA'] : Platform.environment['APPDATA'];
-
-      if (appData != null && appData.trim().isNotEmpty) {
-        return Directory(_join(appData, 'Phonolite'));
       }
     }
 

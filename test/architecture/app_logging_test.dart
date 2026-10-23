@@ -299,7 +299,7 @@ void main() {
     },
   );
 
-  test('Windows uses LocalAppData with support-directory fallback', () async {
+  test('Windows uses Roaming AppData with support-directory fallback', () async {
     var supportRequested = false;
     Future<Directory> support() async {
       supportRequested = true;
@@ -308,14 +308,14 @@ void main() {
 
     final local = await LogFiles.defaultDirectory(
       operatingSystem: 'windows',
-      environment: {'LOCALAPPDATA': '${temp.path}/local-app-data'},
+      environment: {'APPDATA': '${temp.path}/roaming-app-data'},
       supportDirectoryProvider: support,
     );
-    expect(local.path, '${temp.path}/local-app-data/Phonolite/logs');
+    expect(local.path.replaceAll('\\', '/'), '${temp.path}/roaming-app-data/Phonolite/logs'.replaceAll('\\', '/'));
     expect(supportRequested, isFalse);
     final fallback = await LogFiles.defaultDirectory(
       operatingSystem: 'windows',
-      environment: {'LOCALAPPDATA': ' '},
+      environment: {'APPDATA': ' '},
       supportDirectoryProvider: support,
     );
     expect(fallback.path, '${temp.path}/app-support/logs');
