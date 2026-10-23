@@ -1061,6 +1061,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.phonoliteApp.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1079,6 +1080,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.phonoliteApp.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1095,6 +1097,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.phonoliteApp.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1236,6 +1239,7 @@
 				MARKETING_VERSION = 0.2.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
+					"-Wl,-exported_symbol,_$s6Runner*",
 					"-force_load",
 					"\"$(PROJECT_DIR)/Runner/libphonolite_opus.a\"",
 					"-Wl,-exported_symbol,_phonolite_opus_decoder_create",

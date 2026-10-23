@@ -6,6 +6,16 @@ const root = path.resolve(__dirname, '..');
 const assets = path.join(root, 'assets/icons/lucide');
 const manifest = JSON.parse(fs.readFileSync(path.join(assets, 'manifest.json'), 'utf8'));
 
+// Distinct hues with strong contrast on CarPlay's light backgrounds and
+// brighter counterparts for dark mode. Template icons keep the system tint.
+const gridColors = {
+  LucideDisc3Grid: { light: '#155EEF', dark: '#83B4FF' },
+  LucideListMusicGrid: { light: '#783ED4', dark: '#BF9BFF' },
+  LucideHeartFilledGrid: { light: '#C82359', dark: '#FF8AAE' },
+  LucideShuffleGrid: { light: '#00786F', dark: '#5EDBCB' },
+  LucideEllipsisGrid: { light: '#475569', dark: '#CBD5E1' },
+};
+
 async function main() {
   const templates = process.argv.includes('--grids-only') ? {} : manifest.ios_assets;
   for (const [assetName, iconName] of Object.entries(templates)) {
@@ -33,7 +43,8 @@ async function main() {
     fs.mkdirSync(dir, { recursive: true });
     const source = fs.readFileSync(path.join(assets, `${iconName}.svg`), 'utf8');
     const images = [];
-    for (const [appearance, color] of [['light', '#80600A'], ['dark', '#DDC17A']]) {
+    const colors = gridColors[assetName] || gridColors.LucideEllipsisGrid;
+    for (const [appearance, color] of Object.entries(colors)) {
       let svg = source.replaceAll('currentColor', color);
       if (assetName.endsWith('FilledGrid')) svg = svg.replace('fill="none"', `fill="${color}"`);
       for (const scale of [1, 2, 3]) {

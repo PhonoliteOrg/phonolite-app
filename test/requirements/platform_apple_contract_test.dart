@@ -232,8 +232,17 @@ void main() {
         '_phonolite._tcp',
         'CPTemplateApplicationScene',
         '<string>audio</string>',
-        'NSAllowsLocalNetworking',
+        'NSAllowsArbitraryLoads',
       ]);
+      // These keys override NSAllowsArbitraryLoads and break native artwork
+      // from user-selected servers with authenticated self-signed certificates.
+      for (final key in const [
+        'NSAllowsLocalNetworking',
+        'NSAllowsArbitraryLoadsForMedia',
+        'NSAllowsArbitraryLoadsInWebContent',
+      ]) {
+        expect(infoPlist, isNot(contains('<key>$key</key>')));
+      }
       expectContainsAll(sceneDelegate, const [
         'configureNowPlayingChannel()',
         'configurePermissionsChannel()',
@@ -282,7 +291,7 @@ void main() {
         '#available(iOS 27.0, *)',
         'template.responds(to: NSSelectorFromString("setAllowsMiniPlayer:"))',
         'template.setValue(true, forKey: "allowsMiniPlayer")',
-        'CPTabBarTemplate(templates: templates)',
+        'CPTabBarTemplate(templates:',
         'template.tabTitle = title',
         'self?.refreshNowPlaying()',
         'sendRemoteCommand(.toggleLike)',

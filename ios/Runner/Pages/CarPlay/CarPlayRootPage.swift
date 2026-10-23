@@ -8,27 +8,20 @@ struct CarPlayRootPage {
     return CarPlayListFrame.makeMessageTemplate(text: "Loading...")
   }
 
-  func makeContent(state: CarPlaySourceState, contentStyle: UIUserInterfaceStyle) -> CarPlayRootContent? {
-    if !state.hasAnySource {
-      let template = CarPlayListFrame.makeMessageTemplate(
-        text: "Nothing available in CarPlay",
-        detail: "Connect to a server or download tracks in Phonolite"
-      )
+  func makeContent(state: CarPlaySourceState, contentStyle: UIUserInterfaceStyle) -> CarPlayRootContent {
+    let local = sourceGrid.makeTemplate(scope: .local, contentStyle: contentStyle)
 
-      return CarPlayRootContent(template: template, localTemplate: nil, serverTemplate: nil)
+    guard state.serverAvailable else {
+      return CarPlayRootContent(template: local, localTemplate: local, serverTemplate: nil)
     }
 
-    let local = state.localAvailable ? sourceGrid.makeTemplate(scope: .local, contentStyle: contentStyle) : nil
-    let server = state.serverAvailable ? sourceGrid.makeTemplate(scope: .server, contentStyle: contentStyle) : nil
-    let templates: [CPTemplate] = [local, server].compactMap { $0 }
-    let template: CPTemplate
+    // A connected server adds the selector and keeps the tabbed navigation
+    // needed for Now Playing even when there are no downloaded tracks.
+    let server = sourceGrid.makeTemplate(scope: .server, contentStyle: contentStyle)
+    let template = CPTabBarTemplate(templates: [local, server])
 
-    if templates.count > 1 {
-      template = CPTabBarTemplate(templates: templates)
-    } else if let first = templates.first {
-      template = first
-    } else {
-      return nil
+    if #available(iOS 17.0, *) {
+      template.select(local)
     }
 
     return CarPlayRootContent(template: template, localTemplate: local, serverTemplate: server)

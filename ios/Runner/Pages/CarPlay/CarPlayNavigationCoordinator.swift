@@ -102,9 +102,8 @@ final class CarPlayNavigationCoordinator {
 
     shell.resetSourceTemplates()
 
-    if let content = rootPage.makeContent(state: browse.sourceState, contentStyle: contentStyle) {
-      shell.installRoot(content)
-    }
+    let content = rootPage.makeContent(state: browse.sourceState, contentStyle: contentStyle)
+    shell.installRoot(content)
   }
 
   private func play(_ command: CarPlayCommand) {
