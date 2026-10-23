@@ -5,8 +5,8 @@ function Get-DistributionConfig {
     param([Parameter(Mandatory)][string]$Path)
 
     $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    foreach ($name in @('identityName', 'publisher', 'publisherDisplayName', 'displayName', 'description',
-            'executable', 'minimumWindowsVersion', 'maximumWindowsVersionTested')) {
+    foreach ($name in @('identityName', 'publisherDisplayName', 'displayName', 'description',
+            'executable', 'minimumWindowsVersion')) {
         if (-not $config.PSObject.Properties[$name] -or [string]::IsNullOrWhiteSpace($config.$name)) {
             throw "Missing package configuration: $name"
         }
@@ -17,12 +17,15 @@ function Get-DistributionConfig {
     if ($config.executable -notmatch '^[A-Za-z0-9_.-]+\.exe$') {
         throw 'executable must be an EXE filename, without a directory.'
     }
-    foreach ($name in @('minimumWindowsVersion', 'maximumWindowsVersionTested')) {
-        $null = ConvertTo-PackageVersion $config.$name
+    if ($config.displayName -match '[<>:"/\\|?*\x00-\x1f]' -or $config.displayName.EndsWith('.') -or
+            $config.displayName.EndsWith(' ')) {
+        throw 'displayName must be a valid Windows directory name.'
     }
-    if ([version]$config.minimumWindowsVersion -lt [version]'10.0.19041.0' -or
-            [version]$config.maximumWindowsVersionTested -lt [version]$config.minimumWindowsVersion) {
-        throw 'Windows versions must satisfy 10.0.19041.0 <= minimum <= maximum tested.'
+    $null = ConvertTo-PackageVersion $config.minimumWindowsVersion
+    $minimumVersion = [version]$config.minimumWindowsVersion
+    if ($minimumVersion.Major -ne 10 -or $minimumVersion.Minor -ne 0 -or
+            $minimumVersion.Build -lt 19041 -or $minimumVersion.Revision -ne 0) {
+        throw 'minimumWindowsVersion must use 10.0.build.0 with a build of at least 19041.'
     }
     return $config
 }
@@ -31,15 +34,15 @@ function ConvertTo-PackageVersion {
     param([Parameter(Mandatory)][string]$Value)
 
     if ($Value -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-        throw "MSIX version must have four numeric components: $Value"
+        throw "Package version must have four numeric components: $Value"
     }
     $parts = @($Value.Split('.') | ForEach-Object {
         $number = [int]$_
-        if ($number -gt 65535) { throw 'MSIX version components must be between 0 and 65535.' }
+        if ($number -gt 65535) { throw 'Package version components must be between 0 and 65535.' }
         $number
     })
     if ($parts[0] -eq 0 -and $parts[1] -eq 0 -and $parts[2] -eq 0 -and $parts[3] -eq 0) {
-        throw 'MSIX version must be greater than 0.0.0.0.'
+        throw 'Package version must be greater than 0.0.0.0.'
     }
     return $parts -join '.'
 }
@@ -72,7 +75,24 @@ function Find-WindowsSdkTool {
             if (Test-Path -LiteralPath $candidate) { return $candidate }
         }
     }
-    throw "Cannot find $Name.exe. Install the Windows 10/11 SDK signing and packaging tools."
+    throw "Cannot find $Name.exe. Install the Windows 10/11 SDK signing tools for optional signing."
+}
+
+function Find-NsisCompiler {
+    param([string]$Path)
+
+    if ($Path) {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "NSIS compiler not found: $Path" }
+        return (Resolve-Path -LiteralPath $Path).ProviderPath
+    }
+    $command = Get-Command makensis.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    foreach ($root in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+        if (-not $root) { continue }
+        $candidate = Join-Path $root 'NSIS\makensis.exe'
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    throw 'Install NSIS 3, add makensis.exe to PATH, or supply -NsisPath.'
 }
 
 function Invoke-DistributionTool {
@@ -138,6 +158,28 @@ function Assert-ReleaseBundle {
     $secrets = Get-ChildItem -LiteralPath $Path -Recurse -File -Force |
         Where-Object { $_.Extension -in @('.pfx', '.p12', '.key', '.pem') }
     if ($secrets) { throw 'Release bundle contains private-key file types; remove them before packaging.' }
+    foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File -Force |
+            Where-Object { $_.Extension -in @('.exe', '.dll') }) {
+        Assert-PeArchitecture $file.FullName 0x8664
+    }
+}
+
+function Assert-PeArchitecture {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][int]$Machine)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $reader = [System.IO.BinaryReader]::new($stream)
+    try {
+        if ($stream.Length -lt 64 -or $reader.ReadUInt16() -ne 0x5A4D) { throw "Invalid PE binary: $Path" }
+        $stream.Position = 60
+        $offset = $reader.ReadInt32()
+        if ($offset -lt 64 -or $offset -gt $stream.Length - 6) { throw "Invalid PE header: $Path" }
+        $stream.Position = $offset
+        if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne $Machine) {
+            throw "Unexpected PE architecture: $Path"
+        }
+    }
+    finally { $reader.Dispose(); $stream.Dispose() }
 }
 
 function Copy-VisualCppRuntime {
@@ -161,104 +203,49 @@ function Copy-VisualCppRuntime {
     }
 }
 
-function New-PackageLogos {
-    param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Destination)
+function ConvertTo-NsisLiteral {
+    param([Parameter(Mandatory)][string]$Value)
 
-    Add-Type -AssemblyName System.Drawing
-    $image = [System.Drawing.Image]::FromFile($Source)
-    try {
-        foreach ($size in @(44, 50, 150)) {
-            $bitmap = [System.Drawing.Bitmap]::new($size, $size)
-            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-            try {
-                $graphics.Clear([System.Drawing.Color]::Transparent)
-                $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                $scale = [Math]::Min($size / $image.Width, $size / $image.Height)
-                $width = [int][Math]::Max(1, [Math]::Round($image.Width * $scale))
-                $height = [int][Math]::Max(1, [Math]::Round($image.Height * $scale))
-                $graphics.DrawImage($image, [int](($size - $width) / 2), [int](($size - $height) / 2), $width, $height)
-                $bitmap.Save((Join-Path $Destination "Logo$size.png"), [System.Drawing.Imaging.ImageFormat]::Png)
-            }
-            finally { $graphics.Dispose(); $bitmap.Dispose() }
-        }
+    return $Value.Replace('$', '$$').Replace('"', '$\"').Replace("`r", '$\r').Replace("`n", '$\n')
+}
+
+function New-NsisBuildFiles {
+    param($Config, [string]$Version, [string]$Stage, [string]$Output, [string]$Icon, [string]$Directory)
+
+    $defines = [ordered]@{
+        APP_ID = $Config.identityName
+        APP_NAME = $Config.displayName
+        APP_PUBLISHER = $Config.publisherDisplayName
+        APP_DESCRIPTION = $Config.description
+        APP_EXE = $Config.executable
+        APP_VERSION = $Version
+        MIN_WINDOWS_VERSION = $Config.minimumWindowsVersion
+        MIN_WINDOWS_BUILD = ([version]$Config.minimumWindowsVersion).Build.ToString()
+        PAYLOAD_DIR = $Stage
+        INSTALLER_PATH = $Output
+        APP_ICON = $Icon
     }
-    finally { $image.Dispose() }
-}
-
-function Write-DistributionXml {
-    param([Parameter(Mandatory)][xml]$Document, [Parameter(Mandatory)][string]$Path)
-
-    $settings = [System.Xml.XmlWriterSettings]::new()
-    $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
-    $settings.Indent = $true
-    $writer = [System.Xml.XmlWriter]::Create($Path, $settings)
-    try { $Document.Save($writer) } finally { $writer.Dispose() }
-}
-
-function New-PackageManifest {
-    param($Config, [string]$Version, [string]$Path)
-
-    [xml]$document = @'
-<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-         IgnorableNamespaces="uap rescap">
-  <Identity Name="" Publisher="" Version="" ProcessorArchitecture="x64" />
-  <Properties><DisplayName /><PublisherDisplayName /><Description /><Logo>Assets\Logo50.png</Logo></Properties>
-  <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="" MaxVersionTested="" /></Dependencies>
-  <Resources><Resource Language="en-us" /></Resources>
-  <Applications>
-    <Application Id="Phonolite" Executable="" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements DisplayName="" Description="" BackgroundColor="transparent"
-                          Square150x150Logo="Assets\Logo150.png" Square44x44Logo="Assets\Logo44.png" />
-    </Application>
-  </Applications>
-  <Capabilities><rescap:Capability Name="runFullTrust" /></Capabilities>
-</Package>
-'@
-    $package = $document.DocumentElement
-    $package.Identity.SetAttribute('Name', $Config.identityName)
-    $package.Identity.SetAttribute('Publisher', $Config.publisher)
-    $package.Identity.SetAttribute('Version', $Version)
-    $package.Properties.DisplayName = $Config.displayName
-    $package.Properties.PublisherDisplayName = $Config.publisherDisplayName
-    $package.Properties.Description = $Config.description
-    $family = $package.Dependencies.TargetDeviceFamily
-    $family.SetAttribute('MinVersion', $Config.minimumWindowsVersion)
-    $family.SetAttribute('MaxVersionTested', $Config.maximumWindowsVersionTested)
-    $application = $package.Applications.Application
-    $application.SetAttribute('Executable', $Config.executable)
-    $visuals = $application.GetElementsByTagName('VisualElements', 'http://schemas.microsoft.com/appx/manifest/uap/windows10')[0]
-    $visuals.SetAttribute('DisplayName', $Config.displayName)
-    $visuals.SetAttribute('Description', $Config.description)
-    Write-DistributionXml $document $Path
-}
-
-function New-AppInstallerFile {
-    param($Config, [string]$Version, [string]$BaseUrl, [string]$PackageName, [string]$Path)
-
-    $uri = $null
-    if (-not [uri]::TryCreate($BaseUrl, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https' -or
-            $uri.Query -or $uri.Fragment -or $uri.UserInfo) {
-        throw 'BaseUrl must be an absolute HTTPS directory URL without credentials, query, or fragment.'
+    $lines = foreach ($name in $defines.Keys) {
+        '!define {0} "{1}"' -f $name, (ConvertTo-NsisLiteral $defines[$name])
     }
-    $base = $uri.AbsoluteUri.TrimEnd('/') + '/'
-    [xml]$document = @'
-<AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018" Uri="" Version="">
-  <MainPackage Name="" Publisher="" Version="" ProcessorArchitecture="x64" Uri="" />
-  <UpdateSettings><OnLaunch HoursBetweenUpdateChecks="0" ShowPrompt="true" UpdateBlocksActivation="false" /></UpdateSettings>
-</AppInstaller>
-'@
-    $root = $document.DocumentElement
-    $root.SetAttribute('Uri', $base + 'Phonolite-x64.appinstaller')
-    $root.SetAttribute('Version', $Version)
-    $root.MainPackage.SetAttribute('Name', $Config.identityName)
-    $root.MainPackage.SetAttribute('Publisher', $Config.publisher)
-    $root.MainPackage.SetAttribute('Version', $Version)
-    $root.MainPackage.SetAttribute('Uri', $base + [uri]::EscapeDataString($PackageName))
-    Write-DistributionXml $document $Path
+    $lines | Set-Content -LiteralPath (Join-Path $Directory 'config.nsh') -Encoding UTF8
+
+    # Embed exact file names; never recursively delete a user-selected install folder.
+    $files = @(Get-ChildItem -LiteralPath $Stage -Recurse -File -Force | Sort-Object FullName)
+    $uninstall = @(foreach ($file in $files) {
+        $relative = $file.FullName.Substring($Stage.TrimEnd('\').Length + 1)
+        'Delete "$INSTDIR\{0}"' -f (ConvertTo-NsisLiteral $relative)
+    })
+    $uninstall += 'IfErrors 0 +4', 'MessageBox MB_OK|MB_ICONSTOP "Close ${APP_NAME} before uninstalling." /SD IDOK',
+        'SetErrorLevel 1', 'Abort'
+    $uninstall += @(Get-ChildItem -LiteralPath $Stage -Recurse -Directory -Force |
+        Sort-Object { $_.FullName.Length } -Descending | ForEach-Object {
+            'RMDir "$INSTDIR\{0}"' -f (ConvertTo-NsisLiteral $_.FullName.Substring($Stage.TrimEnd('\').Length + 1))
+        })
+    $uninstall | Set-Content -LiteralPath (Join-Path $Directory 'uninstall_files.nsh') -Encoding UTF8
 }
 
 Export-ModuleMember -Function Get-DistributionConfig, ConvertTo-PackageVersion, Get-PubspecPackageVersion,
-    Find-WindowsSdkTool, Invoke-DistributionTool, Read-DistributionPasswordFile, Get-DistributionCertificate, Get-CertificateSha256,
-    Assert-ReleaseBundle, Copy-VisualCppRuntime, New-PackageLogos, New-PackageManifest, New-AppInstallerFile
+    Find-WindowsSdkTool, Find-NsisCompiler, Invoke-DistributionTool, Read-DistributionPasswordFile,
+    Get-DistributionCertificate, Get-CertificateSha256, Assert-ReleaseBundle, Assert-PeArchitecture,
+    Copy-VisualCppRuntime, ConvertTo-NsisLiteral, New-NsisBuildFiles

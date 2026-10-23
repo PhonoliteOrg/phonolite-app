@@ -1,10 +1,8 @@
 {
   "identityName": "PhonoliteOrg.Phonolite",
-  "publisher": "CN=PhonoliteOrg",
   "publisherDisplayName": "PhonoliteOrg",
   "displayName": "Phonolite",
   "description": "Phonolite music client",
   "executable": "Phonolite.exe",
-  "minimumWindowsVersion": "10.0.19041.0",
-  "maximumWindowsVersionTested": "10.0.26100.0"
+  "minimumWindowsVersion": "10.0.19041.0"
 }

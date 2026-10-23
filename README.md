@@ -398,6 +398,17 @@ flutter run -d windows
 flutter build windows
 ```
 
+Windows installer (PowerShell, from the app directory):
+```powershell
+.\distribution_tools\windows\build_nsis.ps1
+```
+
+This builds a release and creates an unsigned NSIS `.exe` installer under
+`build\windows_distribution\<version>\x64`. NSIS 3 and the Windows Flutter/Rust
+build dependencies must be installed. Use `-SkipBuild` to package an existing
+release bundle. See [Windows packaging](distribution_tools/windows/README.md)
+for signing, output files and verification.
+
 Linux:
 ```bash
 flutter run -d linux
