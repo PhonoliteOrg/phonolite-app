@@ -24,6 +24,7 @@ import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
+import 'package:phonolite_app/data/storage/windows_app_storage.dart';
 import 'package:phonolite_app/data/structures/serialization/json_values.dart';
 
 export 'package:phonolite_app/data/models/collections/local_like_state.dart';

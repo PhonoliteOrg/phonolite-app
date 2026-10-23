@@ -30,9 +30,9 @@ android {
 
 def pluginRoot = project.projectDir.parentFile
 def rustRoot = new File(pluginRoot, 'native/local_audio')
-def cargoTargetBase = System.getenv('LOCALAPPDATA') ?: System.getProperty('java.io.tmpdir')
-def cargoTargetDir = new File(cargoTargetBase, 'phonolite_local_audio_cargo')
-def jniLibsDir = new File(pluginRoot, 'android/src/main/jniLibs')
+def cargoTargetDir = project.layout.buildDirectory.dir('cargo').get().asFile
+def jniLibsDir = project.layout.buildDirectory.dir('jniLibs').get().asFile
+android.sourceSets.main.jniLibs.srcDirs = [jniLibsDir]
 def androidTargets = ['armeabi-v7a', 'arm64-v8a', 'x86_64']
 
 tasks.register('cargoBuild') {

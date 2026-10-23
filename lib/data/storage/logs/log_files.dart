@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
 import 'package:phonolite_app/data/storage/preferences/log_storage_settings_storage.dart';
+import 'package:phonolite_app/data/storage/windows_app_storage.dart';
 
 /// File operations are serialized by AppLogger. No files remain open between
 /// writes, and replacing a full file never exposes more than [maxLines] lines.
@@ -55,10 +56,9 @@ class LogFiles {
     final variables = environment ?? Platform.environment;
 
     if (platform == 'windows') {
-      final localAppData = variables['LOCALAPPDATA'];
-
-      if (localAppData != null && localAppData.trim().isNotEmpty) {
-        return Directory('$localAppData/Phonolite/logs');
+      final root = WindowsAppStorage.directory(environment: variables);
+      if (root != null) {
+        return Directory('${root.path}/logs');
       }
     }
 

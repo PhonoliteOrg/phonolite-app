@@ -12,6 +12,10 @@
 .swiftpm/
 migrate_working_dir/
 
+# Signing certificates
+*.pfx
+*.p12
+
 # IntelliJ related
 *.iml
 *.ipr

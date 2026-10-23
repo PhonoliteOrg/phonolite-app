@@ -30,9 +30,9 @@ android {
 
 def pluginRoot = project.projectDir.parentFile
 def rustRoot = new File(pluginRoot, 'native/quic_client')
-def cargoTargetBase = System.getenv('LOCALAPPDATA') ?: System.getProperty('java.io.tmpdir')
-def cargoTargetDir = new File(cargoTargetBase, 'phonolite_quic_cargo_ninja')
-def jniLibsDir = new File(pluginRoot, 'android/src/main/jniLibs')
+def cargoTargetDir = project.layout.buildDirectory.dir('cargo').get().asFile
+def jniLibsDir = project.layout.buildDirectory.dir('jniLibs').get().asFile
+android.sourceSets.main.jniLibs.srcDirs = [jniLibsDir]
 def ndkDir = android.ndkDirectory
 def cargoHome = new File(System.getenv('CARGO_HOME') ?: new File(System.getProperty('user.home'), '.cargo').absolutePath)
 def cargoRegistrySrcDir = new File(cargoHome, 'registry/src')
