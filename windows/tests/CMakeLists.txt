@@ -44,6 +44,12 @@ endif()
 
 add_library(phonolite_runner_compile OBJECT ${runner_sources})
 apply_native_check_settings(phonolite_runner_compile)
+include("${APP_ROOT}/windows/runner/identity.cmake")
+configure_phonolite_identity(phonolite_runner_compile)
+include("${APP_ROOT}/windows/runner/updates.cmake")
+configure_phonolite_updates(phonolite_runner_compile)
+target_compile_definitions(phonolite_runner_compile PRIVATE
+  FLUTTER_VERSION_MAJOR=0 FLUTTER_VERSION_MINOR=2 FLUTTER_VERSION_PATCH=0 FLUTTER_VERSION_BUILD=0)
 file(GLOB plugin_includes LIST_DIRECTORIES true
   "${APP_ROOT}/windows/flutter/ephemeral/.plugin_symlinks/*/windows/include")
 target_include_directories(phonolite_runner_compile PRIVATE ${plugin_includes})
@@ -68,3 +74,52 @@ add_custom_command(TARGET phonolite_native_contract_tests POST_BUILD
 
 enable_testing()
 add_test(NAME phonolite_native_contracts COMMAND phonolite_native_contract_tests)
+
+# Headless transport tests inject the OS capability and never create a window,
+# register a system media session, or start the application/audio engine.
+add_executable(phonolite_media_contract_tests
+  "media_contract_test.cpp"
+  "${APP_ROOT}/windows/runner/infrastructure/flutter/now_playing_channel_adapter.cpp"
+  "${APP_ROOT}/windows/runner/infrastructure/flutter/now_playing_codec.cpp"
+  "${WRAPPER_ROOT}/core_implementations.cc"
+  "${WRAPPER_ROOT}/standard_codec.cc"
+)
+apply_native_check_settings(phonolite_media_contract_tests)
+target_link_libraries(phonolite_media_contract_tests PRIVATE
+  "${PHONOLITE_FLUTTER_ENGINE_DIR}/flutter_windows.dll.lib")
+add_custom_command(TARGET phonolite_media_contract_tests POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PHONOLITE_FLUTTER_ENGINE_DIR}/flutter_windows.dll"
+    "$<TARGET_FILE_DIR:phonolite_media_contract_tests>"
+  VERBATIM
+)
+add_test(NAME phonolite_media_contracts COMMAND phonolite_media_contract_tests)
+
+# Exercises process identity and .lnk property round trips using only temporary
+# files. Never writes real identity registry keys or Start Menu shortcuts.
+add_executable(phonolite_identity_contract_tests
+  "identity_contract_test.cpp"
+  "${APP_ROOT}/windows/runner/infrastructure/shell/application_identity.cpp"
+)
+apply_native_check_settings(phonolite_identity_contract_tests)
+configure_phonolite_identity(phonolite_identity_contract_tests)
+target_link_libraries(phonolite_identity_contract_tests PRIVATE shell32.lib ole32.lib propsys.lib advapi32.lib)
+add_test(NAME phonolite_identity_contracts COMMAND phonolite_identity_contract_tests)
+
+# Only a fake updater is used. No WinSparkle UI, network check or installer runs.
+add_executable(phonolite_updates_contract_tests
+  "updates_contract_test.cpp"
+  "${APP_ROOT}/windows/runner/infrastructure/flutter/updates_channel_adapter.cpp"
+  "${WRAPPER_ROOT}/core_implementations.cc"
+  "${WRAPPER_ROOT}/standard_codec.cc"
+)
+apply_native_check_settings(phonolite_updates_contract_tests)
+target_link_libraries(phonolite_updates_contract_tests PRIVATE
+  "${PHONOLITE_FLUTTER_ENGINE_DIR}/flutter_windows.dll.lib")
+add_custom_command(TARGET phonolite_updates_contract_tests POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PHONOLITE_FLUTTER_ENGINE_DIR}/flutter_windows.dll"
+    "$<TARGET_FILE_DIR:phonolite_updates_contract_tests>"
+  VERBATIM
+)
+add_test(NAME phonolite_updates_contracts COMMAND phonolite_updates_contract_tests)

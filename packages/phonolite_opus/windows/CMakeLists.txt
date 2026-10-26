@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.14)
 project(phonolite_opus_library LANGUAGES C)
 
 set(OPUS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../third_party/opus")
+# Prefer the parent-owned module that supports submodule gitfiles.
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_LIST_DIR}/../cmake")
 
 set(OPUS_BUILD_SHARED_LIBRARY OFF CACHE BOOL "" FORCE)
 set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
@@ -9,7 +11,9 @@ set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
 set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
 set(OPUS_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/install" CACHE PATH "" FORCE)
+# Keep Opus's install paths inside this directory scope. Changing the cache
+# redirects the parent Flutter application's bundle installation as well.
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/install")
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 add_subdirectory("${OPUS_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/opus")

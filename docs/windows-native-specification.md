@@ -6,7 +6,7 @@ The source map below describes the implemented runner organization. Naming and l
 
 ## 1. Current Windows responsibilities
 
-The active runner uses Win32 and Flutter's C++ wrappers. It has no native application pages, XAML, WinUI, or C++/WinRT implementation.
+The active runner uses Win32 and Flutter's C++ wrappers, with a C++/WinRT adapter for Windows System Media Transport Controls. It has no native application pages, XAML or WinUI.
 
 | Current source | Responsibilities | Ownership |
 | --- | --- | --- |
@@ -15,13 +15,28 @@ The active runner uses Win32 and Flutter's C++ wrappers. It has no native applic
 | [Win32 frame](../windows/runner/ui/shell/win32_window.cpp) | Window lifecycle, class registration, HWND callback routing, DPI, sizing, focus and system theme | UI/Shell; [geometry values](../windows/runner/data/models/window/window_geometry.h) live under Data |
 | [Directory adapter](../windows/runner/infrastructure/flutter/directories_channel_adapter.cpp) | Channel attachment, typed argument validation, conversion and Flutter replies | Infrastructure/Flutter |
 | [Directory launcher](../windows/runner/infrastructure/shell/directory_launcher.cpp) | Native Shell request with a borrowed owner HWND | Infrastructure/Shell; [native status outcome](../windows/runner/data/models/directories/directory_open_result.h) lives under Data |
+| [Application identity](../windows/runner/infrastructure/shell/application_identity.cpp) and [identity configuration](../windows/runner/identity.cmake) | Explicit process identity, per-user Shell name/icon metadata and identified shortcuts | Infrastructure/Shell; build-time constants come from the installer configuration |
+| [Now Playing channel](../windows/runner/infrastructure/flutter/now_playing_channel_adapter.cpp) and [codec](../windows/runner/infrastructure/flutter/now_playing_codec.cpp) | Shared Dart media protocol, snapshot validation and platform-thread command delivery | Infrastructure/Flutter; independent snapshot/command values live under Data/Models/Media |
+| [Windows media transport](../windows/runner/infrastructure/media/windows_media_transport.cpp) and [command queue](../windows/runner/infrastructure/media/media_command_queue.h) | HWND-associated SMTC session, metadata/artwork/timeline updates, WinRT resources and synchronized callback delivery | Infrastructure/Media; the channel borrows a testable MediaTransport capability |
 | [Command line](../windows/runner/infrastructure/process/command_line.cpp), [console](../windows/runner/infrastructure/process/console_support.cpp), [encoding](../windows/runner/infrastructure/text/text_encoding.cpp) | Process arguments, diagnostics and boundary conversion | Named Infrastructure capabilities |
 | [runner CMake](../windows/runner/CMakeLists.txt), [project CMake](../windows/CMakeLists.txt) | Source registration, compiler settings, linking, Flutter assembly and runtime installation | Build configuration with explicit target ownership |
 | [Runner.rc](../windows/runner/Runner.rc), [resource.h](../windows/runner/resource.h), [manifest](../windows/runner/runner.exe.manifest) | Product/version/icon resources, resource IDs, DPI and compatibility declarations | Runner resources at their configured build paths |
 
 Flutter continues to own application pages, navigation and domain workflows. Windows PCM output currently uses [WaveOutPlayer](../lib/infrastructure/platform/audio/windows/wave_out_output.dart), selected by the [Dart output factory](../lib/infrastructure/audio/output/audio_output_factory.dart). Shared decoder, transport and authentication implementations remain in their native packages.
 
-The retained [just_audio_windows package](../packages/just_audio_windows/pubspec.yaml) contains C++/WinRT code but is not an active app dependency. Windows system media controls are a possible future integration; the current [Now Playing service](../lib/infrastructure/platform/media/now_playing_platform_service.dart) supports iOS and Android. Neither should be presented as an existing runner responsibility.
+The retained [just_audio_windows package](../packages/just_audio_windows/pubspec.yaml) is not an active app dependency. The shared [Now Playing service](../lib/infrastructure/platform/media/now_playing_platform_service.dart) supports iOS, Android and Windows. Windows uses the existing audio engine and its Dart playback commands; SMTC supplies system presentation and input without creating a second media player.
+
+The Windows media transport initializes WinRT lazily on first track publication and balances its apartment reference on the same thread. It binds SMTC to the existing top-level HWND through `ISystemMediaTransportControlsInterop`. Title, artist, album, cached PNG artwork and a bounded timeline are published with play/pause status. Play, pause, previous, next and seek events return through `phonolite/now_playing`; the Stop key pauses the selected track. System media-key routing remains with Windows. No global hotkeys are registered.
+
+SMTC events arrive off the Flutter platform thread. A synchronized, bounded queue posts a registered window message, and the host drains it into the channel on the platform thread before plugin message handling. Track/epoch changes and clear discard old pending commands. Teardown disables the queue, unregisters events and releases SMTC before destroying the Flutter messenger/window. Clear disables the system session and removes metadata. Artwork uses an in-memory COM stream with no native HTTP requests or credential handling, and no asynchronous wait blocks the STA. WinRT errors are caught at the capability boundary and become channel errors; integration failure does not stop ordinary playback.
+
+`windows/tests/media_contract_test.cpp` injects a transport and messenger to verify the native codec, callback ordering, bounded queue, cancellation and channel lifetime without creating a window or registering a real media session. The production transport is compiled in both the runner build and native compile-check target. Interactive hardware/media-panel checks remain user-controlled.
+
+Windows app identity is set by `configure_application_identity()` after COM initialization and before constructing the Flutter project/window. `identity.cmake` generates its constants from `distribution_tools/windows/scripts/package_config.json`, shared with NSIS packaging. Normal builds use the configured identity; `_DEBUG` builds append `.Debug` and use a separate shortcut, keeping development and installed Shell registrations independent. The SMTC display updater sets that same AppMediaId after clearing metadata.
+
+The Shell capability registers `DisplayName` and `IconUri` beneath the current user's `Software\\Classes\\AppUserModelId` key and ensures a matching `System.AppUserModel.ID` on the per-user Start Menu link. It creates a missing link or adds the identity to an older one without changing the target of an existing link. Registration failure is nonfatal and writes a native debug diagnostic. The NSIS installer stamps its shortcut's property using bundled COM helpers, registers release display metadata and removes that release registration on uninstall. No app process is launched during installation to perform this work.
+
+`windows/tests/identity_contract_test.cpp` verifies the process ID and real `.lnk` property round trips in both debug and release. Its files stay in an isolated test directory; it never writes the real identity registry key or Start Menu. The production startup registration itself is compiled, while live Shell/SMTC display verification remains user-controlled. Rebuild and fully restart the native app when changing identity; hot reload does not run `wWinMain` again.
 
 ## 2. Source organization
 
@@ -326,3 +341,33 @@ ctest --test-dir .dart_tool/windows_native_checks -C Debug --output-on-failure
 Repeat with `Profile` and `Release` for changes affecting compilation or configuration. Worker reuse is disabled so compiler workers do not remain in the background. The Flutter SDK cache and current generated plugin headers must be available; these checks do not download them.
 
 Verify explicit CMake source membership, resources, generated registration, DLL installation and Debug/Profile/Release builds appropriate to the change. Source checks and a successful build do not establish rendered window behavior. During agent work, compilation and headless verification are allowed; launching the app, a server, or a background service remains the user's responsibility.
+
+## 13. Windows application updates
+
+`infrastructure/updates/windows_update_service` owns WinSparkle configuration and
+lifetime; `infrastructure/flutter/updates_channel_adapter` transports explicit
+initialize/configuration/show calls. The Flutter window assembles them and forwards
+a registered shutdown message to the channel on the platform thread. WinSparkle's
+worker callback only posts that message and never touches a Flutter messenger.
+Teardown clears the borrowed HWND and callbacks and joins updater work before
+destroying the messenger. Debug builds do not initialize the updater.
+
+The Dart `AppUpdatesController` owns settings actions and hands installation
+shutdown to the existing `DesktopSettingsController.quit` workflow so tray mode
+cannot intercept it. Shared updater settings remain independent of music-server
+authentication and local library resets. A separate HTTPS feed probe checks
+at startup and every two hours without WinSparkle UI, and the controller enables the single
+Miscellaneous tile only when a newer Windows version is known. WinSparkle's own
+automatic checks are disabled so its dialog opens only from that tile. WinSparkle
+verifies every installer against the compiled Ed25519 key.
+The controller owns the polling timer, skips overlapping checks and cancels it
+on shutdown. The tile and updater are Windows-only; mobile platforms neither
+show the tile nor initialize or schedule the desktop updater.
+
+`updates.cmake` generates the feed URL and public key from the distribution
+configuration, prepares the checksum-pinned SDK and installs its DLL and license.
+The private signing key remains outside the app repository. See
+[Windows packaging](../distribution_tools/windows/README.md#windows-updates-and-manual-github-releases)
+for the manual build/sign/upload sequence and the explicit NSIS `/UPDATE` mode.
+The native updater contract test injects a fake service and never starts
+WinSparkle, contacts GitHub or executes an installer.

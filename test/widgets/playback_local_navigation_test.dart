@@ -377,6 +377,9 @@ void main() {
   testWidgets('stats ignores repeated taps and late responses after a tab switch', (tester) async {
     final controller = (await tester.runAsync(() async => _StatsController(connected: true)))!;
     final connection = controller.connection as _Connection;
+    // Visible Library tiles can independently refresh artist metadata. Keep
+    // this assertion focused on the track/album reads caused by navigation.
+    Iterable<String> navigationRequests() => connection.metadataRequests.where((request) => !request.startsWith('artist:'));
     connection.pendingTrack = Completer<Track>();
     try {
       await _pumpHome(tester, controller, width: 1280);
@@ -386,13 +389,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(tile);
       await tester.tap(tile);
-      expect(connection.metadataRequests, ['track:${_track.id}']);
+      expect(navigationRequests(), ['track:${_track.id}']);
       await _selectTab(tester, 1);
       connection.pendingTrack!.complete(_track);
       await tester.pumpAndSettle();
       expect(tester.widget<AdaptiveScaffold>(find.byType(AdaptiveScaffold)).selectedIndex, 1);
       expect(find.byType(AlbumDetailScreen), findsNothing);
-      expect(connection.metadataRequests, ['track:${_track.id}']);
+      expect(navigationRequests(), ['track:${_track.id}']);
       expect(tester.takeException(), isNull);
     } finally {
       await _dispose(tester, controller);

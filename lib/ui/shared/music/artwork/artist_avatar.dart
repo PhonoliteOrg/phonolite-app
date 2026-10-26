@@ -12,6 +12,7 @@ class ArtistAvatar extends StatelessWidget {
   final Map<String, String>? headers;
   final BoxFit fit;
   final double paddingFraction;
+  final bool thumbnail;
 
   const ArtistAvatar({
     super.key,
@@ -21,6 +22,7 @@ class ArtistAvatar extends StatelessWidget {
     this.headers,
     this.fit = BoxFit.contain,
     this.paddingFraction = artistLogoContainPadding,
+    this.thumbnail = false,
   });
 
   @override
@@ -46,6 +48,8 @@ class ArtistAvatar extends StatelessWidget {
           height: size,
           fit: fit,
           placeholder: placeholder,
+          decodeSize: thumbnail ? (size * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(1, 512) : null,
+          retryOnError: thumbnail,
         ),
       ),
     );

@@ -28,6 +28,7 @@ class ApiTransport {
   final Random retryJitter = Random();
   final Map<String, Future<Map<String, dynamic>>> _metadataRequests = {};
   int _sessionRevision = 0;
+  bool _closed = false;
   String? _token;
   void Function(Object error)? onTransportFailure;
 
@@ -72,6 +73,20 @@ class ApiTransport {
   Map<String, String> get authorizationHeaders => {
     if (_token != null && _token!.isNotEmpty) 'Authorization': 'Bearer $_token',
   };
+
+  /// Retires this transport without closing a client borrowed from its caller.
+  void close() {
+    if (_closed) {
+      return;
+    }
+
+    _closed = true;
+    invalidateMetadataRequests();
+
+    if (!injectedClient) {
+      client.close();
+    }
+  }
 
   void setTrust(ServerTrust value) => ServerTrustRegistry.register(_baseUrl, value);
 
@@ -237,7 +252,19 @@ class ApiTransport {
     stopwatch.start();
 
     try {
-      final response = await client.get(buildHealthUrl(url)).timeout(timeout);
+      final healthUrl = buildHealthUrl(url);
+      final base = Uri.tryParse(_baseUrl);
+      final request = http.Request('GET', healthUrl)..followRedirects = false;
+      // Only the pinned API origin receives a bearer token. Public probes and
+      // redirects must never forward credentials to a different destination.
+      if (base != null &&
+          healthUrl.scheme == 'https' &&
+          healthUrl.origin == base.origin &&
+          healthUrl.path == '${base.path.replaceAll(RegExp(r'/+$'), '')}/health' &&
+          hasTrustedTransport) {
+        request.headers.addAll(authorizationHeaders);
+      }
+      final response = await (() async => http.Response.fromStream(await client.send(request)))().timeout(timeout);
 
       final success = response.statusCode >= 200 && response.statusCode < 300;
 
@@ -260,6 +287,13 @@ class ApiTransport {
 
   Iterable<String> healthProbeBaseUrls(String baseUrl) sync* {
     final rootUrl = ensureRoot(baseUrl);
+
+    // The existing 12-second health monitor is also the idle app's heartbeat.
+    if (_token?.isNotEmpty == true) {
+      yield baseUrl;
+      if (rootUrl != baseUrl) yield rootUrl;
+      return;
+    }
 
     yield rootUrl;
 
@@ -361,6 +395,7 @@ class ApiTransport {
     String label = 'request',
   }) async {
     final safeLabel = _safeRequestLabel(label);
+    final sessionRevision = _sessionRevision;
     final maxAttempts = retryable ? ApiTransport.maxGetAttempts : 1;
     Object? lastError;
     StackTrace? lastStackTrace;
@@ -374,7 +409,7 @@ class ApiTransport {
       try {
         final response = await request().timeout(timeout);
 
-        final retryableStatus = response.statusCode >= 500 && response.statusCode < 600;
+        final retryableStatus = response.statusCode == 429 || (response.statusCode >= 500 && response.statusCode < 600);
 
         if (retryable && retryableStatus && attempt < maxAttempts) {
           developer.log(
@@ -382,7 +417,15 @@ class ApiTransport {
             name: 'ServerConnection',
           );
 
-          await backoff(attempt);
+          final retryAfter = _responses.retryAfter(response);
+
+          if (retryAfter != null && retryAfter > const Duration(seconds: 30)) {
+            // Return long cooldowns to the scheduling owner instead of holding
+            // a transport operation or retrying earlier than the server asked.
+            return response;
+          }
+
+          await Future<void>.delayed(retryAfter ?? retryDelay(attempt));
           continue;
         }
 
@@ -432,7 +475,7 @@ class ApiTransport {
 
     if (lastError != null && lastStackTrace != null) {
       try {
-        onTransportFailure?.call(lastError);
+        if (_sessionRevision == sessionRevision) onTransportFailure?.call(lastError);
       } catch (_) {}
 
       developer.log(

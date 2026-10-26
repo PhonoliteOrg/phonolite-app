@@ -1,0 +1,22 @@
+# Share the installer configuration with every native build configuration.
+get_filename_component(PHONOLITE_IDENTITY_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
+
+function(configure_phonolite_identity target)
+  set(config "${PHONOLITE_IDENTITY_SOURCE_DIR}/../../distribution_tools/windows/scripts/package_config.json")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${config}")
+  file(READ "${config}" identity_json)
+  foreach(field identityName displayName)
+    string(REGEX MATCH "\"${field}\"[ \t\r\n]*:[ \t\r\n]*\"([^\"]+)\"" matched "${identity_json}")
+    if(NOT matched)
+      message(FATAL_ERROR "Missing Windows app identity field: ${field}")
+    endif()
+    set(${field} "${CMAKE_MATCH_1}")
+  endforeach()
+  if(NOT identityName MATCHES "^[A-Za-z0-9][A-Za-z0-9.-]+$" OR displayName MATCHES "[\\\"\r\n]")
+    message(FATAL_ERROR "Windows identity and display name must be valid literal strings")
+  endif()
+  set(identity_headers "${CMAKE_CURRENT_BINARY_DIR}/generated_identity")
+  configure_file("${PHONOLITE_IDENTITY_SOURCE_DIR}/data/configuration/app_identity.h.in"
+    "${identity_headers}/phonolite_app_identity.h" @ONLY)
+  target_include_directories(${target} PRIVATE "${identity_headers}")
+endfunction()

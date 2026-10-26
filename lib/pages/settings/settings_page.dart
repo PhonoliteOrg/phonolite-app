@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
@@ -9,6 +11,7 @@ import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
 import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/settings/sections/desktop_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/general_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/local_storage_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/misc_settings_section.dart';
@@ -60,6 +63,13 @@ class SettingsPage extends BaseStatelessPage {
                   onResetPassword: () => Navigator.of(context).push(ResetUserPasswordPage.route(controller)),
                 ),
                 const SizedBox(height: 24),
+                if (DesktopSettingsController.instance.supported) ...[
+                  ListenableBuilder(
+                    listenable: DesktopSettingsController.instance,
+                    builder: (context, _) => DesktopSettingsSection(controller: DesktopSettingsController.instance),
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 LocalStorageSettingsSection(controller: controller),
                 const SizedBox(height: 24),
                 FutureBuilder<String>(
@@ -68,6 +78,7 @@ class SettingsPage extends BaseStatelessPage {
                     logLabel: logLabel,
                     appVersion: versionSnapshot.data ?? (versionSnapshot.hasError ? 'Unavailable' : 'Loading…'),
                     onOpenLogs: () => Navigator.of(context).push(LogsPage.route()),
+                    updates: AppUpdatesController.instance.showInSettings ? AppUpdatesController.instance : null,
                   ),
                 ),
               ],

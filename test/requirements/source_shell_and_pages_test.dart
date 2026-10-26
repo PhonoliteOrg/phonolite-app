@@ -71,7 +71,8 @@ void main() {
         'app.probeServer(baseUrl)',
         'app.loginWithPassword(',
         "String get backLabel => 'Back to settings'",
-        '_feature.savedAddress(saved.baseUrl)',
+        '_feature.loadSavedCredentials()',
+        '_usernameController.text = saved.username;',
         'Navigator.of(context).pop()',
       ]);
       expect(source, isNot(contains("'PHONOLITE'")));

@@ -392,7 +392,7 @@ fn post<T: Read + Write>(
 ) -> Result<serde_json::Value, String> {
     let started = Instant::now();
     let body = serde_json::to_vec(&body).map_err(|_| "Invalid handshake")?;
-    write!(io.get_mut(), "POST {path} HTTP/1.1\r\nHost: {authority}\r\nContent-Type: application/json\r\nAccept-Encoding: identity\r\nContent-Length: {}\r\n\r\n", body.len()).map_err(|_| "Handshake disconnected")?;
+    write!(io.get_mut(), "POST {path} HTTP/1.1\r\nHost: {authority}\r\nUser-Agent: Phonolite/{} ({})\r\nContent-Type: application/json\r\nAccept-Encoding: identity\r\nContent-Length: {}\r\n\r\n", env!("CARGO_PKG_VERSION"), std::env::consts::OS, body.len()).map_err(|_| "Handshake disconnected")?;
     io.get_mut()
         .write_all(&body)
         .map_err(|_| "Handshake disconnected")?;
@@ -823,6 +823,27 @@ mod tests {
                 assert!(response["token"].is_null());
             }
         }
+    }
+
+    #[test]
+    fn handshake_http_identifies_app_and_platform() {
+        let mut io = BufReader::new(MockIo {
+            read: std::io::Cursor::new(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec()),
+            write: Vec::new(),
+        });
+        post(
+            &mut io,
+            "localhost:3000",
+            "/api/auth/opaque/finish",
+            serde_json::json!({"message":"proof"}),
+        )
+        .unwrap();
+        let request = String::from_utf8(io.get_ref().write.clone()).unwrap();
+        assert!(request.contains(&format!(
+            "\r\nUser-Agent: Phonolite/{} ({})\r\n",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS
+        )));
     }
 
     #[test]

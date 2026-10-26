@@ -138,7 +138,11 @@ A page selects components, binds their data and callbacks, presents confirmation
 
 The shared page family defines the surrounding frame and assembly contract. Each page supplies its content and connections through that contract. A page should read as the assembly of its particular view, with common presentation decisions inherited or composed from their shared owners.
 
-[SettingsPage](../lib/pages/settings/settings_page.dart) is the concrete pattern: it composes general, user, local-storage and miscellaneous sections. It creates login, password, shuffle and log routes, then supplies callbacks to the sections. The sections do not need to know which page implements a destination.
+[SettingsPage](../lib/pages/settings/settings_page.dart) is the concrete pattern: it composes general, user, desktop (on native desktop hosts), local-storage and miscellaneous sections. It creates login, password, shuffle and log routes, then supplies callbacks to the sections. The sections do not need to know which page implements a destination.
+
+Desktop lifecycle policy lives in `DesktopSettingsController`, initialized by the application bootstrap with its shutdown callback. `DesktopSettingsStorage` persists the two installation preferences through `JsonSettingsFile`; `DesktopLifecyclePlatform` owns window/tray plugin listeners and startup registration. Linux XDG entry handling is isolated in `LinuxStartupRegistration`. The settings section receives controller state and actions; native runners only restore an existing instance, and the macOS engine binding owns its login-item channel.
+
+Windows system media integration shares `NowPlayingPlatformService` and the app's native media coordinator with mobile hosts. Its native channel decodes into independent values and borrows a `MediaTransport`; the Windows implementation owns SMTC metadata/timeline resources and marshals native events through a synchronized queue to the platform thread. Playback policy and commands stay in the existing Dart controller. The [Windows specification](windows-native-specification.md) documents its callback, clear and teardown contracts.
 
 ### UI supplies presentation components
 
@@ -399,6 +403,22 @@ Native-media adapters decode channel methods into typed requests and encode type
 Controllers can use `flutter/foundation.dart` for notifications. They must not use `BuildContext`, `Navigator`, dialogs, widgets, `setState` or Flutter visual controllers. A shared data result can carry values and typed action information, with route construction remaining in the page.
 
 ## 8. Preserve runtime and resource ownership
+
+Artist browsing separates a compact selection roster from the library's bounded
+materialized page window. Standalone library repositories own summary/detail
+retention, request coalescing and revision reconciliation; application owners
+schedule visibility and coalesced offline repair. Prepared offline projections
+keep rendering getters inexpensive. Page eviction preserves logical indices and
+scroll extent, and does not change custom-shuffle select-all semantics.
+
+Bootstrap owns the managed artwork loader and injects its standalone data
+contract through `ArtworkScope`. Infrastructure performs trusted transport,
+file reads, bounded decode scheduling and remote-cache execution; data storage
+owns disposable image files. UI provides image-stream integration and framing
+without importing file/network implementations. Remote cached renditions are
+scoped to authenticated server/account/content identity and remain separate from
+durable downloaded artwork. Application shutdown awaits the loader and library
+resource owners before retiring their borrowed runtime capabilities.
 
 Organization changes must preserve behavior, initialization order, cancellation and cleanup. Keep a single clear owner for each mutable state, timer, stream, worker, native handle, connection and transaction.
 

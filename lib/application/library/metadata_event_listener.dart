@@ -15,11 +15,15 @@ class MetadataEventListener {
   final void Function()? _onSessionInvalidated;
   final Duration debounceDelay;
   final Duration reconnectDelay;
+  final int maxPending;
   StreamSubscription<MetadataUpdateEvent>? _subscription;
+  Future<void> _cancellations = Future<void>.value();
   Timer? _reconnectTimer;
   final _debounce = DebouncedAction();
   final Map<String, MetadataUpdateEvent> _pending = {};
-  Future<void> _chain = Future<void>.value();
+  bool _resyncPending = false;
+  Future<void>? _flushFuture;
+  bool _flushReady = false;
   ({String baseUrl, String token})? _session;
   final _requests = RequestGeneration();
 
@@ -31,6 +35,7 @@ class MetadataEventListener {
     void Function()? onSessionInvalidated,
     this.debounceDelay = const Duration(milliseconds: 250),
     this.reconnectDelay = const Duration(seconds: 3),
+    this.maxPending = 128,
   }) : _openStream = openStream,
        _isSessionCurrent = isSessionCurrent,
        _applyEvent = applyEvent,
@@ -48,7 +53,7 @@ class MetadataEventListener {
       return;
     }
 
-    stop();
+    unawaited(stop());
     _session = session;
     final generation = _requests.current;
 
@@ -75,7 +80,7 @@ class MetadataEventListener {
       void handleMetadataEvent(MetadataUpdateEvent event) {
         if (_isCurrent(generation)) {
           if (event.kind == 'session_invalidated' && event.id == 'server_keys_rotated') {
-            stop();
+            unawaited(stop());
             _onSessionInvalidated?.call();
             return;
           }
@@ -95,7 +100,9 @@ class MetadataEventListener {
     }
   }
 
-  void stop() {
+  /// Invalidates work immediately and waits for all outstanding subscriptions
+  /// to finish cancelling, including subscriptions from previous sessions.
+  Future<void> stop() {
     _requests.advance();
     _session = null;
 
@@ -104,13 +111,25 @@ class MetadataEventListener {
 
     _debounce.cancel();
     _pending.clear();
+    _resyncPending = false;
+    _flushReady = false;
 
     final subscription = _subscription;
 
     _subscription = null;
 
     if (subscription != null) {
-      unawaited(subscription.cancel());
+      _cancellations = Future.wait<void>([_cancellations, _cancelSubscription(subscription)]).then((_) {});
+    }
+
+    return _cancellations;
+  }
+
+  Future<void> _cancelSubscription(StreamSubscription<MetadataUpdateEvent> subscription) async {
+    try {
+      await subscription.cancel();
+    } catch (error) {
+      _onDiagnostic('Metadata event stream cancellation failed: $error');
     }
   }
 
@@ -141,9 +160,37 @@ class MetadataEventListener {
   }
 
   void _queue(MetadataUpdateEvent event, int generation) {
-    _pending['${event.kind}:${event.id}'] = event;
+    if (_resyncPending || _pending.length >= maxPending) {
+      _pending.clear();
+      _pending['resync:catalogue'] = MetadataUpdateEvent(
+        revision: event.revision,
+        kind: 'resync',
+        id: 'catalogue',
+        updatedAt: event.updatedAt,
+      );
+      _resyncPending = true;
+    } else {
+      _pending['${event.kind}:${event.id}'] = event;
+    }
     _debounce.schedule(debounceDelay, () {
-      _chain = _chain.then((_) => _flush(generation));
+      _flushReady = true;
+      _startFlush(generation);
+    });
+  }
+
+  void _startFlush(int generation) {
+    if (_flushFuture != null || !_isCurrent(generation) || !_flushReady) {
+      return;
+    }
+
+    _flushReady = false;
+    _flushFuture = _flush(generation).whenComplete(() {
+      _flushFuture = null;
+      final currentGeneration = _requests.current;
+
+      if (_isCurrent(currentGeneration) && _pending.isNotEmpty && _flushReady) {
+        _startFlush(currentGeneration);
+      }
     });
   }
 
@@ -156,9 +203,10 @@ class MetadataEventListener {
 
     events.sort((a, b) => a.revision.compareTo(b.revision));
     _pending.clear();
+    _resyncPending = false;
 
     for (final event in events) {
-      if (!_isCurrent(generation)) {
+      if (!_isCurrent(generation) || _resyncPending) {
         return;
       }
 

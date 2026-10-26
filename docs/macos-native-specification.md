@@ -45,6 +45,13 @@ Keep native Pages and Application absent until they contain real responsibilitie
 
 ## Source organization
 
+`Infrastructure/Flutter/StartupChannelAdapter.swift` implements the desktop login-item channel,
+owned and detached by `FlutterEngineBinding`. It uses `SMAppService.mainApp` on macOS 13+
+and the bundled LaunchAtLogin helper on older supported systems. CocoaPods installs the
+legacy helper framework; the target's **Copy Login Helper** phase embeds its helper.
+Window/tray policy remains in the Dart desktop lifecycle owner. Closing a window can
+hide it, while explicit Quit terminates; reopening from the Dock restores the window.
+
 Use physical folders that match Xcode groups inside the existing Runner module:
 
 ```text

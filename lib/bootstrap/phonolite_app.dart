@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/pages/home/home_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 
 class PhonoliteApp extends StatefulWidget {
   const PhonoliteApp({super.key});
@@ -20,7 +24,9 @@ class PhonoliteApp extends StatefulWidget {
 
 class _PhonoliteAppState extends State<PhonoliteApp> {
   late final AppController _controller;
+  late final ManagedArtworkLoader _artworkLoader;
   late final AppLifecycleListener _logLifecycle;
+  Future<void>? _shutdown;
 
   @override
   void initState() {
@@ -32,13 +38,22 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
     final connection = ServerConnection(baseUrl: baseUrl);
 
     _controller = AppController(connection: connection);
+    _artworkLoader = ManagedArtworkLoader(connection: connection, accountScope: () => _controller.artworkAccountScope);
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 16 * 1024 * 1024;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_initializeDesktopFeatures());
+      }
+    });
     unawaited(_initializeController());
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    unawaited(_shutdownDesktop());
     _logLifecycle.dispose();
+    unawaited(AppUpdatesController.instance.shutdown());
+    unawaited(DesktopSettingsController.instance.shutdown());
 
     unawaited(AppLogger.instance.flush());
 
@@ -60,21 +75,39 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
     }
   }
 
+  Future<void> _initializeDesktopFeatures() async {
+    await DesktopSettingsController.instance.initialize(beforeQuit: _shutdownDesktop);
+    if (mounted && AppUpdatesController.instance.supported) {
+      await AppUpdatesController.instance.initialize(onInstall: DesktopSettingsController.instance.quit);
+    }
+  }
+
+  Future<void> _shutdownDesktop() => _shutdown ??= _closeApplication();
+
+  Future<void> _closeApplication() async {
+    await Future.wait([_controller.close(), _artworkLoader.close()]);
+    _controller.connection.close();
+    await AppLogger.instance.flush();
+  }
+
   void _togglePlayback() => unawaited(_controller.pause(_controller.playbackState.isPlaying));
 
   @override
   Widget build(BuildContext context) {
-    return AppScope(
-      controller: _controller,
-      child: MaterialApp(
-        title: 'Phonolite',
-        theme: ObsidianTheme.build(),
-        themeAnimationStyle: AnimationStyle.noAnimation,
-        builder: (context, child) => DesktopPlaybackShortcuts(
-          onTogglePlayPause: _togglePlayback,
-          child: TooltipVisibility(visible: false, child: ObsidianViewport(child: child ?? const SizedBox.shrink())),
+    return ArtworkScope(
+      loader: _artworkLoader,
+      child: AppScope(
+        controller: _controller,
+        child: MaterialApp(
+          title: 'Phonolite',
+          theme: ObsidianTheme.build(),
+          themeAnimationStyle: AnimationStyle.noAnimation,
+          builder: (context, child) => DesktopPlaybackShortcuts(
+            onTogglePlayPause: _togglePlayback,
+            child: TooltipVisibility(visible: false, child: ObsidianViewport(child: child ?? const SizedBox.shrink())),
+          ),
+          home: const HomePage(),
         ),
-        home: const HomePage(),
       ),
     );
   }

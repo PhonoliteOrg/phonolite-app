@@ -15,6 +15,7 @@ migrate_working_dir/
 # Signing certificates
 *.pfx
 *.p12
+*.key
 
 # IntelliJ related
 *.iml
@@ -40,6 +41,7 @@ migrate_working_dir/
 /macos/Runner/opus_build/
 /ios/Runner/libphonolite_opus.a
 /ios/Runner/opus_build/
+/ios/build/
 /packages/phonolite_quic/ios/libphonolite_quic.a
 /packages/phonolite_quic/ios/target/
 /packages/phonolite_quic/macos/libphonolite_quic.a

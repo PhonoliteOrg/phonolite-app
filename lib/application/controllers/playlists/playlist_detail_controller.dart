@@ -33,7 +33,7 @@ class PlaylistDetailController extends FeatureController {
   Set<String> get selectedTrackIds => _selection.keys();
 
   String get tracksLoadKey {
-    return '${_isLocal ? 'local' : 'server'}:$_playlistId';
+    return _isLocal ? 'local:$_playlistId' : 'server:${app.connection.sessionRevision}:$_playlistId';
   }
 
   void setPlaylist(String id, bool local) {

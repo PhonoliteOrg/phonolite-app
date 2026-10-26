@@ -41,6 +41,11 @@ class _PlaybackCoordinator {
         _host._armAutoAdvanceGuard();
       }
 
+      if (_playbackState.shuffleMode != ShuffleMode.off && _playbackState.shuffleScope == ActionScope.server) {
+        await _host._shuffleCoordinator._navigateServerShuffle(1);
+        return;
+      }
+
       if (_playbackState.shuffleMode != ShuffleMode.off) {
         final ensured = await _host._ensureShuffleQueue(play: false);
 
@@ -89,6 +94,11 @@ class _PlaybackCoordinator {
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
+      }
+
+      if (_playbackState.shuffleMode != ShuffleMode.off && _playbackState.shuffleScope == ActionScope.server) {
+        await _host._shuffleCoordinator._navigateServerShuffle(-1);
+        return;
       }
 
       if (_playbackState.shuffleMode != ShuffleMode.off) {
@@ -181,6 +191,7 @@ class _PlaybackCoordinator {
   }
 
   void updateShuffleMode(ShuffleMode mode, {ActionScope? scope}) {
+    _host._shuffleCoordinator._clearServerShuffleSession();
     final nextScope = scope ?? _playbackState.shuffleScope;
 
     _updatePlayback(shuffleMode: mode, shuffleScope: nextScope);
@@ -276,6 +287,7 @@ class _PlaybackCoordinator {
   }
 
   Future<void> _stop({bool requireFileRelease = false}) async {
+    _host._shuffleCoordinator._clearServerShuffleSession();
     try {
       _host._resetTrackTransitionState();
       _host._listeningSessionContext = null;
@@ -380,6 +392,7 @@ class _PlaybackCoordinator {
       bufferRatio: 0.0,
     );
     _startPlayback(track);
+    _host._shuffleCoordinator._prefetchServerShuffle();
 
     if (_playbackState.queueSource != PlaybackQueueSource.offline) {
       final server = _host.connection.baseUrl;

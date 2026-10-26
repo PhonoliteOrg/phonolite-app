@@ -1,0 +1,41 @@
+get_filename_component(PHONOLITE_UPDATES_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
+
+function(configure_phonolite_updates target)
+  get_filename_component(app_root "${PHONOLITE_UPDATES_SOURCE_DIR}/../.." ABSOLUTE)
+  set(update_scripts "${app_root}/distribution_tools/windows/scripts")
+  set(config "${update_scripts}/updates_config.json")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${config}"
+    "${update_scripts}/winsparkle_dependency.json")
+  file(READ "${config}" updates_json)
+  foreach(field repository feedAsset publicKey)
+    string(REGEX MATCH "\"${field}\"[ \t\r\n]*:[ \t\r\n]*\"([^\"]*)\"" matched "${updates_json}")
+    if(NOT matched)
+      message(FATAL_ERROR "Missing Windows update configuration: ${field}")
+    endif()
+    set(${field} "${CMAKE_MATCH_1}")
+  endforeach()
+  string(LENGTH "${publicKey}" public_key_length)
+  if(NOT repository MATCHES "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+      OR NOT feedAsset STREQUAL "windows-appcast.xml"
+      OR NOT public_key_length EQUAL 44 OR NOT publicKey MATCHES "^[A-Za-z0-9+/]+=$")
+    message(FATAL_ERROR "Run distribution_tools/windows/initialize_updates.ps1 with an external private-key path first")
+  endif()
+  find_program(PHONOLITE_POWERSHELL NAMES pwsh powershell)
+  if(NOT PHONOLITE_POWERSHELL)
+    message(FATAL_ERROR "PowerShell is required to prepare the verified WinSparkle SDK")
+  endif()
+  execute_process(COMMAND "${PHONOLITE_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
+    -File "${update_scripts}/prepare_winsparkle.ps1" -ProjectRoot "${app_root}"
+    RESULT_VARIABLE sdk_result OUTPUT_VARIABLE sdk ERROR_VARIABLE sdk_error OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT sdk_result EQUAL 0)
+    message(FATAL_ERROR "Could not prepare the verified WinSparkle SDK: ${sdk_error}")
+  endif()
+  file(TO_CMAKE_PATH "${sdk}" sdk)
+  set(update_headers "${CMAKE_CURRENT_BINARY_DIR}/generated_updates")
+  configure_file("${PHONOLITE_UPDATES_SOURCE_DIR}/data/configuration/updates.h.in"
+    "${update_headers}/phonolite_updates.h" @ONLY)
+  target_include_directories(${target} PRIVATE "${update_headers}" "${sdk}/include")
+  target_link_directories(${target} PRIVATE "${sdk}/x64/Release")
+  target_link_libraries(${target} PRIVATE "${sdk}/x64/Release/WinSparkle.lib")
+  set(PHONOLITE_WINSPARKLE_SDK "${sdk}" PARENT_SCOPE)
+endfunction()

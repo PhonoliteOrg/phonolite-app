@@ -11,8 +11,10 @@ import 'package:phonolite_app/application/controllers/auth/server_failure_messag
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/application/library/metadata_event_listener.dart';
+import 'package:phonolite_app/application/library/offline_artist_metadata_repair_queue.dart';
 import 'package:phonolite_app/application/listening_stats/listening_stats_sync.dart';
 import 'package:phonolite_app/application/playback/now_playing_artwork.dart';
+import 'package:phonolite_app/application/playback/server_shuffle_deck.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/application/workflows/request_generation.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
@@ -22,9 +24,11 @@ import 'package:phonolite_app/data/models/auth/server_trust.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
-import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/artist_browse_snapshot.dart';
 import 'package:phonolite_app/data/models/library/artist_credit.dart';
 import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/data/models/library/artist_summary.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/local_library_selection.dart';
 import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
@@ -43,6 +47,8 @@ import 'package:phonolite_app/data/models/playback/vehicle_request.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_response.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
+import 'package:phonolite_app/data/repositories/library/artist_browse_repository.dart';
+import 'package:phonolite_app/data/repositories/library/artist_metadata_repository.dart';
 import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
@@ -67,6 +73,7 @@ part 'package:phonolite_app/application/app/collections/playlist_coordinator.dar
 part 'package:phonolite_app/application/app/diagnostics/diagnostics_coordinator.dart';
 part 'package:phonolite_app/application/app/downloads/download_coordinator.dart';
 part 'package:phonolite_app/application/app/library/library_coordinator.dart';
+part 'library/artist_catalog_coordinator.dart';
 part 'package:phonolite_app/application/app/library/playback_track_resolver.dart';
 part 'package:phonolite_app/application/app/library/vehicle_library_coordinator.dart';
 part 'package:phonolite_app/application/app/listening_stats/listening_stats_coordinator.dart';
@@ -76,6 +83,7 @@ part 'package:phonolite_app/application/app/playback/playback_coordinator.dart';
 part 'package:phonolite_app/application/app/playback/playback_queue.dart';
 part 'package:phonolite_app/application/app/playback/seek_coordinator.dart';
 part 'package:phonolite_app/application/app/playback/shuffle_coordinator.dart';
+part 'playback/shuffle_facade.dart';
 part 'package:phonolite_app/application/app/playback/stream_recovery_coordinator.dart';
 part 'package:phonolite_app/application/app/preferences/preferences_coordinator.dart';
 part 'package:phonolite_app/application/app/session/local_network_permission_coordinator.dart';
@@ -282,6 +290,10 @@ class AppController
   bool get isInitialized => _initialized;
 
   Map<String, String> get artworkHeaders => connection.authorizationHeaders;
+
+  /// Stable authenticated account scope when the server supplies its identity.
+  String? get artworkAccountScope =>
+      _statsServerId == null || _statsUserId == null ? null : '$_statsServerId|$_statsUserId';
 
   AudioEngine get _audioEngine => _audio ?? (throw StateError('Call initialize() before using playback'));
 
@@ -508,6 +520,7 @@ class AppController
 
   Future<void> _close() async {
     _disposed = true;
+    _shuffleCoordinator._clearServerShuffleSession();
     _initialized = false;
     _sessionRestores.advance();
 
@@ -519,7 +532,8 @@ class AppController
       connection.onTransportFailure = null;
     }
 
-    _stopMetadataEventListener();
+    final metadataEventsStopped = _stopMetadataEventListener();
+    final libraryResourcesClosed = closeLibraryMemoryResources();
 
     final clearNowPlaying = _startupBegun ? _clearNowPlaying() : Future<void>.value();
 
@@ -585,6 +599,8 @@ class AppController
 
     await Future.wait([
       clearNowPlaying,
+      libraryResourcesClosed,
+      metadataEventsStopped,
       ...cancellations,
       if (_audio != null) _audio!.dispose(),
       _offlineDownloadManager.dispose(),

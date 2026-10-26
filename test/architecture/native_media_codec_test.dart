@@ -173,6 +173,9 @@ void main() {
     );
     expect(NowPlayingCodec.decodeCommand({'type': 'seek', 'position': 'invalid'}).position, isNull);
     expect(NowPlayingCodec.decodeCommand({'type': 'seek'}).position, isNull);
+    for (final invalid in [double.nan, double.infinity, -1, 1.0e20]) {
+      expect(NowPlayingCodec.decodeCommand({'type': 'seek', 'position': invalid}).position, isNull);
+    }
   });
 
   test('now-playing snapshots preserve seconds, artwork keys and conditional payloads', () {

@@ -35,6 +35,7 @@ sealed class PageBody {
     ScrollPhysics? physics,
     ScrollViewKeyboardDismissBehavior keyboardDismissBehavior,
     bool includePlaybackInsets,
+    bool pinTopInset,
   }) = SliverPageBody;
 }
 
@@ -67,6 +68,7 @@ final class SliverPageBody extends PageBody {
   final ScrollController? controller;
   final ScrollPhysics? physics;
   final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
+  final bool pinTopInset;
 
   const SliverPageBody({
     required this.slivers,
@@ -75,6 +77,7 @@ final class SliverPageBody extends PageBody {
     this.physics,
     this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
     super.includePlaybackInsets = true,
+    this.pinTopInset = false,
   });
 }
 
@@ -132,13 +135,20 @@ class PageLayout extends StatelessWidget {
               ? child
               : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [toolbar, child]),
         ),
-      SliverPageBody(:final slivers, :final controller, :final physics, :final keyboardDismissBehavior) =>
+      SliverPageBody(
+        :final slivers,
+        :final controller,
+        :final physics,
+        :final keyboardDismissBehavior,
+        :final pinTopInset,
+      ) =>
         PageScrollView(
           controller: controller,
           physics: physics,
           keyboardDismissBehavior: keyboardDismissBehavior,
           includeTopInset: body.includePlaybackInsets && !fixedNavbar,
           includeBottomInset: body.includePlaybackInsets,
+          pinTopInset: pinTopInset,
           slivers: _slivers(slivers, toolbar, padding),
         ),
     };

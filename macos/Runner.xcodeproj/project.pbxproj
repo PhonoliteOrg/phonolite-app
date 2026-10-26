@@ -21,6 +21,8 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+        A2040004A2040004A2040004 /* LoginItemService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2040005A2040005A2040005 /* LoginItemService.swift */; };
+        A2040001A2040001A2040001 /* StartupChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2040002A2040002A2040002 /* StartupChannelAdapter.swift */; };
 		0C9D2A5B3C3BEF7C057164D2 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F1DAC2BC93BBD194887E2EF /* Pods_Runner.framework */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
@@ -70,6 +72,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        A2040005A2040005A2040005 /* LoginItemService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemService.swift; sourceTree = "<group>"; };
+        A2040002A2040002A2040002 /* StartupChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupChannelAdapter.swift; sourceTree = "<group>"; };
 		11A5E215B8AD1D4E379C25AA /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -262,6 +266,7 @@
 		A2030006A2030006A2030006 /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
+				A2040002A2040002A2040002 /* StartupChannelAdapter.swift */,
 				A2020002A2020002A2020002 /* DirectoriesChannelAdapter.swift */,
 			);
 			path = Flutter;
@@ -270,6 +275,7 @@
 		A2030007A2030007A2030007 /* Shell */ = {
 			isa = PBXGroup;
 			children = (
+				A2040005A2040005A2040005 /* LoginItemService.swift */,
 				A2020003A2020003A2020003 /* DirectoryLauncher.swift */,
 			);
 			path = Shell;
@@ -334,6 +340,7 @@
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				392B3172B2087990E7AD2436 /* [CP] Embed Pods Frameworks */,
+				A2040003A2040003A2040003 /* Copy Login Helper */,
 			);
 			buildRules = (
 			);
@@ -416,6 +423,19 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+        A2040003A2040003A2040003 /* Copy Login Helper */ = {
+            isa = PBXShellScriptBuildPhase;
+            alwaysOutOfDate = 1;
+            buildActionMask = 2147483647;
+            files = ();
+            inputPaths = ();
+            name = "Copy Login Helper";
+            outputPaths = ();
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/sh;
+            shellScript = "\"${PROJECT_DIR}/Pods/LaunchAtLogin/LaunchAtLogin/copy-helper.sh\"\n";
+            showEnvVarsInLog = 0;
+        };
 		3399D490228B24CF009A79C7 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -552,6 +572,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A2040004A2040004A2040004 /* LoginItemService.swift in Sources */,
+				A2040001A2040001A2040001 /* StartupChannelAdapter.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,

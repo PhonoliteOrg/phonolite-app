@@ -4,6 +4,8 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
 import 'package:phonolite_app/application/downloads/downloaded_track_selection.dart';
+import 'package:phonolite_app/application/library/artist_artwork_diagnostics.dart';
+import 'package:phonolite_app/application/library/visible_artist_loader.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
@@ -21,9 +23,20 @@ class LibraryController extends FeatureController {
   bool _requestedServerLoad = false;
   late final _selection = ControllerSelection<String>(update);
   bool _refreshingLibrary = false;
+  final _artworkDiagnostics = ArtistArtworkDiagnostics();
+  late final _visibleArtists = VisibleArtistLoader(
+    fetch: (id) => app.fetchArtistMetadata(id),
+    watch: (id) => app.watchArtist(id),
+    onChanged: () => update(() {}),
+    onError: (id, error) => AppLogger.debug('Visible artist refresh failed for $id (${error.runtimeType})'),
+  );
+  int? _artistSessionRevision;
 
   LibraryController(this.app) {
-    listenTo(app.authStream, (_) => loadIfNeeded());
+    listenTo(app.authStream, (_) {
+      _syncArtistSession();
+      loadIfNeeded();
+    });
   }
 
   String get query => _query;
@@ -39,7 +52,26 @@ class LibraryController extends FeatureController {
   @override
   void dispose() {
     _searchDebounce.cancel();
+    _visibleArtists.dispose();
     super.dispose();
+  }
+
+  void _syncArtistSession() {
+    final revision = app.connection.sessionRevision;
+    if (_artistSessionRevision != revision || !app.authState.isAuthorized) {
+      _artistSessionRevision = revision;
+      _visibleArtists.clear();
+    }
+  }
+
+  Artist visibleArtist(Artist artist) => _visibleArtists.resolve(artist);
+
+  void artistVisibilityChanged(Artist artist, bool visible) {
+    if (isDisposed) {
+      return;
+    }
+    _syncArtistSession();
+    _visibleArtists.setVisible(artist, visible && app.authState.isAuthorized);
   }
 
   void setQuery(String value) {
@@ -69,6 +101,12 @@ class LibraryController extends FeatureController {
         app.artistsLoading ||
         !app.hasMoreArtists ||
         extentAfter > 720) {
+      return;
+    }
+
+    if (app.artistBrowseSnapshot.total > 0) {
+      // The windowed viewport requests missing indices directly. Its total
+      // already represents the complete catalogue, unlike the compact roster.
       return;
     }
 
@@ -163,8 +201,14 @@ class LibraryController extends FeatureController {
   }
 
   List<OfflineArtistGroup> selectedOfflineArtists(List<OfflineArtistGroup> groups) {
+    final selected = selectedArtistIds;
+
+    if (selected.isEmpty) {
+      return const [];
+    }
+
     return groups
-        .where((group) => group.tracksForArtist.isNotEmpty && selectedArtistIds.contains(artistSelectionKey(group)))
+        .where((group) => selected.contains(artistSelectionKey(group)) && group.tracksForArtist.isNotEmpty)
         .toList(growable: false);
   }
 
@@ -217,6 +261,7 @@ class LibraryController extends FeatureController {
   }
 
   String? artistCoverUrl(AppController controller, Artist artist) {
+    _artworkDiagnostics.tile(artist, sessionRevision: controller.connection.sessionRevision);
     if (artist.logoRef == null || artist.logoRef!.isEmpty) {
       return null;
     }

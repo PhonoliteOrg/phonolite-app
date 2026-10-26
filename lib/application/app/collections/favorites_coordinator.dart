@@ -4,6 +4,7 @@ class _FavoritesCoordinator {
   final AppController _host;
   final _likedController = StreamController<List<Track>>.broadcast();
   List<Track> _liked = <Track>[];
+  final _likedRequests = RequestGeneration();
 
   _FavoritesCoordinator(this._host);
 
@@ -11,13 +12,25 @@ class _FavoritesCoordinator {
 
   List<Track> get liked => List.unmodifiable(_liked);
 
+  void _clearServerData() {
+    _likedRequests.advance();
+    _liked = [];
+    _likedController.add(const []);
+  }
+
   Future<void> loadLikedTracks() async {
     if (!_host._requireServer('loading liked tracks')) {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    final request = _likedRequests.advance();
+    bool isCurrent() =>
+        _host._sessionCoordinator._isServerSessionCurrent(revision) && _likedRequests.isCurrent(request);
     try {
-      _liked = await _host.connection.fetchLikedTracks();
+      final tracks = await _host.connection.fetchLikedTracks();
+      if (!isCurrent()) return;
+      _liked = tracks;
 
       for (final track in _liked) {
         _host._cacheTrackAlbumId(track);
@@ -25,8 +38,10 @@ class _FavoritesCoordinator {
 
       _likedController.add(List.unmodifiable(_liked));
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'liked tracks');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to load liked tracks: $err', level: LogLevel.warning);
     }
   }
@@ -46,15 +61,20 @@ class _FavoritesCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       final liked = !track.liked;
       final state = await _host.connection.setLikeState(track.id, liked);
+      if (!isCurrent()) return;
 
       _updateLike(track.id, state?.liked ?? liked, knownTrack: track);
       await _host._pushNowPlayingUpdate(force: true);
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'like');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to update like: $err');
     }
   }

@@ -22,22 +22,27 @@ class AlbumArt extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: size,
-    child: ArtworkImage(
-      imageUrl: imageUrl,
-      headers: headers,
-      width: size,
-      height: size,
-      fit: fit,
-      showPlaceholderWhileLoading: true,
-      placeholder:
-          placeholder ??
-          ArtworkPlaceholder(
-            label: title.isNotEmpty ? title.substring(0, 1).toUpperCase() : '?',
-            size: size,
-            fontSize: size / 3,
-          ),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final scheme = Uri.tryParse(imageUrl?.trim() ?? '')?.scheme;
+
+    return SizedBox.square(
+      dimension: size,
+      child: ArtworkImage(
+        imageUrl: imageUrl,
+        headers: headers,
+        width: size,
+        height: size,
+        fit: fit,
+        showPlaceholderWhileLoading: true,
+        retryOnError: scheme == 'http' || scheme == 'https',
+        placeholder:
+            placeholder ??
+            ArtworkPlaceholder(
+              label: title.isNotEmpty ? title.substring(0, 1).toUpperCase() : '?',
+              size: size,
+              fontSize: size / 3,
+            ),
+      ),
+    );
+  }
 }

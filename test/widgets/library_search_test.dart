@@ -18,11 +18,122 @@ import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_moda
 import 'package:phonolite_app/ui/features/search/widgets/search_result_tile.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
+import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 
 import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  for (final layout in const [
+    (platform: TargetPlatform.iOS, topInset: 59.0),
+    (platform: TargetPlatform.android, topInset: 24.0),
+    (platform: TargetPlatform.windows, topInset: 0.0),
+  ]) {
+    for (final connected in [false, true]) {
+      testWidgets(
+        'library search pins below inset ${layout.topInset} while artists scroll, connected=$connected',
+        (tester) async {
+          tester.view.physicalSize = const Size(430, 800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final topInset = ValueNotifier(layout.topInset);
+          addTearDown(topInset.dispose);
+          final controller = (await tester.runAsync(
+            () async => _Controller(connected: connected, artistCount: 24),
+          ))!;
+          try {
+            await tester.pumpWidget(
+              AppScope(
+                controller: controller,
+                child: wrapInTestApp(
+                  ValueListenableBuilder<double>(
+                    valueListenable: topInset,
+                    builder: (context, top, child) => PlaybackContentInset(
+                      top: top,
+                      bottom: 100,
+                      child: child!,
+                    ),
+                    child: const LibraryPage(),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final search = find.byType(SearchHud);
+            final header = find.byType(LibraryHeader);
+            final position = Scrollable.of(tester.element(search)).position;
+            final initialSearch = tester.getRect(search);
+            expect(tester.getRect(find.byType(CustomScrollView)).top, 0);
+            expect(tester.getRect(header).top, layout.topInset + 16);
+            expect(initialSearch.top, tester.getRect(header).bottom + 24);
+            expect(initialSearch.left, 20);
+            expect(initialSearch.width, 390);
+            expect(initialSearch.height, 48);
+
+            // The viewport stays edge-to-edge: the title can enter the system
+            // area while the search field has its own safe pinning boundary.
+            position.jumpTo(24);
+            await tester.pump();
+            expect(tester.getRect(header).top, lessThan(layout.topInset));
+            expect(tester.getRect(search).top, initialSearch.top - 24);
+            position.jumpTo(300);
+            await tester.pumpAndSettle();
+            expect(tester.getRect(search).top, layout.topInset + 12);
+            position.jumpTo(500);
+            await tester.pumpAndSettle();
+            expect(tester.getRect(search).top, layout.topInset + 12);
+            expect(search.hitTestable(), findsOneWidget);
+
+            await tester.tap(find.byType(TextField));
+            await tester.pump();
+            expect(
+              tester
+                  .widget<TextField>(find.byType(TextField))
+                  .focusNode!
+                  .hasFocus,
+              isTrue,
+            );
+            await tester.enterText(find.byType(TextField), 'Alice');
+            await tester.pump(const Duration(milliseconds: 500));
+            await tester.pumpAndSettle();
+            final field = tester.widget<TextField>(find.byType(TextField));
+            expect(field.focusNode!.hasFocus, isTrue);
+            expect(field.controller!.text, 'Alice');
+            expect(
+              tester.getRect(search).top,
+              greaterThanOrEqualTo(layout.topInset + 12),
+            );
+            position.jumpTo(500);
+            await tester.pumpAndSettle();
+            expect(tester.getRect(search).top, layout.topInset + 12);
+            await tester.tap(find.byTooltip('Clear search'));
+            await tester.pumpAndSettle();
+            expect(field.controller!.text, isEmpty);
+            expect(
+              tester.getRect(search).top,
+              greaterThanOrEqualTo(layout.topInset + 12),
+            );
+
+            position.jumpTo(500);
+            await tester.pumpAndSettle();
+
+            topInset.value = layout.topInset + 12;
+            await tester.pumpAndSettle();
+            expect(tester.getRect(search).top, topInset.value + 12);
+            expect(tester.getRect(find.byType(CustomScrollView)).top, 0);
+            expect(tester.takeException(), isNull);
+          } finally {
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.runAsync(controller.close);
+          }
+        },
+        variant: TargetPlatformVariant.only(layout.platform),
+      );
+    }
+  }
 
   for (final isLocal in [true, false]) {
     testWidgets(
@@ -371,11 +482,15 @@ Future<void> _pumpSearch(
 }
 
 class _Controller extends AppController {
-  _Controller({required this.connected, this.trackCount = 1})
-    : super(connection: _SearchConnection());
+  _Controller({
+    required this.connected,
+    this.trackCount = 1,
+    this.artistCount = 1,
+  }) : super(connection: _SearchConnection());
 
   final bool connected;
   final int trackCount;
+  final int artistCount;
   int librarySnapshotReads = 0;
   final played = <String>[];
   final actions = <String>[];
@@ -399,7 +514,13 @@ class _Controller extends AppController {
   @override
   List<Artist> get artists => [
     Artist(id: 'artist', name: 'Alice', albumCount: 1),
+    for (var index = 1; index < artistCount; index++)
+      Artist(id: 'artist-$index', name: 'Alice $index', albumCount: 1),
   ];
+
+  @override
+  Future<Artist> fetchArtistMetadata(String id, {bool refresh = false}) async =>
+      artists.firstWhere((artist) => artist.id == id);
 
   @override
   bool get hasMoreArtists => false;
@@ -409,6 +530,13 @@ class _Controller extends AppController {
     _track,
     for (var index = 1; index < trackCount; index++)
       _track.copyWith(id: 'track-$index'),
+    for (var index = 1; index < artistCount; index++)
+      _track.copyWith(
+        id: 'artist-track-$index',
+        artist: 'Alice $index',
+        artistId: 'artist-$index',
+        albumId: 'album-$index',
+      ),
   ];
 
   @override

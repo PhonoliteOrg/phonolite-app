@@ -111,6 +111,52 @@ void main() {
     }
   }
 
+  for (final size in const [Size(430, 800), Size(1024, 800)]) {
+    for (final hiddenPlayer in [false, true]) {
+      testWidgets(
+        'Android content scrolls behind status bar at $size, hidden player: $hiddenPlayer',
+        (tester) async {
+          final probe = (await tester.runAsync(() async => _LayoutProbe()))!;
+          final compact = size.width < 980;
+          const topInset = 24.0;
+          try {
+            await _pumpLayout(
+              tester,
+              probe: probe,
+              size: size,
+              platform: TargetPlatform.android,
+              safeAreaTop: topInset,
+              hidePlaybackChrome: hiddenPlayer,
+            );
+
+            final viewport = tester.getRect(find.byKey(_viewportKey));
+            expect(viewport.top, 0);
+            expect(viewport.bottom, size.height - (compact ? _navigationHeight + _safeAreaBottom : 0));
+            expect(probe.pagePadding.top, 0);
+            expect(probe.pagePadding.bottom, 0);
+            expect(probe.topInset, topInset);
+            expect(tester.getRect(find.byKey(_firstRowKey)).top, topInset);
+
+            probe.scroll.jumpTo(topInset / 2);
+            await tester.pump();
+            expect(tester.getRect(find.byKey(_firstRowKey)).top, inExclusiveRange(0, topInset));
+
+            final clearBottom = hiddenPlayer
+                ? viewport.bottom
+                : tester.getRect(find.byType(compact ? NowPlayingMiniBar : NowPlayingBar)).top;
+            probe.scroll.jumpTo(probe.scroll.position.maxScrollExtent);
+            await tester.pump();
+            expect(tester.getRect(find.byKey(_finalRowKey)).bottom, closeTo(clearBottom, 0.01));
+            expect(tester.takeException(), isNull);
+          } finally {
+            await probe.dispose(tester);
+          }
+        },
+        variant: TargetPlatformVariant.only(TargetPlatform.android),
+      );
+    }
+  }
+
   for (final layout in const [
     (name: 'wide', size: Size(1280, 800), compact: false),
     (name: 'compact', size: Size(430, 800), compact: true),

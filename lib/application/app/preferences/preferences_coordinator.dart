@@ -160,19 +160,25 @@ class _PreferencesCoordinator {
   }
 
   Future<void> _loadPlaybackSettings() async {
+    final revision = _host.connection.sessionRevision;
     try {
       final settings = await _host.connection.fetchPlaybackSettings();
+      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
 
       _host._updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
     } catch (err) {
+      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
       _host._pushMessage('Failed to load playback settings: $err', level: LogLevel.warning);
     }
   }
 
   Future<void> _persistPlaybackSettings(PlaybackRepeatMode mode) async {
+    if (!_host._authState.isAuthorized) return;
+    final revision = _host.connection.sessionRevision;
     try {
       await _host.connection.updatePlaybackSettings(repeatMode: mode == PlaybackRepeatMode.one ? 'one' : 'off');
     } catch (err) {
+      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
       _host._pushMessage('Failed to update playback settings: $err');
     }
   }
@@ -253,5 +259,6 @@ mixin _PreferencesFacade {
 
   Future<void> _loadPlaybackSettings() => _preferencesCoordinator._loadPlaybackSettings();
 
-  Future<void> _persistPlaybackSettings(PlaybackRepeatMode mode) => _preferencesCoordinator._persistPlaybackSettings(mode);
+  Future<void> _persistPlaybackSettings(PlaybackRepeatMode mode) =>
+      _preferencesCoordinator._persistPlaybackSettings(mode);
 }

@@ -19,6 +19,7 @@ class OfflineArtistGroup {
   final String? coverPath;
   final String? bannerPath;
   final Artist? metadata;
+  final _PreparedArtistGroup? _prepared;
 
   const OfflineArtistGroup({
     required this.id,
@@ -27,21 +28,46 @@ class OfflineArtistGroup {
     this.coverPath,
     this.bannerPath,
     this.metadata,
-  });
+  }) : _prepared = null;
 
-  List<OfflineAlbumGroup> get headlineAlbums => albums
+  OfflineArtistGroup._withProjection(OfflineArtistGroup source, this._prepared)
+    : id = source.id,
+      name = source.name,
+      albums = source.albums,
+      coverPath = source.coverPath,
+      bannerPath = source.bannerPath,
+      metadata = source.metadata;
+
+  List<OfflineAlbumGroup> get headlineAlbums => _prepared?.headlines ?? _headlineAlbums();
+
+  List<OfflineAlbumGroup> get soloAlbums => _prepared?.solos ?? _soloAlbums();
+
+  List<OfflineAlbumGroup> get collabAlbums => _prepared?.collaborations ?? _collabAlbums();
+
+  /// Detail expansion is intentionally not retained in each library summary.
+  ArtistReleases get releases => _buildReleases();
+
+  List<Track> get tracksForArtist => _prepared?.tracks ?? _tracksForArtist();
+
+  int get trackCount => tracksForArtist.length;
+
+  Artist toArtist() => _prepared?.artist ?? _buildArtist();
+
+  OfflineArtistGroup _prepare() => OfflineArtistGroup._withProjection(this, _PreparedArtistGroup(this));
+
+  List<OfflineAlbumGroup> _headlineAlbums() => albums
       .where((album) => album.toAlbum().credits.any((credit) => credit.artistId == id && credit.isAlbumArtist))
       .toList();
 
-  List<OfflineAlbumGroup> get soloAlbums => headlineAlbums.where((album) => !album.toAlbum().isCollaboration).toList();
+  List<OfflineAlbumGroup> _soloAlbums() => headlineAlbums.where((album) => !album.toAlbum().isCollaboration).toList();
 
-  List<OfflineAlbumGroup> get collabAlbums {
+  List<OfflineAlbumGroup> _collabAlbums() {
     final soloIds = soloAlbums.map((album) => album.id).toSet();
 
     return headlineAlbums.where((album) => !soloIds.contains(album.id)).toList();
   }
 
-  ArtistReleases get releases {
+  ArtistReleases _buildReleases() {
     final headlines = headlineAlbums;
     final headlineIds = headlines.map((album) => album.id).toSet();
     final solos = soloAlbums;
@@ -104,7 +130,7 @@ class OfflineArtistGroup {
     );
   }
 
-  List<Track> get tracksForArtist {
+  List<Track> _tracksForArtist() {
     final headlineIds = headlineAlbums.map((album) => album.id).toSet();
 
     return [
@@ -116,9 +142,7 @@ class OfflineArtistGroup {
     ];
   }
 
-  int get trackCount => tracksForArtist.length;
-
-  Artist toArtist() {
+  Artist _buildArtist() {
     final stored = metadata;
     final artistReleases = releases;
 
@@ -156,6 +180,22 @@ class OfflineArtistGroup {
           '$downloadedTrackCount downloaded $trackLabel.',
     );
   }
+}
+
+/// Prepared once in the snapshot owner, never during widget rebuilds.
+class _PreparedArtistGroup {
+  final List<OfflineAlbumGroup> headlines;
+  final List<OfflineAlbumGroup> solos;
+  final List<OfflineAlbumGroup> collaborations;
+  final List<Track> tracks;
+  final Artist artist;
+
+  _PreparedArtistGroup(OfflineArtistGroup source)
+    : headlines = List.unmodifiable(source.headlineAlbums),
+      solos = List.unmodifiable(source.soloAlbums),
+      collaborations = List.unmodifiable(source.collabAlbums),
+      tracks = List.unmodifiable(source.tracksForArtist),
+      artist = source.toArtist();
 }
 
 class OfflineAlbumGroup {
@@ -298,7 +338,7 @@ List<OfflineArtistGroup> offlineArtistGroups(List<Track> tracks, {bool includeCo
           bannerPath: artist.bannerPath,
           metadata: artist.metadata,
           albums: _sortedAlbums(artist),
-        ),
+        )._prepare(),
       )
       .toList();
 }

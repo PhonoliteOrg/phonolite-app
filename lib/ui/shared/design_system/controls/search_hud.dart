@@ -12,6 +12,7 @@ class SearchHud extends StatelessWidget {
   final VoidCallback? onChanged;
   final String hintText;
   final double height;
+  final bool glassBackground;
 
   const SearchHud({
     super.key,
@@ -20,6 +21,7 @@ class SearchHud extends StatelessWidget {
     required this.onClear,
     this.hintText = 'Search library',
     this.height = searchHudHeight,
+    this.glassBackground = false,
     this.onChanged,
   });
 
@@ -51,6 +53,7 @@ class SearchHud extends StatelessWidget {
           startPadding: 24,
           cut: 0,
           isDense: height < searchHudHeight,
+          glassBackground: glassBackground,
           hintText: hintText,
           onSubmitted: (_) => onSubmit(),
           onChanged: (_) => onChanged?.call(),

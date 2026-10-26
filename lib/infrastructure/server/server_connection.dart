@@ -9,6 +9,7 @@ import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart'
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/data/models/library/artist_summary.dart';
 import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
@@ -22,6 +23,7 @@ import 'package:phonolite_app/data/models/server/server_capabilities.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 import 'package:phonolite_app/data/models/server/server_ports_response.dart';
 import 'package:phonolite_app/data/models/server/track_download_stream.dart';
+import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_api.dart';
 import 'package:phonolite_app/infrastructure/server/api/auth_api.dart';
 import 'package:phonolite_app/infrastructure/server/api/collections_api.dart';
@@ -78,6 +80,26 @@ class ServerConnection {
   /// A fresh header map; callers cannot mutate connection authentication state.
   Map<String, String> get authorizationHeaders => _transport.authorizationHeaders;
 
+  /// Streams artwork over the current trusted transport without following redirects.
+  /// Supplied validators cannot replace the current session's authentication.
+  Future<http.StreamedResponse> openArtwork(String url, {Map<String, String> headers = const {}}) {
+    final uri = Uri.parse(url);
+    final origin = Uri.parse(baseUrl);
+
+    if (uri.scheme != 'https' ||
+        uri.host != origin.host ||
+        uri.port != origin.port ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasFragment) {
+      return Future.error(StateError('Artwork must use the authenticated server origin'));
+    }
+
+    final request = http.Request('GET', uri)..followRedirects = false;
+    request.headers.addAll({...headers, ..._transport.authorizationHeaders});
+
+    return _transport.client.send(request).timeout(ApiTransport.defaultRequestTimeout);
+  }
+
   void setTrust(ServerTrust value) => _transport.setTrust(value);
 
   void forgetTrust(String url) => _transport.forgetTrust(url);
@@ -117,6 +139,9 @@ class ServerConnection {
     bool includeContributors = false,
   }) => _libraryApi.fetchArtistsPage(limit: limit, offset: offset, includeContributors: includeContributors);
 
+  Future<ArtistSummaryPage> fetchArtistSummariesPage({int limit = 60, int offset = 0, String? revision}) =>
+      _libraryApi.fetchArtistSummariesPage(limit: limit, offset: offset, revision: revision);
+
   Future<List<Artist>> fetchArtists({int limit = ServerConnection.artistsPageSize, bool includeContributors = false}) =>
       _libraryApi.fetchArtists(limit: limit, includeContributors: includeContributors);
 
@@ -145,6 +170,37 @@ class ServerConnection {
     artistIds: artistIds,
     genres: genres,
   );
+
+  Future<ShuffleSessionPage> createShuffleSession({
+    required String mode,
+    required String clientId,
+    required String requestId,
+    String? artistId,
+    String? albumId,
+    List<String> artistIds = const [],
+    List<String> genres = const [],
+    String? playlistId,
+    String? startTrackId,
+  }) => _playbackApi.createShuffleSession(
+    mode: mode,
+    clientId: clientId,
+    requestId: requestId,
+    artistId: artistId,
+    albumId: albumId,
+    artistIds: artistIds,
+    genres: genres,
+    playlistId: playlistId,
+    startTrackId: startTrackId,
+  );
+
+  Future<ShuffleSessionPage> fetchShuffleSessionPage(
+    String sessionId, {
+    required String clientId,
+    required int offset,
+  }) => _playbackApi.fetchShuffleSessionPage(sessionId, clientId: clientId, offset: offset);
+
+  Future<void> releaseShuffleSession(String sessionId, {required String clientId}) =>
+      _playbackApi.releaseShuffleSession(sessionId, clientId: clientId);
 
   Future<StatsResponse> fetchStats({int? year, int? month}) => _listeningStatsApi.fetchStats(year: year, month: month);
 
@@ -306,4 +362,7 @@ class ServerConnection {
       _transport.pingHealthMs(timeout: timeout);
 
   Future<bool> hasServerIdentityChanged() => _transport.hasServerIdentityChanged();
+
+  /// The creator closes the connection after its borrowing workloads drain.
+  void close() => _transport.close();
 }

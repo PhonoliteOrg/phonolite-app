@@ -3,6 +3,7 @@ part of 'package:phonolite_app/application/app/app_controller.dart';
 class _PlaybackQueue {
   final AppController _host;
   List<Track> _playQueue = <Track>[];
+  bool _isServerShuffleWindow = false;
   int _playIndex = 0;
   bool _autoAdvanceInFlight = false;
   DateTime? _suppressAutoAdvanceUntil;
@@ -127,6 +128,8 @@ class _PlaybackQueue {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       if (_host._playbackState.shuffleMode != ShuffleMode.off &&
           _host._playbackState.shuffleScope != ActionScope.server) {
@@ -135,6 +138,7 @@ class _PlaybackQueue {
 
       if (startTrackId != null) {
         await _host._maybeDisableShuffleForTrackSelection(startTrackId);
+        if (!isCurrent()) return;
 
         if (_host._playbackState.shuffleMode != ShuffleMode.off &&
             _host._playbackState.shuffleMode != ShuffleMode.liked) {
@@ -150,6 +154,7 @@ class _PlaybackQueue {
           albumShuffleId = albumId;
         } else if (_host._playbackState.shuffleMode == ShuffleMode.artist) {
           final album = await _host.connection.fetchAlbumById(albumId);
+          if (!isCurrent()) return;
 
           artistId = album.artistId;
         }
@@ -160,6 +165,7 @@ class _PlaybackQueue {
           albumId: albumShuffleId,
           startTrackId: startTrackId,
         );
+        if (!isCurrent()) return;
 
         return;
       }
@@ -169,6 +175,7 @@ class _PlaybackQueue {
       final tracks = _host._lastAlbumId == albumId && _host._tracks.isNotEmpty
           ? List<Track>.of(_host._tracks)
           : await _host.connection.fetchTracks(albumId);
+      if (!isCurrent()) return;
 
       if (tracks.isEmpty) {
         _host._pushMessage('No tracks found for album');
@@ -183,9 +190,12 @@ class _PlaybackQueue {
       _setQueue(normalized, startTrackId: startTrackId, queueSource: PlaybackQueueSource.none);
       _armAutoAdvanceGuard();
       await _host._playCurrent();
+      if (!isCurrent()) return;
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'queue album');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to queue album: $err');
     }
   }
@@ -195,6 +205,8 @@ class _PlaybackQueue {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       if (_host._playbackState.shuffleMode != ShuffleMode.off &&
           _host._playbackState.shuffleScope != ActionScope.server) {
@@ -203,11 +215,13 @@ class _PlaybackQueue {
 
       if (startTrackId != null) {
         await _host._maybeDisableShuffleForTrackSelection(startTrackId);
+        if (!isCurrent()) return;
       }
 
       if (_host._playbackState.shuffleMode != ShuffleMode.off) {
         if (_host._playbackState.shuffleMode == ShuffleMode.all) {
           await _host.queueShuffle(scope: 'library', startTrackId: startTrackId);
+          if (!isCurrent()) return;
 
           return;
         }
@@ -216,6 +230,7 @@ class _PlaybackQueue {
                 _host._playbackState.shuffleMode == ShuffleMode.artist) &&
             startTrackId != null) {
           final context = await _host._resolveAlbumArtistForTrack(startTrackId);
+          if (!isCurrent()) return;
 
           await _host.queueShuffle(
             scope: 'library',
@@ -225,6 +240,7 @@ class _PlaybackQueue {
             queueSourceOverride: PlaybackQueueSource.playlist,
             queueSourcePlaylistIdOverride: playlistId,
           );
+          if (!isCurrent()) return;
 
           if (_playQueue.isNotEmpty) {
             _host._updatePlayback(
@@ -241,6 +257,7 @@ class _PlaybackQueue {
             queueSourceOverride: PlaybackQueueSource.playlist,
             queueSourcePlaylistIdOverride: playlistId,
           );
+          if (!isCurrent()) return;
 
           if (_playQueue.isNotEmpty) {
             _host._updatePlayback(
@@ -259,6 +276,7 @@ class _PlaybackQueue {
       final tracks = (_host._currentPlaylistId == playlistId && _host._playlistTracks.isNotEmpty)
           ? _host._playlistTracks
           : await _host.connection.fetchPlaylistTracks(playlistId);
+      if (!isCurrent()) return;
 
       if (tracks.isEmpty) {
         _host._pushMessage('No tracks found for playlist');
@@ -276,9 +294,12 @@ class _PlaybackQueue {
       );
       _armAutoAdvanceGuard();
       await _host._playCurrent();
+      if (!isCurrent()) return;
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'queue playlist');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to queue playlist: $err');
     }
   }
@@ -296,6 +317,8 @@ class _PlaybackQueue {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       if (_host._playbackState.shuffleMode != ShuffleMode.off &&
           _host._playbackState.shuffleScope != ActionScope.server) {
@@ -317,6 +340,7 @@ class _PlaybackQueue {
 
       if (startTrackId != null) {
         await _host._maybeDisableShuffleForTrackSelection(startTrackId);
+        if (!isCurrent()) return;
       }
 
       if (_host._playbackState.shuffleMode != ShuffleMode.off) {
@@ -324,6 +348,7 @@ class _PlaybackQueue {
                 _host._playbackState.shuffleMode == ShuffleMode.artist) &&
             startTrackId != null) {
           final context = await _host._resolveAlbumArtistForTrack(startTrackId);
+          if (!isCurrent()) return;
 
           await _host.queueShuffle(
             scope: 'library',
@@ -332,12 +357,14 @@ class _PlaybackQueue {
             startTrackId: startTrackId,
             queueSourceOverride: PlaybackQueueSource.liked,
           );
+          if (!isCurrent()) return;
         } else {
           await _host.queueShuffle(
             scope: 'liked',
             startTrackId: startTrackId,
             queueSourceOverride: PlaybackQueueSource.liked,
           );
+          if (!isCurrent()) return;
         }
 
         return;
@@ -346,6 +373,7 @@ class _PlaybackQueue {
       _host._pushMessage('Queue liked${startTrackId == null ? '' : ' (start $startTrackId)'}');
 
       final tracks = _host._liked.isNotEmpty ? _host._liked : await _host.connection.fetchLikedTracks();
+      if (!isCurrent()) return;
 
       if (tracks.isEmpty) {
         _host._pushMessage('No liked tracks found');
@@ -358,9 +386,12 @@ class _PlaybackQueue {
       _setQueue(normalized, startTrackId: startTrackId, queueSource: PlaybackQueueSource.liked);
       _armAutoAdvanceGuard();
       await _host._playCurrent();
+      if (!isCurrent()) return;
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'queue liked');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to queue liked: $err');
     }
   }
@@ -400,7 +431,10 @@ class _PlaybackQueue {
     required PlaybackQueueSource queueSource,
     String? queueSourcePlaylistId,
     OfflineQueueSource offlineQueueSource = OfflineQueueSource.none,
+    bool preserveServerShuffle = false,
   }) {
+    if (!preserveServerShuffle) _host._shuffleCoordinator._clearServerShuffleSession();
+    _isServerShuffleWindow = preserveServerShuffle;
     _playQueue = tracks;
     _offlineQueueSource = queueSource == PlaybackQueueSource.offline ? offlineQueueSource : OfflineQueueSource.none;
 
@@ -465,6 +499,9 @@ class _PlaybackQueue {
 
     final startIndex = _playQueue.indexWhere((track) => track.id == currentId);
     final index = startIndex >= 0 ? startIndex : _playIndex;
+    if (_isServerShuffleWindow) {
+      return _playQueue.skip(index.clamp(0, _playQueue.length)).take(count).map((track) => track.id).toList();
+    }
     final total = _playQueue.length;
     final limit = count.clamp(1, total);
     final ids = <String>[];
@@ -526,7 +563,10 @@ class _PlaybackQueue {
       }
 
       Future<void> repeatFinishedTrack() async {
-        if (_playQueue.isEmpty) {
+        if (_playQueue.isEmpty ||
+            _playIndex < 0 ||
+            _playIndex >= _playQueue.length ||
+            _playQueue[_playIndex].id != track.id) {
           _host._updatePlayback(
             track: track,
             isPlaying: true,
@@ -632,12 +672,14 @@ mixin _PlaybackQueueFacade {
     required PlaybackQueueSource queueSource,
     String? queueSourcePlaylistId,
     OfflineQueueSource offlineQueueSource = OfflineQueueSource.none,
+    bool preserveServerShuffle = false,
   }) => _queueCoordinator._setQueue(
     tracks,
     startTrackId: startTrackId,
     queueSource: queueSource,
     queueSourcePlaylistId: queueSourcePlaylistId,
     offlineQueueSource: offlineQueueSource,
+    preserveServerShuffle: preserveServerShuffle,
   );
 
   void _armAutoAdvanceGuard([Duration duration = const Duration(milliseconds: 1200)]) =>

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
@@ -19,6 +20,8 @@ import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_s
 import 'package:phonolite_app/data/models/library/artist_credit.dart';
 import 'package:phonolite_app/data/models/library/artist_releases.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/artist_summary.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart' as offline_views;
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
@@ -27,6 +30,7 @@ import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
+import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 import 'package:phonolite_app/data/models/library/track_match.dart';
 import 'package:phonolite_app/data/models/collections/like_state.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
@@ -45,6 +49,339 @@ import '../support/offline_library_test_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('rapid initial Next actions share one server shuffle deck and retain both steps', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final initial = Completer<ShuffleSessionPage>();
+    connection.pendingCreate = initial.future;
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    final firstNext = harness.controller.nextTrack();
+    await connection.createStarted.future;
+    final secondNext = harness.controller.nextTrack();
+    initial.complete(connection.page('window-1', 0));
+    await Future.wait([firstNext, secondNext]);
+    expect(connection.creates, 1);
+    expect(harness.audio.starts.map((start) => start.trackId), ['deck-track-0', 'deck-track-1']);
+    expect(harness.controller.playbackState.track?.id, 'deck-track-1');
+  });
+
+  test('a stale initial Next action cannot advance a replacement ordinary queue', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final initial = Completer<ShuffleSessionPage>();
+    connection.pendingCreate = initial.future;
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    final next = harness.controller.nextTrack();
+    await connection.createStarted.future;
+    harness.controller.updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+    await harness.controller.queueAlbum('album');
+    initial.complete(connection.page('window-1', 0));
+    await next;
+    expect(harness.audio.starts.map((start) => start.trackId), ['track']);
+    expect(harness.controller.playbackState.track?.id, 'track');
+  });
+
+  for (final creating in [true, false]) {
+    test('Stop cancels pending server shuffle ${creating ? 'creation' : 'prefetch'}', () async {
+      final connection = _WindowShuffleConnection();
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+      final reply = Completer<ShuffleSessionPage>();
+      Future<void>? starting;
+      if (creating) {
+        connection.pendingCreate = reply.future;
+        starting = harness.controller.queueShuffle(scope: 'library');
+        await connection.createStarted.future;
+      } else {
+        await harness.controller.queueShuffle(scope: 'library');
+        connection.pendingPage = reply.future;
+        for (var i = 0; i < 6; i++) {
+          await harness.controller.nextTrack();
+        }
+      }
+      await harness.controller.stop();
+      final starts = harness.audio.starts.length;
+      reply.complete(connection.page('window-1', creating ? 0 : 10));
+      await starting;
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.controller.playbackState.track, isNull);
+      expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.audio.starts, hasLength(starts));
+      expect(connection.released, contains('window-1'));
+    });
+  }
+
+  test('failed shuffle initialization releases its session and cannot reuse an uninitialized deck', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.queueAlbum('album');
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    connection.initialPageEmpty = true;
+    connection.pageFailure = ApiException(503, 'Temporary initialization failure');
+    await harness.controller.queueServerShuffle(scope: 'library', play: false, startTrackId: 'track');
+    expect(connection.released, contains('window-1'));
+    connection.initialPageEmpty = false;
+    connection.pageFailure = null;
+    await harness.controller.nextTrack();
+    expect(connection.creates, 2);
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+  });
+
+  test('Repeat One preserves a current track outside a refreshed shuffle deck', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.queueAlbum('album');
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueServerShuffle(scope: 'library', play: false, startTrackId: 'track');
+    harness.controller.toggleRepeatMode();
+    await Future<void>.delayed(const Duration(milliseconds: 1250));
+    harness.audio.active = false;
+    harness.onComplete!();
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.playbackState.track?.id, 'track');
+    expect(harness.audio.starts.last.trackId, 'track');
+    await harness.controller.nextTrack();
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+  });
+
+  test('server shuffle preserves order across windows and begins a new pass only at true deck end', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueShuffle(scope: 'library');
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+    expect(connection.pageOffsets, isEmpty);
+    for (var i = 1; i < 35; i++) {
+      await harness.controller.nextTrack();
+      expect(harness.controller.playbackState.track?.id, 'deck-track-$i');
+      expect(connection.creates, 1);
+    }
+    expect(connection.pageOffsets, [10, 20, 30]);
+    expect(harness.audio.queueIds.last, ['deck-track-34']);
+    await harness.controller.prevTrack();
+    expect(harness.controller.playbackState.track?.id, 'deck-track-33');
+    await harness.controller.nextTrack();
+    expect(harness.controller.playbackState.track?.id, 'deck-track-34');
+    await harness.controller.nextTrack(fromAutoAdvance: true);
+    expect(connection.creates, 2);
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+    expect(connection.released, contains('window-1'));
+  });
+
+  test('all server shuffle rules use the paged session API', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    for (final mode in [ShuffleMode.all, ShuffleMode.artist, ShuffleMode.album, ShuffleMode.custom,
+      ShuffleMode.liked, ShuffleMode.currentPlaylist]) {
+      harness.controller.updateShuffleMode(mode, scope: ActionScope.server);
+      await harness.controller.queueServerShuffle(
+        scope: mode == ShuffleMode.currentPlaylist ? 'playlist' : 'library',
+        artistId: mode == ShuffleMode.artist ? 'artist' : null,
+        albumId: mode == ShuffleMode.album ? 'album' : null,
+        playlistId: mode == ShuffleMode.currentPlaylist ? 'playlist' : null,
+      );
+    }
+    expect(connection.modes, ['all', 'artist', 'album', 'custom', 'liked', 'playlist']);
+    expect(connection.requestIds.toSet(), hasLength(6));
+    expect(connection.clientIds.toSet(), hasLength(1));
+    expect(connection.pageOffsets, isEmpty);
+  });
+
+  test('shuffle navigation preserves updated likes and current track metadata', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueShuffle(scope: 'library');
+    await harness.controller.toggleLike(harness.controller.playbackState.track!);
+    expect(harness.controller.playbackState.track?.liked, isTrue);
+    await harness.controller.nextTrack();
+    await harness.controller.prevTrack();
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+    expect(harness.controller.playbackState.track?.liked, isTrue);
+  });
+
+  test('expired shuffle sessions recover with a new deck while transient page errors retain the existing deck', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueShuffle(scope: 'library');
+    connection.pageFailure = ApiException(503, 'Temporarily unavailable');
+    for (var i = 0; i < 10; i++) {
+      await harness.controller.nextTrack();
+    }
+    expect(connection.creates, 1);
+    expect(harness.controller.playbackState.track?.id, 'deck-track-9');
+    connection.pageFailure = ApiException(404, 'Session expired');
+    await harness.controller.nextTrack();
+    expect(connection.creates, 2);
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+  });
+
+  test('switching queues or accounts discards pending server shuffle pages', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueShuffle(scope: 'library');
+    final page = Completer<ShuffleSessionPage>();
+    connection.pendingPage = page.future;
+    for (var i = 0; i < 6; i++) {
+      await harness.controller.nextTrack();
+    }
+    expect(connection.pageOffsets, [10]);
+    harness.controller.updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+    await harness.controller.queueAlbum('album');
+    final ordinary = harness.controller.playbackState.track?.id;
+    page.complete(connection.page('window-1', 10));
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.playbackState.track?.id, ordinary);
+    expect(connection.released, contains('window-1'));
+    harness.controller.loginWithToken(baseUrl: connection.baseUrl, token: 'other-account');
+    expect(harness.controller.playbackState.track, isNull);
+  });
+
+  test('account switches clear personal server caches and stale reads cannot refill them', () async {
+    final connection = _IsolationConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final oldTrack = offlineTestTrack(id: 'old').copyWith(liked: true, inPlaylists: true);
+    final oldPlaylist = Playlist(id: 'old', name: 'Old private list', trackIds: ['old']);
+    connection.trackResponse = [oldTrack];
+    connection.playlistResponse = [oldPlaylist];
+    await Future.wait([
+      harness.controller.loadLikedTracks(),
+      harness.controller.loadPlaylists(),
+      harness.controller.loadPlaylistTracks('old'),
+      harness.controller.loadTracks('album'),
+    ]);
+    expect(harness.controller.liked.single.id, 'old');
+    expect(harness.controller.playlists.single.id, 'old');
+    expect(harness.controller.tracks.single.liked, isTrue);
+
+    final liked = Completer<List<Track>>();
+    final lists = Completer<List<Playlist>>();
+    final tracks = Completer<List<Track>>();
+    connection.pendingLiked = liked.future;
+    connection.pendingPlaylists = lists.future;
+    connection.pendingCollectionTracks = tracks.future;
+    final stale = Future.wait([
+      harness.controller.loadLikedTracks(),
+      harness.controller.loadPlaylists(),
+      harness.controller.loadPlaylistTracks('old'),
+      harness.controller.loadTracks('album'),
+    ]);
+    harness.controller.loginWithToken(baseUrl: connection.baseUrl, token: 'second-account');
+    expect(harness.controller.liked, isEmpty);
+    expect(harness.controller.playlists, isEmpty);
+    expect(harness.controller.playlistTracks, isEmpty);
+    expect(harness.controller.tracks, isEmpty);
+
+    connection.pendingLiked = null;
+    connection.pendingPlaylists = null;
+    connection.pendingCollectionTracks = null;
+    connection.trackResponse = [offlineTestTrack(id: 'new')];
+    connection.playlistResponse = [Playlist(id: 'new', name: 'New list', trackIds: ['new'])];
+    await Future.wait([
+      harness.controller.loadLikedTracks(),
+      harness.controller.loadPlaylists(),
+      harness.controller.loadPlaylistTracks('new'),
+      harness.controller.loadTracks('album'),
+    ]);
+    liked.complete([oldTrack]);
+    lists.complete([oldPlaylist]);
+    tracks.complete([oldTrack]);
+    await stale;
+    expect(harness.controller.liked.single.id, 'new');
+    expect(harness.controller.playlists.single.id, 'new');
+    expect(harness.controller.playlistTracks.single.id, 'new');
+    expect(harness.controller.tracks.single.id, 'new');
+  });
+
+  test('account switches discard stale like writes and stop follow-up playlist artwork writes', () async {
+    final connection = _IsolationConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final liking = Completer<ServerLikeState?>();
+    final creating = Completer<Playlist>();
+    connection.pendingLikeWrite = liking.future;
+    connection.pendingCreate = creating.future;
+    final oldLike = harness.controller.toggleLike(offlineTestTrack(id: 'old'));
+    final oldCreate = harness.controller.createPlaylist('Old list', imageEdit: const PlaylistImageEdit.clear());
+    harness.controller.loginWithToken(baseUrl: connection.baseUrl, token: 'second-account');
+    liking.complete(ServerLikeState(trackId: 'old', liked: true, updatedAt: 1));
+    creating.complete(Playlist(id: 'old', name: 'Old list', trackIds: [], imageRef: 'old-cover'));
+    await Future.wait([oldLike, oldCreate]);
+    expect(harness.controller.liked, isEmpty);
+    expect(harness.controller.playlists, isEmpty);
+    expect(connection.coverDeletes, 0);
+  });
+
+  test('stale personal playlist queues cannot start playback after an account switch', () async {
+    final connection = _IsolationConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final tracks = Completer<List<Track>>();
+    connection.pendingCollectionTracks = tracks.future;
+    final queued = harness.controller.queuePlaylist('old-private-list');
+    harness.controller.loginWithToken(baseUrl: connection.baseUrl, token: 'second-account');
+    tracks.complete([offlineTestTrack(id: 'old')]);
+    await queued;
+    expect(harness.audio.starts, isEmpty);
+    expect(harness.controller.playbackState.track, isNull);
+  });
+
+  test('an older account playback settings reply cannot replace the current repeat mode', () async {
+    final connection = _IsolationConnection();
+    final harness = _Harness(connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    final old = Completer<PlaybackSettingsResponse>();
+    connection.settingsByToken['first-account'] = old.future;
+    harness.controller.loginWithToken(baseUrl: connection.baseUrl, token: 'first-account');
+    await connection.waitForSettings('first-account');
+    expect(connection.settingsRequested, contains('first-account'));
+    harness.controller.loginWithToken(baseUrl: connection.baseUrl, token: 'second-account');
+    await connection.waitForSettings('second-account');
+    old.complete(PlaybackSettingsResponse(repeatMode: 'one'));
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.playbackState.repeatMode, PlaybackRepeatMode.off);
+  });
 
   test('disconnect removes the server address, session and identity while retaining other origins', () async {
     _mockTrustVault();
@@ -353,6 +690,72 @@ void main() {
     expect(harness.connection.onTransportFailure, isNull);
   });
 
+  test('shutdown waits for metadata subscription cancellation before completing', () async {
+    final cancellation = Completer<void>();
+    final cancelling = Completer<void>();
+    final events = StreamController<MetadataUpdateEvent>(onCancel: () {
+      cancelling.complete();
+      return cancellation.future;
+    });
+    final connection = _Connection()..metadataEvents = events.stream;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(() async {
+      if (!cancellation.isCompleted) cancellation.complete();
+      await harness.controller.close();
+      await events.close();
+    });
+    await harness.startRemote();
+
+    var closed = false;
+    final closing = harness.controller.close();
+    unawaited(closing.then((_) => closed = true));
+    await cancelling.future;
+    await Future<void>.delayed(Duration.zero);
+    expect(closed, isFalse);
+    expect(harness.controller.close(), same(closing));
+
+    cancellation.complete();
+    await closing;
+    expect(closed, isTrue);
+  });
+
+  test('system media commands keep controlling playback while the desktop window is hidden', () async {
+    final connection = _Connection()
+      ..trackResponse = [
+        _metadataTrack().copyWith(id: 'first', albumId: 'album'),
+        _metadataTrack().copyWith(id: 'second', albumId: 'album'),
+      ];
+    final harness = _Harness(authenticated: true, connection: connection, artworkLoader: _ArtworkLoader());
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.controller.handleAppLifecycleState(AppLifecycleState.hidden);
+    final commands = harness.nowPlaying.commandHandler!;
+
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.pause));
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.pauses, greaterThan(0));
+    expect(harness.nowPlaying.updates.last['isPlaying'], isFalse);
+
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.audio.resumes, greaterThan(0));
+
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.seek, position: Duration(milliseconds: 12500)));
+    expect(harness.controller.playbackState.position, const Duration(milliseconds: 12500));
+    final firstTrack = harness.controller.playbackState.track!.id;
+    final starts = harness.audio.starts.length;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.next));
+    expect(harness.audio.starts.length, starts + 1);
+    expect(harness.controller.playbackState.track!.id, isNot(firstTrack));
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.previous));
+    expect(harness.controller.playbackState.track!.id, firstTrack);
+
+    final clears = harness.nowPlaying.clears;
+    await harness.controller.close();
+    expect(harness.nowPlaying.clears, greaterThan(clears));
+    expect(harness.nowPlaying.commandHandler, isNull);
+  });
   for (final nativeArtwork in [true, false]) {
     test(
       'Now Playing loads artwork through ${nativeArtwork ? 'iOS' : 'Flutter'} only',
@@ -1847,6 +2250,7 @@ void main() {
           albumCount: 1,
         );
       final harness = _Harness(authenticated: true, connection: connection);
+      harness.downloads.localTracks = [original];
       await harness.controller.initialize();
       await harness.controller.restoreSession();
       addTearDown(harness.controller.close);
@@ -1869,7 +2273,7 @@ void main() {
       expect(harness.controller.tracks.last.artist, 'Another Performer');
       expect(connection.trackListRequests, requestsBefore);
       expect(harness.audio.starts, hasLength(1));
-      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(const Duration(milliseconds: 350));
       expect(harness.downloads.refreshedArtists, [original.artistId]);
     },
   );
@@ -1942,7 +2346,7 @@ void main() {
   );
 
   test(
-    'loaded releases immediately update artist counts without metadata requests',
+    'loaded releases update compact roster counts without detail metadata requests',
     () async {
       final album = Album(
         id: 'one',
@@ -1987,7 +2391,7 @@ void main() {
       expect(updated.collabAlbumCount, 0);
       expect(updated.otherCreditCount, 1);
       expect(updated.releaseCount, 0);
-      expect(updated.summary, 'Biography');
+      expect(updated.summary, isNull, reason: 'Biographies are retained only by the independent detail cache.');
       expect(updated.genres, ['Jazz']);
       expect(updated.logoRef, 'logo.png');
       expect(connection.artistLookups, isEmpty);
@@ -2152,6 +2556,27 @@ void main() {
       expect(harness.controller.playbackState.shuffleMode, ShuffleMode.custom);
     },
   );
+  test('5000-artist browsing bounds its window without filling the selection roster', () async {
+    final connection = _Connection()..generatedArtistCount = 5000;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.loadArtists();
+    expect(harness.controller.artists, hasLength(60));
+
+    for (var index = 0; index < 5000; index += 60) {
+      await harness.controller.loadArtistBrowsePage(index);
+      expect(harness.controller.artistBrowseSnapshot.pages.length, lessThanOrEqualTo(12));
+    }
+
+    expect(harness.controller.artistBrowseSnapshot.total, 5000);
+    expect(harness.controller.artists, hasLength(60));
+    await harness.controller.loadAllArtists();
+    expect(harness.controller.artists, hasLength(5000));
+    expect(harness.controller.artists.every((artist) => artist.summary == null && artist.bannerRef == null), isTrue);
+  });
+
 }
 
 Album _collaborationAlbum() => Album(
@@ -2240,6 +2665,7 @@ class _Harness {
             audioCreations++;
             if (failAudio) throw StateError('audio unavailable');
             this.onStarted = onStarted;
+            this.onComplete = onComplete;
             this.onStats = onStats;
             this.onState = onState;
             return audio;
@@ -2271,6 +2697,7 @@ class _Harness {
   int audioCreations = 0;
   DateTime playbackTime = DateTime.utc(2026, 10, 1);
   void Function()? onStarted;
+  void Function()? onComplete;
   void Function(Duration, Duration, double?, int?, bool)? onStats;
   void Function(bool, bool)? onState;
 
@@ -2323,6 +2750,7 @@ class _Audio implements AudioEngine {
       <
         ({String trackId, Duration offset, bool quickStart, bool initialPaused})
       >[];
+  final queueIds = <List<String>>[];
   @override
   bool get hasActivePlayer => active;
   @override
@@ -2340,6 +2768,7 @@ class _Audio implements AudioEngine {
     bool initialPaused = false,
   }) async {
     this.settings.add(settings);
+    queueIds.add(List.of(queueTrackIds));
     sourceRejected = false;
     active = true;
     paused = initialPaused;
@@ -2423,7 +2852,17 @@ class _Downloads implements OfflineDownloadManager {
   @override
   List<OfflineTrackDownload> get downloads => const [];
   @override
-  List<Track> localDownloadedTracks() => const [];
+  List<Track> localDownloadedTracks() => localTracks;
+  List<Track> localTracks = const [];
+  @override
+  OfflineLibrarySnapshot get librarySnapshot => OfflineLibrarySnapshot(
+    tracks: localTracks,
+    artistGroups: offline_views.offlineArtistGroups(localTracks),
+    liked: const [],
+    playlists: const [],
+    playlistTracks: const [],
+    revision: 0,
+  );
   @override
   OfflineTrackDownload? findForCurrentServer(String trackId) => null;
   @override
@@ -2484,6 +2923,29 @@ class _Connection extends ServerConnection {
   bool identityChanged = false;
   Future<bool>? pendingIdentityCheck;
   bool playbackSettingsFailure = false;
+  int _shuffleSessionSequence = 0;
+  @override
+  Future<ShuffleSessionPage> createShuffleSession({
+    required String mode, required String clientId, required String requestId,
+    String? artistId, String? albumId, List<String> artistIds = const [], List<String> genres = const [],
+    String? playlistId, String? startTrackId,
+  }) async {
+    final tracks = mode == 'playlist' ? await fetchPlaylistTracks(playlistId!) :
+        mode == 'liked' ? await fetchLikedTracks() : trackResponse ?? [offlineTestTrack(id: 'track')];
+    final ordered = [
+      ...tracks.where((track) => track.id == startTrackId),
+      ...tracks.where((track) => track.id != startTrackId),
+    ];
+    return ShuffleSessionPage(
+      sessionId: 'test-session-${++_shuffleSessionSequence}', offset: 0, nextOffset: ordered.length,
+      total: ordered.length, hasMore: false, items: ordered, itemOffsets: List.generate(ordered.length, (i) => i),
+    );
+  }
+
+  @override
+  Future<void> releaseShuffleSession(String sessionId, {required String clientId}) async {}
+  @override
+  Future<void> updatePlaybackSettings({required String repeatMode}) async {}
   @override
   Future<bool> hasServerIdentityChanged() async => pendingIdentityCheck ?? identityChanged;
   Future<void>? pendingProbe;
@@ -2501,6 +2963,7 @@ class _Connection extends ServerConnection {
   int searches = 0;
   Future<List<Artist>>? pendingArtistsPage;
   List<Artist> artistsPageResponse = const [];
+  int? generatedArtistCount;
   final artistPageFilters = <bool>[];
   final artistPageOffsets = <int>[];
   Map<String, Future<ArtistReleases>> releaseResponses = {};
@@ -2515,6 +2978,31 @@ class _Connection extends ServerConnection {
     final pending = pendingArtistsPage;
     pendingArtistsPage = null;
     return pending ?? artistsPageResponse;
+  }
+
+  @override
+  Future<ArtistSummaryPage> fetchArtistSummariesPage({int limit = 60, int offset = 0, String? revision}) async {
+    final count = generatedArtistCount;
+
+    if (count != null) {
+      final end = (offset + limit).clamp(0, count);
+
+      return ArtistSummaryPage(
+        items: [for (var index = offset; index < end; index++) ArtistSummary(id: '$index', name: 'Artist $index')],
+        total: count,
+        nextOffset: end < count ? end : null,
+        browseRevision: 'generated-catalogue',
+      );
+    }
+
+    final artists = await fetchArtistsPage(limit: limit, offset: offset);
+
+    return ArtistSummaryPage(
+      items: artists.map(ArtistSummary.fromArtist).toList(),
+      total: offset + artists.length + (artists.length == limit ? 1 : 0),
+      nextOffset: artists.length == limit ? offset + artists.length : null,
+      browseRevision: 'test-catalogue',
+    );
   }
 
   @override
@@ -2887,6 +3375,8 @@ class _Connectivity extends ConnectivitySignalSource {
 
 class _NowPlaying extends NowPlayingPlatformService {
   int disposals = 0;
+  int clears = 0;
+  Future<void> Function(NativeRemoteCommand)? commandHandler;
   bool supported = false;
   bool nativeArtwork = false;
   final updates = <Map<String, dynamic>>[];
@@ -2897,15 +3387,20 @@ class _NowPlaying extends NowPlayingPlatformService {
   @override
   void setRemoteCommandHandler(
     Future<void> Function(NativeRemoteCommand) handler,
-  ) {}
+  ) {
+    commandHandler = handler;
+  }
   @override
   Future<void> setNowPlaying(Map<String, dynamic> payload) async =>
       updates.add(payload);
   @override
-  Future<void> clearNowPlaying() async {}
+  Future<void> clearNowPlaying() async {
+    clears++;
+  }
   @override
   void dispose() {
     disposals++;
+    commandHandler = null;
   }
 }
 
@@ -2952,4 +3447,108 @@ class _Permissions extends LocalNetworkPermissionService {
   void dispose() {
     disposals++;
   }
+}
+
+class _IsolationConnection extends _Connection {
+  Future<List<Track>>? pendingLiked;
+  Future<List<Playlist>>? pendingPlaylists;
+  Future<List<Track>>? pendingCollectionTracks;
+  Future<ServerLikeState?>? pendingLikeWrite;
+  Future<Playlist>? pendingCreate;
+  List<Playlist> playlistResponse = [];
+  final settingsByToken = <String, Future<PlaybackSettingsResponse>>{};
+  final settingsRequested = <String?>[];
+  final _settingsStarted = <String?, Completer<void>>{};
+  int coverDeletes = 0;
+
+  Future<void> waitForSettings(String token) =>
+      _settingsStarted.putIfAbsent(token, Completer<void>.new).future;
+
+  @override
+  Future<List<Track>> fetchLikedTracks() async => pendingLiked ?? trackResponse ?? [];
+  @override
+  Future<List<Playlist>> fetchPlaylists() async => pendingPlaylists ?? playlistResponse;
+  @override
+  Future<List<Track>> fetchPlaylistTracks(String playlistId) async => pendingCollectionTracks ?? trackResponse ?? [];
+  @override
+  Future<List<Track>> fetchTracks(String albumId) async => pendingCollectionTracks ?? trackResponse ?? [];
+  @override
+  Future<ServerLikeState?> setLikeState(String trackId, bool liked) async => pendingLikeWrite;
+  @override
+  Future<Playlist> createPlaylist(String name, {String? description}) async => pendingCreate!;
+  @override
+  Future<Playlist> deletePlaylistCover(String playlistId) async {
+    coverDeletes++;
+    return Playlist(id: playlistId, name: 'Old list', trackIds: []);
+  }
+  @override
+  Future<PlaybackSettingsResponse> fetchPlaybackSettings({
+    Duration timeout = const Duration(seconds: 8),
+    bool retryable = true,
+  }) async {
+    settingsRequested.add(token);
+    final started = _settingsStarted.putIfAbsent(token, Completer<void>.new);
+    if (!started.isCompleted) started.complete();
+    return settingsByToken[token] ?? PlaybackSettingsResponse(repeatMode: 'off');
+  }
+}
+
+class _WindowShuffleConnection extends _Connection {
+  int creates = 0;
+  final modes = <String>[];
+  final requestIds = <String>[];
+  final clientIds = <String>[];
+  final pageOffsets = <int>[];
+  final released = <String>[];
+  Future<ShuffleSessionPage>? pendingPage;
+  Future<ShuffleSessionPage>? pendingCreate;
+  bool initialPageEmpty = false;
+  final createStarted = Completer<void>();
+  ApiException? pageFailure;
+
+  ShuffleSessionPage page(String sessionId, int offset) {
+    const total = 35;
+    final next = (offset + 10).clamp(0, total);
+    return ShuffleSessionPage(
+      sessionId: sessionId, offset: offset, nextOffset: next, total: total, hasMore: next < total,
+      items: List.generate(next - offset, (i) => offlineTestTrack(id: 'deck-track-${offset + i}')),
+      itemOffsets: List.generate(next - offset, (i) => offset + i),
+    );
+  }
+
+  @override
+  Future<ShuffleSessionPage> createShuffleSession({
+    required String mode, required String clientId, required String requestId,
+    String? artistId, String? albumId, List<String> artistIds = const [], List<String> genres = const [],
+    String? playlistId, String? startTrackId,
+  }) async {
+    modes.add(mode);
+    requestIds.add(requestId);
+    clientIds.add(clientId);
+    final id = 'window-${++creates}';
+    if (!createStarted.isCompleted) createStarted.complete();
+    if (pendingCreate != null) return pendingCreate!;
+    if (initialPageEmpty) {
+      return ShuffleSessionPage(
+        sessionId: id, offset: 0, nextOffset: 10, total: 35, hasMore: true, items: [], itemOffsets: [],
+      );
+    }
+    return page(id, 0);
+  }
+
+  @override
+  Future<ShuffleSessionPage> fetchShuffleSessionPage(String sessionId, {
+    required String clientId, required int offset,
+  }) async {
+    pageOffsets.add(offset);
+    if (pageFailure != null) throw pageFailure!;
+    return pendingPage ?? page(sessionId, offset);
+  }
+
+  @override
+  Future<void> releaseShuffleSession(String sessionId, {required String clientId}) async => released.add(sessionId);
+
+  @override
+  Future<ServerLikeState?> setLikeState(String trackId, bool liked) async =>
+      ServerLikeState(trackId: trackId, liked: liked, updatedAt: 1);
 }

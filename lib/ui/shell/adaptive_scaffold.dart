@@ -62,7 +62,9 @@ class AdaptiveScaffold extends StatelessWidget {
     final screenWidth = media.size.width;
     final isWide = screenWidth >= _wideLayoutWidth;
 
-    final edgeToEdge = Theme.of(context).platform == TargetPlatform.iOS;
+    final platform = Theme.of(context).platform;
+    final edgeToEdge = platform == TargetPlatform.iOS;
+    final topEdgeToEdge = edgeToEdge || platform == TargetPlatform.android;
 
     final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
     final showWideBar = isWide && !hidePlaybackChrome;
@@ -80,15 +82,15 @@ class AdaptiveScaffold extends StatelessWidget {
     }
 
     final bottomInset = playbackInset + navigationInset;
-    // iOS scrolls through the system areas and behind the bottom navigation.
-    // The scroll content reserves clearance instead of cropping its viewport.
+    // Mobile content scrolls behind the status bar; iOS also extends behind
+    // the bottom navigation. Scroll insets keep the initial content clear.
     final pageContent = MediaQuery.removePadding(
       context: context,
-      removeTop: edgeToEdge,
+      removeTop: topEdgeToEdge,
       removeBottom: true,
       child: SafeArea(
         bottom: false,
-        child: PlaybackContentInset(top: edgeToEdge ? media.padding.top : 0, bottom: bottomInset, child: page),
+        child: PlaybackContentInset(top: topEdgeToEdge ? media.padding.top : 0, bottom: bottomInset, child: page),
       ),
     );
 

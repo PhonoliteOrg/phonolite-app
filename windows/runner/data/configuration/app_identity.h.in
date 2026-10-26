@@ -1,0 +1,19 @@
+#ifndef PHONOLITE_APP_IDENTITY_H_
+#define PHONOLITE_APP_IDENTITY_H_
+
+namespace phonolite_identity {
+
+inline constexpr wchar_t display_name[] = L"@displayName@";
+inline constexpr wchar_t shortcut_directory[] = L"@displayName@";
+
+#ifdef _DEBUG
+inline constexpr wchar_t app_id[] = L"@identityName@.Debug";
+inline constexpr wchar_t shortcut_filename[] = L"@displayName@ (Debug).lnk";
+#else
+inline constexpr wchar_t app_id[] = L"@identityName@";
+inline constexpr wchar_t shortcut_filename[] = L"@displayName@.lnk";
+#endif
+
+} // namespace phonolite_identity
+
+#endif // PHONOLITE_APP_IDENTITY_H_

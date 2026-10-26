@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -28,6 +29,23 @@ const _newPassword = 'a new long passphrase';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  for (final platform in TargetPlatform.values) {
+    testWidgets('desktop settings visibility on $platform', (tester) async {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        await _pumpSettings(tester, _Controller(SessionStatus.offline));
+
+        final desktop = [TargetPlatform.windows, TargetPlatform.macOS, TargetPlatform.linux].contains(platform);
+        expect(find.text('Desktop'), desktop ? findsOneWidget : findsNothing);
+        expect(find.byKey(const ValueKey('desktop-launch-at-startup')), desktop ? findsOneWidget : findsNothing);
+        expect(find.byKey(const ValueKey('desktop-run-in-background')), desktop ? findsOneWidget : findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
 
   for (final status in SessionStatus.values) {
     testWidgets('User settings and password availability for $status', (

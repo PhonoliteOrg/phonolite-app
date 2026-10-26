@@ -57,6 +57,7 @@ class ArtistRowTile extends StatelessWidget {
         headers: headers,
         fit: BoxFit.contain,
         paddingFraction: 0,
+        thumbnail: true,
       ),
     );
   }

@@ -5,8 +5,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:phonolite_app/entities/models.dart';
-import 'package:phonolite_app/entities/offline_metadata_comparison.dart';
+import 'package:phonolite_app/data/models/library/album.dart';
+import 'package:phonolite_app/data/models/library/artist_credit.dart';
+import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/rules/library/offline_metadata_comparison.dart';
 
 typedef Comparison = bool Function(Track, Track);
 int _consumedResults = 0;
@@ -21,11 +24,7 @@ void main(List<String> args) {
     final right = left.map(_independentCopy).toList();
     final changed = [...right];
     changed[count - 1] = withProfiles
-        ? changed.last.copyWith(
-            offlineArtist: changed.last.offlineArtist!.copyWith(
-              summary: 'Updated bio',
-            ),
-          )
+        ? changed.last.copyWith(offlineArtist: changed.last.offlineArtist!.copyWith(summary: 'Updated bio'))
         : changed.last.copyWith(artistNames: ['Updated artist']);
     for (final scenario in ['unchanged', 'last_track_changed']) {
       final other = scenario == 'unchanged' ? right : changed;
@@ -44,8 +43,7 @@ void main(List<String> args) {
   stdout.writeln(
     const JsonEncoder.withIndent('  ').convert({
       'synthetic_benchmark': true,
-      'measurement':
-          'median of 7 rounds; excludes fixture creation and JSON decoding',
+      'measurement': 'median of 7 rounds; excludes fixture creation and JSON decoding',
       'results': results,
       'consumed_results': _consumedResults,
     }),

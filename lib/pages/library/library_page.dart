@@ -276,11 +276,35 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     required bool showCollectionList,
     required bool isLoading,
   }) {
+    final snapshot = controller.artistBrowseSnapshot;
+    final windowed = snapshot.total > 0;
+    final indices = windowed ? snapshot.indices : List<int>.generate(artists.length, (index) => index);
+
+    Artist? sourceAt(int index) => windowed ? snapshot.at(index)?.toArtist() : artists[index];
+
+    Artist artistAt(int index) {
+      final source = sourceAt(index);
+
+      return source == null
+          ? Artist(id: 'unloaded-artist-$index', name: 'Loading artist…', albumCount: 0)
+          : _feature.visibleArtist(source);
+    }
+
+    void visibilityChanged(int index, bool visible) {
+      final artist = sourceAt(index);
+
+      if (artist != null) {
+        _feature.artistVisibilityChanged(artist, visible);
+      } else if (visible) {
+        unawaited(controller.loadArtistBrowsePage(index));
+      }
+    }
+
     return [
       LibrarySectionHeading(title: 'Server Library'),
-      if (artists.isEmpty && isLoading)
+      if (indices.isEmpty && isLoading)
         loadingSliver()
-      else if (artists.isEmpty)
+      else if (indices.isEmpty)
         const SliverToBoxAdapter(
           child: EmptyStateText(
             title: 'No server artists',
@@ -292,13 +316,19 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
         PageSliverPadding(
           top: 0,
           bottom: 32,
-          sliver: ArtistCollectionSliver<Artist>(
-            items: artists,
+          sliver: ArtistCollectionSliver<int>(
+            items: indices,
             isListView: showCollectionList,
-            artistFor: (artist) => artist,
-            coverFor: (artist) => _feature.artistCoverUrl(controller, artist),
+            artistFor: artistAt,
+            coverFor: (index) => _feature.artistCoverUrl(controller, artistAt(index)),
             headers: authHeadersMap,
-            onOpen: _openArtistDetail,
+            onOpen: (index) {
+              if (sourceAt(index) != null) {
+                _openArtistDetail(artistAt(index));
+              }
+            },
+            onVisibilityChanged: visibilityChanged,
+            visibilityScope: controller.connection.sessionRevision,
           ),
         ),
         if (isLoading)
@@ -585,16 +615,19 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
         ),
       ),
       body: PageBody.slivers(
+        pinTopInset: true,
         physics: const AlwaysScrollableScrollPhysics(),
         controller: _scrollController,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
           PageSliverBox(
-            top: 0,
+            pinned: true,
+            top: 12,
             bottom: 12,
             child: SearchHud(
               controller: _searchController,
               height: _searchFieldHeight,
+              glassBackground: true,
               onSubmit: () => _feature.runSearch(controller),
               onChanged: () => _feature.queueSearch(controller),
               onClear: () => _clearSearch(controller),
@@ -634,16 +667,19 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
         ),
       ),
       body: PageBody.slivers(
+        pinTopInset: true,
         physics: const AlwaysScrollableScrollPhysics(),
         controller: _scrollController,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
           PageSliverBox(
-            top: 0,
+            pinned: true,
+            top: 12,
             bottom: 12,
             child: SearchHud(
               controller: _searchController,
               height: _searchFieldHeight,
+              glassBackground: true,
               onSubmit: () => setState(() {}),
               onChanged: () => setState(() {}),
               onClear: _clearOfflineSearch,

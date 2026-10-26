@@ -7,6 +7,7 @@ class _PlaylistCoordinator {
   List<Playlist> _playlists = <Playlist>[];
   List<Track> _playlistTracks = <Track>[];
   final _playlistTrackRequests = RequestGeneration();
+  final _playlistRequests = RequestGeneration();
   String? _currentPlaylistId;
 
   _PlaylistCoordinator(this._host);
@@ -19,17 +20,35 @@ class _PlaylistCoordinator {
 
   List<Track> get playlistTracks => List.unmodifiable(_playlistTracks);
 
+  void _clearServerData() {
+    _playlistTrackRequests.advance();
+    _playlistRequests.advance();
+    _playlists = [];
+    _playlistTracks = [];
+    _currentPlaylistId = null;
+    _playlistsController.add(const []);
+    _playlistTracksController.add(const []);
+  }
+
   Future<void> loadPlaylists() async {
     if (!_host._requireServer('loading playlists')) {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    final request = _playlistRequests.advance();
+    bool isCurrent() =>
+        _host._sessionCoordinator._isServerSessionCurrent(revision) && _playlistRequests.isCurrent(request);
     try {
-      _playlists = await _host.connection.fetchPlaylists();
+      final playlists = await _host.connection.fetchPlaylists();
+      if (!isCurrent()) return;
+      _playlists = playlists;
       _playlistsController.add(List.unmodifiable(_playlists));
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'playlists');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to load playlists: $err', level: LogLevel.warning);
     }
   }
@@ -43,6 +62,8 @@ class _PlaylistCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     final requestId = _playlistTrackRequests.advance();
     final changedPlaylist = _currentPlaylistId != playlistId;
 
@@ -56,7 +77,7 @@ class _PlaylistCoordinator {
     try {
       final tracks = await _host.connection.fetchPlaylistTracks(playlistId);
 
-      if (!_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
+      if (!isCurrent() || !_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
         return;
       }
 
@@ -68,13 +89,13 @@ class _PlaylistCoordinator {
 
       _playlistTracksController.add(List.unmodifiable(_playlistTracks));
     } on ApiException catch (err) {
-      if (!_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
+      if (!isCurrent() || !_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
         return;
       }
 
       _host._handleApiError(err, context: 'playlist tracks');
     } catch (err) {
-      if (!_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
+      if (!isCurrent() || !_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
         return;
       }
 
@@ -95,19 +116,25 @@ class _PlaylistCoordinator {
       throw StateError('Connect to a server before creating playlists.');
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       var playlist = await _host.connection.createPlaylist(name, description: description);
+      if (!isCurrent()) return;
 
       _playlists = [..._playlists, playlist];
       _playlistsController.add(List.unmodifiable(_playlists));
 
       playlist = await _applyServerPlaylistImageEdit(playlist, imageEdit);
+      if (!isCurrent()) return;
       _replaceServerPlaylist(playlist);
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'create playlist');
 
       rethrow;
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to create playlist: $err');
 
       rethrow;
@@ -142,18 +169,24 @@ class _PlaylistCoordinator {
       throw StateError('Connect to a server before renaming playlists.');
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       var updated = await _host.connection.renamePlaylist(playlistId, name, description: description);
+      if (!isCurrent()) return;
 
       _replaceServerPlaylist(updated);
 
       updated = await _applyServerPlaylistImageEdit(updated, imageEdit);
+      if (!isCurrent()) return;
       _replaceServerPlaylist(updated);
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'rename playlist');
 
       rethrow;
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to rename playlist: $err');
 
       rethrow;
@@ -184,8 +217,11 @@ class _PlaylistCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       await _host.connection.deletePlaylist(playlistId);
+      if (!isCurrent()) return;
 
       _playlists = _playlists.where((playlist) => playlist.id != playlistId).toList();
       _playlistsController.add(List.unmodifiable(_playlists));
@@ -196,8 +232,10 @@ class _PlaylistCoordinator {
         _playlistTracksController.add(List.unmodifiable(_playlistTracks));
       }
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'delete playlist');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to delete playlist: $err');
     }
   }
@@ -215,13 +253,18 @@ class _PlaylistCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       final updated = await _host.connection.updatePlaylistTracks(playlistId, trackIds);
+      if (!isCurrent()) return;
 
       _replaceServerPlaylist(updated);
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'update playlist');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to update playlist: $err');
     }
   }
@@ -231,6 +274,8 @@ class _PlaylistCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       final resolved = _playlists.firstWhere((item) => item.id == playlist.id, orElse: () => playlist);
 
@@ -242,6 +287,7 @@ class _PlaylistCoordinator {
 
       final updatedIds = [...resolved.trackIds, track.id];
       final updated = await _host.connection.updatePlaylistTracks(resolved.id, updatedIds);
+      if (!isCurrent()) return;
 
       _replaceServerPlaylist(updated);
 
@@ -256,8 +302,10 @@ class _PlaylistCoordinator {
 
       _host._pushMessage('Added to playlist: ${resolved.name}');
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'update playlist');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to update playlist: $err');
     }
   }
@@ -285,6 +333,8 @@ class _PlaylistCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
       final resolved = _playlists.firstWhere((item) => item.id == playlist.id, orElse: () => playlist);
 
@@ -296,6 +346,7 @@ class _PlaylistCoordinator {
 
       final updatedIds = resolved.trackIds.where((id) => id != track.id).toList();
       final updated = await _host.connection.updatePlaylistTracks(resolved.id, updatedIds);
+      if (!isCurrent()) return;
 
       _replaceServerPlaylist(updated);
 
@@ -306,8 +357,10 @@ class _PlaylistCoordinator {
 
       _host._pushMessage('Removed from playlist: ${resolved.name}');
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'update playlist');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to update playlist: $err');
     }
   }

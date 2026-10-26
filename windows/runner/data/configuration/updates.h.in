@@ -1,0 +1,11 @@
+#ifndef PHONOLITE_UPDATES_H_
+#define PHONOLITE_UPDATES_H_
+
+namespace phonolite_updates {
+
+inline constexpr char feed_url[] = "https://github.com/@repository@/releases/latest/download/@feedAsset@";
+inline constexpr char public_key[] = "@publicKey@";
+
+} // namespace phonolite_updates
+
+#endif // PHONOLITE_UPDATES_H_

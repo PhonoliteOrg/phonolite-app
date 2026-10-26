@@ -10,6 +10,13 @@ struct _MyApplication {
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 static void my_application_activate(GApplication* application) {
+  GtkWindow* existing_window = gtk_application_get_active_window(GTK_APPLICATION(application));
+  if (existing_window != nullptr) {
+    gtk_window_present(existing_window);
+
+    return;
+  }
+
   MyApplication* self = MY_APPLICATION(application);
   phonolite::FlutterHost::create(GTK_APPLICATION(application), self->dart_entrypoint_arguments);
 }
@@ -52,5 +59,5 @@ MyApplication* my_application_new() {
   g_set_prgname(APPLICATION_ID);
 
   return MY_APPLICATION(g_object_new(my_application_get_type(), "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     static_cast<GApplicationFlags>(0), nullptr));
 }

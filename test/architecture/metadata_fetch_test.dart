@@ -185,6 +185,41 @@ void main() {
     expect(seen.map((item) => item.headers['Authorization']), ['Bearer old', 'Bearer old']);
   });
 
+  test('private artwork stops retrying when its originating account changes', () async {
+    final seen = <http.Request>[];
+    late final ServerConnection connection;
+    connection = ServerConnection(
+      baseUrl: 'https://server.test/api',
+      client: MockClient((request) async {
+        seen.add(request);
+        if (seen.length == 1) {
+          connection.setToken('new-account');
+          return http.Response('retry', 503);
+        }
+        return http.Response.bytes([1, 2, 3], 200);
+      }),
+    );
+    connection.setToken('old-account');
+    await expectLater(connection.fetchPlaylistCoverBytes('old-private-playlist'), throwsA(isA<StateError>()));
+    expect(seen.map((item) => item.headers['Authorization']), ['Bearer old-account']);
+    expect(connection.token, 'new-account');
+  });
+
+  test('late transport failures from the old account cannot invalidate the current session', () async {
+    final failed = Completer<http.Response>();
+    final transport = ApiTransport(baseUrl: 'https://server.test/api', client: MockClient((_) => failed.future));
+    var failures = 0;
+    transport.onTransportFailure = (_) => failures++;
+    transport.setToken('old-account');
+    final request = transport.get('/player/settings', retryable: false);
+    final rejected = expectLater(request, throwsA(isA<http.ClientException>()));
+    await Future<void>.delayed(Duration.zero);
+    transport.setToken('new-account');
+    failed.completeError(http.ClientException('Old account disconnected'));
+    await rejected;
+    expect(failures, 0);
+  });
+
   test('metadata events supersede pending reads without changing session', () async {
     final pending = <Completer<http.Response>>[];
     final connection = ServerConnection(

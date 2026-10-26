@@ -10,7 +10,7 @@ export 'package:phonolite_app/data/models/collections/selected_playlist.dart';
 
 class PlaylistsController extends FeatureController {
   final AppController app;
-  bool _requestedServerLoad = false;
+  int? _requestedServerRevision;
   late final _selection = ControllerSelection<String>(update);
   final Set<String> _deletingPlaylistKeys = <String>{};
 
@@ -35,23 +35,32 @@ class PlaylistsController extends FeatureController {
   }
 
   Future<void> loadIfNeeded() {
-    if (isDisposed || !app.authState.isAuthorized || _requestedServerLoad || app.playlists.isNotEmpty) {
+    if (isDisposed || !app.authState.isAuthorized) {
+      return Future<void>.value();
+    }
+    final revision = app.connection.sessionRevision;
+    if (_requestedServerRevision != revision) {
+      clearSelection();
+    }
+    if (_requestedServerRevision == revision) {
       return Future<void>.value();
     }
 
-    _requestedServerLoad = true;
+    _requestedServerRevision = revision;
 
     return app.loadPlaylists();
   }
 
   Future<void> deletePlaylists(List<SelectedPlaylist> selected) async {
     final controller = app;
+    final revision = app.connection.sessionRevision;
     final keys = selected.map((item) => selectionKey(item.playlist, isLocal: item.isLocal)).toSet();
 
     update(() => _deletingPlaylistKeys.addAll(keys));
 
     try {
       for (final item in selected) {
+        if (revision != app.connection.sessionRevision) break;
         if (item.isLocal) {
           await controller.deleteLocalPlaylist(item.playlist.id);
         } else {

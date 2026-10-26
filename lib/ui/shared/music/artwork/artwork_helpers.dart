@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_image.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 
 Map<String, String> authHeaders(AppController controller) => controller.artworkHeaders;
 
@@ -14,11 +16,15 @@ Future<void> precacheImages(
   if (!shouldPrecacheImages()) {
     return;
   }
+  final loader = ArtworkScope.maybeOf(context);
+  if (loader == null) {
+    return;
+  }
 
   for (final url in urls) {
     try {
       await precacheImage(
-        NetworkImage(url, headers: headers),
+        AuthenticatedNetworkImage(url, loader: loader, headers: headers),
         context,
         onError: (error, _) => ArtworkErrors.instance.report(url, error),
       );

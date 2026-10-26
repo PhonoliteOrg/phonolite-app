@@ -145,7 +145,7 @@ function Get-CertificateSha256 {
 function Assert-ReleaseBundle {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Executable)
 
-    foreach ($name in @($Executable, 'flutter_windows.dll', 'phonolite_opus.dll', 'phonolite_quic.dll',
+    foreach ($name in @($Executable, 'flutter_windows.dll', 'WinSparkle.dll', 'phonolite_opus.dll', 'phonolite_quic.dll',
             'phonolite_local_audio.dll', 'flutter_secure_storage_windows_plugin.dll',
             'sqlite3.dll', 'data\icudtl.dat', 'data\app.so', 'data\flutter_assets\AssetManifest.bin')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Path $name) -PathType Leaf)) {

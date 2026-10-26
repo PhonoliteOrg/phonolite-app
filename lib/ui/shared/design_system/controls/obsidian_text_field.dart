@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/chamfered.dart';
+import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
@@ -20,6 +21,7 @@ class ObsidianTextField extends StatefulWidget {
   final double height;
   final double startPadding;
   final bool isDense;
+  final bool glassBackground;
   final double cut;
   final bool enabled;
   final TextInputAction? textInputAction;
@@ -39,6 +41,7 @@ class ObsidianTextField extends StatefulWidget {
     this.height = searchHudHeight,
     this.startPadding = 16,
     this.isDense = false,
+    this.glassBackground = false,
     this.cut = 15,
     this.enabled = true,
     this.textInputAction,
@@ -55,6 +58,9 @@ class ObsidianTextField extends StatefulWidget {
 
 class _ObsidianTextFieldState extends State<ObsidianTextField> {
   final FocusNode _focusNode = FocusNode();
+
+  Widget _surface(Widget child) =>
+      widget.glassBackground ? ObsidianGlassSurface(child: child) : maybeBlur(sigma: 14, child: child);
 
   @override
   void dispose() {
@@ -80,9 +86,8 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
         ],
         ClipPath(
           clipper: CutTopLeftClipper(cut: widget.cut),
-          child: maybeBlur(
-            sigma: 14,
-            child: GestureDetector(
+          child: _surface(
+            GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: singleLine && widget.enabled ? _focusNode.requestFocus : null,
               child: Container(

@@ -301,9 +301,10 @@ void main() {
         '_albums = _sortAlbumsByReleaseYear(',
         "await _host.connection.fetchAlbums(artistId),",
         '_sortAlbumsByReleaseYear(next)',
-        '_artistUpdatesController.add(effective)',
+        '_artistUpdatesController.add(updated)',
         '_albumUpdatesController.add(updated)',
-        'refreshOfflineMetadataForArtist(artistId)',
+        '_artistCatalog.offlineRepairs.schedule(artistId)',
+        'repair: _host._offlineDownloadManager.refreshOfflineMetadataForArtist',
         'refreshOfflineMetadataForAlbum(albumId)',
         '_stopMetadataEventListener();',
       ]);

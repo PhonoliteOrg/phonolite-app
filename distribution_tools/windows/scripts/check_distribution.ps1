@@ -52,7 +52,7 @@ if ($ReleaseBundlePath) {
 }
 else {
     # Copy PE bytes only. None of these fixture binaries is ever executed.
-    foreach ($name in @('Phonolite.exe', 'flutter_windows.dll', 'phonolite_opus.dll', 'phonolite_quic.dll',
+    foreach ($name in @('Phonolite.exe', 'flutter_windows.dll', 'WinSparkle.dll', 'phonolite_opus.dll', 'phonolite_quic.dll',
             'phonolite_local_audio.dll', 'flutter_secure_storage_windows_plugin.dll', 'sqlite3.dll')) {
         Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\cmd.exe') -Destination (Join-Path $bundle $name)
     }

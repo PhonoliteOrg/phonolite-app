@@ -100,7 +100,7 @@ void main() {
     final application = readProjectFile('$_runner/bootstrap/my_application.cc');
     expectContainsAll(application, const [
       'g_set_prgname(APPLICATION_ID)',
-      'G_APPLICATION_NON_UNIQUE',
+      'static_cast<GApplicationFlags>(0)',
       'g_strdupv(*arguments + 1)',
       '*exit_status = 1',
       '*exit_status = 0',

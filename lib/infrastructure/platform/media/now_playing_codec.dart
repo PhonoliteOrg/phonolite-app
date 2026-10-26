@@ -19,7 +19,7 @@ class NowPlayingCodec {
       final rawPosition = arguments['position'];
       final seconds = rawPosition is num ? rawPosition.toDouble() : double.tryParse('$rawPosition');
 
-      if (seconds != null) {
+      if (seconds != null && seconds.isFinite && seconds >= 0 && seconds <= 1.0e9) {
         position = Duration(milliseconds: (seconds * 1000).round());
       }
     }

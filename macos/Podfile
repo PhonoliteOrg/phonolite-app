@@ -28,6 +28,8 @@ flutter_macos_podfile_setup
 
 target 'Runner' do
   use_frameworks!
+  # Legacy login helper for macOS 10.15–12; newer systems use SMAppService.
+  pod 'LaunchAtLogin', '2.5.0'
 
   flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

@@ -13,22 +13,20 @@ class _LibraryCoordinator {
   final _albumsLoadingController = StreamController<bool>.broadcast();
   final _tracksLoadingController = StreamController<bool>.broadcast();
   final _searchLoadingController = StreamController<bool>.broadcast();
-  List<Artist> _artists = <Artist>[];
+  late final _artistCatalog = _ArtistCatalogCoordinator(this, _host);
   List<Album> _albums = <Album>[];
   ArtistReleases _artistReleases = const ArtistReleases();
   String? _artistReleasesArtistId;
   List<Track> _tracks = <Track>[];
   List<SearchResult> _search = <SearchResult>[];
   bool _artistsLoading = false;
-  int _artistsOffset = 0;
-  bool _artistsHasMore = true;
-  final _artistPagesRequests = RequestGeneration();
   final _artistReleasesRequests = RequestGeneration();
-  Completer<void>? _artistsPageCompleter;
   bool _albumsLoading = false;
   bool _tracksLoading = false;
   bool _searchLoading = false;
   final _searchRequests = RequestGeneration();
+  final _trackRequests = RequestGeneration();
+  final _albumRequests = RequestGeneration();
   String? _lastArtistId;
   String? _lastAlbumId;
   late final MetadataEventListener _metadataEvents = MetadataEventListener(
@@ -44,6 +42,30 @@ class _LibraryCoordinator {
   );
 
   _LibraryCoordinator(this._host);
+
+  List<Artist> get _artists => _artistCatalog.artists;
+
+  set _artists(List<Artist> value) => _artistCatalog.artists = value;
+
+  set _artistsOffset(int value) => _artistCatalog.offset = value;
+
+  bool get _artistsHasMore => _artistCatalog.hasMore;
+
+  set _artistsHasMore(bool value) => _artistCatalog.hasMore = value;
+
+  void _clearPersonalizedData() {
+    _trackRequests.advance();
+    _albumRequests.advance();
+    _searchRequests.advance();
+    _tracks = [];
+    _search = [];
+    _lastAlbumId = null;
+    _tracksController.add(const []);
+    _searchController.add(const []);
+    _setTracksLoading(false);
+    _setAlbumsLoading(false);
+    _setSearchLoading(false);
+  }
 
   Stream<List<Artist>> get artistsStream => _artistsController.stream;
 
@@ -88,120 +110,11 @@ class _LibraryCoordinator {
 
   Stream<Album> watchAlbum(String albumId) => _albumUpdatesController.stream.where((album) => album.id == albumId);
 
-  Future<void> loadArtists({bool refresh = false}) async {
-    if (!_host._requireServer('loading artists')) {
-      return;
-    }
+  Future<void> loadArtists({bool refresh = false}) => _artistCatalog.load(refresh: refresh);
 
-    if (refresh && _artistsPageCompleter != null) {
-      await _artistsPageCompleter!.future;
-    }
+  Future<void> loadMoreArtists() => _artistCatalog.loadMore();
 
-    if (refresh) {
-      _artistPagesRequests.advance();
-      _artists = <Artist>[];
-      _artistsOffset = 0;
-      _artistsHasMore = true;
-      _artistsController.add(List.unmodifiable(_artists));
-    }
-
-    if (_artists.isNotEmpty || !_artistsHasMore) {
-      return;
-    }
-
-    await _host.loadMoreArtists();
-  }
-
-  Future<void> loadMoreArtists() async {
-    if (!_host._requireServer('loading artists')) {
-      return;
-    }
-
-    if (!_artistsHasMore) {
-      return;
-    }
-
-    final inFlight = _artistsPageCompleter;
-
-    if (inFlight != null) {
-      await inFlight.future;
-
-      return;
-    }
-
-    final completer = Completer<void>();
-    final requestEpoch = _artistPagesRequests.current;
-    final sessionRevision = _host.connection.sessionRevision;
-
-    _artistsPageCompleter = completer;
-    const pageSize = ServerConnection.artistsPageSize;
-
-    _setArtistsLoading(true);
-
-    try {
-      final page = await _host.connection.fetchArtistsPage(
-        limit: pageSize,
-        offset: _artistsOffset,
-        includeContributors: false,
-      );
-
-      if (_host._disposed ||
-          sessionRevision != _host.connection.sessionRevision ||
-          !_artistPagesRequests.isCurrent(requestEpoch)) {
-        return;
-      }
-
-      if (page.isEmpty) {
-        _artistsHasMore = false;
-
-        if (_artistsOffset == 0) {
-          _artists = <Artist>[];
-          _artistsController.add(List.unmodifiable(_artists));
-        }
-
-        return;
-      }
-
-      _artists = [..._artists, ...page];
-      _artistsOffset += page.length;
-      _artistsHasMore = page.length == pageSize;
-      _artistsController.add(List.unmodifiable(_artists));
-    } on ApiException catch (err) {
-      if (_host._disposed ||
-          sessionRevision != _host.connection.sessionRevision ||
-          !_artistPagesRequests.isCurrent(requestEpoch)) {
-        return;
-      }
-
-      _host._handleApiError(err, context: 'artists');
-    } catch (err) {
-      if (_host._disposed ||
-          sessionRevision != _host.connection.sessionRevision ||
-          !_artistPagesRequests.isCurrent(requestEpoch)) {
-        return;
-      }
-
-      _host._pushMessage('Failed to load artists: $err', level: LogLevel.warning);
-    } finally {
-      if (identical(_artistsPageCompleter, completer)) {
-        _artistsPageCompleter = null;
-      }
-
-      if (!completer.isCompleted) {
-        completer.complete();
-      }
-
-      _setArtistsLoading(false);
-    }
-  }
-
-  Future<void> loadAllArtists() async {
-    await _host.loadArtists();
-
-    while (_artistsHasMore) {
-      await _host.loadMoreArtists();
-    }
-  }
+  Future<void> loadAllArtists() => _artistCatalog.loadAll();
 
   Future<void> loadArtistReleases(String artistId) async {
     if (!_host._requireServer('loading artist releases')) {
@@ -293,6 +206,10 @@ class _LibraryCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    final request = _albumRequests.advance();
+    bool isCurrent() =>
+        _host._sessionCoordinator._isServerSessionCurrent(revision) && _albumRequests.isCurrent(request);
     _setAlbumsLoading(true);
 
     try {
@@ -300,7 +217,9 @@ class _LibraryCoordinator {
       _albums = <Album>[];
       _albumsController.add(List.unmodifiable(_albums));
 
-      _albums = _sortAlbumsByReleaseYear(await _host.connection.fetchAlbums(artistId));
+      final albums = await _host.connection.fetchAlbums(artistId);
+      if (!isCurrent()) return;
+      _albums = _sortAlbumsByReleaseYear(albums);
 
       for (final album in _albums) {
         _host._cacheAlbumId(album: album);
@@ -308,11 +227,13 @@ class _LibraryCoordinator {
 
       _albumsController.add(List.unmodifiable(_albums));
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'albums');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to load albums: $err', level: LogLevel.warning);
     } finally {
-      _setAlbumsLoading(false);
+      if (isCurrent()) _setAlbumsLoading(false);
     }
   }
 
@@ -321,6 +242,10 @@ class _LibraryCoordinator {
       return;
     }
 
+    final revision = _host.connection.sessionRevision;
+    final request = _trackRequests.advance();
+    bool isCurrent() =>
+        _host._sessionCoordinator._isServerSessionCurrent(revision) && _trackRequests.isCurrent(request);
     _setTracksLoading(true);
 
     try {
@@ -328,7 +253,9 @@ class _LibraryCoordinator {
       _tracks = <Track>[];
       _tracksController.add(List.unmodifiable(_tracks));
 
-      _tracks = await _host.connection.fetchTracks(albumId);
+      final tracks = await _host.connection.fetchTracks(albumId);
+      if (!isCurrent()) return;
+      _tracks = tracks;
 
       for (final track in _tracks) {
         _host._cacheTrackAlbumId(track, fallbackAlbumId: albumId);
@@ -336,17 +263,22 @@ class _LibraryCoordinator {
 
       _tracksController.add(List.unmodifiable(_tracks));
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
       _host._handleApiError(err, context: 'tracks');
     } catch (err) {
+      if (!isCurrent()) return;
       _host._pushMessage('Failed to load tracks: $err', level: LogLevel.warning);
     } finally {
-      _setTracksLoading(false);
+      if (isCurrent()) _setTracksLoading(false);
     }
   }
 
   Future<void> search(String query, {String filter = 'all'}) async {
     final trimmed = query.trim();
     final requestId = _searchRequests.advance();
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() =>
+        _host._sessionCoordinator._isServerSessionCurrent(revision) && _searchRequests.isCurrent(requestId);
 
     if (!_host._authState.isAuthorized) {
       _search = <SearchResult>[];
@@ -369,26 +301,26 @@ class _LibraryCoordinator {
     try {
       final results = await _host.connection.search(trimmed, filter: filter);
 
-      if (!_searchRequests.isCurrent(requestId)) {
+      if (!isCurrent()) {
         return;
       }
 
       _search = results;
       _searchController.add(List.unmodifiable(_search));
     } on ApiException catch (err) {
-      if (!_searchRequests.isCurrent(requestId)) {
+      if (!isCurrent()) {
         return;
       }
 
       _host._handleApiError(err, context: 'search');
     } catch (err) {
-      if (!_searchRequests.isCurrent(requestId)) {
+      if (!isCurrent()) {
         return;
       }
 
       _host._pushMessage('Search failed: $err');
     } finally {
-      if (_searchRequests.isCurrent(requestId)) {
+      if (isCurrent()) {
         _setSearchLoading(false);
       }
     }
@@ -435,7 +367,9 @@ class _LibraryCoordinator {
     }
 
     _artistsLoading = value;
-    _artistsLoadingController.add(value);
+    if (!_host._disposed && !_artistsLoadingController.isClosed) {
+      _artistsLoadingController.add(value);
+    }
   }
 
   void _setAlbumsLoading(bool value) {
@@ -475,7 +409,7 @@ class _LibraryCoordinator {
     _metadataEvents.start(baseUrl: _host.connection.baseUrl, token: token);
   }
 
-  void _stopMetadataEventListener() => _metadataEvents.stop();
+  Future<void> _stopMetadataEventListener() => _metadataEvents.stop();
 
   Future<void> _applyMetadataEvent(MetadataUpdateEvent event) async {
     // A read started before this update may still contain the old metadata.
@@ -484,6 +418,10 @@ class _LibraryCoordinator {
     _host._metadataReadRevision++;
 
     switch (event.kind) {
+      case 'resync':
+        _artistCatalog.details.reset();
+        _artistCatalog.browse.reconcile();
+        break;
       case 'artist':
         await _refreshMetadataArtist(event.artistId ?? event.id);
         break;
@@ -504,40 +442,46 @@ class _LibraryCoordinator {
       return;
     }
 
+    final details = _artistCatalog.details;
+    _artistCatalog.offlineRepairs.schedule(artistId);
+    final needsDetail =
+        details.contains(artistId) || _artistReleasesArtistId == artistId || _loadedTracksUseArtist(artistId);
+    details.invalidate(artistId);
+    _artistCatalog.browse.invalidateArtist(artistId);
+
+    if (!needsDetail) {
+      return;
+    }
+
     final sessionRevision = _host.connection.sessionRevision;
 
     try {
-      final updated = await _host.connection.fetchArtistById(artistId);
+      final updated = await details.load(artistId, refresh: true);
 
       if (_host._disposed || !_host._authState.isAuthorized || _host.connection.sessionRevision != sessionRevision) {
         return;
       }
 
-      final index = _artists.indexWhere((artist) => artist.id == updated.id);
-      final effective = updated;
-
-      if (index >= 0) {
-        final next = [..._artists];
-
-        next[index] = effective;
-        _artists = next;
-        _artistsController.add(List.unmodifiable(_artists));
-      }
-
-      _artistUpdatesController.add(effective);
+      _artistCatalog.updateArtist(updated);
+      _artistUpdatesController.add(updated);
 
       if (updated.name.trim().isNotEmpty) {
         _updateLoadedTrackMetadata((track) => _trackWithUpdatedArtistCredit(track, updated));
       }
 
-      unawaited(_host._offlineDownloadManager.refreshOfflineMetadataForArtist(artistId));
-
       if (_artistReleasesArtistId == artistId) {
         await _host.loadArtistReleases(artistId);
       }
-    } catch (err) {
-      AppLogger.debug('Failed to refresh artist metadata for $artistId: $err');
+    } catch (error) {
+      AppLogger.debug('Failed to refresh artist metadata for $artistId (${error.runtimeType})');
     }
+  }
+
+  bool _loadedTracksUseArtist(String artistId) {
+    bool includes(Track track) => track.credits.any((credit) => credit.artistId == artistId);
+
+    return [_tracks, _host._playlistTracks, _host._liked, _host._playQueue].any((tracks) => tracks.any(includes)) ||
+        (_host._playbackState.track != null && includes(_host._playbackState.track!));
   }
 
   Track _trackWithUpdatedArtistCredit(Track track, Artist artist) {
@@ -931,11 +875,24 @@ mixin _LibraryFacade {
 
   Future<void> selectSearchResult(SearchResult result) => _libraryCoordinator.selectSearchResult(result);
 
-  void _invalidateArtistPages() => _libraryCoordinator._artistPagesRequests.advance();
+  ArtistBrowseSnapshot get artistBrowseSnapshot => _libraryCoordinator._artistCatalog.browse.current;
+
+  Stream<ArtistBrowseSnapshot> get artistBrowseStream => _libraryCoordinator._artistCatalog.browse.changes;
+
+  Future<void> loadArtistBrowsePage(int index) => _libraryCoordinator._artistCatalog.loadIndex(index);
+
+  Future<Artist> fetchArtistMetadata(String id, {bool refresh = false}) =>
+      _libraryCoordinator._artistCatalog.details.load(id, refresh: refresh);
+
+  void resetLibraryMemoryResources() => _libraryCoordinator._artistCatalog.reset();
+
+  Future<void> closeLibraryMemoryResources() => _libraryCoordinator._artistCatalog.close();
+
+  void _invalidateArtistPages() => resetLibraryMemoryResources();
 
   void _invalidateArtistReleases() => _libraryCoordinator._artistReleasesRequests.advance();
 
   void _startMetadataEventListener() => _libraryCoordinator._startMetadataEventListener();
 
-  void _stopMetadataEventListener() => _libraryCoordinator._stopMetadataEventListener();
+  Future<void> _stopMetadataEventListener() => _libraryCoordinator._stopMetadataEventListener();
 }

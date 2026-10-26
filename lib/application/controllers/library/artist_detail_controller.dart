@@ -1,6 +1,7 @@
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
+import 'package:phonolite_app/application/library/artist_artwork_diagnostics.dart';
 import 'package:phonolite_app/data/models/downloads/artist_download_summary.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
@@ -14,6 +15,7 @@ class ArtistDetailController extends FeatureController {
   final AppController app;
   late final _selection = ControllerSelection<String>(update);
   late Artist _artist;
+  final _artworkDiagnostics = ArtistArtworkDiagnostics();
 
   ArtistDetailController(this.app, Artist initialArtist) : _artist = initialArtist;
 
@@ -153,15 +155,23 @@ class ArtistDetailController extends FeatureController {
   }
 
   Future<void> refreshArtist(AppController controller) async {
+    final initial = _artist;
+    final stopwatch = Stopwatch()..start();
+    _artworkDiagnostics.opening(initial);
     try {
-      final updated = await controller.connection.fetchArtistById(_artist.id);
+      final updated = await controller.fetchArtistMetadata(_artist.id, refresh: true);
 
       if (isDisposed) {
         return;
       }
 
+      _artworkDiagnostics.refreshed(initial, updated, elapsedMs: stopwatch.elapsedMilliseconds);
       update(() => _artist = updated);
-    } catch (_) {}
+    } catch (error) {
+      if (!isDisposed) {
+        _artworkDiagnostics.failed(initial, error, elapsedMs: stopwatch.elapsedMilliseconds);
+      }
+    }
   }
 
   String albumCoverUrl(AppController controller, Album album) {

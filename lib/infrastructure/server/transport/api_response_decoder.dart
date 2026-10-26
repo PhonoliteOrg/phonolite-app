@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:http/http.dart' as http;
@@ -13,7 +14,29 @@ class ApiResponseDecoder {
 
   void requireSuccess(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(response.statusCode, response.body);
+      throw ApiException(response.statusCode, response.body, retryAfter: retryAfter(response));
+    }
+  }
+
+  Duration? retryAfter(http.Response response, {DateTime? now}) {
+    final header = response.headers['retry-after'];
+
+    if (header == null) {
+      return null;
+    }
+
+    final seconds = int.tryParse(header.trim());
+
+    if (seconds != null) {
+      return Duration(seconds: seconds < 0 ? 0 : seconds);
+    }
+
+    try {
+      final delay = HttpDate.parse(header).difference(now ?? DateTime.now());
+
+      return delay.isNegative ? Duration.zero : delay;
+    } on HttpException {
+      return null;
     }
   }
 

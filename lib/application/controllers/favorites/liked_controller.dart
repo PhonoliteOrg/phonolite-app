@@ -9,7 +9,7 @@ import 'package:phonolite_app/data/rules/library/track_identity.dart' as identit
 
 class LikedController extends FeatureController {
   final AppController app;
-  bool _requestedServerLoad = false;
+  int? _requestedServerRevision;
   late final _selection = ControllerSelection<String>(update, groups: const ['local', 'server']);
 
   LikedController(this.app);
@@ -33,11 +33,18 @@ class LikedController extends FeatureController {
   }
 
   Future<void> loadIfNeeded() {
-    if (isDisposed || !app.authState.isAuthorized || _requestedServerLoad || app.liked.isNotEmpty) {
+    if (isDisposed || !app.authState.isAuthorized) {
+      return Future<void>.value();
+    }
+    final revision = app.connection.sessionRevision;
+    if (_requestedServerRevision != revision) {
+      clearSelection();
+    }
+    if (_requestedServerRevision == revision) {
       return Future<void>.value();
     }
 
-    _requestedServerLoad = true;
+    _requestedServerRevision = revision;
 
     return app.loadLikedTracks();
   }

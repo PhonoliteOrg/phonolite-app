@@ -10,6 +10,14 @@ class _ShuffleCoordinator {
   String? _queueShuffleAlbumId;
   bool _customShuffleRefreshInFlight = false;
   bool _customShuffleRefreshQueued = false;
+  final _serverShuffleRequests = RequestGeneration();
+  final _serverNavigationRequests = RequestGeneration();
+  final String _serverClientId = _newShuffleIdentifier();
+  ServerShuffleDeck? _serverDeck;
+  int? _serverDeckSessionRevision;
+  bool _serverDeckExpired = false;
+  bool _serverDeckReady = false;
+  Future<void> _serverNavigation = Future<void>.value();
 
   _ShuffleCoordinator(this._host);
 
@@ -47,150 +55,193 @@ class _ShuffleCoordinator {
     String? startTrackId,
     PlaybackQueueSource? queueSourceOverride,
     String? queueSourcePlaylistIdOverride,
+    bool preserveNavigation = false,
   }) async {
-    if (!_host._requireServer('starting server shuffle')) {
-      return;
-    }
-
+    if (!_host._requireServer('starting server shuffle')) return;
+    _clearServerShuffleSession(cancelNavigation: !preserveNavigation);
+    final request = _serverShuffleRequests.current;
+    final revision = _host.connection.sessionRevision;
+    bool isCurrent() =>
+        _serverShuffleRequests.isCurrent(request) && _host._sessionCoordinator._isServerSessionCurrent(revision);
     try {
-      if (_host._playbackState.shuffleMode == ShuffleMode.off) {
-        _host._pushMessage('Shuffle is off');
-
+      final mode = _host._playbackState.shuffleMode;
+      if (mode == ShuffleMode.off || _host._playbackState.shuffleScope != ActionScope.server) return;
+      if (scope == 'playlist' && (playlistId == null || playlistId.isEmpty)) {
+        _host._pushMessage('No playlist selected for shuffle');
         return;
       }
-
-      if (_host._playbackState.shuffleScope != ActionScope.server) {
-        _host._pushMessage('Server shuffle requires a server playback scope');
-
+      if (scope != 'playlist' && scope != 'liked' && mode == ShuffleMode.artist && artistId == null) {
+        _host._pushMessage('Select an artist to shuffle');
         return;
       }
-
+      if (scope != 'playlist' && scope != 'liked' && mode == ShuffleMode.album && albumId == null) {
+        _host._pushMessage('Select an album to shuffle');
+        return;
+      }
+      if (mode == ShuffleMode.custom) {
+        await _host._ensureCustomShuffleSettingsLoaded();
+        if (!isCurrent()) return;
+      }
       final queueSource = queueSourceOverride ?? _serverShuffleQueueSource(scope);
-      final queueSourcePlaylistId = queueSource == PlaybackQueueSource.playlist
+      final queuePlaylistId = queueSource == PlaybackQueueSource.playlist
           ? (queueSourcePlaylistIdOverride ?? playlistId)
           : null;
-
-      if (scope == 'playlist') {
-        if (playlistId == null) {
-          _host._pushMessage('No playlist selected for shuffle');
-
-          return;
-        }
-
-        final tracks = await _host.connection.fetchPlaylistTracks(playlistId);
-
-        if (tracks.isEmpty) {
-          _host._pushMessage('No tracks found for playlist');
-
-          return;
-        }
-
-        _rememberShuffleContext(scope: scope, playlistId: playlistId, artistId: artistId, albumId: albumId);
-
-        final normalized = _host._normalizeQueueTracks(_shuffleTracks(tracks));
-
-        _host._setQueue(
-          normalized,
-          startTrackId: startTrackId,
-          queueSource: queueSource,
-          queueSourcePlaylistId: queueSourcePlaylistId,
-        );
-        _host._armAutoAdvanceGuard();
-
-        if (play) {
-          await _host._playCurrent();
-        }
-
-        return;
-      }
-
-      if (scope == 'liked') {
-        final tracks = await _host.connection.fetchLikedTracks();
-
-        if (tracks.isEmpty) {
-          _host._pushMessage('No liked tracks found');
-
-          return;
-        }
-
-        _rememberShuffleContext(scope: scope, playlistId: playlistId, artistId: artistId, albumId: albumId);
-
-        final normalized = _host._normalizeQueueTracks(_shuffleTracks(tracks));
-
-        _host._setQueue(
-          normalized,
-          startTrackId: startTrackId,
-          queueSource: queueSource,
-          queueSourcePlaylistId: queueSourcePlaylistId,
-        );
-        _host._armAutoAdvanceGuard();
-
-        if (play) {
-          await _host._playCurrent();
-        }
-
-        return;
-      }
-
-      if (_host._playbackState.shuffleMode == ShuffleMode.artist && artistId == null) {
-        _host._pushMessage('Select an artist to shuffle');
-
-        return;
-      }
-
-      if (_host._playbackState.shuffleMode == ShuffleMode.album && albumId == null) {
-        _host._pushMessage('Select an album to shuffle');
-
-        return;
-      }
-
-      final mode = _shuffleQueryMode(_host._playbackState.shuffleMode);
-      final isCustom = _host._playbackState.shuffleMode == ShuffleMode.custom;
-
-      if (isCustom) {
-        await _host._ensureCustomShuffleSettingsLoaded();
-      }
-
-      final customArtistIds = isCustom ? _host._customShuffleSettings.artistIds : null;
-      final customGenres = isCustom ? _host._customShuffleSettings.genres : null;
-
-      if (isCustom &&
-          (customArtistIds == null || customArtistIds.isEmpty) &&
-          (customGenres == null || customGenres.isEmpty)) {
-        _host._pushMessage('Custom shuffle has no filters; using full library.');
-      }
-
-      final tracks = await _host.connection.fetchShuffleTracks(
-        mode: mode,
+      final queryMode = scope == 'playlist'
+          ? 'playlist'
+          : scope == 'liked'
+          ? 'liked'
+          : _shuffleQueryMode(mode);
+      final first = await _host.connection.createShuffleSession(
+        mode: queryMode,
+        clientId: _serverClientId,
+        requestId: _newShuffleIdentifier(),
         artistId: artistId,
         albumId: albumId,
-        artistIds: customArtistIds,
-        genres: customGenres,
+        artistIds: mode == ShuffleMode.custom ? _host._customShuffleSettings.artistIds : const [],
+        genres: mode == ShuffleMode.custom ? _host._customShuffleSettings.genres : const [],
+        playlistId: playlistId,
+        startTrackId: startTrackId,
       );
-
-      if (tracks.isEmpty) {
-        _host._pushMessage('No tracks found for shuffle');
-
+      if (!isCurrent()) {
+        _releaseServerShuffleSession(first.sessionId, revision);
         return;
       }
-
+      final deck = ServerShuffleDeck(
+        first,
+        load: (offset) =>
+            _host.connection.fetchShuffleSessionPage(first.sessionId, clientId: _serverClientId, offset: offset),
+      );
+      _serverDeck = deck;
+      _serverDeckSessionRevision = revision;
+      final available = await deck.initialize(play: play, currentTrackId: startTrackId);
+      if (!isCurrent() || !identical(_serverDeck, deck)) return;
+      if (!available) {
+        _clearServerShuffleSession();
+        _host._pushMessage('No tracks found for shuffle');
+        return;
+      }
       _rememberShuffleContext(scope: scope, playlistId: playlistId, artistId: artistId, albumId: albumId);
+      _serverDeckReady = true;
       _host._setQueue(
-        _shuffleTracks(tracks),
+        _host._normalizeQueueTracks(deck.tracks),
         startTrackId: startTrackId,
         queueSource: queueSource,
-        queueSourcePlaylistId: queueSourcePlaylistId,
+        queueSourcePlaylistId: queuePlaylistId,
+        preserveServerShuffle: true,
       );
+      _applyServerShuffleWindow(deck);
       _host._armAutoAdvanceGuard();
-
-      if (play) {
-        await _host._playCurrent();
-      }
+      if (play) await _host._playCurrent();
     } on ApiException catch (err) {
+      if (!isCurrent()) return;
+      _clearServerShuffleSession();
       _host._handleApiError(err, context: 'queue shuffle');
     } catch (err) {
+      if (!isCurrent()) return;
+      _clearServerShuffleSession();
       _host._pushMessage('Failed to queue shuffle: $err');
     }
+  }
+
+  void _clearServerShuffleSession({bool cancelNavigation = true}) {
+    if (cancelNavigation) _serverNavigationRequests.advance();
+    _serverShuffleRequests.advance();
+    final deck = _serverDeck;
+    final revision = _serverDeckSessionRevision;
+    _serverDeck = null;
+    _serverDeckSessionRevision = null;
+    _serverDeckExpired = false;
+    _serverDeckReady = false;
+    deck?.close();
+    if (deck != null && revision != null) _releaseServerShuffleSession(deck.sessionId, revision);
+  }
+
+  void _releaseServerShuffleSession(String sessionId, int revision) {
+    if (_host.connection.sessionRevision != revision || _host.connection.token == null) return;
+    unawaited(
+      _host.connection
+          .releaseShuffleSession(sessionId, clientId: _serverClientId)
+          .catchError((Object error) => AppLogger.debug('Shuffle session cleanup skipped: $error')),
+    );
+  }
+
+  void _applyServerShuffleWindow(ServerShuffleDeck deck) {
+    final loaded = {for (final track in _host._playQueue) track.id: track};
+    _host._playQueue = _host._normalizeQueueTracks(deck.tracks.map((track) => loaded[track.id] ?? track).toList());
+    _host._playIndex = deck.queueIndex;
+  }
+
+  void _prefetchServerShuffle() {
+    final deck = _serverDeck;
+    if (deck == null) return;
+    final revision = _host.connection.sessionRevision;
+    Future<void> refill() async {
+      try {
+        await deck.prefetch();
+        if (_host._sessionCoordinator._isServerSessionCurrent(revision) && identical(_serverDeck, deck)) {
+          _applyServerShuffleWindow(deck);
+        }
+      } catch (error) {
+        if (identical(_serverDeck, deck) && error is ApiException && error.statusCode == 404) {
+          _serverDeckExpired = true;
+        }
+        if (identical(_serverDeck, deck)) AppLogger.debug('Shuffle prefetch deferred: $error');
+      }
+    }
+
+    unawaited(refill());
+  }
+
+  Future<void> _navigateServerShuffle(int direction) {
+    final request = _serverNavigationRequests.current;
+
+    final revision = _host.connection.sessionRevision;
+    Future<void> move() async {
+      if (!_serverNavigationRequests.isCurrent(request) ||
+          !_host._sessionCoordinator._isServerSessionCurrent(revision)) {
+        return;
+      }
+      final ensured = await _ensureServerShuffleQueue(play: false, preserveNavigation: true);
+      if (!ensured ||
+          !_serverNavigationRequests.isCurrent(request) ||
+          !_host._sessionCoordinator._isServerSessionCurrent(revision)) {
+        return;
+      }
+      final deck = _serverDeck;
+      if (deck == null) return;
+      var moved = false;
+      try {
+        if (!_serverDeckExpired) moved = await deck.move(direction);
+      } on ApiException catch (error) {
+        if (error.statusCode != 404) rethrow;
+        if (identical(_serverDeck, deck)) _serverDeckExpired = true;
+      }
+      if (!identical(_serverDeck, deck) || !_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
+      if (moved) {
+        _applyServerShuffleWindow(deck);
+        await _host._playCurrent();
+      } else if (direction > 0 || _serverDeckExpired) {
+        // Repeat-off has always advanced through repeat-all queues in this app.
+        // A new pass begins only after the complete server deck is exhausted.
+        await queueServerShuffle(
+          preserveNavigation: true,
+          scope: _queueShuffleScope ?? 'library',
+          playlistId: _queueShufflePlaylistId,
+          artistId: _queueShuffleArtistId,
+          albumId: _queueShuffleAlbumId,
+          queueSourceOverride: _host._playbackState.queueSource,
+          queueSourcePlaylistIdOverride: _host._playbackState.queueSourcePlaylistId,
+        );
+        if (_serverDeck == null && _host._sessionCoordinator._isServerSessionCurrent(revision)) {
+          _host._wantsPlayback = false;
+          _host._updatePlayback(isPlaying: false, isLoading: false);
+        }
+      }
+    }
+
+    final pending = _serverNavigation.catchError((Object _) {}).then((_) => move());
+    _serverNavigation = pending;
+    return pending;
   }
 
   Future<void> queueLocalShuffle({
@@ -521,16 +572,27 @@ class _ShuffleCoordinator {
     return _ensureServerShuffleQueue(play: play);
   }
 
-  Future<bool> _ensureServerShuffleQueue({bool play = true}) async {
+  Future<bool> _ensureServerShuffleQueue({bool play = true, bool preserveNavigation = false}) async {
     if (_host._playbackState.shuffleMode == ShuffleMode.off) {
       return false;
     }
 
-    if (_host._playQueue.isNotEmpty &&
+    final revision = _host.connection.sessionRevision;
+    final request = _serverShuffleRequests.current;
+    if (_serverDeck != null && !_serverDeckReady) return false;
+
+    if (_serverDeck != null &&
+        _host._playQueue.isNotEmpty &&
         _queueShuffleMode == _host._playbackState.shuffleMode &&
         _queueShuffleScope != null) {
       if (play && _host._playbackState.track == null) {
-        _host._playIndex = _host._playIndex.clamp(0, _host._playQueue.length - 1);
+        final deck = _serverDeck!;
+        if (deck.queueIndex < 0 && !await deck.move(1)) return false;
+        if (!_serverShuffleRequests.isCurrent(request) ||
+            !_host._sessionCoordinator._isServerSessionCurrent(revision)) {
+          return false;
+        }
+        _applyServerShuffleWindow(deck);
         await _host._playCurrent();
       }
 
@@ -538,13 +600,16 @@ class _ShuffleCoordinator {
     }
 
     final context = await _resolveShuffleContext();
-    if (context == null) {
+    if (context == null ||
+        !_serverShuffleRequests.isCurrent(request) ||
+        !_host._sessionCoordinator._isServerSessionCurrent(revision)) {
       return false;
     }
 
     final startTrackId = play ? null : _host._playbackState.track?.id;
 
-    await _host.queueShuffle(
+    await queueServerShuffle(
+      preserveNavigation: preserveNavigation,
       scope: context.scope,
       playlistId: context.playlistId,
       artistId: context.artistId,
@@ -553,7 +618,9 @@ class _ShuffleCoordinator {
       startTrackId: startTrackId,
     );
 
-    return _host._playQueue.isNotEmpty;
+    return _serverShuffleRequests.current == request + 1 &&
+        _serverDeck != null &&
+        _host._sessionCoordinator._isServerSessionCurrent(revision);
   }
 
   Future<bool> _ensureLocalShuffleQueue({bool play = true}) async {
@@ -874,87 +941,7 @@ class _ShuffleCoordinator {
   }
 }
 
-// Forwarding preserves the existing library entry point and virtual dispatch.
-mixin _ShuffleFacade {
-  _ShuffleCoordinator get _shuffleCoordinator;
-
-  ShuffleMode get _queueShuffleMode => _shuffleCoordinator._queueShuffleMode;
-
-  set _queueShuffleMode(ShuffleMode value) => _shuffleCoordinator._queueShuffleMode = value;
-
-  set _queueShuffleScope(String? value) => _shuffleCoordinator._queueShuffleScope = value;
-
-  set _queueShufflePlaylistId(String? value) => _shuffleCoordinator._queueShufflePlaylistId = value;
-
-  set _queueShuffleArtistId(String? value) => _shuffleCoordinator._queueShuffleArtistId = value;
-
-  set _queueShuffleAlbumId(String? value) => _shuffleCoordinator._queueShuffleAlbumId = value;
-
-  LocalLibrarySelection get _localLibrary => _shuffleCoordinator._localLibrary;
-
-  Future<void> queueShuffle({
-    required String scope,
-    String? playlistId,
-    String? artistId,
-    String? albumId,
-    bool play = true,
-    String? startTrackId,
-    PlaybackQueueSource? queueSourceOverride,
-    String? queueSourcePlaylistIdOverride,
-  }) => _shuffleCoordinator.queueShuffle(
-    scope: scope,
-    playlistId: playlistId,
-    artistId: artistId,
-    albumId: albumId,
-    play: play,
-    startTrackId: startTrackId,
-    queueSourceOverride: queueSourceOverride,
-    queueSourcePlaylistIdOverride: queueSourcePlaylistIdOverride,
-  );
-
-  Future<void> queueServerShuffle({
-    required String scope,
-    String? playlistId,
-    String? artistId,
-    String? albumId,
-    bool play = true,
-    String? startTrackId,
-    PlaybackQueueSource? queueSourceOverride,
-    String? queueSourcePlaylistIdOverride,
-  }) => _shuffleCoordinator.queueServerShuffle(
-    scope: scope,
-    playlistId: playlistId,
-    artistId: artistId,
-    albumId: albumId,
-    play: play,
-    startTrackId: startTrackId,
-    queueSourceOverride: queueSourceOverride,
-    queueSourcePlaylistIdOverride: queueSourcePlaylistIdOverride,
-  );
-
-  Future<void> queueLocalShuffle({
-    String? playlistId,
-    String? artistId,
-    String? albumId,
-    bool play = true,
-    String? startTrackId,
-  }) => _shuffleCoordinator.queueLocalShuffle(
-    playlistId: playlistId,
-    artistId: artistId,
-    albumId: albumId,
-    play: play,
-    startTrackId: startTrackId,
-  );
-
-  Future<bool> _ensureShuffleQueue({bool play = true}) => _shuffleCoordinator._ensureShuffleQueue(play: play);
-
-  Future<bool> _ensureAlbumQueueFromCurrent() => _shuffleCoordinator._ensureAlbumQueueFromCurrent();
-
-  Future<({String? artistId, String? albumId})> _resolveAlbumArtistForTrack(String trackId) =>
-      _shuffleCoordinator._resolveAlbumArtistForTrack(trackId);
-
-  Future<void> _maybeDisableShuffleForTrackSelection(String trackId) =>
-      _shuffleCoordinator._maybeDisableShuffleForTrackSelection(trackId);
-
-  Future<void> _refreshCustomShuffleQueueIfNeeded() => _shuffleCoordinator._refreshCustomShuffleQueueIfNeeded();
+String _newShuffleIdentifier() {
+  final random = Random.secure();
+  return List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 }

@@ -62,6 +62,8 @@ class _SessionCoordinator {
     }
 
     final generation = _passwordLogins.advance();
+    _sessionRestores.advance();
+    _restoringSession = false;
     _passwordLoginOrigin = origin;
     int? authenticatedRevision;
     String? authenticatedToken;
@@ -73,6 +75,9 @@ class _SessionCoordinator {
             (_host.connection.sessionRevision == authenticatedRevision &&
                 _host.connection.token == authenticatedToken &&
                 ServerTrust.origin(Uri.parse(_host.connection.baseUrl)) == origin));
+
+    _host.connection.setToken(null);
+    _setSessionStatus(SessionStatus.checking, error: null);
 
     try {
       _host._statsServerId = _host._statsUserId = null;
@@ -143,6 +148,8 @@ class _SessionCoordinator {
   void loginWithToken({required String baseUrl, required String token}) {
     if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(baseUrl)))) return;
     _passwordLogins.advance();
+    _sessionRestores.advance();
+    _restoringSession = false;
     _passwordLoginOrigin = null;
     _host._statsServerId = _host._statsUserId = null;
     _host._listeningSessionContext = null;
@@ -156,9 +163,11 @@ class _SessionCoordinator {
     _host.connection.setToken(token);
     _host._serverHealthFailureCount = 0;
     _setAuthorized(true, error: null);
+    final sessionRevision = _host.connection.sessionRevision;
 
     Future<void> initializeTokenSession() async {
       await resetStatsAccount;
+      if (!_isServerSessionCurrent(sessionRevision)) return;
 
       final playingTrack = _host._playbackState.track;
 
@@ -167,9 +176,13 @@ class _SessionCoordinator {
       }
 
       await _host._refreshLocalStats();
+      if (!_isServerSessionCurrent(sessionRevision)) return;
       await _host._refreshServerPorts();
+      if (!_isServerSessionCurrent(sessionRevision)) return;
       await _host._loadPlaybackSettings();
+      if (!_isServerSessionCurrent(sessionRevision)) return;
       await _host._offlineDownloadManager.resumePausedForCurrentServer();
+      if (!_isServerSessionCurrent(sessionRevision)) return;
       unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
     }
 
@@ -448,6 +461,7 @@ class _SessionCoordinator {
   }
 
   void _clearPlaybackForServerDisconnect() {
+    _host._shuffleCoordinator._clearServerShuffleSession();
     _host._resetTrackTransitionState();
     _host._audioEngine.stop();
 
@@ -599,6 +613,9 @@ class _SessionCoordinator {
     _setSessionStatus(authorized ? SessionStatus.authenticated : SessionStatus.offline, error: error);
   }
 
+  bool _isServerSessionCurrent(int revision) =>
+      !_host._disposed && _host.connection.sessionRevision == revision && _authState.isAuthorized;
+
   void _setSessionStatus(SessionStatus status, {String? error, bool? isReconnecting, bool requiresSignIn = false}) {
     if (_host._disposed) {
       return;
@@ -618,6 +635,14 @@ class _SessionCoordinator {
       _host._artistsController.add(const []);
       _host._albumsController.add(const []);
       _host._artistReleasesController.add(_host._artistReleases);
+      _host._favoritesCoordinator._clearServerData();
+      _host._playlistsCoordinator._clearServerData();
+      _host._libraryCoordinator._clearPersonalizedData();
+      _host._shuffleCoordinator._clearServerShuffleSession();
+      _host._updatePlayback(repeatMode: PlaybackRepeatMode.off);
+      if (_host._playbackState.track != null && !_host._playbackState.isLocalPlayback) {
+        _clearPlaybackForServerDisconnect();
+      }
     }
 
     _authState = _authState.copyWith(

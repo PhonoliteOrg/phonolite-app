@@ -14,7 +14,7 @@ class NowPlayingPlatformService {
   NowPlayingPlatformService({MethodChannel channel = const MethodChannel('phonolite/now_playing')})
     : _channel = channel;
 
-  bool get isSupported => Platform.isIOS || Platform.isAndroid;
+  bool get isSupported => Platform.isIOS || Platform.isAndroid || Platform.isWindows;
 
   // iOS can fetch and decode covers while Flutter's renderer is suspended.
   bool get loadsArtworkNatively => Platform.isIOS;

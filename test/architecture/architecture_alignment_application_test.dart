@@ -51,6 +51,9 @@ class _App extends Fake implements AppController {
   @override
   late final catalog = CatalogController(connection);
   @override
+  Future<Artist> fetchArtistMetadata(String id, {bool refresh = false}) => catalog.fetchArtistById(id);
+
+  @override
   AuthState authState = AuthState(isAuthorized: true, baseUrl: 'https://test.invalid');
   @override
   List<Artist> get artists => const [];

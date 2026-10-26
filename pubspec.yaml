@@ -23,6 +23,7 @@ dependencies:
   phonolite_quic:
     path: packages/phonolite_quic
   http: ^1.2.1
+  xml: ^6.6.1
   connectivity_plus: ^6.1.5
   crypto: ^3.0.6
   palette_generator: ^0.3.3
@@ -33,6 +34,9 @@ dependencies:
   file_selector: ^1.1.0
   image_picker: ^1.2.2
   flutter_secure_storage: ^9.2.4
+  launch_at_startup: ^0.5.1
+  tray_manager: ^0.5.3
+  window_manager: ^0.5.1
 
 dev_dependencies:
   integration_test:
@@ -52,6 +56,7 @@ flutter:
     - assets/icons/tabler/
     - assets/images/phonolite-logo-nobackground.png
     - assets/images/phonolite-logo.png
+    - assets/images/phonolite-tray.ico
   fonts:
     - family: PhonoliteLucide
       fonts:

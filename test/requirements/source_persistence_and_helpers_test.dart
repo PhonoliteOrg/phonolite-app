@@ -4,34 +4,29 @@ import '../support/source_test_helpers.dart';
 
 void main() {
   group('persistence and helper source contracts', () {
-    test(
-      'auth storage uses only the new authenticated secure-storage schema',
-      () {
-        final source = readProjectFiles([
-          'lib/data/models/auth/auth_credentials.dart',
-          'lib/data/storage/auth/auth_storage.dart',
-        ]);
+    test('auth storage uses only the new authenticated secure-storage schema', () {
+      final source = readProjectFiles([
+        'lib/data/models/auth/auth_credentials.dart',
+        'lib/data/storage/auth/auth_storage.dart',
+      ]);
 
-        expectContainsAll(source, const [
-          "static const String _vaultKey = 'phonolite.auth.session.v1';",
-          "'profile': 'phonolite-opaque-v1'",
-          "'baseUrl': baseUrl",
-          "'token': token",
-          "'username': username",
-          "'trust': trust.toJson()",
-          "final ServerTrust trust;",
-        ]);
-        expect(source, isNot(contains('readAsString(')));
-        expect(source, isNot(contains('writeAsString(')));
-        expect(source, isNot(contains('dart:io')));
-      },
-    );
+      expectContainsAll(source, const [
+        "static const String _vaultKey = 'phonolite.auth.session.v1';",
+        "'profile': 'phonolite-opaque-v1'",
+        "'baseUrl': baseUrl",
+        "'token': token",
+        "'username': username",
+        "'trust': trust.toJson()",
+        "final ServerTrust trust;",
+      ]);
+      expect(source, isNot(contains('readAsString(')));
+      expect(source, isNot(contains('writeAsString(')));
+      expect(source, isNot(contains('dart:io')));
+    });
 
     test('playback preferences persist volume and collection mode', () {
       final source =
-          readProjectModule(
-            'lib/data/storage/preferences/playback_preferences.dart',
-          ) +
+          readProjectModule('lib/data/storage/preferences/playback_preferences.dart') +
           readProjectModule('lib/data/storage/preferences/settings_files.dart');
 
       expectContainsAll(source, const [
@@ -40,7 +35,7 @@ void main() {
         "static const String _collectionListModeKey = 'collection_list_mode';",
         'writeVolume(double volume)',
         'writeCollectionListMode(bool value)',
-        "Platform.environment['APPDATA']",
+        'WindowsAppStorage.directory()',
       ]);
     });
 
@@ -58,16 +53,14 @@ void main() {
         'localGenres',
         'text = text.toLowerCase();',
         'getApplicationCacheDirectory()',
-        "Platform.environment['LOCALAPPDATA']",
+        'WindowsAppStorage.directory()',
         'getApplicationSupportDirectory()',
       ]);
     });
 
     test('offline library storage records server downloads and file paths', () {
       final source =
-          readProjectModule(
-            'lib/data/storage/offline/library/offline_library.dart',
-          ) +
+          readProjectModule('lib/data/storage/offline/library/offline_library.dart') +
           readProjectFiles([
             'lib/data/models/downloads/download_status.dart',
             'lib/data/models/downloads/offline_deletion.dart',
@@ -148,7 +141,7 @@ void main() {
         'Future<File> albumArtFile({',
         'Future<File> artistArtFile({',
         'Future<File> playlistArtFile({',
-        "Platform.environment['LOCALAPPDATA']",
+        'WindowsAppStorage.directory()',
         'extensionFromContentType(String? contentType)',
         'extensionFromImageContentType(String? contentType)',
         'extensionFromContentDisposition(String? contentDisposition)',
@@ -156,34 +149,27 @@ void main() {
       ]);
     });
 
-    test(
-      'offline storage settings persist separate metadata and download roots',
-      () {
-        final source =
-            readProjectFiles([
-              'lib/data/models/preferences/offline_storage_locations.dart',
-              'lib/data/storage/preferences/offline_storage_settings_storage.dart',
-            ]) +
-            readProjectModule(
-              'lib/data/storage/preferences/settings_files.dart',
-            );
+    test('offline storage settings persist separate metadata and download roots', () {
+      final source =
+          readProjectFiles([
+            'lib/data/models/preferences/offline_storage_locations.dart',
+            'lib/data/storage/preferences/offline_storage_settings_storage.dart',
+          ]) +
+          readProjectModule('lib/data/storage/preferences/settings_files.dart');
 
-        expectContainsAll(source, const [
-          'class OfflineStorageSettings',
-          'class OfflineStorageLocations',
-          "static const String _fileName = 'offline_storage.json';",
-          "'metadata_directory': metadataDirectory",
-          "'downloads_directory': downloadsDirectory",
-          "Platform.environment['APPDATA']",
-          "getApplicationSupportDirectory()",
-        ]);
-      },
-    );
+      expectContainsAll(source, const [
+        'class OfflineStorageSettings',
+        'class OfflineStorageLocations',
+        "static const String _fileName = 'offline_storage.json';",
+        "'metadata_directory': metadataDirectory",
+        "'downloads_directory': downloadsDirectory",
+        'WindowsAppStorage.directory()',
+        "getApplicationSupportDirectory()",
+      ]);
+    });
 
     test('offline download manager resumes and promotes track downloads', () {
-      final source = readProjectModule(
-        'lib/application/downloads/offline_download_manager.dart',
-      );
+      final source = readProjectModule('lib/application/downloads/offline_download_manager.dart');
 
       expectContainsAll(source, const [
         'class OfflineDownloadManager',
@@ -251,9 +237,7 @@ void main() {
     });
 
     test('library helpers disable expensive image work on web and windows', () {
-      final source = readProjectModule(
-        'lib/ui/shared/music/artwork/artwork_helpers.dart',
-      );
+      final source = readProjectModule('lib/ui/shared/music/artwork/artwork_helpers.dart');
 
       expectContainsAll(source, const [
         'controller.artworkHeaders;',

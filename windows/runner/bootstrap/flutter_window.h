@@ -13,6 +13,10 @@ class FlutterViewController;
 
 class DirectoriesChannelAdapter;
 class DirectoryLauncher;
+class NowPlayingChannelAdapter;
+class WindowsMediaTransport;
+class WindowsUpdateService;
+class UpdatesChannelAdapter;
 
 class FlutterWindow final : public Win32Window {
  public:
@@ -32,6 +36,10 @@ class FlutterWindow final : public Win32Window {
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<DirectoryLauncher> directory_launcher_;
   std::unique_ptr<DirectoriesChannelAdapter> directory_channel_;
+  std::unique_ptr<WindowsMediaTransport> media_transport_;
+  std::unique_ptr<NowPlayingChannelAdapter> now_playing_channel_;
+  std::unique_ptr<WindowsUpdateService> update_service_;
+  std::unique_ptr<UpdatesChannelAdapter> updates_channel_;
 };
 
 #endif // RUNNER_BOOTSTRAP_FLUTTER_WINDOW_H_

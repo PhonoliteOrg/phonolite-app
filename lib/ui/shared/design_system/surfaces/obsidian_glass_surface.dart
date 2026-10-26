@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class ObsidianGlassSurface extends StatelessWidget {
-  static final ui.ImageFilter _backdropBlur = ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28);
+  static final ui.ImageFilter _backdropBlur = ui.ImageFilter.blur(sigmaX: 36, sigmaY: 36);
   final Widget child;
   final Color? backgroundColor;
   final ShapeBorder? shape;
@@ -26,9 +26,9 @@ class ObsidianGlassSurface extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  const Color(0xFF18181F).withValues(alpha: 0.32),
-                  ObsidianPalette.obsidianElevated.withValues(alpha: 0.56),
-                  ObsidianPalette.obsidianElevated.withValues(alpha: 0.8),
+                  const Color(0xFF18181F).withValues(alpha: 0.72),
+                  ObsidianPalette.obsidianElevated.withValues(alpha: 0.75),
+                  ObsidianPalette.obsidianElevated.withValues(alpha: 0.78),
                 ],
                 stops: const [0, 0.5, 1],
               )

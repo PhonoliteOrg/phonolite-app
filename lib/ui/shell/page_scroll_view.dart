@@ -11,6 +11,9 @@ class PageScrollView extends StatelessWidget {
   final bool includeTopInset;
   final bool includeBottomInset;
 
+  /// Reserves the system area for pinned controls while content scrolls behind it.
+  final bool pinTopInset;
+
   const PageScrollView({
     super.key,
     required this.slivers,
@@ -19,6 +22,7 @@ class PageScrollView extends StatelessWidget {
     this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
     this.includeTopInset = true,
     this.includeBottomInset = true,
+    this.pinTopInset = false,
   });
 
   @override
@@ -27,7 +31,7 @@ class PageScrollView extends StatelessWidget {
     physics: physics,
     keyboardDismissBehavior: keyboardDismissBehavior,
     slivers: [
-      if (includeTopInset) const SliverPageTopInset(),
+      if (includeTopInset) SliverPageTopInset(pinned: pinTopInset),
       ...slivers,
       if (includeBottomInset) const SliverPlaybackInset(),
     ],
@@ -54,13 +58,30 @@ class PageSliverBox extends StatelessWidget {
   final Widget child;
   final double top;
   final double bottom;
+  final bool pinned;
 
-  const PageSliverBox({super.key, required this.child, this.top = 0, this.bottom = 0});
+  const PageSliverBox({super.key, required this.child, this.top = 0, this.bottom = 0, this.pinned = false});
 
   @override
-  Widget build(BuildContext context) => PageSliverPadding(
-    top: top,
-    bottom: bottom,
-    sliver: SliverToBoxAdapter(child: child),
-  );
+  Widget build(BuildContext context) {
+    if (pinned) {
+      return PinnedHeaderSliver(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            PageSliverPadding.horizontalInset,
+            top,
+            PageSliverPadding.horizontalInset,
+            bottom,
+          ),
+          child: child,
+        ),
+      );
+    }
+
+    return PageSliverPadding(
+      top: top,
+      bottom: bottom,
+      sliver: SliverToBoxAdapter(child: child),
+    );
+  }
 }

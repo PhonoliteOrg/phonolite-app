@@ -74,6 +74,73 @@ void main() {
     expect(harness.streams, hasLength(1));
   });
 
+  testWidgets('repeated stop waits for the same pending cancellation', (tester) async {
+    final cancelled = Completer<void>();
+    var cancellations = 0;
+    final harness = _Harness(
+      onCancel: () {
+        cancellations++;
+        return cancelled.future;
+      },
+    );
+    addTearDown(harness.dispose);
+    harness.start();
+
+    var stopped = false;
+    final stopping = harness.listener.stop();
+    unawaited(stopping.then((_) => stopped = true));
+    expect(harness.listener.stop(), same(stopping));
+    await tester.pump(const Duration(seconds: 4));
+    expect(stopped, isFalse);
+    expect(cancellations, 1);
+    expect(harness.streams, hasLength(1));
+
+    cancelled.complete();
+    await tester.pump();
+    await stopping;
+    expect(stopped, isTrue);
+    expect(harness.diagnostics, isEmpty);
+  });
+
+  testWidgets('stop waits for cancellations from previous sessions', (tester) async {
+    final cancellations = [Completer<void>(), Completer<void>()];
+    var nextCancellation = 0;
+    final harness = _Harness(onCancel: () => cancellations[nextCancellation++].future);
+    addTearDown(harness.dispose);
+    harness.start();
+    harness.token = 'new-token';
+    harness.start();
+
+    var stopped = false;
+    final stopping = harness.listener.stop();
+    unawaited(stopping.then((_) => stopped = true));
+    expect(nextCancellation, 2);
+    cancellations[1].complete();
+    await tester.pump();
+    expect(stopped, isFalse);
+
+    cancellations[0].complete();
+    await tester.pump();
+    await stopping;
+    expect(stopped, isTrue);
+    expect(harness.diagnostics, isEmpty);
+  });
+
+  testWidgets('unawaited stop handles a cancellation failure without reconnecting', (tester) async {
+    final cancelled = Completer<void>();
+    final harness = _Harness(onCancel: () => cancelled.future);
+    addTearDown(harness.dispose);
+    harness.start();
+    unawaited(harness.listener.stop());
+
+    cancelled.completeError(StateError('Connection closed while receiving data'));
+    await tester.pump(const Duration(seconds: 4));
+    await harness.listener.stop();
+    expect(harness.streams, hasLength(1));
+    expect(harness.diagnostics.single, contains('Metadata event stream cancellation failed'));
+    expect(harness.diagnostics.single, contains('Connection closed while receiving data'));
+  });
+
   testWidgets(
     'a new session discards the old batch without overlapping application',
     (tester) async {
@@ -127,10 +194,10 @@ void main() {
 }
 
 class _Harness {
-  _Harness({Future<void> Function(MetadataUpdateEvent)? apply}) {
+  _Harness({Future<void> Function(MetadataUpdateEvent)? apply, FutureOr<void> Function()? onCancel}) {
     listener = MetadataEventListener(
       openStream: () {
-        final controller = StreamController<MetadataUpdateEvent>();
+        final controller = StreamController<MetadataUpdateEvent>(onCancel: onCancel);
         streams.add(controller);
         return controller.stream;
       },
@@ -155,7 +222,7 @@ class _Harness {
   StreamController<MetadataUpdateEvent> get input => streams.last;
   void start() => listener.start(baseUrl: 'server', token: token);
   Future<void> dispose() async {
-    listener.stop();
+    unawaited(listener.stop());
     for (final stream in streams) {
       if (!stream.isClosed) await stream.close();
     }

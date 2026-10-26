@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.10)
 project(phonolite_opus LANGUAGES C)
 
 set(OPUS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/opus")
+# Prefer the parent-owned module that supports submodule gitfiles.
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_LIST_DIR}/../../../../cmake")
 
 set(OPUS_BUILD_SHARED_LIBRARY OFF CACHE BOOL "" FORCE)
 set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
