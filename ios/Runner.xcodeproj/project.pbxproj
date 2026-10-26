@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1030026A1030026A1030026 /* LaunchSnapshotCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1040026A1040026A1040026 /* LaunchSnapshotCover.swift */; };
+		A1050026A1050026A1050026 /* LaunchSnapshotCoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1060026A1060026A1060026 /* LaunchSnapshotCoverTests.swift */; };
 		0A5BB7A002BF069DF54232EB /* LocalNetworkPermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BD322B66C7CF3169F55D98 /* LocalNetworkPermissionService.swift */; };
 		106D4E316C3BB7B17CAFDF51 /* CarPlayListRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD76095350933C22154D8367 /* CarPlayListRequest.swift */; };
 		11334FDD58659CE8A7346CC5 /* ApplicationSettingsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D1F1BC37D42073E09FE379 /* ApplicationSettingsService.swift */; };
@@ -102,6 +104,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1040026A1040026A1040026 /* LaunchSnapshotCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSnapshotCover.swift; sourceTree = "<group>"; };
+		A1060026A1060026A1060026 /* LaunchSnapshotCoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSnapshotCoverTests.swift; sourceTree = "<group>"; };
 		06250F1F7A019EBE19A61006 /* PinnedArtworkSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedArtworkSession.swift; sourceTree = "<group>"; };
 		06813B688B346A543BA94AED /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		08C4FE9A01F9F14B5CDC237F /* LocalNetworkPermissionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkPermissionStore.swift; sourceTree = "<group>"; };
@@ -268,6 +272,7 @@
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
+				A1060026A1060026A1060026 /* LaunchSnapshotCoverTests.swift */,
 				86FED5F99546D2399C399302 /* CarPlayContractTests.swift */,
 				BA2EE51270275CFB54A57C57 /* NowPlayingContractTests.swift */,
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
@@ -339,6 +344,7 @@
 		6F7078B68FBE50D98992B9C5 /* Shell */ = {
 			isa = PBXGroup;
 			children = (
+				A1040026A1040026A1040026 /* LaunchSnapshotCover.swift */,
 				21015E84E1826DE73C0E6BE2 /* CarPlay */,
 			);
 			path = Shell;
@@ -838,6 +844,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1050026A1050026A1050026 /* LaunchSnapshotCoverTests.swift in Sources */,
 				759FAC967A9D94D181F74D06 /* CarPlayContractTests.swift in Sources */,
 				676082D8DC3469BA1F0E1597 /* NowPlayingContractTests.swift in Sources */,
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
@@ -848,6 +855,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1030026A1030026A1030026 /* LaunchSnapshotCover.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				61BFAAFF433AB3A4AE47F189 /* CarPlayBrowseController.swift in Sources */,
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
