@@ -69,6 +69,10 @@ Maintainers use this section to build installers and publish app updates.
 Set the release version and build number in `pubspec.yaml` before packaging.
 Build outputs and release uploads are managed manually.
 
+Keep each version's changes since the previous tag in its own
+`releases/<release-tag>.md` file. See [release notes](releases/README.md) for the
+history and release workflow.
+
 ### Windows installer and updates
 
 Install NSIS 3 in addition to the Windows build tools above, including Visual
@@ -98,6 +102,10 @@ version from the build output:
     -PackagePath ".\build\windows_distribution\<version>\x64\Phonolite_<version>_x64_setup.exe" `
     -PrivateKeyPath C:\Signing\phonolite-windows-ed25519.key
 ```
+
+To include that version's notes in the update feed, also pass
+`-ReleaseNotesPath .\releases\<release-tag>.md`, replacing `<release-tag>` with
+the tag being packaged.
 
 The GitHub release tag comes automatically from `pubspec.yaml`, prefixed with
 `v` and excluding the `+build` suffix, giving `v<major>.<minor>.<patch>`.
