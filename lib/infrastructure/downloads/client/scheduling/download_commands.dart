@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _DownloadCommands {
   final _OfflineDownloadActorCore _host;
@@ -163,6 +163,16 @@ class _DownloadCommands {
     final baseUrl = _host.connection.baseUrl;
 
     _pausedServerUrls.remove(baseUrl);
+
+    final pending = await _host._storage.readPendingPlaylistEntries(serverBaseUrl: baseUrl);
+
+    for (final entry in pending) {
+      if (entry.status == OfflineDownloadStatus.paused && entry.source != null) {
+        await _host._storage.updatePendingPlaylistRequest(entry.source!, OfflineDownloadStatus.queued);
+      }
+    }
+
+    await _host._resumePendingPlaylistDownloads();
 
     final now = DateTime.now();
     var changed = false;

@@ -30,246 +30,166 @@ void main() {
 
   for (final isLocal in [false, true]) {
     for (final width in [430.0, 1280.0]) {
-      testWidgets(
-        '${isLocal ? 'local' : 'server'} album track actions share one modal at width $width',
-        (tester) async {
-          final controller = (await tester.runAsync(
-            () async => _AlbumController(isLocal: isLocal),
-          ))!;
-          controller.currentPlayback = controller.currentPlayback.copyWith(
-            isPlaying: false,
-          );
-          try {
-            await _pump(tester, controller, isLocal: isLocal, width: width);
-            final row = find.widgetWithText(TrackRowTile, 'first');
-            final menu = find.descendant(
-              of: row,
-              matching: find.byTooltip('Track actions'),
-            );
-            expect(menu, findsOneWidget);
-            expect(
-              find.descendant(of: row, matching: find.byType(LikeIconButton)),
-              findsNothing,
-            );
-            expect(
-              find.descendant(of: row, matching: find.byType(PlaylistAddIcon)),
-              findsNothing,
-            );
-            expect(
-              find.descendant(
-                of: row,
-                matching: find.byIcon(PhonoliteIcons.download),
-              ),
-              findsNothing,
-            );
-            expect(
-              tester
-                  .getSize(
-                    find
-                        .ancestor(
-                          of: find.descendant(
-                            of: row,
-                            matching: find.text('first'),
-                          ),
-                          matching: find.byType(Column),
-                        )
-                        .first,
-                  )
-                  .width,
-              greaterThan(width / 2),
-            );
-
-            await tester.tap(menu);
-            await tester.pumpAndSettle();
-            expect(find.byType(ObsidianAlertDialog), findsOneWidget);
-            expect(find.byType(ObsidianGlassSurface), findsOneWidget);
-            expect(find.byType(PopupMenuItem<int>), findsNothing);
-            expect(
-              find.descendant(
-                of: find.byType(ObsidianAlertDialog),
-                matching: find.text('first'),
-              ),
-              findsOneWidget,
-            );
-            expect(find.text('Like'), findsOneWidget);
-            expect(
-              tester.widget<Text>(find.text('Like')).style?.color,
-              ObsidianPalette.textMuted,
-            );
-            expect(find.text('Add to playlist'), findsOneWidget);
-            expect(
-              find.text('Download'),
-              isLocal ? findsNothing : findsOneWidget,
-            );
-            await tester.tap(find.text('Like'));
-            await tester.pumpAndSettle();
-            expect(find.byType(ObsidianAlertDialog), findsNothing);
-            expect(controller.calls, [
-              'like:${isLocal ? 'local' : 'server'}:first',
-            ]);
-            if (!isLocal) {
-              await tester.tap(menu);
-              await tester.pumpAndSettle();
-              await tester.tap(find.text('Download'));
-              await tester.pumpAndSettle();
-              expect(controller.calls.last, 'download:first');
-            }
-            final callsBeforeClose = controller.calls.toList();
-            await tester.tap(menu);
-            await tester.pumpAndSettle();
-            await tester.tap(find.text('CLOSE'));
-            await tester.pumpAndSettle();
-            expect(find.byType(ObsidianAlertDialog), findsNothing);
-            expect(controller.calls, callsBeforeClose);
-            final likedRow = find.widgetWithText(TrackRowTile, 'second');
-            await tester.tap(
-              find.descendant(
-                of: likedRow,
-                matching: find.byTooltip('Track actions'),
-              ),
-            );
-            await tester.pumpAndSettle();
-            expect(find.text('Unlike'), findsOneWidget);
-            final filledHeart = find.byWidgetPredicate(
-              (widget) =>
-                  widget is SvgAssetIcon &&
-                  widget.assetName == 'assets/icons/lucide/heart-filled.svg',
-            );
-            expect(filledHeart, findsOneWidget);
-            expect(
-              IconTheme.of(tester.element(filledHeart)).color,
-              ObsidianPalette.gold,
-            );
-            await tester.tap(find.text('Unlike'));
-            await tester.pumpAndSettle();
-            expect(
-              controller.calls.last,
-              'like:${isLocal ? 'local' : 'server'}:second',
-            );
-            await tester.tap(menu);
-            await tester.pumpAndSettle();
-            await tester.tap(find.text('Add to playlist'));
-            await tester.pumpAndSettle();
-            expect(find.byType(AddToPlaylistModal), findsOneWidget);
-            expect(find.byType(ObsidianAlertDialog), findsOneWidget);
-            expect(
-              find.text('Add to ${isLocal ? 'local' : 'server'} playlist'),
-              findsOneWidget,
-            );
-            expect(tester.takeException(), isNull);
-          } finally {
-            await _dispose(tester, controller);
-          }
-        },
-      );
-
-      testWidgets(
-        '${isLocal ? 'local' : 'server'} partial album retains track numbers at width $width',
-        (tester) async {
-          final tracks = [
-            _track('second', discNo: 1, trackNo: 2),
-            _track('fifth', discNo: 1, trackNo: 5),
-            _track('ninth', discNo: 1, trackNo: 9),
-          ];
-          final controller = (await tester.runAsync(
-            () async => _AlbumController(isLocal: isLocal, tracks: tracks),
-          ))!;
-          controller.currentPlayback = controller.currentPlayback.copyWith(
-            isPlaying: false,
-            shuffleMode: ShuffleMode.off,
-          );
-          try {
-            await _pump(tester, controller, isLocal: isLocal, width: width);
-            for (final track in tracks) {
-              final row = find.widgetWithText(TrackRowTile, track.title);
-              expect(
-                find.descendant(
-                  of: row,
-                  matching: find.text(
-                    track.trackNo!.toString().padLeft(2, '0'),
-                  ),
-                ),
-                findsOneWidget,
-              );
-            }
-            await tester.tap(find.text('fifth'));
-            await tester.pump();
-            expect(controller.calls, [
-              isLocal ? 'local:fifth:second,fifth,ninth' : 'server:album:fifth',
-            ]);
-            expect(tester.takeException(), isNull);
-          } finally {
-            await _dispose(tester, controller);
-          }
-        },
-      );
-
-      testWidgets(
-        '${isLocal ? 'local' : 'server'} album banner restarts in album order at width $width',
-        (tester) async {
-          final controller = (await tester.runAsync(
-            () async => _AlbumController(isLocal: isLocal),
-          ))!;
-          try {
-            await _pump(tester, controller, isLocal: isLocal, width: width);
-            final banner = find.byType(AlbumHero);
-            final button = find.descendant(
-              of: banner,
-              matching: find.byType(ObsidianHudIconButton),
-            );
-            expect(find.byTooltip('Play album'), findsOneWidget);
-            expect(tester.getSize(button), const Size(48, 48));
-            final bannerRect = tester.getRect(banner);
-            final buttonRect = tester.getRect(button);
-            expect(bannerRect.contains(buttonRect.topLeft), isTrue);
-            expect(bannerRect.contains(buttonRect.bottomRight), isTrue);
-            expect(buttonRect.top - bannerRect.top, lessThanOrEqualTo(24));
-            expect(bannerRect.right - buttonRect.right, lessThanOrEqualTo(24));
-
-            final expectedCalls = isLocal
-                ? ['shuffle:local:off', 'local:first:first,second,third']
-                : ['shuffle:server:off', 'server:album:null'];
-            await tester.tap(button);
-            await tester.pump();
-            expect(controller.calls, expectedCalls);
-
-            // This remains a play-from-start action when already playing.
-            await tester.tap(button);
-            await tester.pump();
-            expect(controller.calls, [...expectedCalls, ...expectedCalls]);
-            expect(find.byTooltip('Play album'), findsOneWidget);
-            expect(tester.takeException(), isNull);
-          } finally {
-            await _dispose(tester, controller);
-          }
-        },
-      );
-    }
-
-    testWidgets(
-      '${isLocal ? 'local' : 'server'} album cannot play an empty album',
-      (tester) async {
-        final controller = (await tester.runAsync(
-          () async => _AlbumController(isLocal: isLocal, empty: true),
-        ))!;
+      testWidgets('${isLocal ? 'local' : 'server'} album track actions share one modal at width $width', (
+        tester,
+      ) async {
+        final controller = (await tester.runAsync(() async => _AlbumController(isLocal: isLocal)))!;
+        controller.currentPlayback = controller.currentPlayback.copyWith(isPlaying: false);
         try {
-          await _pump(tester, controller, isLocal: isLocal);
-          final button = find.descendant(
-            of: find.byType(AlbumHero),
-            matching: find.byType(ObsidianHudIconButton),
-          );
+          await _pump(tester, controller, isLocal: isLocal, width: width);
+          final row = find.widgetWithText(TrackRowTile, 'first');
+          final menu = find.descendant(of: row, matching: find.byTooltip('Track actions'));
+          expect(menu, findsOneWidget);
+          expect(find.descendant(of: row, matching: find.byType(LikeIconButton)), findsNothing);
+          expect(find.descendant(of: row, matching: find.byType(PlaylistAddIcon)), findsNothing);
+          expect(find.descendant(of: row, matching: find.byIcon(PhonoliteIcons.download)), findsNothing);
           expect(
-            tester.widget<ObsidianHudIconButton>(button).onPressed,
-            isNull,
+            tester
+                .getSize(
+                  find
+                      .ancestor(
+                        of: find.descendant(of: row, matching: find.text('first')),
+                        matching: find.byType(Column),
+                      )
+                      .first,
+                )
+                .width,
+            greaterThan(width / 2),
           );
-          await tester.tap(button);
-          expect(controller.calls, isEmpty);
+
+          await tester.tap(menu);
+          await tester.pumpAndSettle();
+          expect(find.byType(ObsidianAlertDialog), findsOneWidget);
+          expect(find.byType(ObsidianGlassSurface), findsOneWidget);
+          expect(find.byType(PopupMenuItem<int>), findsNothing);
+          expect(find.descendant(of: find.byType(ObsidianAlertDialog), matching: find.text('first')), findsOneWidget);
+          expect(find.text('Like'), findsOneWidget);
+          expect(tester.widget<Text>(find.text('Like')).style?.color, ObsidianPalette.textMuted);
+          expect(find.text('Add to playlist'), findsOneWidget);
+          expect(find.text('Download'), isLocal ? findsNothing : findsOneWidget);
+          await tester.tap(find.text('Like'));
+          await tester.pumpAndSettle();
+          expect(find.byType(ObsidianAlertDialog), findsNothing);
+          expect(controller.calls, ['like:${isLocal ? 'local' : 'server'}:first']);
+          if (!isLocal) {
+            await tester.tap(menu);
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('Download'));
+            await tester.pumpAndSettle();
+            expect(controller.calls.last, 'download:first');
+          }
+          final callsBeforeClose = controller.calls.toList();
+          await tester.tap(menu);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('CLOSE'));
+          await tester.pumpAndSettle();
+          expect(find.byType(ObsidianAlertDialog), findsNothing);
+          expect(controller.calls, callsBeforeClose);
+          final likedRow = find.widgetWithText(TrackRowTile, 'second');
+          await tester.tap(find.descendant(of: likedRow, matching: find.byTooltip('Track actions')));
+          await tester.pumpAndSettle();
+          expect(find.text('Unlike'), findsOneWidget);
+          final filledHeart = find.byWidgetPredicate(
+            (widget) => widget is SvgAssetIcon && widget.assetName == 'assets/icons/lucide/heart-filled.svg',
+          );
+          expect(filledHeart, findsOneWidget);
+          expect(IconTheme.of(tester.element(filledHeart)).color, ObsidianPalette.gold);
+          await tester.tap(find.text('Unlike'));
+          await tester.pumpAndSettle();
+          expect(controller.calls.last, 'like:${isLocal ? 'local' : 'server'}:second');
+          await tester.tap(menu);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Add to playlist'));
+          await tester.pumpAndSettle();
+          expect(find.byType(AddToPlaylistModal), findsOneWidget);
+          expect(find.byType(ObsidianAlertDialog), findsOneWidget);
+          expect(find.text('Add to ${isLocal ? 'local' : 'server'} playlist'), findsOneWidget);
           expect(tester.takeException(), isNull);
         } finally {
           await _dispose(tester, controller);
         }
-      },
-    );
+      });
+
+      testWidgets('${isLocal ? 'local' : 'server'} partial album retains track numbers at width $width', (
+        tester,
+      ) async {
+        final tracks = [
+          _track('second', discNo: 1, trackNo: 2),
+          _track('fifth', discNo: 1, trackNo: 5),
+          _track('ninth', discNo: 1, trackNo: 9),
+        ];
+        final controller = (await tester.runAsync(() async => _AlbumController(isLocal: isLocal, tracks: tracks)))!;
+        controller.currentPlayback = controller.currentPlayback.copyWith(
+          isPlaying: false,
+          shuffleMode: ShuffleMode.off,
+        );
+        try {
+          await _pump(tester, controller, isLocal: isLocal, width: width);
+          for (final track in tracks) {
+            final row = find.widgetWithText(TrackRowTile, track.title);
+            expect(
+              find.descendant(of: row, matching: find.text(track.trackNo!.toString().padLeft(2, '0'))),
+              findsOneWidget,
+            );
+          }
+          await tester.tap(find.text('fifth'));
+          await tester.pump();
+          expect(controller.calls, [isLocal ? 'local:fifth:second,fifth,ninth' : 'server:album:fifth']);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _dispose(tester, controller);
+        }
+      });
+
+      testWidgets('${isLocal ? 'local' : 'server'} album banner restarts in album order at width $width', (
+        tester,
+      ) async {
+        final controller = (await tester.runAsync(() async => _AlbumController(isLocal: isLocal)))!;
+        try {
+          await _pump(tester, controller, isLocal: isLocal, width: width);
+          final banner = find.byType(AlbumHero);
+          final button = find.descendant(of: banner, matching: find.byType(ObsidianHudIconButton));
+          expect(find.byTooltip('Play album'), findsOneWidget);
+          expect(tester.getSize(button), const Size(48, 48));
+          final bannerRect = tester.getRect(banner);
+          final buttonRect = tester.getRect(button);
+          expect(bannerRect.contains(buttonRect.topLeft), isTrue);
+          expect(bannerRect.contains(buttonRect.bottomRight), isTrue);
+          expect(buttonRect.top - bannerRect.top, lessThanOrEqualTo(24));
+          expect(bannerRect.right - buttonRect.right, lessThanOrEqualTo(24));
+
+          final expectedCalls = isLocal
+              ? ['shuffle:local:off', 'local:first:first,second,third']
+              : ['shuffle:server:off', 'server:album:null'];
+          await tester.tap(button);
+          await tester.pump();
+          expect(controller.calls, expectedCalls);
+
+          // This remains a play-from-start action when already playing.
+          await tester.tap(button);
+          await tester.pump();
+          expect(controller.calls, [...expectedCalls, ...expectedCalls]);
+          expect(find.byTooltip('Play album'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _dispose(tester, controller);
+        }
+      });
+    }
+
+    testWidgets('${isLocal ? 'local' : 'server'} album cannot play an empty album', (tester) async {
+      final controller = (await tester.runAsync(() async => _AlbumController(isLocal: isLocal, empty: true)))!;
+      try {
+        await _pump(tester, controller, isLocal: isLocal);
+        final button = find.descendant(of: find.byType(AlbumHero), matching: find.byType(ObsidianHudIconButton));
+        expect(tester.widget<ObsidianHudIconButton>(button).onPressed, isNull);
+        await tester.tap(button);
+        expect(controller.calls, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    });
   }
 
   for (final useAlbumNumbers in [false, true]) {
@@ -289,42 +209,26 @@ void main() {
           wrapInTestApp(
             CustomScrollView(
               slivers: [
-                TrackSliverList(
-                  tracks: tracks,
-                  isPlayingTrack: (_) => false,
-                  useAlbumTrackNumbers: useAlbumNumbers,
-                ),
+                TrackSliverList(tracks: tracks, isPlayingTrack: (_) => false, useAlbumTrackNumbers: useAlbumNumbers),
               ],
             ),
           ),
         );
-        final numbers = useAlbumNumbers
-            ? ['05', '02', '03', '04', '05']
-            : ['01', '02', '03', '04', '05'];
+        final numbers = useAlbumNumbers ? ['05', '02', '03', '04', '05'] : ['01', '02', '03', '04', '05'];
         for (var index = 0; index < tracks.length; index++) {
           final row = find.widgetWithText(TrackRowTile, tracks[index].title);
-          expect(
-            find.descendant(of: row, matching: find.text(numbers[index])),
-            findsOneWidget,
-          );
+          expect(find.descendant(of: row, matching: find.text(numbers[index])), findsOneWidget);
         }
         expect(tester.takeException(), isNull);
       },
     );
   }
 
-  testWidgets('server album cannot play while its tracks are loading', (
-    tester,
-  ) async {
-    final controller = (await tester.runAsync(
-      () async => _AlbumController(loading: true),
-    ))!;
+  testWidgets('server album cannot play while its tracks are loading', (tester) async {
+    final controller = (await tester.runAsync(() async => _AlbumController(loading: true)))!;
     try {
       await _pump(tester, controller, isLocal: false);
-      final button = find.descendant(
-        of: find.byType(AlbumHero),
-        matching: find.byType(ObsidianHudIconButton),
-      );
+      final button = find.descendant(of: find.byType(AlbumHero), matching: find.byType(ObsidianHudIconButton));
       expect(tester.widget<ObsidianHudIconButton>(button).onPressed, isNull);
       expect(controller.calls, isEmpty);
       expect(tester.takeException(), isNull);
@@ -373,13 +277,7 @@ Future<void> _dispose(WidgetTester tester, _AlbumController controller) async {
   await tester.runAsync(controller.close);
 }
 
-final _album = Album(
-  id: 'album',
-  title: 'Album',
-  artist: 'Artist',
-  artistId: 'artist',
-  trackCount: 3,
-);
+final _album = Album(id: 'album', title: 'Album', artist: 'Artist', artistId: 'artist', trackCount: 3);
 final _tracks = [
   _track('first', discNo: 1, trackNo: 1),
   _track('second', discNo: 1, trackNo: 2).copyWith(liked: true),
@@ -401,13 +299,9 @@ Track _track(String id, {required int discNo, required int trackNo}) => Track(
 );
 
 class _AlbumController extends AppController {
-  _AlbumController({
-    bool isLocal = false,
-    this.empty = false,
-    this.loading = false,
-    List<Track>? tracks,
-  }) : albumTracks = tracks ?? _tracks,
-       super(connection: _AlbumConnection()) {
+  _AlbumController({bool isLocal = false, this.empty = false, this.loading = false, List<Track>? tracks})
+    : albumTracks = tracks ?? _tracks,
+      super(connection: _AlbumConnection()) {
     currentPlayback = super.playbackState.copyWith(
       track: albumTracks.last,
       isPlaying: true,
@@ -424,8 +318,7 @@ class _AlbumController extends AppController {
   final calls = <String>[];
 
   @override
-  AuthState get authState =>
-      AuthState(isAuthorized: true, baseUrl: connection.baseUrl);
+  AuthState get authState => AuthState(isAuthorized: true, baseUrl: connection.baseUrl);
   @override
   PlaybackState get playbackState => currentPlayback;
   @override
@@ -440,23 +333,21 @@ class _AlbumController extends AppController {
   Future<void> loadPlaylists() async {}
   @override
   Future<void> loadLocalPlaylists() async {}
+
   @override
-  Future<void> toggleLike(Track track) async =>
-      calls.add('like:server:${track.id}');
+  Future<String?> resolveLocalPlaylistTrackId(Track track) async => track.localId ?? track.id;
+
   @override
-  Future<void> toggleLocalLike(Track track) async =>
-      calls.add('like:local:${track.id}');
+  Future<void> toggleLike(Track track) async => calls.add('like:server:${track.id}');
   @override
-  Future<void> downloadTrack(Track track) async =>
-      calls.add('download:${track.id}');
+  Future<void> toggleLocalLike(Track track) async => calls.add('like:local:${track.id}');
+  @override
+  Future<void> downloadTrack(Track track) async => calls.add('download:${track.id}');
 
   @override
   void updateShuffleMode(ShuffleMode mode, {ActionScope? scope}) {
     calls.add('shuffle:${scope?.name}:${mode.name}');
-    currentPlayback = currentPlayback.copyWith(
-      shuffleMode: mode,
-      shuffleScope: scope,
-    );
+    currentPlayback = currentPlayback.copyWith(shuffleMode: mode, shuffleScope: scope);
   }
 
   @override
@@ -466,11 +357,7 @@ class _AlbumController extends AppController {
   }
 
   @override
-  Future<void> playOfflineTrack(
-    String trackId, {
-    List<Track>? tracks,
-    bool localLikedQueue = false,
-  }) async {
+  Future<void> playOfflineTrack(String trackId, {List<Track>? tracks, bool localLikedQueue = false}) async {
     expect(currentPlayback.shuffleMode, ShuffleMode.off);
     calls.add('local:$trackId:${tracks?.map((track) => track.id).join(',')}');
   }

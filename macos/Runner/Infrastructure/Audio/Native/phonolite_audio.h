@@ -11,10 +11,13 @@ extern "C" {
 typedef struct PhonoliteAudioPlayer PhonoliteAudioPlayer;
 
 PhonoliteAudioPlayer *phonolite_audio_open(int32_t sample_rate, int32_t channels, int32_t device_id);
+PhonoliteAudioPlayer *phonolite_audio_open_format(int32_t sample_rate, int32_t channels, int32_t device_id,
+                                                 int32_t bits_per_sample);
 void phonolite_audio_close(PhonoliteAudioPlayer *player);
 
-// Counts refer to interleaved Int16 samples, not frames or bytes.
+// Counts refer to interleaved samples in the selected PCM format, not frames or bytes.
 int32_t phonolite_audio_write(PhonoliteAudioPlayer *player, const int16_t *samples, int32_t sample_count);
+int32_t phonolite_audio_write32(PhonoliteAudioPlayer *player, const int32_t *samples, int32_t sample_count);
 void phonolite_audio_set_volume(PhonoliteAudioPlayer *player, float volume);
 void phonolite_audio_pause(PhonoliteAudioPlayer *player);
 void phonolite_audio_resume(PhonoliteAudioPlayer *player);

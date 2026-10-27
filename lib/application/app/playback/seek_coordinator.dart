@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _SeekCoordinator {
   final AppController _host;
@@ -67,6 +67,9 @@ class _SeekCoordinator {
     _resetBufferedEndHighWater(position: clamped);
     _host._updatePlayback(position: clamped, isPlaying: _host._wantsPlayback, bufferRatio: 0.0);
     await _commitSeek(clamped, requestGeneration);
+    if (_seekRequests.isCurrent(requestGeneration)) {
+      _host._resumeCoordinator.progress(force: true);
+    }
 
     if (_host._disposed || !_seekRequests.isCurrent(requestGeneration)) {
       return;

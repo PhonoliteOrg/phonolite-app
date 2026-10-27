@@ -17,6 +17,7 @@ class ApplicationWindow {
 
   void set_icon(GdkPixbuf* icon);
   void set_content(GtkWidget* content);
+  void set_minimum_content_size(int width, int height);
   void show();
 
  private:

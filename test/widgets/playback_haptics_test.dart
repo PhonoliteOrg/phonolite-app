@@ -202,6 +202,7 @@ Widget _player({
         onToggleRepeat: () {},
         onStreamModeChanged: (_) {},
         onVolumeChanged: (_) {},
+        onToggleMute: () {},
         onToggleLike: () {},
       )
     : NowPlayingMiniBar(

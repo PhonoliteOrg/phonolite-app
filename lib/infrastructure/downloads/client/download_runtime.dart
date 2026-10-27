@@ -1,9 +1,10 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of 'offline_download_client.dart';
 
 class _OfflineDownloadActorCore
     with
         _DownloadStateStoreFacade,
         _LocalCollectionCommandsFacade,
+        _LocalPlaylistDownloadsFacade,
         _RollingDownloadJobsFacade,
         _DownloadSchedulerFacade,
         _DownloadCommandsFacade,
@@ -63,6 +64,8 @@ class _OfflineDownloadActorCore
   @override
   late final _LocalCollectionCommands _ownerCollections;
   @override
+  late final _LocalPlaylistDownloads _ownerPlaylistDownloads;
+  @override
   late final _DownloadStateStore _ownerState;
   final ServerConnection connection;
   final OfflineLibraryStorage _storage;
@@ -85,6 +88,7 @@ class _OfflineDownloadActorCore
     _ownerScheduler = _DownloadScheduler(this);
     _ownerRolling = _RollingDownloadJobs(this);
     _ownerCollections = _LocalCollectionCommands(this);
+    _ownerPlaylistDownloads = _LocalPlaylistDownloads(this);
     _ownerState = _DownloadStateStore(this);
   }
 
@@ -112,6 +116,8 @@ class _OfflineDownloadActorCore
 
   List<Track> get localPlaylistTracks => List.unmodifiable(_localPlaylistTracks);
 
+  List<LocalPlaylistEntry> get localPlaylistEntries => List.unmodifiable(_ownerCollections._localPlaylistEntries);
+
   Future<void> dispose() async {
     _disposed = true;
 
@@ -128,6 +134,7 @@ class _OfflineDownloadActorCore
     await Future.wait(_active.values.toList(), eagerError: false);
     await _topUpFuture;
     await _localUserDataReloadChain;
+    await _ownerPlaylistDownloads.dispose();
     await _pendingFileCleanupFuture;
 
     while (_pendingStorageOperations.isNotEmpty) {
@@ -213,6 +220,7 @@ class _OfflineDownloadActorCore
 
     unawaited(_cleanupPendingFileDeletes());
     unawaited(_repairOfflineMetadataFragments());
+    await _resumePendingPlaylistDownloads();
   }
 
   Future<void> _ensureLoaded() async {

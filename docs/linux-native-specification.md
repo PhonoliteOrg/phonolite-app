@@ -15,6 +15,7 @@ Flutter owns application pages, navigation, library state and playback workflows
 | [FlutterHost](../linux/runner/bootstrap/flutter_host.cc) | Per-window Flutter view/engine, plugin registration, capability assembly and teardown | Bootstrap |
 | [ApplicationWindow](../linux/runner/ui/shell/application_window.cc) | GTK frame, title/header selection, initial geometry and presentation | UI/Shell |
 | [Directory outcome](../linux/runner/data/models/directories/directory_open_result.h), [channel adapter](../linux/runner/infrastructure/flutter/directories_channel_adapter.cc) and [launcher](../linux/runner/infrastructure/shell/directory_launcher.cc) | Independent result values, Flutter wire handling and GIO opening | Data and separate Infrastructure capabilities |
+| [Window constraints adapter](../linux/runner/infrastructure/flutter/window_constraints_channel_adapter.cc) | Validate the `phonolite/window` content-size request and invoke the shell capability bound by FlutterHost | Infrastructure transport and UI/Shell sizing |
 | [runner CMake](../linux/runner/CMakeLists.txt) | Explicit runner sources, generated registrant, compiler settings and target linkage | Runner build integration |
 | [project CMake](../linux/CMakeLists.txt) | Application identity, Flutter/plugin integration, bundle installation and library lookup | Project build integration |
 | [generated registrant](../linux/flutter/generated_plugin_registrant.cc), [generated plugin CMake](../linux/flutter/generated_plugins.cmake) and [Flutter CMake](../linux/flutter/CMakeLists.txt) | Managed embedding/plugin integration and ephemeral build output | Flutter-managed files |
@@ -46,6 +47,8 @@ linux/
       flutter/
         directories_channel_adapter.h
         directories_channel_adapter.cc
+        window_constraints_channel_adapter.h
+        window_constraints_channel_adapter.cc
       shell/
         directory_launcher.h
         directory_launcher.cc
@@ -93,6 +96,8 @@ Dart DesktopDirectoryService prepares the absolute directory
 ```
 
 Compose concrete services and narrow callbacks first. A single adapter may own its attachment mechanics directly. Extract a shared channel owner when several adapters share actual registration, dispatch, reply or teardown decisions. An interface names a contract; shared execution policy still needs a shared implementation.
+
+Desktop window limits originate in Dart's `DesktopWindowConfiguration`. On Linux the lifecycle platform sends `setMinimumContentSize` with logical `width` and `height` on `phonolite/window`. The adapter accepts finite positive numeric dimensions that fit a GTK integer, rounds fractional minimums up and invokes its typed size callback. FlutterHost binds that callback to ApplicationWindow, which sets the borrowed Flutter content widget's minimum request. GTK then accounts for header bars, shadows and later geometry changes. Do not replace this with `window_manager`'s direct GDK geometry hints: its bounds omit client decorations while its hints target the decorated GDK window, and GTK can overwrite those hints. No native copy of the Dart breakpoint is required.
 
 If native views are added, common frames own content/toolbar placement and fixed or scrolling toolbar behavior. Pages assemble named sections and bind actions. Application menus/navigation remain shell responsibilities; page actions belong to the page toolbar. Keep nested GTK widget assembly readable through named pieces, rather than reproducing the same container and styling sequence in every page.
 

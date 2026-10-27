@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _SessionCoordinator {
   final AppController _host;
@@ -550,9 +550,17 @@ class _SessionCoordinator {
         return;
       }
 
-      _host._updatePlayback(repeatMode: _host._parseRepeatMode(settings.repeatMode));
       _host._serverHealthFailureCount = 0;
       _setAuthorized(true, error: null);
+      await _host._preferencesCoordinator._adoptLegacyRepeatMode(
+        settings.repeatMode,
+        sessionRevision: _host.connection.sessionRevision,
+      );
+
+      if (!_isRestoreSessionCurrent(revision)) {
+        return;
+      }
+
       unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
       unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
       unawaited(_host._refreshServerPorts(timeout: AppController._storedSessionRequestTimeout, retryable: false));
@@ -586,10 +594,73 @@ class _SessionCoordinator {
   }
 
   Future<void> _storeSavedCredentials(AuthCredentials credentials) async {
+    final current = _host.connection.token == credentials.token && _host.connection.baseUrl == credentials.baseUrl;
+    final userId = credentials.userId ?? (current ? _host._accountServices.state?.userId : null);
+    final saved = AuthCredentials(
+      baseUrl: credentials.baseUrl,
+      token: credentials.token,
+      username: credentials.username,
+      trust: credentials.trust,
+      serverId: credentials.serverId,
+      userId: userId,
+    );
+
     _savedCredentialsRevision++;
     _savedCredentialsInvalidated = false;
-    _savedCredentials = credentials;
-    await _queueSavedCredentialsWrite(() => _host._authStorage.write(credentials));
+    _savedCredentials = saved;
+    await _queueSavedCredentialsWrite(() => _host._authStorage.write(saved));
+  }
+
+  /// Account resume caches use a verified UUID even when statistics are disabled.
+  void _rememberAccountIdentity(String userId) {
+    final saved = _savedCredentials;
+
+    if (saved == null ||
+        userId.isEmpty ||
+        saved.userId == userId ||
+        saved.token != _host.connection.token ||
+        saved.baseUrl != _host.connection.baseUrl ||
+        !_authState.isAuthorized) {
+      return;
+    }
+
+    unawaited(
+      _storeSavedCredentials(
+        AuthCredentials(
+          baseUrl: saved.baseUrl,
+          token: saved.token,
+          username: saved.username,
+          trust: saved.trust,
+          serverId: saved.serverId,
+          userId: userId,
+        ),
+      ).catchError((Object error) => AppLogger.debug('Could not remember the playback account: $error')),
+    );
+  }
+
+  void _updateAccountUsername(String username) {
+    final saved = _savedCredentials;
+
+    if (saved == null ||
+        username.isEmpty ||
+        saved.username == username ||
+        saved.token != _host.connection.token ||
+        saved.baseUrl != _host.connection.baseUrl) {
+      return;
+    }
+
+    unawaited(
+      _storeSavedCredentials(
+        AuthCredentials(
+          baseUrl: saved.baseUrl,
+          token: saved.token,
+          username: username,
+          trust: saved.trust,
+          serverId: saved.serverId,
+          userId: saved.userId,
+        ),
+      ).catchError((Object error) => AppLogger.debug('Could not update the saved account name: $error')),
+    );
   }
 
   Future<void> _clearSavedCredentials() async {
@@ -622,6 +693,8 @@ class _SessionCoordinator {
     }
 
     if (_artistListSessionRevision != _host.connection.sessionRevision) {
+      unawaited(_host._accountServices.stop());
+      _host._resumeCoordinator.detachDownloadedSource();
       _artistListSessionRevision = _host.connection.sessionRevision;
       _host._invalidateArtistPages();
       _host._invalidateArtistReleases();
@@ -639,7 +712,6 @@ class _SessionCoordinator {
       _host._playlistsCoordinator._clearServerData();
       _host._libraryCoordinator._clearPersonalizedData();
       _host._shuffleCoordinator._clearServerShuffleSession();
-      _host._updatePlayback(repeatMode: PlaybackRepeatMode.off);
       if (_host._playbackState.track != null && !_host._playbackState.isLocalPlayback) {
         _clearPlaybackForServerDisconnect();
       }
@@ -657,12 +729,21 @@ class _SessionCoordinator {
 
     if (_authState.isAuthorized) {
       _host._startMetadataEventListener();
+      unawaited(_host._collectionCoordinator.start());
       unawaited(_host._listeningSync?.sync(immediate: true) ?? Future<void>.value());
     } else {
       _host._stopMetadataEventListener();
+      unawaited(_host._collectionCoordinator.stop());
+      unawaited(_host._accountServices.stop());
     }
 
     _host._syncServerReconnectLoop();
+
+    final saved = _savedCredentials;
+
+    if (status == SessionStatus.serverUnavailable && saved != null) {
+      unawaited(_host._resumeCoordinator.restoreSavedAccount(saved));
+    }
   }
 
   bool _requireServer(String action) {

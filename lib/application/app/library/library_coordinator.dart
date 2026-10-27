@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _LibraryCoordinator {
   final AppController _host;
@@ -29,6 +29,10 @@ class _LibraryCoordinator {
   final _albumRequests = RequestGeneration();
   String? _lastArtistId;
   String? _lastAlbumId;
+  String? _catalogueRevision;
+  String _lastSearchQuery = '';
+  String _lastSearchFilter = 'all';
+  int _catalogueReadFailures = 0;
   late final MetadataEventListener _metadataEvents = MetadataEventListener(
     openStream: _host.connection.streamMetadataEvents,
     isSessionCurrent: (baseUrl, token) =>
@@ -60,6 +64,9 @@ class _LibraryCoordinator {
     _tracks = [];
     _search = [];
     _lastAlbumId = null;
+    _catalogueRevision = null;
+    _lastSearchQuery = '';
+    _lastSearchFilter = 'all';
     _tracksController.add(const []);
     _searchController.add(const []);
     _setTracksLoading(false);
@@ -185,6 +192,7 @@ class _LibraryCoordinator {
         return;
       }
 
+      _catalogueReadFailures++;
       _host._handleApiError(err, context: 'artist releases');
     } catch (err) {
       if (_host._disposed ||
@@ -193,6 +201,7 @@ class _LibraryCoordinator {
         return;
       }
 
+      _catalogueReadFailures++;
       _host._pushMessage('Failed to load artist releases: $err', level: LogLevel.warning);
     } finally {
       if (_artistReleasesRequests.isCurrent(epoch)) {
@@ -228,9 +237,11 @@ class _LibraryCoordinator {
       _albumsController.add(List.unmodifiable(_albums));
     } on ApiException catch (err) {
       if (!isCurrent()) return;
+      _catalogueReadFailures++;
       _host._handleApiError(err, context: 'albums');
     } catch (err) {
       if (!isCurrent()) return;
+      _catalogueReadFailures++;
       _host._pushMessage('Failed to load albums: $err', level: LogLevel.warning);
     } finally {
       if (isCurrent()) _setAlbumsLoading(false);
@@ -264,9 +275,11 @@ class _LibraryCoordinator {
       _tracksController.add(List.unmodifiable(_tracks));
     } on ApiException catch (err) {
       if (!isCurrent()) return;
+      _catalogueReadFailures++;
       _host._handleApiError(err, context: 'tracks');
     } catch (err) {
       if (!isCurrent()) return;
+      _catalogueReadFailures++;
       _host._pushMessage('Failed to load tracks: $err', level: LogLevel.warning);
     } finally {
       if (isCurrent()) _setTracksLoading(false);
@@ -275,6 +288,8 @@ class _LibraryCoordinator {
 
   Future<void> search(String query, {String filter = 'all'}) async {
     final trimmed = query.trim();
+    _lastSearchQuery = trimmed;
+    _lastSearchFilter = filter;
     final requestId = _searchRequests.advance();
     final revision = _host.connection.sessionRevision;
     bool isCurrent() =>
@@ -312,12 +327,14 @@ class _LibraryCoordinator {
         return;
       }
 
+      _catalogueReadFailures++;
       _host._handleApiError(err, context: 'search');
     } catch (err) {
       if (!isCurrent()) {
         return;
       }
 
+      _catalogueReadFailures++;
       _host._pushMessage('Search failed: $err');
     } finally {
       if (isCurrent()) {
@@ -412,15 +429,22 @@ class _LibraryCoordinator {
   Future<void> _stopMetadataEventListener() => _metadataEvents.stop();
 
   Future<void> _applyMetadataEvent(MetadataUpdateEvent event) async {
+    if (event.kind == 'catalogue' && _catalogueRevision == event.id) {
+      return;
+    }
+
     // A read started before this update may still contain the old metadata.
     _host.connection.invalidateMetadataReads();
     _host._albumIdByKey.clear();
     _host._metadataReadRevision++;
 
     switch (event.kind) {
+      case 'catalogue':
+        await _reconcileCatalogue(event.id);
+        break;
       case 'resync':
-        _artistCatalog.details.reset();
-        _artistCatalog.browse.reconcile();
+        _catalogueRevision = null;
+        await _reconcileCatalogue('resync-${event.revision}');
         break;
       case 'artist':
         await _refreshMetadataArtist(event.artistId ?? event.id);
@@ -434,6 +458,63 @@ class _LibraryCoordinator {
         await _refreshMetadataAlbum(event.albumId ?? event.id, reloadCurrentArtistAlbums: shouldReloadAlbums);
         await _host.loadArtists(refresh: true);
         break;
+    }
+  }
+
+  Future<void> _reconcileCatalogue(String revision) async {
+    if (_catalogueRevision == revision) {
+      return;
+    }
+
+    final session = _host.connection.sessionRevision;
+    final failures = _catalogueReadFailures;
+    _catalogueRevision = revision;
+    _artistReleasesRequests.advance();
+    _albumRequests.advance();
+    _trackRequests.advance();
+    _searchRequests.advance();
+    _artistCatalog.details.reset();
+    _artistCatalog.browse.reconcile();
+    final artistId = _lastArtistId;
+    final albumId = _lastAlbumId;
+    final query = _lastSearchQuery;
+    final filter = _lastSearchFilter;
+    _albums = const [];
+    _tracks = const [];
+    _search = const [];
+    _artistReleases = const ArtistReleases();
+    _albumsController.add(const []);
+    _tracksController.add(const []);
+    _searchController.add(const []);
+    _artistReleasesController.add(_artistReleases);
+
+    await _host.loadArtists(refresh: true);
+
+    if (!_host._sessionCoordinator._isServerSessionCurrent(session)) {
+      return;
+    }
+
+    if (artistId != null && _lastArtistId == artistId) {
+      if (_artistReleasesArtistId == artistId) {
+        await _host.loadArtistReleases(artistId);
+      } else {
+        await _host.loadAlbums(artistId);
+      }
+    }
+
+    if (albumId != null && _lastAlbumId == albumId && _host._sessionCoordinator._isServerSessionCurrent(session)) {
+      await _host.loadTracks(albumId);
+    }
+
+    if (query.isNotEmpty && query == _lastSearchQuery && _host._sessionCoordinator._isServerSessionCurrent(session)) {
+      await _host.search(query, filter: filter);
+    }
+
+    _host._collectionCoordinator.refresh();
+
+    if (_catalogueReadFailures != failures && _host._sessionCoordinator._isServerSessionCurrent(session)) {
+      // Periodic catalogue markers retry a refresh interrupted by transport failure.
+      _catalogueRevision = null;
     }
   }
 

@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _ArtistJobDiscovery {
   final _OfflineDownloadActorCore _host;
@@ -62,6 +62,12 @@ class _ArtistJobDiscovery {
           if (id.isEmpty || !seen.add(id)) {
             continue;
           }
+
+          await _host._ownerPlaylistDownloads.registerDemand(
+            SourceTrackRef(serverBaseUrl: job.serverBaseUrl, serverTrackId: id),
+            ownerKind: 'collection',
+            ownerId: job.jobId,
+          );
 
           final existing = _host.find(job.serverBaseUrl, id);
 

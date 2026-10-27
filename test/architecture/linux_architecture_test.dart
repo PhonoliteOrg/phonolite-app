@@ -125,6 +125,10 @@ void main() {
       host.indexOf('void FlutterHost::create('),
     );
     expect(destruction.indexOf('directories_.detach()'), lessThan(destruction.indexOf('g_clear_object(&engine_)')));
+    expect(
+      destruction.indexOf('window_constraints_.detach()'),
+      lessThan(destruction.indexOf('g_clear_object(&engine_)')),
+    );
     expect(destruction, contains('g_signal_handler_disconnect'));
 
     final adapter = readProjectFile('$_runner/infrastructure/flutter/directories_channel_adapter.cc');
@@ -143,6 +147,40 @@ void main() {
       detach.indexOf('fl_binary_messenger_set_message_handler_on_channel('),
       lessThan(detach.indexOf('g_clear_object(&channel_)')),
     );
+  });
+
+  test('Linux window constraints validate Dart dimensions and keep GTK content sizing in the shell', () {
+    final adapter = readProjectFile('$_runner/infrastructure/flutter/window_constraints_channel_adapter.cc');
+    expectContainsAll(adapter, const [
+      '"phonolite/window"',
+      '"setMinimumContentSize"',
+      'FL_VALUE_TYPE_MAP',
+      'FL_VALUE_TYPE_FLOAT',
+      'FL_VALUE_TYPE_INT',
+      '!std::isfinite(dimension) || dimension <= 0 || dimension > G_MAXINT',
+      'std::ceil(dimension)',
+      '"invalid_size", "Positive finite window dimensions are required."',
+      'fl_method_not_implemented_response_new()',
+      'set_minimum_content_size_(width, height)',
+      'fl_method_success_response_new(nullptr)',
+      'fl_binary_messenger_set_message_handler_on_channel(',
+      'fl_method_channel_set_method_call_handler(channel_, nullptr, nullptr, nullptr)',
+    ]);
+    expect(RegExp(r'fl_method_call_respond\(').allMatches(adapter), hasLength(1));
+    expect(adapter, isNot(contains('gtk_widget_set_size_request')));
+
+    final shell = readProjectFile('$_runner/ui/shell/application_window.cc');
+    expectContainsAll(shell, const [
+      'GtkWidget* content = gtk_bin_get_child(GTK_BIN(window_))',
+      'gtk_widget_set_size_request(content, width, height)',
+    ]);
+
+    final host = readProjectFile('$_runner/bootstrap/flutter_host.cc');
+    expectContainsAll(host, const [
+      'window_.set_minimum_content_size(width, height)',
+      'window_constraints_.attach(fl_engine_get_binary_messenger(engine_))',
+    ]);
+    expect(host.indexOf('window_.set_content('), lessThan(host.indexOf('window_constraints_.attach(')));
   });
 
   test('Linux directory boundary retains its absolute-path and response contracts', () {

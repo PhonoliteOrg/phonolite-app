@@ -6,26 +6,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
-import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
-import 'package:phonolite_app/pages/home/home_page.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
+import 'package:phonolite_app/pages/favorites/liked_page.dart';
+import 'package:phonolite_app/pages/home/home_page.dart';
 import 'package:phonolite_app/pages/library/album_detail_screen.dart';
 import 'package:phonolite_app/pages/library/artist_detail_screen.dart';
 import 'package:phonolite_app/pages/library/library_page.dart';
 import 'package:phonolite_app/pages/library/local_album_detail_screen.dart';
 import 'package:phonolite_app/pages/library/local_artist_detail_screen.dart';
+import 'package:phonolite_app/pages/listening_stats/stats_page.dart';
 import 'package:phonolite_app/pages/playlists/playlist_detail_view.dart';
 import 'package:phonolite_app/pages/playlists/playlists_page.dart';
+import 'package:phonolite_app/pages/settings/settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
 import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
@@ -36,11 +42,78 @@ import 'package:phonolite_app/ui/shared/music/artists/artist_card.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 import 'package:phonolite_app/ui/shell/adaptive_scaffold.dart';
+import 'package:phonolite_app/ui/shell/navigation/base_app_navigation.dart';
 
 import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  for (final width in [430.0, 1280.0]) {
+    for (final statsEnabled in [false, true]) {
+      testWidgets('reselecting each destination returns to its root (stats: $statsEnabled, width: $width)', (
+        tester,
+      ) async {
+        final controller = (await tester.runAsync(
+          () async => _Controller(connected: false, tracks: [], playing: null, statsEnabled: statsEnabled),
+        ))!;
+
+        try {
+          await _pumpHome(tester, controller, width: width);
+
+          final homeRoute = ModalRoute.of(tester.element(find.byType(HomePage)));
+          final destinations = <(String, Type)>[
+            ('Library', LibraryPage),
+            ('Playlists', PlaylistsPage),
+            ('Liked', LikedPage),
+            if (statsEnabled) ('Stats', StatsPage),
+            ('Settings', SettingsPage),
+          ];
+
+          for (final (label, pageType) in destinations) {
+            await _tapDestination(tester, label);
+
+            final page = find.byType(pageType);
+            final rootRoute = ModalRoute.of(tester.element(page));
+            final navigator = Navigator.of(tester.element(page));
+
+            for (final detail in ['First', 'Second']) {
+              unawaited(
+                navigator.push<void>(
+                  MaterialPageRoute<void>(
+                    settings: RouteSettings(name: '/$label/$detail'),
+                    builder: (_) => Scaffold(body: Text('$label $detail detail')),
+                  ),
+                ),
+              );
+            }
+
+            await tester.pumpAndSettle();
+            await _tapDestination(tester, label == 'Library' ? 'Playlists' : 'Library');
+            expect(navigator.canPop(), isTrue);
+
+            await _tapDestination(tester, label);
+            expect(find.text('$label Second detail'), findsOneWidget);
+
+            await _tapDestination(tester, label);
+            expect(find.text('$label First detail'), findsNothing);
+            expect(find.text('$label Second detail'), findsNothing);
+            expect(ModalRoute.of(tester.element(page)), same(rootRoute));
+            expect(navigator.canPop(), isFalse);
+
+            await _tapDestination(tester, label);
+            expect(ModalRoute.of(tester.element(page)), same(rootRoute));
+            expect(ModalRoute.of(tester.element(find.byType(HomePage))), same(homeRoute));
+            expect(navigator.canPop(), isFalse);
+          }
+
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _dispose(tester, controller);
+        }
+      });
+    }
+  }
 
   testWidgets('session invalidation opens sign-in once in settings', (tester) async {
     final controller = (await tester.runAsync(() async => _SignInController()))!;
@@ -379,7 +452,8 @@ void main() {
     final connection = controller.connection as _Connection;
     // Visible Library tiles can independently refresh artist metadata. Keep
     // this assertion focused on the track/album reads caused by navigation.
-    Iterable<String> navigationRequests() => connection.metadataRequests.where((request) => !request.startsWith('artist:'));
+    Iterable<String> navigationRequests() =>
+        connection.metadataRequests.where((request) => !request.startsWith('artist:'));
     connection.pendingTrack = Completer<Track>();
     try {
       await _pumpHome(tester, controller, width: 1280);
@@ -948,6 +1022,16 @@ Future<void> _selectTab(WidgetTester tester, int index) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapDestination(WidgetTester tester, String label) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byWidgetPredicate((widget) => widget is BaseAppNavigation),
+      matching: find.byTooltip(label),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 class _StatsController extends _Controller {
   _StatsController({required super.connected, List<Track>? downloads})
     : super(tracks: downloads ?? [_track], playing: null);
@@ -967,12 +1051,19 @@ class _StatsController extends _Controller {
 }
 
 class _Controller extends AppController {
+  final bool connected;
+  final bool statsEnabled;
+  @override
+  final List<Track> tracks;
+  late final PlaybackState currentPlayback;
+
   _Controller({
     required this.connected,
     required this.tracks,
     required Track? playing,
     bool localPlayback = true,
     bool fromPlaylist = false,
+    this.statsEnabled = true,
   }) : super(connection: _Connection()) {
     currentPlayback = super.playbackState.copyWith(
       track: playing,
@@ -994,12 +1085,10 @@ class _Controller extends AppController {
     );
   }
 
-  final bool connected;
-  @override
-  final List<Track> tracks;
-  late final PlaybackState currentPlayback;
-
   List<String> get serverMetadataRequests => (connection as _Connection).metadataRequests;
+
+  @override
+  bool get statsCollectionEnabled => statsEnabled;
 
   @override
   PlaybackState get playbackState => currentPlayback;
@@ -1055,10 +1144,30 @@ class _Controller extends AppController {
   List<Track> get localPlaylistTracks => tracks;
 
   @override
+  List<LocalPlaylistEntry> get localPlaylistEntries => [
+    for (var index = 0; index < tracks.length; index++)
+      LocalPlaylistEntry(
+        entryKey: 'local-$index',
+        playlistId: 'playlist',
+        position: index,
+        track: tracks[index],
+        localTrackId: tracks[index].localId ?? tracks[index].id,
+        status: OfflineDownloadStatus.downloaded,
+        isPending: false,
+      ),
+  ];
+
+  @override
+  Stream<List<LocalPlaylistEntry>> get localPlaylistEntriesStream => const Stream.empty();
+
+  @override
   Future<void> loadPlaylistTracks(String playlistId) async {}
 
   @override
   Future<void> loadLocalPlaylistTracks(String playlistId) async {}
+
+  @override
+  Future<void> loadLocalPlaylistEntries(String playlistId) async {}
 
   @override
   Future<void> loadLikedTracks() async {}
@@ -1075,8 +1184,11 @@ class _SignInController extends _Controller {
   final authUpdates = StreamController<AuthState>.broadcast();
   bool invalidated = false;
   @override
-  AuthState get authState => AuthState(baseUrl: connection.baseUrl,
-    requiresSignIn: invalidated, error: invalidated ? 'Server keys changed. Sign in again.' : null);
+  AuthState get authState => AuthState(
+    baseUrl: connection.baseUrl,
+    requiresSignIn: invalidated,
+    error: invalidated ? 'Server keys changed. Sign in again.' : null,
+  );
   @override
   Stream<AuthState> get authStream => authUpdates.stream;
   @override

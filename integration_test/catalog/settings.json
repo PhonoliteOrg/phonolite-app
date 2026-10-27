@@ -6,6 +6,7 @@
     "lib/pages/logs/logs_page.dart",
     "lib/ui/features/logs/widgets/message_log.dart",
     "lib/ui/features/settings/sections/general_settings_section.dart",
+    "lib/ui/features/settings/sections/display_settings_section.dart",
     "lib/ui/features/settings/sections/local_storage_settings_section.dart",
     "lib/ui/features/settings/sections/misc_settings_section.dart",
     "lib/ui/features/settings/sections/user_settings_section.dart",
@@ -13,6 +14,8 @@
     "lib/ui/features/settings/widgets/offline_storage_section.dart",
     "lib/ui/features/settings/widgets/server_connection_setting.dart",
     "lib/ui/features/settings/widgets/settings_row.dart",
+    "lib/ui/features/settings/widgets/settings_toggle.dart",
+    "lib/ui/shared/design_system/controls/obsidian_switch.dart",
     "lib/ui/features/settings/dialogs/settings_dialogs.dart",
     "lib/ui/features/settings/dialogs/storage_path_dialog.dart",
     "lib/ui/structures/sections/base_section.dart",
@@ -25,7 +28,7 @@
     {
       "id": "settings.scroll",
       "action": "Scroll settings groups",
-      "expected": "Reach all General/User/Local Storage/Miscellaneous controls",
+      "expected": "Reach all available General/User/Display/Local Storage/Miscellaneous controls",
       "availability": "all",
       "risk": "browse",
       "journeys": [
@@ -78,6 +81,30 @@
         "settings.custom_shuffle_browse",
         "settings.custom_shuffle_scopes"
       ]
+    },
+    {
+      "id": "settings.display_library_order",
+      "action": "Toggle Library source order (local first/server first)",
+      "expected": "Persist the device's Library source order and apply it to browse and search results",
+      "availability": "Authenticated server connection; hidden with the Display section otherwise",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "settings.display_playlists_order",
+      "action": "Toggle Playlists source order (local first/server first)",
+      "expected": "Persist the device's Playlists source order independently of other pages",
+      "availability": "Authenticated server connection; hidden with the Display section otherwise",
+      "risk": "preference",
+      "journeys": []
+    },
+    {
+      "id": "settings.display_likes_order",
+      "action": "Toggle Likes source order (local first/server first)",
+      "expected": "Persist the device's Likes source order independently of other pages",
+      "availability": "Authenticated server connection; hidden with the Display section otherwise",
+      "risk": "preference",
+      "journeys": []
     },
     {
       "id": "settings.statistics_toggle",

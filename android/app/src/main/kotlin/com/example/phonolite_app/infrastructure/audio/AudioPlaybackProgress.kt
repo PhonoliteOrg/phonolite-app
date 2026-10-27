@@ -8,6 +8,7 @@ internal class AudioPlaybackProgress(
   private val playbackProbe: AudioPlaybackProbe,
   private val sampleRateHz: Int,
   private val bytesPerFrame: Int,
+  private val bytesPerSample: Int = 2,
   private val monotonicTimeNs: () -> Long = System::nanoTime
 ) {
   private companion object {
@@ -61,11 +62,12 @@ internal class AudioPlaybackProgress(
 
     // Writes, pauses and idle checks also poll. Completed frames remain here
     // until the engine explicitly consumes them, including across a flush.
-    val maximumFrames = Int.MAX_VALUE.toLong() / (bytesPerFrame / 2)
+    val channels = bytesPerFrame / bytesPerSample
+    val maximumFrames = Int.MAX_VALUE.toLong() / channels
     val doneFrames = minOf(uncollectedFrames, maximumFrames)
     uncollectedFrames -= doneFrames
 
-    return (doneFrames * bytesPerFrame / 2).toInt()
+    return (doneFrames * channels).toInt()
   }
 
   fun pollCompletedFrames(): Long {

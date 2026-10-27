@@ -3,6 +3,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 #include <stdatomic.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
@@ -21,6 +22,8 @@ struct PhonoliteAudioPlayer {
   AudioQueueRef queue;
   atomic_int in_flight;
   atomic_llong completed_samples;
+  int32_t channels;
+  int32_t bits_per_sample;
   bool paused;
   bool started;
   OSStatus output_error;
@@ -107,7 +110,12 @@ static OSStatus phonolite_audio_start_if_ready(PhonoliteAudioPlayer *player) {
 PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open(int32_t sampleRate,
                                                             int32_t channels,
                                                             int32_t deviceId) {
-  if (sampleRate <= 0 || channels <= 0) {
+  return phonolite_audio_open_format(sampleRate, channels, deviceId, 16);
+}
+
+PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open_format(int32_t sampleRate, int32_t channels,
+                                                                   int32_t deviceId, int32_t bitsPerSample) {
+  if (sampleRate <= 0 || channels <= 0 || channels > 32 || (bitsPerSample != 16 && bitsPerSample != 32)) {
     return NULL;
   }
   (void)deviceId;
@@ -124,17 +132,19 @@ PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open(int32_t sampleRate,
   atomic_init(&player->in_flight, 0);
   atomic_init(&player->completed_samples, 0);
   pthread_mutex_init(&player->buffer_lock, NULL);
+  player->channels = channels;
+  player->bits_per_sample = bitsPerSample;
 
   AudioStreamBasicDescription asbd;
   memset(&asbd, 0, sizeof(asbd));
   asbd.mSampleRate = sampleRate;
   asbd.mFormatID = kAudioFormatLinearPCM;
   asbd.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
-  asbd.mBytesPerPacket = (UInt32)(channels * 2);
+  asbd.mBytesPerPacket = (UInt32)(channels * bitsPerSample / 8);
   asbd.mFramesPerPacket = 1;
-  asbd.mBytesPerFrame = (UInt32)(channels * 2);
+  asbd.mBytesPerFrame = (UInt32)(channels * bitsPerSample / 8);
   asbd.mChannelsPerFrame = (UInt32)channels;
-  asbd.mBitsPerChannel = 16;
+  asbd.mBitsPerChannel = (UInt32)bitsPerSample;
 
   OSStatus status = AudioQueueNewOutput(&asbd,
                                         phonolite_audio_output_callback,
@@ -174,10 +184,10 @@ PHONOLITE_EXPORT void phonolite_audio_close(PhonoliteAudioPlayer *player) {
   free(player);
 }
 
-PHONOLITE_EXPORT int32_t phonolite_audio_write(PhonoliteAudioPlayer *player,
-                                               const int16_t *samples,
-                                               int32_t sampleCount) {
-  if (player == NULL || samples == NULL || sampleCount <= 0) {
+static int32_t phonolite_audio_write_pcm(PhonoliteAudioPlayer *player, const void *samples, int32_t sampleCount,
+                                         int32_t bitsPerSample) {
+  if (player == NULL || samples == NULL || sampleCount <= 0 || player->bits_per_sample != bitsPerSample ||
+      sampleCount % player->channels != 0 || sampleCount > INT32_MAX / (bitsPerSample / 8)) {
     return -1;
   }
   if (player->queue == NULL) {
@@ -193,7 +203,7 @@ PHONOLITE_EXPORT int32_t phonolite_audio_write(PhonoliteAudioPlayer *player,
   if (entry == NULL) {
     return -4;
   }
-  UInt32 byteSize = (UInt32)(sampleCount * (int32_t)sizeof(int16_t));
+  UInt32 byteSize = (UInt32)(sampleCount * (bitsPerSample / 8));
   AudioQueueBufferRef buffer = NULL;
   OSStatus status = AudioQueueAllocateBuffer(player->queue, byteSize, &buffer);
   if (status != noErr || buffer == NULL) {
@@ -216,6 +226,16 @@ PHONOLITE_EXPORT int32_t phonolite_audio_write(PhonoliteAudioPlayer *player,
     return (int32_t)status;
   }
   return (int32_t)phonolite_audio_start_if_ready(player);
+}
+
+PHONOLITE_EXPORT int32_t phonolite_audio_write(PhonoliteAudioPlayer *player, const int16_t *samples,
+                                               int32_t sampleCount) {
+  return phonolite_audio_write_pcm(player, samples, sampleCount, 16);
+}
+
+PHONOLITE_EXPORT int32_t phonolite_audio_write32(PhonoliteAudioPlayer *player, const int32_t *samples,
+                                                 int32_t sampleCount) {
+  return phonolite_audio_write_pcm(player, samples, sampleCount, 32);
 }
 
 PHONOLITE_EXPORT int32_t phonolite_audio_flush(PhonoliteAudioPlayer *player) {

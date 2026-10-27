@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 Future<Object?> _handleOfflineActorCommand(_OfflineDownloadActorCore core, OfflineActorCommand command) async {
   switch (command.name) {
@@ -136,6 +136,34 @@ Future<Object?> _handleOfflineActorCommand(_OfflineDownloadActorCore core, Offli
       final request = command.payload! as OfflinePlaylistTrackRequest;
 
       return core.addLocalTrackToPlaylist(request.playlist, request.track);
+    case 'addSourceToLocalPlaylist':
+      final request = command.payload! as OfflinePlaylistSourceRequest;
+
+      await core.addSourceToLocalPlaylist(request.playlistId, request.track, request.source);
+
+      return null;
+    case 'retryLocalPlaylistEntry':
+      await core.retryLocalPlaylistEntry(command.payload! as LocalPlaylistEntry);
+
+      return null;
+    case 'resumeLocalPlaylistEntry':
+      await core.resumeLocalPlaylistEntry(command.payload! as LocalPlaylistEntry);
+
+      return null;
+    case 'resolveLocalPlaylistTrackId':
+      return core.resolveLocalPlaylistTrackId(command.payload! as Track);
+    case 'readTrackSourceMatch':
+      final request = command.payload! as OfflineTrackMatchRequest;
+
+      return core._storage.readServerTrackMatches(request.serverBaseUrl, request.localTrackId);
+    case 'saveTrackSourceMatch':
+      await core._storage.saveTrackSourceMatch(command.payload! as TrackSourceMatch);
+
+      return null;
+    case 'removeTrackSourceMatch':
+      await core._storage.removeTrackSourceMatch(command.payload! as SourceTrackRef);
+
+      return null;
     case 'removeLocalTrackFromPlaylist':
       final request = command.payload! as OfflinePlaylistTrackRequest;
 

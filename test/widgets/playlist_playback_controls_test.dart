@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/pages/playlists/playlist_detail_view.dart';
@@ -20,361 +22,289 @@ import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart
 import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
+import 'package:phonolite_app/ui/shared/music/banner_playback_button.dart';
+import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 
 import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
 
-  for (final width in [430.0, 1280.0]) {
-    testWidgets(
-      'server playlist download editor is prefilled at width $width',
-      (tester) async {
-        final controller = (await tester.runAsync(
-          () async => _PlaylistController(),
-        ))!;
-        controller.server = [
-          controller.server.single.copyWith(
-            description: 'Server playlist description',
-          ),
-        ];
-        try {
-          await _pump(
-            tester,
-            controller,
-            const PlaylistDetailView(playlistId: 'shared-id'),
-            width: width,
-          );
-          await tester.tap(
-            find.byWidgetPredicate(
-              (widget) =>
-                  widget is TechButton && widget.label == 'Download playlist',
-            ),
-          );
-          await tester.pumpAndSettle();
-          final editor = tester.widget<PlaylistEditorModal>(
-            find.byType(PlaylistEditorModal),
-          );
-          expect(editor.title, 'Download playlist');
-          expect(editor.initialValue, 'Server mix');
-          expect(editor.initialDescription, 'Server playlist description');
-          expect(editor.showTargetSelector, isFalse);
-          expect(editor.initialTarget, PlaylistEditorTarget.local);
-          final fields = find.byType(TextField);
-          expect(
-            tester.widget<TextField>(fields.at(0)).controller!.text,
-            'Server mix',
-          );
-          expect(
-            tester.widget<TextField>(fields.at(1)).controller!.text,
-            'Server playlist description',
-          );
-          await tester.enterText(fields.at(0), 'My offline mix');
-          await tester.enterText(fields.at(1), 'My description');
-          await tester.tap(find.text('SAVE'));
-          await tester.pumpAndSettle();
-          expect(find.byType(PlaylistEditorModal), findsNothing);
-          expect(controller.downloadedPlaylist?.id, 'shared-id');
-          expect(controller.downloadedTracks, [_track]);
-          expect(controller.downloadName, 'My offline mix');
-          expect(controller.downloadDescription, 'My description');
-          expect(
-            controller.downloadImageEdit?.kind,
-            PlaylistImageEditKind.keep,
-          );
-          expect(controller.server.single.name, 'Server mix');
-          expect(tester.takeException(), isNull);
-        } finally {
-          await _dispose(tester, controller);
-        }
-      },
-    );
-  }
+  testWidgets('failed local entry remains visible and retryable while playback stays unavailable', (tester) async {
+    final controller = (await tester.runAsync(() async => _PlaylistController()))!;
+    controller.entries = [
+      LocalPlaylistEntry(
+        entryKey: 'shared-id:0',
+        playlistId: 'shared-id',
+        position: 0,
+        track: _track,
+        status: OfflineDownloadStatus.failed,
+        isPending: true,
+      ),
+    ];
 
-  testWidgets(
-    'download playlist waits for tracks and is absent on local copies',
-    (tester) async {
-      final controller = (await tester.runAsync(
-        () async => _PlaylistController(),
-      ))!;
-      controller.trackLoad = Completer<void>();
+    try {
+      await _pump(tester, controller, const PlaylistDetailView(playlistId: 'shared-id', isLocal: true));
+      expect(find.text('Song'), findsOneWidget);
+      expect(find.text(' · Download failed'), findsOneWidget);
+      expect(find.text('Artist / Album'), findsOneWidget);
+      final row = tester.widget<TrackRowTile>(find.byType(TrackRowTile));
+      expect(row.onTap, isNull);
+      expect(row.onLike, isNull);
+      expect(row.onAddToPlaylist, isNotNull);
+      expect(tester.widget<BannerPlaybackButton>(find.byType(BannerPlaybackButton)).onPressed, isNull);
+      await tester.tap(find.byTooltip('Retry download'));
+      await tester.pump();
+      expect(controller.retryCalls, 1);
+      expect(controller.playCalls, 0);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _dispose(tester, controller);
+    }
+  });
+
+  for (final width in [430.0, 1280.0]) {
+    testWidgets('server playlist download editor is prefilled at width $width', (tester) async {
+      final controller = (await tester.runAsync(() async => _PlaylistController()))!;
+      controller.server = [controller.server.single.copyWith(description: 'Server playlist description')];
       try {
-        await _pump(
-          tester,
-          controller,
-          const PlaylistDetailView(playlistId: 'shared-id'),
+        await _pump(tester, controller, const PlaylistDetailView(playlistId: 'shared-id'), width: width);
+        await tester.tap(
+          find.byWidgetPredicate((widget) => widget is TechButton && widget.label == 'Download playlist'),
         );
-        final button = find.byWidgetPredicate(
-          (widget) =>
-              widget is TechButton && widget.label == 'Download playlist',
-        );
-        expect(tester.widget<TechButton>(button).onTap, isNull);
-        controller.trackLoad!.complete();
-        await _pumpUpdates(tester);
-        expect(tester.widget<TechButton>(button).onTap, isNotNull);
-        await tester.pumpWidget(const SizedBox.shrink());
-        await _pump(
-          tester,
-          controller,
-          const PlaylistDetailView(playlistId: 'shared-id', isLocal: true),
-        );
-        expect(find.byTooltip('Download playlist'), findsNothing);
+        await tester.pumpAndSettle();
+        final editor = tester.widget<PlaylistEditorModal>(find.byType(PlaylistEditorModal));
+        expect(editor.title, 'Download playlist');
+        expect(editor.initialValue, 'Server mix');
+        expect(editor.initialDescription, 'Server playlist description');
+        expect(editor.showTargetSelector, isFalse);
+        expect(editor.initialTarget, PlaylistEditorTarget.local);
+        final fields = find.byType(TextField);
+        expect(tester.widget<TextField>(fields.at(0)).controller!.text, 'Server mix');
+        expect(tester.widget<TextField>(fields.at(1)).controller!.text, 'Server playlist description');
+        await tester.enterText(fields.at(0), 'My offline mix');
+        await tester.enterText(fields.at(1), 'My description');
+        await tester.tap(find.text('SAVE'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PlaylistEditorModal), findsNothing);
+        expect(controller.downloadedPlaylist?.id, 'shared-id');
+        expect(controller.downloadedTracks, [_track]);
+        expect(controller.downloadName, 'My offline mix');
+        expect(controller.downloadDescription, 'My description');
+        expect(controller.downloadImageEdit?.kind, PlaylistImageEditKind.keep);
+        expect(controller.server.single.name, 'Server mix');
         expect(tester.takeException(), isNull);
       } finally {
         await _dispose(tester, controller);
       }
-    },
-  );
+    });
+  }
+
+  testWidgets('download playlist waits for tracks and is absent on local copies', (tester) async {
+    final controller = (await tester.runAsync(() async => _PlaylistController()))!;
+    controller.trackLoad = Completer<void>();
+    try {
+      await _pump(tester, controller, const PlaylistDetailView(playlistId: 'shared-id'));
+      final button = find.byWidgetPredicate((widget) => widget is TechButton && widget.label == 'Download playlist');
+      expect(tester.widget<TechButton>(button).onTap, isNull);
+      controller.trackLoad!.complete();
+      await _pumpUpdates(tester);
+      expect(tester.widget<TechButton>(button).onTap, isNotNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pump(tester, controller, const PlaylistDetailView(playlistId: 'shared-id', isLocal: true));
+      expect(find.byTooltip('Download playlist'), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _dispose(tester, controller);
+    }
+  });
 
   for (final width in [430.0, 1280.0]) {
-    testWidgets(
-      'playlist grid geometry stays fixed during selection at width $width',
-      (tester) async {
-        final controller = (await tester.runAsync(
-          () async => _PlaylistController(),
-        ))!;
-        try {
-          await _pump(tester, controller, const PlaylistsPage(), width: width);
+    testWidgets('playlist grid geometry stays fixed during selection at width $width', (tester) async {
+      final controller = (await tester.runAsync(() async => _PlaylistController()))!;
+      try {
+        await _pump(tester, controller, const PlaylistsPage(), width: width);
 
-          Finder cardFor(String title) => find.ancestor(
-            of: find.text(title),
-            matching: find.byType(AlbumCard),
-          );
-          List<Rect> geometry() => [
-            for (final title in ['Local mix', 'Server mix']) ...[
-              tester.getRect(cardFor(title)),
-              tester.getRect(
-                find.descendant(
-                  of: cardFor(title),
-                  matching: find.byType(AlbumArt),
-                ),
-              ),
-              tester.getRect(find.text(title)),
-            ],
-          ];
+        Finder cardFor(String title) => find.ancestor(of: find.text(title), matching: find.byType(AlbumCard));
+        List<Rect> geometry() => [
+          for (final title in ['Local mix', 'Server mix']) ...[
+            tester.getRect(cardFor(title)),
+            tester.getRect(find.descendant(of: cardFor(title), matching: find.byType(AlbumArt))),
+            tester.getRect(find.text(title)),
+          ],
+        ];
 
-          final normalGeometry = geometry();
-          expect(find.byIcon(PhonoliteIcons.play), findsNothing);
+        final normalGeometry = geometry();
+        expect(find.byIcon(PhonoliteIcons.play), findsNothing);
 
-          await tester.tap(find.byTooltip('Edit playlists'));
-          await _pumpUpdates(tester);
-          expect(geometry(), normalGeometry);
-          expect(find.byIcon(PhonoliteIcons.play), findsNothing);
+        await tester.tap(find.byTooltip('Edit playlists'));
+        await _pumpUpdates(tester);
+        expect(geometry(), normalGeometry);
+        expect(find.byIcon(PhonoliteIcons.play), findsNothing);
 
-          await tester.tap(cardFor('Local mix'));
-          await _pumpUpdates(tester);
-          expect(
-            tester.widget<AlbumCard>(cardFor('Local mix')).selected,
-            isTrue,
-          );
-          expect(geometry(), normalGeometry);
+        await tester.tap(cardFor('Local mix'));
+        await _pumpUpdates(tester);
+        expect(tester.widget<AlbumCard>(cardFor('Local mix')).selected, isTrue);
+        expect(geometry(), normalGeometry);
 
-          await tester.tap(cardFor('Local mix'));
-          await _pumpUpdates(tester);
-          expect(
-            tester.widget<AlbumCard>(cardFor('Local mix')).selected,
-            isFalse,
-          );
-          expect(geometry(), normalGeometry);
+        await tester.tap(cardFor('Local mix'));
+        await _pumpUpdates(tester);
+        expect(tester.widget<AlbumCard>(cardFor('Local mix')).selected, isFalse);
+        expect(geometry(), normalGeometry);
 
-          await tester.tap(find.byTooltip('Cancel'));
-          await _pumpUpdates(tester);
-          expect(geometry(), normalGeometry);
-          expect(find.byIcon(PhonoliteIcons.play), findsNothing);
+        await tester.tap(find.byTooltip('Cancel'));
+        await _pumpUpdates(tester);
+        expect(geometry(), normalGeometry);
+        expect(find.byIcon(PhonoliteIcons.play), findsNothing);
 
-          await tester.tap(find.text('Local mix'));
-          await tester.pumpAndSettle();
-          expect(find.byType(PlaylistDetailView), findsOneWidget);
-          expect(tester.takeException(), isNull);
-        } finally {
-          await _dispose(tester, controller);
-        }
-      },
-    );
+        await tester.tap(find.text('Local mix'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PlaylistDetailView), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    });
   }
 
   for (final isLocal in [true, false]) {
     for (final surface in ['grid', 'list', 'detail']) {
       for (final width in [430.0, 1280.0]) {
-        testWidgets(
-          '${isLocal ? 'local' : 'server'} $surface opens banner playback at width $width',
-          (tester) async {
-            final controller = (await tester.runAsync(
-              () async => _PlaylistController(listMode: surface == 'list'),
-            ))!;
-            try {
-              await _pump(
-                tester,
-                controller,
-                surface == 'detail'
-                    ? PlaylistDetailView(
-                        playlistId: 'shared-id',
-                        isLocal: isLocal,
-                      )
-                    : const PlaylistsPage(),
-                width: width,
-              );
-              if (surface != 'detail') {
-                expect(find.byIcon(PhonoliteIcons.play), findsNothing);
-                expect(find.byIcon(PhonoliteIcons.square), findsNothing);
-                controller.activate(isLocal: !isLocal);
-                await _pumpUpdates(tester);
-                expect(find.byIcon(PhonoliteIcons.play), findsNothing);
-                expect(find.byIcon(PhonoliteIcons.square), findsNothing);
-
-                await tester.tap(
-                  find.text(isLocal ? 'Local mix' : 'Server mix'),
-                );
-                await _pumpUpdates(tester);
-                await _pumpUpdates(tester);
-              }
-              final banner = find.byType(AlbumHero);
-              final playButton = find.descendant(
-                of: banner,
-                matching: find.byType(ObsidianHudIconButton),
-              );
-              expect(playButton, findsOneWidget);
-              expect(
-                tester.getSize(playButton).height,
-                greaterThanOrEqualTo(48),
-              );
-              final bannerRect = tester.getRect(banner);
-              final buttonRect = tester.getRect(playButton);
-              expect(bannerRect.contains(buttonRect.topLeft), isTrue);
-              expect(bannerRect.contains(buttonRect.bottomRight), isTrue);
-              expect(buttonRect.top - bannerRect.top, lessThanOrEqualTo(24));
-              expect(
-                bannerRect.right - buttonRect.right,
-                lessThanOrEqualTo(24),
-              );
-              expect(find.byTooltip('Play playlist'), findsOneWidget);
-              expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
-
-              // Local and server playlists deliberately have the same ID.
+        testWidgets('${isLocal ? 'local' : 'server'} $surface opens banner playback at width $width', (tester) async {
+          final controller = (await tester.runAsync(() async => _PlaylistController(listMode: surface == 'list')))!;
+          try {
+            await _pump(
+              tester,
+              controller,
+              surface == 'detail'
+                  ? PlaylistDetailView(playlistId: 'shared-id', isLocal: isLocal)
+                  : const PlaylistsPage(),
+              width: width,
+            );
+            if (surface != 'detail') {
+              expect(find.byIcon(PhonoliteIcons.play), findsNothing);
+              expect(find.byIcon(PhonoliteIcons.square), findsNothing);
               controller.activate(isLocal: !isLocal);
               await _pumpUpdates(tester);
-              expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
+              expect(find.byIcon(PhonoliteIcons.play), findsNothing);
               expect(find.byIcon(PhonoliteIcons.square), findsNothing);
 
-              await tester.tap(playButton);
+              await tester.tap(find.text(isLocal ? 'Local mix' : 'Server mix'));
               await _pumpUpdates(tester);
-              expect(controller.playedLocally, isLocal);
-              expect(controller.playedPlaylistId, 'shared-id');
-              expect(controller.playCalls, 1);
-              expect(find.byTooltip('Play playlist'), findsOneWidget);
-              expect(find.byTooltip('Stop playlist'), findsNothing);
-              expect(find.byIcon(PhonoliteIcons.square), findsNothing);
-              expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
-              expect(tester.getRect(playButton), buttonRect);
-
-              controller.emit(
-                controller.playbackState.copyWith(
-                  position: const Duration(seconds: 30),
-                ),
-              );
               await _pumpUpdates(tester);
-              await tester.tap(playButton);
-              await _pumpUpdates(tester);
-              expect(controller.playCalls, 2);
-              expect(controller.stopCalls, 0);
-              expect(controller.playbackState.position, Duration.zero);
-              expect(controller.playbackState.isPlaying, isTrue);
-              expect(find.byIcon(PhonoliteIcons.square), findsNothing);
-              expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
-
-              controller.emit(
-                controller.playbackState.copyWith(
-                  isPlaying: false,
-                  position: const Duration(seconds: 20),
-                ),
-              );
-              await _pumpUpdates(tester);
-              await tester.tap(playButton);
-              await _pumpUpdates(tester);
-              expect(controller.playCalls, 3);
-              expect(controller.playedLocally, isLocal);
-              expect(controller.stopCalls, 0);
-              expect(controller.playbackState.position, Duration.zero);
-              expect(controller.playbackState.isPlaying, isTrue);
-              expect(find.byTooltip('Play playlist'), findsOneWidget);
-              expect(find.byIcon(PhonoliteIcons.square), findsNothing);
-              expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
-              expect(tester.getRect(playButton), buttonRect);
-              expect(tester.takeException(), isNull);
-            } finally {
-              await _dispose(tester, controller);
             }
-          },
-        );
+            final banner = find.byType(AlbumHero);
+            final playButton = find.descendant(of: banner, matching: find.byType(ObsidianHudIconButton));
+            expect(playButton, findsOneWidget);
+            expect(tester.getSize(playButton).height, greaterThanOrEqualTo(48));
+            final bannerRect = tester.getRect(banner);
+            final buttonRect = tester.getRect(playButton);
+            expect(bannerRect.contains(buttonRect.topLeft), isTrue);
+            expect(bannerRect.contains(buttonRect.bottomRight), isTrue);
+            expect(buttonRect.top - bannerRect.top, lessThanOrEqualTo(24));
+            expect(bannerRect.right - buttonRect.right, lessThanOrEqualTo(24));
+            expect(find.byTooltip('Play playlist'), findsOneWidget);
+            expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
+
+            // Local and server playlists deliberately have the same ID.
+            controller.activate(isLocal: !isLocal);
+            await _pumpUpdates(tester);
+            expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
+            expect(find.byIcon(PhonoliteIcons.square), findsNothing);
+
+            await tester.tap(playButton);
+            await _pumpUpdates(tester);
+            expect(controller.playedLocally, isLocal);
+            expect(controller.playedPlaylistId, 'shared-id');
+            expect(controller.playCalls, 1);
+            expect(find.byTooltip('Play playlist'), findsOneWidget);
+            expect(find.byTooltip('Stop playlist'), findsNothing);
+            expect(find.byIcon(PhonoliteIcons.square), findsNothing);
+            expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
+            expect(tester.getRect(playButton), buttonRect);
+
+            controller.emit(controller.playbackState.copyWith(position: const Duration(seconds: 30)));
+            await _pumpUpdates(tester);
+            await tester.tap(playButton);
+            await _pumpUpdates(tester);
+            expect(controller.playCalls, 2);
+            expect(controller.stopCalls, 0);
+            expect(controller.playbackState.position, Duration.zero);
+            expect(controller.playbackState.isPlaying, isTrue);
+            expect(find.byIcon(PhonoliteIcons.square), findsNothing);
+            expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
+
+            controller.emit(controller.playbackState.copyWith(isPlaying: false, position: const Duration(seconds: 20)));
+            await _pumpUpdates(tester);
+            await tester.tap(playButton);
+            await _pumpUpdates(tester);
+            expect(controller.playCalls, 3);
+            expect(controller.playedLocally, isLocal);
+            expect(controller.stopCalls, 0);
+            expect(controller.playbackState.position, Duration.zero);
+            expect(controller.playbackState.isPlaying, isTrue);
+            expect(find.byTooltip('Play playlist'), findsOneWidget);
+            expect(find.byIcon(PhonoliteIcons.square), findsNothing);
+            expect(find.byIcon(PhonoliteIcons.play), findsOneWidget);
+            expect(tester.getRect(playButton), buttonRect);
+            expect(tester.takeException(), isNull);
+          } finally {
+            await _dispose(tester, controller);
+          }
+        });
       }
     }
   }
 
-  testWidgets(
-    'expanded player keeps touch controls reachable on a small phone',
-    (tester) async {
-      final controller = (await tester.runAsync(
-        () async => _PlaylistController(),
-      ))!..activate(isLocal: true);
-      var previousCalls = 0;
-      try {
-        await _pump(
-          tester,
-          controller,
-          NowPlayingExpandedSheet(
-            state: controller.playbackState,
-            onOpenAlbum: null,
-            onPlayPause: () {},
-            onNext: () {},
-            onPrev: () => previousCalls++,
-            onStop: () {},
-            onSeek: (_) {},
-            onSeekPreview: (_) {},
-            onShuffleChanged: (_, {scope}) {},
-            onToggleRepeat: () {},
-            onStreamModeChanged: (_) {},
-            onVolumeChanged: (_) {},
-            onToggleLike: () {},
-          ),
-          width: 320,
-          height: 640,
-        );
-        for (final element in find.byType(ObsidianHudIconButton).evaluate()) {
-          final rect = tester.getRect(find.byWidget(element.widget));
-          expect(rect.width, greaterThanOrEqualTo(48));
-          expect(rect.height, greaterThanOrEqualTo(48));
-          expect(rect.left, greaterThanOrEqualTo(0));
-          expect(rect.right, lessThanOrEqualTo(320));
-          expect(rect.bottom, lessThanOrEqualTo(640));
-        }
-        final previous = find.byWidgetPredicate(
-          (widget) =>
-              widget is ObsidianHudIconButton &&
-              widget.icon == PhonoliteIcons.skipBack,
-        );
-        await tester.tapAt(
-          tester.getRect(previous).bottomRight - const Offset(2, 2),
-        );
-        await tester.pump();
-        expect(previousCalls, 1);
-        expect(tester.takeException(), isNull);
-      } finally {
-        await _dispose(tester, controller);
+  testWidgets('expanded player keeps touch controls reachable on a small phone', (tester) async {
+    final controller = (await tester.runAsync(() async => _PlaylistController()))!..activate(isLocal: true);
+    var previousCalls = 0;
+    try {
+      await _pump(
+        tester,
+        controller,
+        NowPlayingExpandedSheet(
+          state: controller.playbackState,
+          onOpenAlbum: null,
+          onPlayPause: () {},
+          onNext: () {},
+          onPrev: () => previousCalls++,
+          onStop: () {},
+          onSeek: (_) {},
+          onSeekPreview: (_) {},
+          onShuffleChanged: (_, {scope}) {},
+          onToggleRepeat: () {},
+          onStreamModeChanged: (_) {},
+          onVolumeChanged: (_) {},
+          onToggleMute: () {},
+          onToggleLike: () {},
+        ),
+        width: 320,
+        height: 640,
+      );
+      for (final element in find.byType(ObsidianHudIconButton).evaluate()) {
+        final rect = tester.getRect(find.byWidget(element.widget));
+        expect(rect.width, greaterThanOrEqualTo(48));
+        expect(rect.height, greaterThanOrEqualTo(48));
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(320));
+        expect(rect.bottom, lessThanOrEqualTo(640));
       }
-    },
-  );
+      final previous = find.byWidgetPredicate(
+        (widget) => widget is ObsidianHudIconButton && widget.icon == PhonoliteIcons.skipBack,
+      );
+      await tester.tapAt(tester.getRect(previous).bottomRight - const Offset(2, 2));
+      await tester.pump();
+      expect(previousCalls, 1);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _dispose(tester, controller);
+    }
+  });
 
-  for (final size in [
-    const Size(320, 640),
-    const Size(390, 844),
-    const Size(430, 932),
-  ]) {
-    testWidgets('mobile player artwork and tags fit without scrolling at $size', (
-      tester,
-    ) async {
-      final controller = (await tester.runAsync(
-        () async => _PlaylistController(),
-      ))!..activate(isLocal: false);
+  for (final size in [const Size(320, 640), const Size(390, 844), const Size(430, 932)]) {
+    testWidgets('mobile player artwork and tags fit without scrolling at $size', (tester) async {
+      final controller = (await tester.runAsync(() async => _PlaylistController()))!..activate(isLocal: false);
       try {
         await _pump(
           tester,
@@ -398,6 +328,7 @@ void main() {
             onToggleRepeat: () {},
             onStreamModeChanged: (_) {},
             onVolumeChanged: (_) {},
+            onToggleMute: () {},
             onToggleLike: () {},
           ),
           width: size.width,
@@ -405,18 +336,13 @@ void main() {
         );
 
         final verticalScroll = find.byWidgetPredicate(
-          (widget) =>
-              widget is Scrollable &&
-              widget.axisDirection == AxisDirection.down,
+          (widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down,
         );
         expect(verticalScroll, findsNothing);
         expect(find.text('SERVER'), findsOneWidget);
         expect(find.text('LOOP'), findsOneWidget);
-        Rect controlRect(IconData icon) => tester.getRect(
-          find.byWidgetPredicate(
-            (widget) => widget is ObsidianHudIconButton && widget.icon == icon,
-          ),
-        );
+        Rect controlRect(IconData icon) =>
+            tester.getRect(find.byWidgetPredicate((widget) => widget is ObsidianHudIconButton && widget.icon == icon));
         final previous = controlRect(PhonoliteIcons.skipBack);
         final next = controlRect(PhonoliteIcons.skipForward);
         final shuffle = controlRect(PhonoliteIcons.shuffle);
@@ -429,12 +355,7 @@ void main() {
         final device = controlRect(PhonoliteIcons.speaker);
         expect(shuffle.center.dy, device.center.dy);
         final quality = tester.getRect(
-          find
-              .ancestor(
-                of: find.text('HQ'),
-                matching: find.byType(AnimatedContainer),
-              )
-              .first,
+          find.ancestor(of: find.text('OG'), matching: find.byType(AnimatedContainer)).first,
         );
         expect(quality.width, lessThan(60));
         expect(quality.height, lessThanOrEqualTo(36));
@@ -442,19 +363,12 @@ void main() {
         expect(
           quality.center.dy,
           device.center.dy,
-          reason:
-              'The compact quality button should sit beside the audio device button',
+          reason: 'The compact quality button should sit beside the audio device button',
         );
         final horizontalScroll = find.byWidgetPredicate(
-          (widget) =>
-              widget is Scrollable &&
-              widget.axisDirection == AxisDirection.right,
+          (widget) => widget is Scrollable && widget.axisDirection == AxisDirection.right,
         );
-        expect(
-          horizontalScroll,
-          findsNothing,
-          reason: 'Tags should wrap rather than require horizontal scrolling',
-        );
+        expect(horizontalScroll, findsNothing, reason: 'Tags should wrap rather than require horizontal scrolling');
         expect(tester.takeException(), isNull);
       } finally {
         await _dispose(tester, controller);
@@ -464,97 +378,76 @@ void main() {
 
   for (final isLocal in [true, false]) {
     for (final surface in ['desktop', 'mini', 'expanded']) {
-      testWidgets(
-        '${isLocal ? 'local' : 'server'} $surface player shows and updates the playlist name',
-        (tester) async {
-          final controller = (await tester.runAsync(
-            () async => _PlaylistController(),
-          ))!..activate(isLocal: isLocal);
-          final state = controller.playbackState;
-          final Widget player;
-          if (surface == 'mini') {
-            player = NowPlayingMiniBar(
-              state: state,
-              onPlayPause: () {},
-              onNext: () {},
-              onExpand: () {},
-            );
-          } else if (surface == 'expanded') {
-            player = NowPlayingExpandedSheet(
-              state: state,
-              onOpenAlbum: null,
-              onPlayPause: () {},
-              onNext: () {},
-              onPrev: () {},
-              onStop: () {},
-              onSeek: (_) {},
-              onSeekPreview: (_) {},
-              onShuffleChanged: (_, {scope}) {},
-              onToggleRepeat: () {},
-              onStreamModeChanged: (_) {},
-              onVolumeChanged: (_) {},
-              onToggleLike: () {},
-            );
-          } else {
-            player = NowPlayingBar(
-              state: state,
-              onOpenAlbum: null,
-              onPlayPause: () {},
-              onNext: () {},
-              onPrev: () {},
-              onStop: () {},
-              onSeek: (_) {},
-              onSeekPreview: (_) {},
-              onShuffleChanged: (_, {scope}) {},
-              onToggleRepeat: () {},
-              onStreamModeChanged: (_) {},
-              onVolumeChanged: (_) {},
-              onToggleLike: () {},
-            );
-          }
-          await _pump(
-            tester,
-            controller,
-            player,
-            width: surface == 'desktop' ? 1280 : 430,
+      testWidgets('${isLocal ? 'local' : 'server'} $surface player shows and updates the playlist name', (
+        tester,
+      ) async {
+        final controller = (await tester.runAsync(() async => _PlaylistController()))!..activate(isLocal: isLocal);
+        final state = controller.playbackState.copyWith(streamMode: StreamMode.high);
+        final Widget player;
+        if (surface == 'mini') {
+          player = NowPlayingMiniBar(state: state, onPlayPause: () {}, onNext: () {}, onExpand: () {});
+        } else if (surface == 'expanded') {
+          player = NowPlayingExpandedSheet(
+            state: state,
+            onOpenAlbum: null,
+            onPlayPause: () {},
+            onNext: () {},
+            onPrev: () {},
+            onStop: () {},
+            onSeek: (_) {},
+            onSeekPreview: (_) {},
+            onShuffleChanged: (_, {scope}) {},
+            onToggleRepeat: () {},
+            onStreamModeChanged: (_) {},
+            onVolumeChanged: (_) {},
+            onToggleMute: () {},
+            onToggleLike: () {},
           );
-          final playlistName = isLocal ? 'Local mix' : 'Server mix';
-          expect(find.text(playlistName), findsOneWidget);
-          expect(find.text('SOURCE: LOCAL PLAYLIST'), findsNothing);
-          expect(find.text('SOURCE: PLAYLIST'), findsNothing);
-          expect(
-            find.textContaining('KBPS'),
-            isLocal ? findsNothing : findsOneWidget,
+        } else {
+          player = NowPlayingBar(
+            state: state,
+            onOpenAlbum: null,
+            onPlayPause: () {},
+            onNext: () {},
+            onPrev: () {},
+            onStop: () {},
+            onSeek: (_) {},
+            onSeekPreview: (_) {},
+            onShuffleChanged: (_, {scope}) {},
+            onToggleRepeat: () {},
+            onStreamModeChanged: (_) {},
+            onVolumeChanged: (_) {},
+            onToggleMute: () {},
+            onToggleLike: () {},
           );
-          expect(find.text(isLocal ? 'LOCAL' : 'SERVER'), findsOneWidget);
-          expect(find.text(isLocal ? 'SERVER' : 'LOCAL'), findsNothing);
-          expect(find.text('IDLE'), findsNothing);
-          expect(find.byIcon(Icons.pause), findsOneWidget);
-          expect(find.byIcon(PhonoliteIcons.pause), findsNothing);
-          expect(
-            tester.widget<Text>(find.text(playlistName)).style?.color,
-            isNull,
-          );
+        }
+        await _pump(tester, controller, player, width: surface == 'desktop' ? 1280 : 430);
+        final playlistName = isLocal ? 'Local mix' : 'Server mix';
+        expect(find.text(playlistName), findsOneWidget);
+        expect(find.text('SOURCE: LOCAL PLAYLIST'), findsNothing);
+        expect(find.text('SOURCE: PLAYLIST'), findsNothing);
+        expect(find.textContaining('KBPS'), isLocal ? findsNothing : findsOneWidget);
+        expect(find.text(isLocal ? 'LOCAL' : 'SERVER'), findsOneWidget);
+        expect(find.text(isLocal ? 'SERVER' : 'LOCAL'), findsNothing);
+        expect(find.text('IDLE'), findsNothing);
+        expect(find.byIcon(Icons.pause), findsOneWidget);
+        expect(find.byIcon(PhonoliteIcons.pause), findsNothing);
+        expect(tester.widget<Text>(find.text(playlistName)).style?.color, isNull);
 
-          // A rename updates the tag even while the track stays unchanged.
-          const renamed = '12345678901234567890123456789012';
-          controller.emitPlaylistRename(renamed, isLocal: isLocal);
-          await _pumpUpdates(tester);
-          expect(find.text(renamed), findsOneWidget);
-          expect(find.text(playlistName), findsNothing);
-          expect(tester.takeException(), isNull);
-          await _dispose(tester, controller);
-        },
-      );
+        // A rename updates the tag even while the track stays unchanged.
+        const renamed = '12345678901234567890123456789012';
+        controller.emitPlaylistRename(renamed, isLocal: isLocal);
+        await _pumpUpdates(tester);
+        expect(find.text(renamed), findsOneWidget);
+        expect(find.text(playlistName), findsNothing);
+        expect(tester.takeException(), isNull);
+        await _dispose(tester, controller);
+      });
     }
   }
   for (final surface in ['desktop', 'mini', 'expanded']) {
-    testWidgets('$surface player scrolls artist-album text at half title speed', (
-      tester,
-    ) async {
-      final controller = (await tester.runAsync(
-        () async => _PlaylistController(),
-      ))!..activate(isLocal: false);
+    testWidgets('$surface player scrolls artist-album text at half title speed', (tester) async {
+      final controller = (await tester.runAsync(() async => _PlaylistController()))!..activate(isLocal: false);
       final track = _track.copyWith(
         title:
             'A very long track title with an extended live recording description '
@@ -565,36 +458,19 @@ void main() {
       );
       final state = controller.playbackState.copyWith(track: track);
       try {
-        await _pump(
-          tester,
-          controller,
-          _marqueePlayer(state, surface),
-          width: surface == 'desktop' ? 1280 : 390,
-        );
-        final title = find.byWidgetPredicate(
-          (widget) => widget is MarqueeText && widget.text == track.title,
-        );
+        await _pump(tester, controller, _marqueePlayer(state, surface), width: surface == 'desktop' ? 1280 : 390);
+        final title = find.byWidgetPredicate((widget) => widget is MarqueeText && widget.text == track.title);
         final subtitle = find.byWidgetPredicate(
-          (widget) =>
-              widget is MarqueeText &&
-              widget.text == '${track.artist} - ${track.album}',
+          (widget) => widget is MarqueeText && widget.text == '${track.artist} - ${track.album}',
         );
-        final scroll = find.descendant(
-          of: subtitle,
-          matching: find.byType(Scrollable),
-        );
+        final scroll = find.descendant(of: subtitle, matching: find.byType(Scrollable));
         expect(title, findsOneWidget);
         expect(subtitle, findsOneWidget);
         expect(scroll, findsOneWidget);
-        final titleScroll = find.descendant(
-          of: title,
-          matching: find.byType(Scrollable),
-        );
+        final titleScroll = find.descendant(of: title, matching: find.byType(Scrollable));
         expect(titleScroll, findsOneWidget);
         await tester.pump(const Duration(seconds: 1));
-        final titlePosition = tester
-            .state<ScrollableState>(titleScroll)
-            .position;
+        final titlePosition = tester.state<ScrollableState>(titleScroll).position;
         final subtitlePosition = tester.state<ScrollableState>(scroll).position;
         final titleStart = titlePosition.pixels;
         final subtitleStart = subtitlePosition.pixels;
@@ -613,12 +489,7 @@ void main() {
 
 Widget _marqueePlayer(PlaybackState state, String surface) {
   if (surface == 'mini') {
-    return NowPlayingMiniBar(
-      state: state,
-      onPlayPause: () {},
-      onNext: () {},
-      onExpand: () {},
-    );
+    return NowPlayingMiniBar(state: state, onPlayPause: () {}, onNext: () {}, onExpand: () {});
   }
   if (surface == 'expanded') {
     return NowPlayingExpandedSheet(
@@ -634,6 +505,7 @@ Widget _marqueePlayer(PlaybackState state, String surface) {
       onToggleRepeat: () {},
       onStreamModeChanged: (_) {},
       onVolumeChanged: (_) {},
+      onToggleMute: () {},
       onToggleLike: () {},
     );
   }
@@ -650,6 +522,7 @@ Widget _marqueePlayer(PlaybackState state, String surface) {
     onToggleRepeat: () {},
     onStreamModeChanged: (_) {},
     onVolumeChanged: (_) {},
+    onToggleMute: () {},
     onToggleLike: () {},
   );
 }
@@ -667,17 +540,12 @@ Future<void> _pump(
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
-  await tester.pumpWidget(
-    AppScope(controller: controller, child: wrapInTestApp(child)),
-  );
+  await tester.pumpWidget(AppScope(controller: controller, child: wrapInTestApp(child)));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 250));
 }
 
-Future<void> _dispose(
-  WidgetTester tester,
-  _PlaylistController controller,
-) async {
+Future<void> _dispose(WidgetTester tester, _PlaylistController controller) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.runAsync(() async {
     await controller.playbackUpdates.close();
@@ -704,9 +572,7 @@ final _track = Track(
 
 class _PlaylistController extends AppController {
   _PlaylistController({this.listMode = false})
-    : super(
-        connection: ServerConnection(baseUrl: 'http://server.test/api'),
-      ) {
+    : super(connection: ServerConnection(baseUrl: 'http://server.test/api')) {
     currentPlayback = super.playbackState;
   }
 
@@ -722,6 +588,8 @@ class _PlaylistController extends AppController {
     Playlist(id: 'shared-id', name: 'Server mix', trackIds: ['track']),
   ];
   int stopCalls = 0;
+  int retryCalls = 0;
+  List<LocalPlaylistEntry>? entries;
   int playCalls = 0;
   bool? playedLocally;
   String? playedPlaylistId;
@@ -745,13 +613,9 @@ class _PlaylistController extends AppController {
         position: Duration.zero,
         duration: const Duration(minutes: 1),
         bitrateKbps: 320,
-        queueSource: isLocal
-            ? PlaybackQueueSource.offline
-            : PlaybackQueueSource.playlist,
+        queueSource: isLocal ? PlaybackQueueSource.offline : PlaybackQueueSource.playlist,
         queueSourcePlaylistId: 'shared-id',
-        localPlaybackSource: isLocal
-            ? LocalPlaybackSource.playlist
-            : LocalPlaybackSource.none,
+        localPlaybackSource: isLocal ? LocalPlaybackSource.playlist : LocalPlaybackSource.none,
         isLocalPlayback: isLocal,
       ),
     );
@@ -772,8 +636,7 @@ class _PlaylistController extends AppController {
   @override
   Stream<PlaybackState> get playbackStream => playbackUpdates.stream;
   @override
-  AuthState get authState =>
-      AuthState(isAuthorized: true, baseUrl: connection.baseUrl);
+  AuthState get authState => AuthState(isAuthorized: true, baseUrl: connection.baseUrl);
   @override
   bool get collectionListMode => listMode;
   @override
@@ -787,6 +650,22 @@ class _PlaylistController extends AppController {
   @override
   List<Track> get localPlaylistTracks => [_track];
   @override
+  List<LocalPlaylistEntry> get localPlaylistEntries =>
+      entries ??
+      [
+        LocalPlaylistEntry(
+          entryKey: 'shared-id:0',
+          playlistId: 'shared-id',
+          position: 0,
+          track: _track,
+          localTrackId: _track.id,
+          status: OfflineDownloadStatus.downloaded,
+          isPending: false,
+        ),
+      ];
+  @override
+  Stream<List<LocalPlaylistEntry>> get localPlaylistEntriesStream => const Stream.empty();
+  @override
   List<Track> get playlistTracks => [_track];
   @override
   Future<void> loadLocalPlaylists() async {}
@@ -794,6 +673,13 @@ class _PlaylistController extends AppController {
   Future<void> loadPlaylists() async {}
   @override
   Future<void> loadLocalPlaylistTracks(String playlistId) async {}
+  @override
+  Future<void> loadLocalPlaylistEntries(String playlistId) async {}
+  @override
+  Future<void> retryLocalPlaylistEntry(LocalPlaylistEntry entry) async {
+    retryCalls++;
+  }
+
   @override
   Future<void> loadPlaylistTracks(String playlistId) async {
     await trackLoad?.future;

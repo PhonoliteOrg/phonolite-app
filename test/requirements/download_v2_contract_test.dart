@@ -22,12 +22,8 @@ void main() {
       'lib/data/models/collections/like_state.dart',
       'lib/data/models/playback/output_device.dart',
     ]);
-    final connection = readProjectModule(
-      'lib/infrastructure/server/server_connection.dart',
-    );
-    final manager = readProjectModule(
-      'lib/application/downloads/offline_download_manager.dart',
-    );
+    final connection = readProjectModule('lib/infrastructure/server/server_connection.dart');
+    final manager = readProjectModule('lib/application/downloads/offline_download_manager.dart');
 
     expectContainsAll(models, [
       'class ServerCapabilities',
@@ -57,14 +53,16 @@ void main() {
     ]);
   });
 
-  test('offline schema retains v10 tables and playlist download plans', () {
-    final source = readProjectModule(
-      'lib/data/storage/offline/library/offline_library.dart',
-    );
+  test('offline schema retains v10 tables and durable playlist download requests', () {
+    final source = readProjectModule('lib/data/storage/offline/library/offline_library.dart');
 
     expectContainsAll(source, [
-      'static const int _schemaVersion = 11',
+      'static const int _schemaVersion = 12',
       'CREATE TABLE IF NOT EXISTS pending_playlist_tracks',
+      'CREATE TABLE IF NOT EXISTS download_demands',
+      'CREATE TABLE IF NOT EXISTS local_track_server_matches',
+      "'playlist_download_demands_v12'",
+      "'track_match_normalization_v12'",
       'CREATE TABLE IF NOT EXISTS client_identity',
       'CREATE TABLE IF NOT EXISTS metadata_snapshots',
       'CREATE TABLE IF NOT EXISTS file_artifacts',
@@ -107,9 +105,7 @@ void main() {
   });
 
   test('offline actor splits download and library state updates', () {
-    final source = readProjectModule(
-      'lib/application/downloads/offline_download_manager.dart',
-    );
+    final source = readProjectModule('lib/application/downloads/offline_download_manager.dart');
 
     expectContainsAll(source, [
       'class OfflineActorDownloadState',
@@ -125,9 +121,7 @@ void main() {
   });
 
   test('v2 download jobs only materialize the rolling window initially', () {
-    final source = readProjectModule(
-      'lib/application/downloads/offline_download_manager.dart',
-    );
+    final source = readProjectModule('lib/application/downloads/offline_download_manager.dart');
 
     expectContainsAll(source, [
       'static const int _rollingWindowSize = 20',

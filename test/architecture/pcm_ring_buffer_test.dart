@@ -4,6 +4,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/structures/audio/pcm_ring_buffer.dart';
 
 void main() {
+  test('32-bit PCM retains low bits through wrapping and growth', () {
+    final buffer = PcmRingBuffer(4, bitsPerSample: 32);
+    final samples = Int32List.fromList([-2147483648, -65537, -1, 1, 65537, 2147483647]);
+
+    expect(buffer.write(samples, 0), 4);
+    expect(buffer.read(3), samples.sublist(0, 3));
+    expect(buffer.write(samples, 4), 2);
+    buffer.ensureCapacity(8);
+
+    final result = buffer.read(8);
+
+    expect(result, isA<Int32List>());
+    expect(result, [1, 65537, 2147483647]);
+  });
+
   test('growth preserves wrapped samples and pending producer reference', () {
     final buffer = PcmRingBuffer(6);
     final producer = buffer;

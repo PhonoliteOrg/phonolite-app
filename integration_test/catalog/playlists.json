@@ -6,6 +6,9 @@
     "lib/ui/features/playlists/widgets/playlist_editor_modal.dart",
     "lib/ui/features/playlists/widgets/playlist_section.dart",
     "lib/ui/features/playlists/widgets/empty_playlist_text.dart",
+    "lib/ui/features/playlists/widgets/add_to_playlist_modal.dart",
+    "lib/ui/shared/music/local_server_toggle.dart",
+    "lib/ui/shared/music/tracks/track_row_tile.dart",
     "lib/ui/structures/sections/base_sliver_section.dart",
     "lib/ui/structures/modals/base_alert_modal.dart",
     "lib/ui/shell/toolbars/base_page_toolbar.dart",
@@ -138,9 +141,25 @@
     {
       "id": "playlist.play",
       "action": "Tap Play playlist",
-      "expected": "Play from first track",
-      "availability": "Populated playlist",
+      "expected": "Play from the first available track; local playback skips pending and failed entries",
+      "availability": "Playlist has a playable track",
       "risk": "playback",
+      "journeys": []
+    },
+    {
+      "id": "playlist.retry_download",
+      "action": "Tap Retry download on a pending local track",
+      "expected": "Retry the saved source download and retain playlist membership; status stays on the track title",
+      "availability": "Local playlist entry has a failed or canceled download",
+      "risk": "mutation",
+      "journeys": []
+    },
+    {
+      "id": "playlist.continue_download",
+      "action": "Tap Continue download on a pending local track",
+      "expected": "Resume the existing transfer and retain playlist membership without changing the subtitle",
+      "availability": "Local playlist entry has a paused download",
+      "risk": "mutation",
       "journeys": []
     },
     {

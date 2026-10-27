@@ -1,3 +1,4 @@
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart' as offline_views;
@@ -8,6 +9,7 @@ class OfflineLibrarySnapshot {
   final List<Track> liked;
   final List<Playlist> playlists;
   final List<Track> playlistTracks;
+  final List<LocalPlaylistEntry> playlistEntries;
   final int revision;
 
   const OfflineLibrarySnapshot({
@@ -17,5 +19,6 @@ class OfflineLibrarySnapshot {
     required this.playlists,
     required this.playlistTracks,
     required this.revision,
+    this.playlistEntries = const [],
   });
 }

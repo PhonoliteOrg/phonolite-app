@@ -8,6 +8,8 @@ set(PHONOLITE_RUNNER_SOURCES
   "data/models/directories/directory_open_result.h"
   "infrastructure/flutter/directories_channel_adapter.h"
   "infrastructure/flutter/directories_channel_adapter.cc"
+  "infrastructure/flutter/window_constraints_channel_adapter.h"
+  "infrastructure/flutter/window_constraints_channel_adapter.cc"
   "infrastructure/shell/directory_launcher.h"
   "infrastructure/shell/directory_launcher.cc"
   "ui/shell/application_window.h"

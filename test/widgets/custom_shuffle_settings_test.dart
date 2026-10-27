@@ -3,13 +3,14 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/playback/custom_shuffle_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
-import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/custom_shuffle_filter_editor.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
@@ -19,10 +20,7 @@ const _serverAlpha = 'Alpha artist with a very long name for narrow screens';
 const _localAlpha = 'Alpha downloaded artist with a very long name';
 
 class _ShuffleController extends Fake implements AppController {
-  _ShuffleController({
-    this.value = const CustomShuffleSettings(),
-    this.authorized = true,
-  });
+  _ShuffleController({this.value = const CustomShuffleSettings(), this.authorized = true});
 
   CustomShuffleSettings value;
   final bool authorized;
@@ -32,18 +30,8 @@ class _ShuffleController extends Fake implements AppController {
   bool moreAvailable = false;
 
   final _artists = [
-    Artist(
-      id: 'shared-artist',
-      name: _serverAlpha,
-      albumCount: 1,
-      genres: ['Ambient'],
-    ),
-    Artist(
-      id: 'server-artist',
-      name: 'Beta artist',
-      albumCount: 1,
-      genres: ['Jazz'],
-    ),
+    Artist(id: 'shared-artist', name: _serverAlpha, albumCount: 1, genres: ['Ambient']),
+    Artist(id: 'server-artist', name: 'Beta artist', albumCount: 1, genres: ['Jazz']),
   ];
 
   final _library = OfflineLibrarySnapshot(
@@ -53,23 +41,13 @@ class _ShuffleController extends Fake implements AppController {
         id: 'shared-artist',
         name: _localAlpha,
         albums: const [],
-        metadata: Artist(
-          id: 'shared-artist',
-          name: _localAlpha,
-          albumCount: 0,
-          genres: ['Ambient'],
-        ),
+        metadata: Artist(id: 'shared-artist', name: _localAlpha, albumCount: 0, genres: ['Ambient']),
       ),
       OfflineArtistGroup(
         id: 'local-artist',
         name: 'Delta downloaded artist',
         albums: const [],
-        metadata: Artist(
-          id: 'local-artist',
-          name: 'Delta downloaded artist',
-          albumCount: 0,
-          genres: ['Rock'],
-        ),
+        metadata: Artist(id: 'local-artist', name: 'Delta downloaded artist', albumCount: 0, genres: ['Rock']),
       ),
     ],
     liked: const [],
@@ -79,8 +57,7 @@ class _ShuffleController extends Fake implements AppController {
   );
 
   @override
-  AuthState get authState =>
-      AuthState(baseUrl: 'https://music.example', isAuthorized: authorized);
+  AuthState get authState => AuthState(baseUrl: 'https://music.example', isAuthorized: authorized);
 
   @override
   CustomShuffleSettings get customShuffleSettings => value;
@@ -104,8 +81,7 @@ class _ShuffleController extends Fake implements AppController {
   OfflineLibrarySnapshot get offlineLibrarySnapshot => _library;
 
   @override
-  Stream<OfflineLibrarySnapshot> get offlineLibrarySnapshotStream =>
-      const Stream.empty();
+  Stream<OfflineLibrarySnapshot> get offlineLibrarySnapshotStream => const Stream.empty();
 
   @override
   Future<void> loadAllArtists() async {
@@ -135,32 +111,22 @@ class _ShuffleController extends Fake implements AppController {
   }
 }
 
-Finder _label(String label) => find.byWidgetPredicate(
-  (widget) =>
-      widget is Text && widget.data?.toLowerCase() == label.toLowerCase(),
-);
+Finder _label(String label) =>
+    find.byWidgetPredicate((widget) => widget is Text && widget.data?.toLowerCase() == label.toLowerCase());
 
-Finder get _pageScroll => find
-    .byWidgetPredicate(
-      (widget) =>
-          widget is Scrollable && widget.axisDirection == AxisDirection.down,
-    )
-    .first;
+Finder get _pageScroll =>
+    find.byWidgetPredicate((widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
 
 Finder _checkbox(String title) => find.descendant(
   of: find.ancestor(of: _label(title), matching: find.byType(ObsidianHoverRow)),
   matching: find.byType(Checkbox),
 );
 
-bool _selected(WidgetTester tester, String title) =>
-    tester.widget<Checkbox>(_checkbox(title)).value!;
+bool _selected(WidgetTester tester, String title) => tester.widget<Checkbox>(_checkbox(title)).value!;
 
 Future<void> _tap(WidgetTester tester, String label) async {
   final target = const ['Server', 'Local', 'Artists', 'Genres'].contains(label)
-      ? find.descendant(
-          of: find.byWidgetPredicate((widget) => widget is TextButton),
-          matching: _label(label),
-        )
+      ? find.descendant(of: find.byWidgetPredicate((widget) => widget is TextButton), matching: _label(label))
       : _label(label);
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
@@ -179,6 +145,10 @@ Future<void> _mount(
   Size size = const Size(1000, 1000),
   double textScale = 1,
 }) async {
+  final feature = CustomShuffleController(controller);
+
+  await feature.initialize();
+
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -186,19 +156,25 @@ Future<void> _mount(
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    feature.dispose();
   });
   await tester.pumpWidget(
     MaterialApp(
       theme: ObsidianTheme.build(),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(
-          context,
-        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
       ),
       home: AppScope(
         controller: controller,
-        child: const CustomShuffleSettingsPage(),
+        child: Scaffold(
+          body: Column(
+            children: [
+              const Text('CUSTOM SHUFFLE'),
+              Expanded(child: CustomShuffleFilterEditor(controller: feature, showTargetSelector: true)),
+            ],
+          ),
+        ),
       ),
     ),
   );
@@ -208,9 +184,7 @@ Future<void> _mount(
 void main() {
   setUp(configureTestFonts);
 
-  testWidgets('large artist catalogs build only rows near the viewport', (
-    tester,
-  ) async {
+  testWidgets('large artist catalogs build only rows near the viewport', (tester) async {
     final controller = _ShuffleController();
     controller._artists
       ..clear()
@@ -230,22 +204,12 @@ void main() {
       reason: 'Offscreen rows must not all build and lay out on every toggle.',
     );
     expect(find.text('Artist 0999'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('Artist 0200'),
-      600,
-      scrollable: _pageScroll,
-      maxScrolls: 40,
-    );
+    await tester.scrollUntilVisible(find.text('Artist 0200'), 600, scrollable: _pageScroll, maxScrolls: 40);
     await _tap(tester, 'Artist 0200');
     await _save(tester);
     expect(controller.value.artistIds, ['artist-200']);
     expect(find.byType(ObsidianHoverRow).evaluate().length, lessThan(40));
-    await tester.scrollUntilVisible(
-      find.byType(TextField),
-      -600,
-      scrollable: _pageScroll,
-      maxScrolls: 40,
-    );
+    await tester.scrollUntilVisible(find.byType(TextField), -600, scrollable: _pageScroll, maxScrolls: 40);
     await tester.enterText(find.byType(TextField), '0999');
     await tester.pumpAndSettle();
     expect(find.text('Artist 0999'), findsOneWidget);
@@ -255,139 +219,112 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('scrolling near the last loaded artist requests the next page', (
-    tester,
-  ) async {
+  testWidgets('scrolling near the last loaded artist requests the next page', (tester) async {
     final controller = _ShuffleController()..moreAvailable = true;
     controller._artists
       ..clear()
       ..addAll([
-        for (var index = 0; index < 100; index++)
-          Artist(id: 'artist-$index', name: 'Artist $index', albumCount: 1),
+        for (var index = 0; index < 100; index++) Artist(id: 'artist-$index', name: 'Artist $index', albumCount: 1),
       ]);
     await _mount(tester, controller, size: const Size(390, 844));
     expect(controller.loadMoreCalls, 0);
-    await tester.scrollUntilVisible(
-      find.text('Artist 99'),
-      600,
-      scrollable: _pageScroll,
-      maxScrolls: 20,
-    );
+    await tester.scrollUntilVisible(find.text('Artist 99'), 600, scrollable: _pageScroll, maxScrolls: 20);
     expect(controller.loadMoreCalls, 1);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'genre labels capitalize mixed and saved metadata while keys stay lowercase',
-    (tester) async {
-      final controller = _ShuffleController(
-        value: const CustomShuffleSettings(genres: ['alternative rock']),
-      );
-      controller._artists.first.genres
-        ..clear()
-        ..addAll(['ambient', 'edm', 'r&b']);
-      controller._artists.last.genres
-        ..clear()
-        ..add('AMBIENT');
-      await _mount(tester, controller);
-      await _tap(tester, 'Genres');
-      expect(find.text('Ambient'), findsOneWidget);
-      expect(find.text('Alternative Rock'), findsOneWidget);
-      expect(find.text('EDM'), findsOneWidget);
-      expect(find.text('R&B'), findsOneWidget);
-      await _tap(tester, 'EDM');
-      await _save(tester);
-      expect(controller.value.genres, containsAll(['alternative rock', 'edm']));
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('genre labels capitalize mixed and saved metadata while keys stay lowercase', (tester) async {
+    final controller = _ShuffleController(value: const CustomShuffleSettings(genres: ['alternative rock']));
+    controller._artists.first.genres
+      ..clear()
+      ..addAll(['ambient', 'edm', 'r&b']);
+    controller._artists.last.genres
+      ..clear()
+      ..add('AMBIENT');
+    await _mount(tester, controller);
+    await _tap(tester, 'Genres');
+    expect(find.text('Ambient'), findsOneWidget);
+    expect(find.text('Alternative Rock'), findsOneWidget);
+    expect(find.text('EDM'), findsOneWidget);
+    expect(find.text('R&B'), findsOneWidget);
+    await _tap(tester, 'EDM');
+    await _save(tester);
+    expect(controller.value.genres, containsAll(['alternative rock', 'edm']));
+    expect(tester.takeException(), isNull);
+  });
 
-  testWidgets(
-    'artist and genre selections save independently for each source',
-    (tester) async {
-      final controller = _ShuffleController();
-      await _mount(tester, controller);
+  testWidgets('artist and genre selections save independently for each source', (tester) async {
+    final controller = _ShuffleController();
+    await _mount(tester, controller);
 
-      await tester.tap(_checkbox(_serverAlpha));
-      await tester.pumpAndSettle();
-      await _save(tester);
-      expect(controller.value.artistIds, ['shared-artist']);
-      expect(controller.value.localArtistIds, isEmpty);
+    await tester.tap(_checkbox(_serverAlpha));
+    await tester.pumpAndSettle();
+    await _save(tester);
+    expect(controller.value.artistIds, ['shared-artist']);
+    expect(controller.value.localArtistIds, isEmpty);
 
-      await _tap(tester, 'Genres');
-      await _tap(tester, 'Ambient');
-      await _save(tester);
-      expect(controller.value.genres, ['ambient']);
+    await _tap(tester, 'Genres');
+    await _tap(tester, 'Ambient');
+    await _save(tester);
+    expect(controller.value.genres, ['ambient']);
 
-      await _tap(tester, 'Local');
-      expect(_selected(tester, 'Ambient'), isFalse);
-      await _tap(tester, 'Rock');
-      await _tap(tester, 'Artists');
-      expect(_selected(tester, _localAlpha), isFalse);
-      await _tap(tester, _localAlpha);
-      await _save(tester);
-      expect(controller.value.artistIds, ['shared-artist']);
-      expect(controller.value.genres, ['ambient']);
-      expect(controller.value.localArtistIds, ['shared-artist']);
-      expect(controller.value.localGenres, ['rock']);
+    await _tap(tester, 'Local');
+    expect(_selected(tester, 'Ambient'), isFalse);
+    await _tap(tester, 'Rock');
+    await _tap(tester, 'Artists');
+    expect(_selected(tester, _localAlpha), isFalse);
+    await _tap(tester, _localAlpha);
+    await _save(tester);
+    expect(controller.value.artistIds, ['shared-artist']);
+    expect(controller.value.genres, ['ambient']);
+    expect(controller.value.localArtistIds, ['shared-artist']);
+    expect(controller.value.localGenres, ['rock']);
 
-      await _tap(tester, 'Server');
-      expect(_selected(tester, _serverAlpha), isTrue);
-      expect(_selected(tester, 'Beta artist'), isFalse);
-      await _tap(tester, 'Genres');
-      expect(_selected(tester, 'Ambient'), isTrue);
-      expect(_selected(tester, 'Jazz'), isFalse);
-      expect(controller.saves, isNotEmpty);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await _tap(tester, 'Server');
+    expect(_selected(tester, _serverAlpha), isTrue);
+    expect(_selected(tester, 'Beta artist'), isFalse);
+    await _tap(tester, 'Genres');
+    expect(_selected(tester, 'Ambient'), isTrue);
+    expect(_selected(tester, 'Jazz'), isFalse);
+    expect(controller.saves, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
 
-  testWidgets(
-    'search filters rows while select all and clear keep other sources',
-    (tester) async {
-      final controller = _ShuffleController(
-        value: const CustomShuffleSettings(
-          localArtistIds: ['local-artist'],
-          localGenres: ['rock'],
-        ),
-      );
-      await _mount(tester, controller);
+  testWidgets('search filters rows while select all and clear keep other sources', (tester) async {
+    final controller = _ShuffleController(
+      value: const CustomShuffleSettings(localArtistIds: ['local-artist'], localGenres: ['rock']),
+    );
+    await _mount(tester, controller);
 
-      await tester.enterText(find.byType(TextField), 'alpha');
-      await tester.pumpAndSettle();
-      expect(_label(_serverAlpha), findsOneWidget);
-      expect(_label('Beta artist'), findsNothing);
-      await _tap(tester, 'Select all');
-      await _save(tester);
-      expect(controller.loadAllCalls, 1);
-      expect(
-        controller.value.artistIds,
-        unorderedEquals(['shared-artist', 'server-artist']),
-      );
-      await _tap(tester, 'Clear');
-      await _save(tester);
-      expect(controller.value.artistIds, isEmpty);
+    await tester.enterText(find.byType(TextField), 'alpha');
+    await tester.pumpAndSettle();
+    expect(_label(_serverAlpha), findsOneWidget);
+    expect(_label('Beta artist'), findsNothing);
+    await _tap(tester, 'Select all');
+    await _save(tester);
+    expect(controller.loadAllCalls, 1);
+    expect(controller.value.artistIds, unorderedEquals(['shared-artist', 'server-artist']));
+    await _tap(tester, 'Clear');
+    await _save(tester);
+    expect(controller.value.artistIds, isEmpty);
 
-      await _tap(tester, 'Genres');
-      await tester.enterText(find.byType(TextField), 'jazz');
-      await tester.pumpAndSettle();
-      expect(_label('Jazz'), findsOneWidget);
-      expect(_label('Ambient'), findsNothing);
-      await _tap(tester, 'Select all');
-      await _save(tester);
-      expect(controller.value.genres, ['ambient', 'jazz']);
-      await _tap(tester, 'Clear');
-      await _save(tester);
-      expect(controller.value.genres, isEmpty);
-      expect(controller.value.localArtistIds, ['local-artist']);
-      expect(controller.value.localGenres, ['rock']);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await _tap(tester, 'Genres');
+    await tester.enterText(find.byType(TextField), 'jazz');
+    await tester.pumpAndSettle();
+    expect(_label('Jazz'), findsOneWidget);
+    expect(_label('Ambient'), findsNothing);
+    await _tap(tester, 'Select all');
+    await _save(tester);
+    expect(controller.value.genres, ['ambient', 'jazz']);
+    await _tap(tester, 'Clear');
+    await _save(tester);
+    expect(controller.value.genres, isEmpty);
+    expect(controller.value.localArtistIds, ['local-artist']);
+    expect(controller.value.localGenres, ['rock']);
+    expect(tester.takeException(), isNull);
+  });
 
-  testWidgets('local selections remain available without a server connection', (
-    tester,
-  ) async {
+  testWidgets('local selections remain available without a server connection', (tester) async {
     final controller = _ShuffleController(authorized: false);
     await _mount(tester, controller);
     expect(_label('Connect to a server to load artists.'), findsOneWidget);
@@ -401,45 +338,24 @@ void main() {
   });
 
   for (final layout in [
-    (
-      name: 'narrow with larger text',
-      size: const Size(320, 900),
-      textScale: 1.4,
-    ),
+    (name: 'narrow with larger text', size: const Size(320, 900), textScale: 1.4),
     (name: 'desktop', size: const Size(1440, 1000), textScale: 1.0),
   ]) {
-    testWidgets('custom shuffle remains usable on ${layout.name}', (
-      tester,
-    ) async {
+    testWidgets('custom shuffle remains usable on ${layout.name}', (tester) async {
       final controller = _ShuffleController();
       final semantics = tester.ensureSemantics();
       try {
-        await _mount(
-          tester,
-          controller,
-          size: layout.size,
-          textScale: layout.textScale,
-        );
+        await _mount(tester, controller, size: layout.size, textScale: layout.textScale);
         expect(tester.takeException(), isNull);
         final title = tester.renderObject<RenderParagraph>(
-          find.descendant(
-            of: find.text('CUSTOM SHUFFLE'),
-            matching: find.byType(RichText),
-          ),
+          find.descendant(of: find.text('CUSTOM SHUFFLE'), matching: find.byType(RichText)),
         );
-        expect(
-          title.didExceedMaxLines,
-          isFalse,
-          reason: 'The full page title should remain visible.',
-        );
+        expect(title.didExceedMaxLines, isFalse, reason: 'The full page title should remain visible.');
 
         await _tap(tester, _serverAlpha);
         await _save(tester);
         expect(_selected(tester, _serverAlpha), isTrue);
-        expect(
-          tester.getSemantics(_checkbox(_serverAlpha)),
-          containsSemantics(hasCheckedState: true, isChecked: true),
-        );
+        expect(tester.getSemantics(_checkbox(_serverAlpha)), containsSemantics(hasCheckedState: true, isChecked: true));
         await _tap(tester, 'Genres');
         await _tap(tester, 'Local');
         await _tap(tester, 'Select all');

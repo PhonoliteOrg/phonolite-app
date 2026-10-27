@@ -23,17 +23,25 @@ class ObsidianModalScope extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = isCompact(context);
+    final platform = Theme.of(context).platform;
+    final touchTargets =
+        compact ||
+        switch (platform) {
+          TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia => true,
+          _ => false,
+        };
     final child = _ModalTouchTargets(
-      enabled: compact,
+      enabled: touchTargets,
       child: Builder(builder: builder),
     );
 
-    if (!compact) {
+    if (!touchTargets) {
       return child;
     }
 
     return Theme(
       data: ObsidianTheme.build().copyWith(
+        platform: platform,
         visualDensity: VisualDensity.standard,
         materialTapTargetSize: MaterialTapTargetSize.padded,
       ),

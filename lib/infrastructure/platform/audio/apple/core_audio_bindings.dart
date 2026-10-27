@@ -9,6 +9,9 @@ typedef CoreAudioOpenNative =
 
 typedef CoreAudioOpenDart = ffi.Pointer<ffi.Void> Function(int sampleRate, int channels, int deviceId);
 
+typedef CoreAudioOpenFormatNative = ffi.Pointer<ffi.Void> Function(ffi.Int32, ffi.Int32, ffi.Int32, ffi.Int32);
+typedef CoreAudioOpenFormatDart = ffi.Pointer<ffi.Void> Function(int, int, int, int);
+
 typedef CoreAudioCloseNative = ffi.Void Function(ffi.Pointer<ffi.Void> handle);
 
 typedef CoreAudioCloseDart = void Function(ffi.Pointer<ffi.Void> handle);
@@ -18,6 +21,9 @@ typedef CoreAudioWriteNative =
 
 typedef CoreAudioWriteDart =
     int Function(ffi.Pointer<ffi.Void> handle, ffi.Pointer<ffi.Int16> samples, int sampleCount);
+
+typedef CoreAudioWrite32Native = ffi.Int32 Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Int32>, ffi.Int32);
+typedef CoreAudioWrite32Dart = int Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Int32>, int);
 
 typedef CoreAudioSetVolumeNative = ffi.Void Function(ffi.Pointer<ffi.Void> handle, ffi.Float volume);
 
@@ -56,8 +62,10 @@ class CoreAudioBindings {
   static const int _nameBufferLen = 256;
 
   late final CoreAudioOpenDart open;
+  late final CoreAudioOpenFormatDart openFormat;
   late final CoreAudioCloseDart close;
   late final CoreAudioWriteDart write;
+  late final CoreAudioWrite32Dart write32;
   late final CoreAudioSetVolumeDart setVolume;
   late final CoreAudioPauseDart pause;
   late final CoreAudioResumeDart resume;
@@ -72,8 +80,10 @@ class CoreAudioBindings {
     final lib = ffi.DynamicLibrary.process();
 
     open = lib.lookup<ffi.NativeFunction<CoreAudioOpenNative>>('phonolite_audio_open').asFunction();
+    openFormat = lib.lookupFunction<CoreAudioOpenFormatNative, CoreAudioOpenFormatDart>('phonolite_audio_open_format');
     close = lib.lookup<ffi.NativeFunction<CoreAudioCloseNative>>('phonolite_audio_close').asFunction();
     write = lib.lookup<ffi.NativeFunction<CoreAudioWriteNative>>('phonolite_audio_write').asFunction();
+    write32 = lib.lookupFunction<CoreAudioWrite32Native, CoreAudioWrite32Dart>('phonolite_audio_write32');
     setVolume = lib.lookup<ffi.NativeFunction<CoreAudioSetVolumeNative>>('phonolite_audio_set_volume').asFunction();
     pause = lib.lookup<ffi.NativeFunction<CoreAudioPauseNative>>('phonolite_audio_pause').asFunction();
     resume = lib.lookup<ffi.NativeFunction<CoreAudioResumeNative>>('phonolite_audio_resume').asFunction();

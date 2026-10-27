@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _DownloadStateStore {
   final _OfflineDownloadActorCore _host;
@@ -97,6 +97,10 @@ class _DownloadStateStore {
       }
 
       await _host._syncJobItemFromDownload(prepared);
+
+      if (prepared.status != OfflineDownloadStatus.downloading && prepared.status != OfflineDownloadStatus.preparing) {
+        _host._scheduleLocalUserDataReload();
+      }
 
       final batchId = prepared.batchId;
 
@@ -257,13 +261,7 @@ class _DownloadStateStore {
               item.status == OfflineDownloadStatus.canceled,
         )
         .length;
-    final active = items.any(
-      (item) =>
-          item.status == OfflineDownloadStatus.preparing ||
-          item.status == OfflineDownloadStatus.downloading ||
-          item.status == OfflineDownloadStatus.validating ||
-          item.status == OfflineDownloadStatus.removing,
-    );
+    final active = items.any((item) => DownloadQueueRules.hasActiveWork(item.status));
     final queued = items.any((item) => item.status == OfflineDownloadStatus.queued);
     final paused = items.isNotEmpty && items.every((item) => item.status == OfflineDownloadStatus.paused);
     final OfflineDownloadStatus status;
@@ -438,16 +436,18 @@ class _DownloadStateStore {
       return localId;
     }
 
-    final byLocal = _host.findLocal(track.id);
+    final byLocal = _downloads.where((download) => download.localTrackId == track.id).firstOrNull;
 
     if (byLocal?.localTrackId != null) {
       return byLocal!.localTrackId;
     }
 
     final serverTrackId = track.serverTrackId ?? track.id;
+    final serverBaseUrl = track.serverBaseUrl ?? _host.connection.baseUrl;
 
     for (final download in _downloads) {
-      if (download.track.id == serverTrackId || download.track.serverTrackId == serverTrackId) {
+      if (download.serverBaseUrl == serverBaseUrl &&
+          (download.track.id == serverTrackId || download.track.serverTrackId == serverTrackId)) {
         return download.localTrackId;
       }
     }

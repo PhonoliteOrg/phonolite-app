@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+part of '../offline_library.dart';
 
 class _OfflineDownloadJobStore {
   final OfflineLibraryStorage _host;

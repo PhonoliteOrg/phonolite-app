@@ -12,6 +12,8 @@ String playbackStreamLabel(StreamMode mode) {
       return 'MQ';
     case StreamMode.low:
       return 'LQ';
+    case StreamMode.original:
+      return 'OG';
   }
 }
 
@@ -52,7 +54,7 @@ String playbackShuffleLabel(ShuffleMode mode) {
 }
 
 String? playbackBitrateLabel(PlaybackState state) {
-  if (state.isLocalPlayback) {
+  if (state.isLocalPlayback || state.streamMode == StreamMode.original) {
     return null;
   }
 
@@ -70,7 +72,7 @@ String? playbackBitrateLabel(PlaybackState state) {
 String? playbackRttLabel(PlaybackState state) {
   final rtt = state.streamRttMs;
 
-  if (state.isLocalPlayback || rtt == null) {
+  if (state.isLocalPlayback || state.streamMode == StreamMode.original || rtt == null) {
     return null;
   }
 

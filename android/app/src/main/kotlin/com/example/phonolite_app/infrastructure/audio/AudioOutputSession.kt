@@ -6,6 +6,8 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import com.example.phonolite_app.data.models.audio.AudioOutputConfiguration
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
@@ -23,7 +25,9 @@ internal class AudioOutputSession(
 
   private data class QueuedChunk(val data: ByteArray, val generation: Int)
 
-  private val bytesPerFrame = configuration.channels * 2
+  private val encoding = encodingFor(configuration)
+  private val bytesPerSample = configuration.bitsPerSample / 8
+  private val bytesPerFrame = configuration.channels * bytesPerSample
   private val writeGeneration = AtomicInteger(0)
   private val writeQueue = LinkedBlockingQueue<QueuedChunk>(MAX_QUEUED_CHUNKS)
   private val writeLock = Any()
@@ -51,12 +55,12 @@ internal class AudioOutputSession(
       AudioTrack.getMinBufferSize(
         configuration.sampleRate,
         channelMask,
-        AudioFormat.ENCODING_PCM_16BIT
+        encoding
       ).coerceAtLeast(MIN_BUFFER_BYTES)
     val targetBufferBytes = max(minBufferBytes, configuration.sampleRate * bytesPerFrame / 10)
     val format =
       AudioFormat.Builder()
-        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+        .setEncoding(encoding)
         .setSampleRate(configuration.sampleRate)
         .setChannelMask(channelMask)
         .build()
@@ -73,6 +77,11 @@ internal class AudioOutputSession(
 
     audioTrack = builder.build()
 
+    if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
+      audioTrack.release()
+      throw IllegalArgumentException("The audio device does not support the original PCM format")
+    }
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && configuration.deviceId > 0) {
       val preferredDevice =
         audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { device ->
@@ -85,7 +94,8 @@ internal class AudioOutputSession(
     }
 
     maxBufferedFrames = max(targetBufferBytes / bytesPerFrame, configuration.sampleRate / 5).toLong()
-    progress = AudioPlaybackProgress(AudioTrackPlaybackProbe(audioTrack), configuration.sampleRate, bytesPerFrame)
+    progress =
+      AudioPlaybackProgress(AudioTrackPlaybackProbe(audioTrack), configuration.sampleRate, bytesPerFrame, bytesPerSample)
     audioTrack.play()
     progress.markPlaying()
     writerThread.start()
@@ -122,7 +132,7 @@ internal class AudioOutputSession(
 
     val frames = chunk.size / bytesPerFrame
 
-    if (frames <= 0) {
+    if (frames <= 0 || chunk.size % bytesPerFrame != 0) {
       return -2
     }
 
@@ -240,6 +250,25 @@ internal class AudioOutputSession(
 
   private fun writeChunk(chunk: QueuedChunk) {
     var offset = 0
+    val pcm =
+      if (bytesPerSample == 4) {
+        val buffer = ByteBuffer.allocateDirect(chunk.data.size).order(ByteOrder.nativeOrder())
+
+        if (encoding == AudioFormat.ENCODING_PCM_FLOAT) {
+          val source = ByteBuffer.wrap(chunk.data).order(ByteOrder.nativeOrder())
+
+          while (source.hasRemaining()) {
+            buffer.putFloat((source.int.toDouble() / 2147483648.0).toFloat())
+          }
+        } else {
+          buffer.put(chunk.data)
+        }
+
+        buffer.flip()
+        buffer
+      } else {
+        null
+      }
 
     while (running && offset < chunk.data.size) {
       val written =
@@ -252,7 +281,11 @@ internal class AudioOutputSession(
           // when the device has no buffer space. The builder requires API 23.
           val accepted =
             try {
-              audioTrack.write(chunk.data, offset, chunk.data.size - offset, AudioTrack.WRITE_NON_BLOCKING)
+              if (pcm != null) {
+                audioTrack.write(pcm, pcm.remaining(), AudioTrack.WRITE_NON_BLOCKING)
+              } else {
+                audioTrack.write(chunk.data, offset, chunk.data.size - offset, AudioTrack.WRITE_NON_BLOCKING)
+              }
             } catch (_: Throwable) {
               -1
             }
@@ -286,5 +319,25 @@ internal class AudioOutputSession(
 
       offset += written
     }
+  }
+
+  private fun encodingFor(configuration: AudioOutputConfiguration): Int {
+    require(configuration.sampleRate > 0 && configuration.channels in 1..2) { "Unsupported PCM layout" }
+    require(configuration.bitsPerSample == 16 || configuration.bitsPerSample == 32) { "Unsupported PCM container" }
+    require(configuration.validBitsPerSample in 1..configuration.bitsPerSample) { "Invalid PCM precision" }
+
+    if (configuration.bitsPerSample == 16) {
+      return AudioFormat.ENCODING_PCM_16BIT
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      return AudioFormat.ENCODING_PCM_32BIT
+    }
+
+    // Every signed 24-bit integer is exactly representable in float PCM. True
+    // 32-bit sources must not silently lose their low bits on older devices.
+    require(configuration.validBitsPerSample <= 24) { "Original 32-bit PCM requires Android 12 or newer" }
+
+    return AudioFormat.ENCODING_PCM_FLOAT
   }
 }

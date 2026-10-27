@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:phonolite_app/data/models/collections/local_like_state.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/download_batch.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
@@ -20,8 +21,11 @@ import 'package:phonolite_app/data/models/downloads/offline_track_download.dart'
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/library/track_source_match.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
+import 'package:phonolite_app/data/rules/library/track_matching.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
 import 'package:phonolite_app/data/storage/windows_app_storage.dart';
@@ -35,19 +39,21 @@ export 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 export 'package:phonolite_app/data/models/downloads/offline_metadata_repair_request.dart';
 export 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 
-part 'package:phonolite_app/data/storage/offline/library/collections/local_favorites_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/collections/local_playlist_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/deletion/offline_deletion_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/deletion/pending_file_delete_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/downloads/download_job_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/downloads/download_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/files/offline_artwork_files.dart';
-part 'package:phonolite_app/data/storage/offline/library/files/offline_file_layout.dart';
-part 'package:phonolite_app/data/storage/offline/library/files/offline_storage_relocator.dart';
-part 'package:phonolite_app/data/storage/offline/library/metadata/offline_metadata_store.dart';
-part 'package:phonolite_app/data/storage/offline/library/metadata/offline_row_mapper.dart';
-part 'package:phonolite_app/data/storage/offline/library/offline_database.dart';
-part 'package:phonolite_app/data/storage/offline/library/offline_schema.dart';
+part 'collections/local_favorites_store.dart';
+part 'collections/local_playlist_intent_store.dart';
+part 'collections/local_playlist_store.dart';
+part 'deletion/offline_deletion_store.dart';
+part 'deletion/pending_file_delete_store.dart';
+part 'downloads/download_job_store.dart';
+part 'downloads/download_store.dart';
+part 'files/offline_artwork_files.dart';
+part 'files/offline_file_layout.dart';
+part 'files/offline_storage_relocator.dart';
+part 'metadata/offline_metadata_store.dart';
+part 'metadata/offline_row_mapper.dart';
+part 'metadata/track_source_match_store.dart';
+part 'offline_database.dart';
+part 'offline_schema.dart';
 
 class OfflineLibraryStorage
     with
@@ -59,6 +65,8 @@ class OfflineLibraryStorage
         _PendingFileDeleteStoreFacade,
         _LocalFavoritesStoreFacade,
         _LocalPlaylistStoreFacade,
+        _LocalPlaylistIntentStoreFacade,
+        _TrackSourceMatchStoreFacade,
         _OfflineFileLayoutFacade,
         _OfflineSchemaFacade,
         _OfflineDatabaseFacade,
@@ -73,7 +81,7 @@ class OfflineLibraryStorage
   static const String _indexFileName = 'offline_library.json';
   static const String _databaseFileName = 'phonolite_offline.sqlite';
   static const String _partialExtension = 'part';
-  static const int _schemaVersion = 11;
+  static const int _schemaVersion = 12;
   static const Object _storageUnset = Object();
 
   final bool keepDatabaseOpen;
@@ -110,6 +118,12 @@ class OfflineLibraryStorage
 
   @override
   _LocalPlaylistStore get _ownerPlaylists => _LocalPlaylistStore(this);
+
+  @override
+  _LocalPlaylistIntentStore get _ownerPlaylistIntents => _LocalPlaylistIntentStore(this);
+
+  @override
+  _TrackSourceMatchStore get _ownerSourceMatches => _TrackSourceMatchStore(this);
 
   @override
   _LocalFavoritesStore get _ownerFavorites => _LocalFavoritesStore(this);
@@ -164,8 +178,6 @@ class OfflineLibraryStorage
       _PendingFileDeleteStore._pathIsUnderAnyRoot(path, roots);
 
   static String _metadataMatchKey(Track track) => _OfflineMetadataStore._metadataMatchKey(track);
-
-  static String _normalizeMetadataText(String value) => _OfflineMetadataStore._normalizeMetadataText(value);
 
   static String _stableId(String value) => _OfflineMetadataStore._stableId(value);
 

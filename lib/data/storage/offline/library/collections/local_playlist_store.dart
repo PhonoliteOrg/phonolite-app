@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+part of '../offline_library.dart';
 
 class _LocalPlaylistStore {
   final OfflineLibraryStorage _host;
@@ -103,6 +103,11 @@ class _LocalPlaylistStore {
           db.execute(
             'INSERT INTO pending_playlist_tracks (playlist_id, position, server_base_url, server_track_id) VALUES (?, ?, ?, ?)',
             [id, position, downloadServerBaseUrl, downloadTrackIds[position]],
+          );
+          db.execute(
+            '''INSERT OR IGNORE INTO download_demands
+            (server_base_url, server_track_id, owner_kind, owner_id, created_at) VALUES (?, ?, 'playlist', ?, ?)''',
+            [downloadServerBaseUrl, downloadTrackIds[position], '$id:$position', now],
           );
         }
 
@@ -222,7 +227,11 @@ class _LocalPlaylistStore {
       }
 
       _host._transaction(db, () {
-        db!.execute('DELETE FROM local_playlist_tracks WHERE playlist_id = ?', [playlistId]);
+        db!.execute(
+          "DELETE FROM download_demands WHERE owner_kind = 'playlist' AND substr(owner_id, 1, length(?) + 1) = ? || ':'",
+          [playlistId, playlistId],
+        );
+        db.execute('DELETE FROM local_playlist_tracks WHERE playlist_id = ?', [playlistId]);
         db.execute('DELETE FROM local_playlists WHERE id = ?', [playlistId]);
       });
 
@@ -311,6 +320,19 @@ class _LocalPlaylistStore {
           trackIds: trackRows
               .map((item) => OfflineLibraryStorage._readString(item, 'local_track_id'))
               .toList(growable: false),
+          pendingTrackSources: db
+              .select(
+                '''SELECT server_base_url, server_track_id FROM pending_playlist_tracks
+            WHERE playlist_id = ? ORDER BY position''',
+                [playlistId],
+              )
+              .map(
+                (pending) => SourceTrackRef(
+                  serverBaseUrl: pending['server_base_url'] as String,
+                  serverTrackId: pending['server_track_id'] as String,
+                ),
+              )
+              .toList(growable: false),
           description: OfflineLibraryStorage._readNullableString(row, 'description'),
           imagePath: OfflineLibraryStorage._readNullableString(row, 'image_path'),
         ),
@@ -322,7 +344,7 @@ class _LocalPlaylistStore {
 
   void _resolvePendingPlaylistTracks(Database db, {String? serverBaseUrl, String? serverTrackId}) {
     final rows = db.select(
-      '''SELECT p.playlist_id, p.position, s.local_track_id
+      '''SELECT p.playlist_id, p.position, p.entry_kind, s.local_track_id
         FROM pending_playlist_tracks p
         JOIN source_tracks s ON s.server_base_url = p.server_base_url
           AND s.server_track_id = p.server_track_id
@@ -335,10 +357,23 @@ class _LocalPlaylistStore {
     );
 
     for (final row in rows) {
-      db.execute(
-        'INSERT OR IGNORE INTO local_playlist_tracks (playlist_id, position, local_track_id) VALUES (?, ?, ?)',
-        [row['playlist_id'], row['position'], row['local_track_id']],
-      );
+      final alreadyPresent =
+          row['entry_kind'] == 'manual' &&
+          db.select('SELECT 1 FROM local_playlist_tracks WHERE playlist_id = ? AND local_track_id = ? LIMIT 1', [
+            row['playlist_id'],
+            row['local_track_id'],
+          ]).isNotEmpty;
+
+      if (!alreadyPresent) {
+        db.execute(
+          'INSERT OR IGNORE INTO local_playlist_tracks (playlist_id, position, local_track_id) VALUES (?, ?, ?)',
+          [row['playlist_id'], row['position'], row['local_track_id']],
+        );
+      }
+
+      db.execute("DELETE FROM download_demands WHERE owner_kind = 'playlist' AND owner_id = ?", [
+        '${row['playlist_id']}:${row['position']}',
+      ]);
       db.execute('DELETE FROM pending_playlist_tracks WHERE playlist_id = ? AND position = ?', [
         row['playlist_id'],
         row['position'],

@@ -5,19 +5,36 @@ use std::path::Path;
 use std::ptr;
 use std::slice;
 use std::str;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
 use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
+use symphonia::core::io::MediaSource;
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
+use symphonia::core::meta::{Limit, MetadataOptions};
 use symphonia::core::probe::Hint;
 use symphonia::core::units::{Time, TimeBase};
 use symphonia::default::{get_codecs, get_probe};
 
+mod pinned_tls;
+mod remote_source;
+
 thread_local! {
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
+    static LAST_ERROR_CODE: RefCell<i32> = const { RefCell::new(0) };
+}
+
+pub(crate) fn set_failure_code(code: i32) {
+    LAST_ERROR_CODE.with(|slot| *slot.borrow_mut() = code);
+}
+
+pub(crate) fn failure_code() -> i32 {
+    LAST_ERROR_CODE.with(|slot| *slot.borrow())
 }
 
 pub struct LocalAudioHandle {
@@ -25,19 +42,31 @@ pub struct LocalAudioHandle {
     decoder: Box<dyn Decoder>,
     track_id: u32,
     sample_rate: u32,
+    bit_depth: u32,
     source_channels: usize,
     output_channels: usize,
     duration_ms: i64,
     time_base: Option<TimeBase>,
     position_frames: u64,
     pending_skip_frames: u64,
-    pending: Vec<i16>,
+    pending: Vec<i32>,
     pending_offset: usize,
     last_error: Option<String>,
+    last_error_code: i32,
 }
 
 impl LocalAudioHandle {
     fn read(&mut self, out: &mut [i16]) -> Result<usize, String> {
+        let mut precise = vec![0; out.len()];
+        let count = self.read32(&mut precise)?;
+        for (sample, precise) in out.iter_mut().zip(precise).take(count) {
+            *sample = (precise >> 16) as i16;
+        }
+
+        Ok(count)
+    }
+
+    fn read32(&mut self, out: &mut [i32]) -> Result<usize, String> {
         let max_samples = out.len() - (out.len() % self.output_channels);
         if max_samples == 0 {
             return Ok(0);
@@ -120,6 +149,13 @@ impl LocalAudioHandle {
 
             match self.decoder.decode(&packet) {
                 Ok(decoded) => {
+                    if decoded.spec().rate != self.sample_rate
+                        || decoded.spec().channels.count() != self.source_channels
+                    {
+                        set_failure_code(-101);
+                        return Err("audio format changed during playback".into());
+                    }
+
                     let (pending, skipped_frames, output_frames) = convert_decoded(
                         decoded,
                         self.source_channels,
@@ -158,9 +194,9 @@ fn convert_decoded(
     source_channels: usize,
     output_channels: usize,
     pending_skip_frames: u64,
-) -> (Vec<i16>, u64, u64) {
+) -> (Vec<i32>, u64, u64) {
     let spec = *decoded.spec();
-    let mut sample_buffer = SampleBuffer::<i16>::new(decoded.capacity() as u64, spec);
+    let mut sample_buffer = SampleBuffer::<i32>::new(decoded.capacity() as u64, spec);
     sample_buffer.copy_interleaved_ref(decoded);
 
     let samples = sample_buffer.samples();
@@ -201,20 +237,51 @@ fn convert_decoded(
 fn open_inner(path: &str, start_ms: i64) -> Result<Box<LocalAudioHandle>, String> {
     let path_ref = Path::new(path);
     let file = File::open(path_ref).map_err(|err| format!("open failed: {err}"))?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
     if let Some(extension) = path_ref.extension().and_then(|value| value.to_str()) {
         hint.with_extension(extension);
     }
+
+    open_source(Box::new(file), hint, start_ms)
+}
+
+fn open_remote_inner(
+    url: &str,
+    token: &str,
+    server_pin: &str,
+    start_ms: i64,
+) -> Result<Box<LocalAudioHandle>, String> {
+    let opening = Arc::new(AtomicBool::new(true));
+    let source = remote_source::RemoteSource::open(url, token, server_pin, opening.clone())?;
+    let result = open_source(Box::new(source), Hint::new(), start_ms);
+    opening.store(false, Ordering::Release);
+
+    result
+}
+
+fn open_source(
+    source: Box<dyn MediaSource>,
+    hint: Hint,
+    start_ms: i64,
+) -> Result<Box<LocalAudioHandle>, String> {
+    let mss = MediaSourceStream::new(source, Default::default());
 
     let probed = get_probe()
         .format(
             &hint,
             mss,
             &FormatOptions::default(),
-            &MetadataOptions::default(),
+            &MetadataOptions {
+                limit_metadata_bytes: Limit::Maximum(64 * 1024),
+                limit_visual_bytes: Limit::Maximum(0),
+            },
         )
-        .map_err(|err| format!("probe failed: {err}"))?;
+        .map_err(|err| {
+            if failure_code() == 0 {
+                set_failure_code(-101);
+            }
+            format!("probe failed: {err}")
+        })?;
     let format = probed.format;
     let track = format
         .default_track()
@@ -234,10 +301,16 @@ fn open_inner(path: &str, start_ms: i64) -> Result<Box<LocalAudioHandle>, String
         .channels
         .ok_or_else(|| "missing channel layout".to_string())?
         .count();
-    if source_channels == 0 {
-        return Err("invalid channel count".to_string());
+    if source_channels == 0 || source_channels > 2 {
+        set_failure_code(-101);
+        return Err("Original playback supports mono or stereo sources".to_string());
     }
-    let output_channels = if source_channels == 1 { 1 } else { 2 };
+    let output_channels = source_channels;
+    let bit_depth = codec_params.bits_per_sample.unwrap_or(32);
+    if bit_depth == 0 || bit_depth > 32 {
+        set_failure_code(-101);
+        return Err("Original playback supports source precision up to 32 bits".to_string());
+    }
     let duration_ms = codec_params
         .n_frames
         .map(|frames| (frames.saturating_mul(1000) / sample_rate as u64) as i64)
@@ -245,13 +318,17 @@ fn open_inner(path: &str, start_ms: i64) -> Result<Box<LocalAudioHandle>, String
     let time_base = codec_params.time_base;
     let decoder = get_codecs()
         .make(&codec_params, &DecoderOptions::default())
-        .map_err(|err| format!("decoder create failed: {err}"))?;
+        .map_err(|err| {
+            set_failure_code(-101);
+            format!("decoder create failed: {err}")
+        })?;
 
     let mut handle = Box::new(LocalAudioHandle {
         format,
         decoder,
         track_id,
         sample_rate,
+        bit_depth,
         source_channels,
         output_channels,
         duration_ms,
@@ -261,6 +338,7 @@ fn open_inner(path: &str, start_ms: i64) -> Result<Box<LocalAudioHandle>, String
         pending: Vec::new(),
         pending_offset: 0,
         last_error: None,
+        last_error_code: 0,
     });
 
     if start_ms > 0 {
@@ -287,12 +365,15 @@ unsafe fn handle_mut<'a>(handle: *mut LocalAudioHandle) -> Result<&'a mut LocalA
     handle.as_mut().ok_or(-1)
 }
 
+/// # Safety
+/// `path` must address `path_len` readable bytes for this call.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_open(
     path: *const u8,
     path_len: u64,
     start_ms: i64,
 ) -> *mut LocalAudioHandle {
+    set_failure_code(0);
     if path.is_null() || path_len == 0 {
         set_last_error("invalid path".to_string());
         return ptr::null_mut();
@@ -314,12 +395,57 @@ pub unsafe extern "C" fn phonolite_local_audio_open(
     }
 }
 
+/// # Safety
+/// Each input pointer must address its declared readable byte length for this
+/// call. The returned handle is owned by the caller and must be closed once.
+#[no_mangle]
+pub unsafe extern "C" fn phonolite_local_audio_open_remote(
+    url: *const u8,
+    url_len: u64,
+    token: *const u8,
+    token_len: u64,
+    server_pin: *const u8,
+    server_pin_len: u64,
+    start_ms: i64,
+) -> *mut LocalAudioHandle {
+    set_failure_code(0);
+    let input = |pointer: *const u8, length: u64| -> Result<&str, String> {
+        if pointer.is_null() || length == 0 || length > 16_384 {
+            set_failure_code(-100);
+            return Err("invalid Original audio request".into());
+        }
+
+        str::from_utf8(slice::from_raw_parts(pointer, length as usize))
+            .map_err(|_| "invalid Original audio request encoding".into())
+    };
+    let result = (|| {
+        open_remote_inner(
+            input(url, url_len)?,
+            input(token, token_len)?,
+            input(server_pin, server_pin_len)?,
+            start_ms,
+        )
+    })();
+
+    match result {
+        Ok(handle) => Box::into_raw(handle),
+        Err(error) => {
+            set_last_error(error);
+            ptr::null_mut()
+        }
+    }
+}
+
+/// # Safety
+/// `handle` must be null or a live, exclusively borrowed decoder. `out` must
+/// address `max_samples` writable i16 values without aliasing the decoder.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_read(
     handle: *mut LocalAudioHandle,
     out: *mut i16,
     max_samples: u64,
 ) -> i64 {
+    set_failure_code(0);
     if out.is_null() || max_samples == 0 {
         return 0;
     }
@@ -332,16 +458,50 @@ pub unsafe extern "C" fn phonolite_local_audio_read(
         Ok(read) => read as i64,
         Err(err) => {
             decoder.last_error = Some(err);
+            decoder.last_error_code = failure_code();
             -2
         }
     }
 }
 
+/// # Safety
+/// `handle` must be null or a live, exclusively borrowed decoder. `out` must
+/// address `max_samples` writable i32 values without aliasing the decoder.
+#[no_mangle]
+pub unsafe extern "C" fn phonolite_local_audio_read32(
+    handle: *mut LocalAudioHandle,
+    out: *mut i32,
+    max_samples: u64,
+) -> i64 {
+    set_failure_code(0);
+    if out.is_null() || max_samples == 0 {
+        return 0;
+    }
+
+    let decoder = match handle_mut(handle) {
+        Ok(decoder) => decoder,
+        Err(code) => return code,
+    };
+    let out = slice::from_raw_parts_mut(out, max_samples as usize);
+
+    match decoder.read32(out) {
+        Ok(read) => read as i64,
+        Err(error) => {
+            decoder.last_error = Some(error);
+            decoder.last_error_code = failure_code();
+            -2
+        }
+    }
+}
+
+/// # Safety
+/// `handle` must be null or a live decoder exclusively borrowed for this call.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_seek(
     handle: *mut LocalAudioHandle,
     position_ms: i64,
 ) -> i64 {
+    set_failure_code(0);
     let decoder = match handle_mut(handle) {
         Ok(decoder) => decoder,
         Err(code) => return code,
@@ -350,11 +510,14 @@ pub unsafe extern "C" fn phonolite_local_audio_seek(
         Ok(actual_ms) => actual_ms,
         Err(err) => {
             decoder.last_error = Some(err);
+            decoder.last_error_code = failure_code();
             -2
         }
     }
 }
 
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_sample_rate(handle: *mut LocalAudioHandle) -> i32 {
     handle
@@ -363,6 +526,18 @@ pub unsafe extern "C" fn phonolite_local_audio_sample_rate(handle: *mut LocalAud
         .unwrap_or(0)
 }
 
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
+#[no_mangle]
+pub unsafe extern "C" fn phonolite_local_audio_bit_depth(handle: *mut LocalAudioHandle) -> i32 {
+    handle
+        .as_ref()
+        .map(|handle| handle.bit_depth as i32)
+        .unwrap_or(0)
+}
+
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_channels(handle: *mut LocalAudioHandle) -> i32 {
     handle
@@ -371,6 +546,8 @@ pub unsafe extern "C" fn phonolite_local_audio_channels(handle: *mut LocalAudioH
         .unwrap_or(0)
 }
 
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_duration_ms(handle: *mut LocalAudioHandle) -> i64 {
     handle
@@ -379,6 +556,8 @@ pub unsafe extern "C" fn phonolite_local_audio_duration_ms(handle: *mut LocalAud
         .unwrap_or(0)
 }
 
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_position_ms(handle: *mut LocalAudioHandle) -> i64 {
     handle
@@ -389,6 +568,27 @@ pub unsafe extern "C" fn phonolite_local_audio_position_ms(handle: *mut LocalAud
         .unwrap_or(0)
 }
 
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
+#[no_mangle]
+pub unsafe extern "C" fn phonolite_local_audio_error_code(handle: *mut LocalAudioHandle) -> i32 {
+    let code = handle
+        .as_ref()
+        .map(|handle| handle.last_error_code)
+        .unwrap_or_else(failure_code);
+
+    // The internal marker keeps a probe's network error distinct from an
+    // unsupported file. Public transport failures retain the zero code.
+    if code == -200 {
+        0
+    } else {
+        code
+    }
+}
+
+/// # Safety
+/// `handle` must be null or a live decoder that is not concurrently mutated.
+/// `out` must address `out_len` writable bytes for this call.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_last_error(
     handle: *mut LocalAudioHandle,
@@ -416,6 +616,9 @@ pub unsafe extern "C" fn phonolite_local_audio_last_error(
     copied as u64
 }
 
+/// # Safety
+/// A non-null `handle` must be a live decoder returned by an open function,
+/// uniquely owned by this call. It must never be used or closed again.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_close(handle: *mut LocalAudioHandle) {
     if !handle.is_null() {
@@ -448,8 +651,142 @@ mod tests {
     }
 
     #[test]
+    fn original_mp3_keeps_decoder_precision_beyond_sixteen_bits() {
+        let path = write_fixture("precise.mp3", include_bytes!("../tests/fixtures/tone.mp3"));
+        let mut decoder = open_inner(path.to_str().unwrap(), 0).unwrap();
+        assert_eq!(decoder.bit_depth, 32);
+        let mut samples = vec![0i32; decoder.output_channels * 4096];
+        let count = decoder.read32(&mut samples).unwrap();
+        assert!(samples[..count].iter().any(|sample| sample & 0xffff != 0));
+        drop(decoder);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn decodes_flac_metadata_reads_seek_and_eof() {
         exercise_fixture("flac", include_bytes!("../tests/fixtures/tone.flac"));
+    }
+
+    #[test]
+    fn original_flac_preserves_192khz_and_every_24bit_sample() {
+        let values = [1, -1, 8_388_607, -8_388_608, 0x123456, -0x123456, 255, -255];
+        exercise_precise_flac(24, &values);
+    }
+
+    #[test]
+    fn original_flac_preserves_every_32bit_sample() {
+        let values = [
+            1,
+            -1,
+            i32::MAX,
+            i32::MIN,
+            0x12345678,
+            -0x12345678,
+            255,
+            -255,
+        ];
+        exercise_precise_flac(32, &values);
+    }
+
+    #[test]
+    fn seeks_within_a_large_32bit_flac_frame_after_eof() {
+        let samples: Vec<i32> = (0..4096).map(|index| index * 31 + 1).collect();
+        let path = write_fixture("large-seek-32.flac", &verbatim_flac(192_000, 32, &samples));
+        let mut decoder = open_inner(path.to_str().unwrap(), 0).unwrap();
+        let mut output = vec![0; 8192];
+        assert_eq!(decoder.read32(&mut output).unwrap(), 4096);
+        assert_eq!(decoder.read32(&mut output).unwrap(), 0);
+
+        assert_eq!(decoder.seek(5).unwrap(), 5);
+        let read = decoder.read32(&mut output).unwrap();
+        assert_eq!(&output[..read], &samples[960..]);
+        assert_eq!(decoder.seek(0).unwrap(), 0);
+        assert_eq!(decoder.read32(&mut output[..8]).unwrap(), 8);
+        assert_eq!(&output[..8], &samples[..8]);
+        drop(decoder);
+
+        let mut decoder = open_inner(path.to_str().unwrap(), 5).unwrap();
+        let read = decoder.read32(&mut output).unwrap();
+        assert_eq!(&output[..read], &samples[960..]);
+        drop(decoder);
+        fs::remove_file(path).unwrap();
+    }
+
+    fn exercise_precise_flac(bits: u32, values: &[i32]) {
+        let samples: Vec<i32> = values.iter().copied().cycle().take(16).collect();
+        let bytes = verbatim_flac(192_000, bits, &samples);
+        let path = write_fixture(&format!("precise-{bits}.flac"), &bytes);
+        let mut decoder = open_inner(path.to_str().unwrap(), 0).expect("open high-resolution FLAC");
+        assert_eq!(decoder.sample_rate, 192_000);
+        assert_eq!(decoder.bit_depth, bits);
+        let mut actual = vec![0; samples.len()];
+        let count = decoder.read32(&mut actual).expect("read full precision");
+        assert_eq!(count, samples.len());
+        assert_eq!(
+            actual,
+            samples
+                .iter()
+                .map(|value| value << (32 - bits))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(decoder.read32(&mut actual).unwrap(), 0);
+        drop(decoder);
+        fs::remove_file(path).unwrap();
+    }
+
+    fn verbatim_flac(rate: u32, bits: u32, samples: &[i32]) -> Vec<u8> {
+        let mut file = b"fLaC\x80\0\0\x22".to_vec();
+        file.extend_from_slice(&(samples.len() as u16).to_be_bytes());
+        file.extend_from_slice(&(samples.len() as u16).to_be_bytes());
+        file.extend_from_slice(&[0; 6]);
+        let stream_info =
+            ((rate as u64) << 44) | (((bits - 1) as u64) << 36) | samples.len() as u64;
+        file.extend_from_slice(&stream_info.to_be_bytes());
+        file.extend_from_slice(&[0; 16]);
+
+        let mut frame = vec![
+            0xff,
+            0xf8,
+            if samples.len() <= 256 { 0x60 } else { 0x70 },
+            0,
+            0,
+        ];
+        if samples.len() <= 256 {
+            frame.push((samples.len() - 1) as u8);
+        } else {
+            frame.extend_from_slice(&((samples.len() - 1) as u16).to_be_bytes());
+        }
+        let crc = frame.iter().fold(0u8, |mut crc, byte| {
+            crc ^= byte;
+            for _ in 0..8 {
+                crc = if crc & 0x80 != 0 {
+                    (crc << 1) ^ 7
+                } else {
+                    crc << 1
+                };
+            }
+            crc
+        });
+        frame.push(crc);
+        frame.push(2);
+        for sample in samples {
+            frame.extend_from_slice(&sample.to_be_bytes()[4 - bits as usize / 8..]);
+        }
+        let crc = frame.iter().fold(0u16, |mut crc, byte| {
+            crc ^= (*byte as u16) << 8;
+            for _ in 0..8 {
+                crc = if crc & 0x8000 != 0 {
+                    (crc << 1) ^ 0x8005
+                } else {
+                    crc << 1
+                };
+            }
+            crc
+        });
+        frame.extend_from_slice(&crc.to_be_bytes());
+        file.extend_from_slice(&frame);
+
+        file
     }
 
     #[test]

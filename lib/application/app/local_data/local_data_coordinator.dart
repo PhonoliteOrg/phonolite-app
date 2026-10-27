@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _LocalDataCoordinator {
   final AppController _host;
@@ -13,11 +13,13 @@ class _LocalDataCoordinator {
 
   Future<void> resetOfflineData() async {
     try {
+      await _host._resumeCoordinator.clearLocal();
       if (_host._playbackState.isLocalPlayback || _host._playbackState.queueSource == PlaybackQueueSource.offline) {
         await _host._stop(requireFileRelease: true);
       }
 
       await _host._offlineDownloadManager.resetLocalData();
+      await _host._resumeCoordinator.clearLocal();
       await _host.loadOfflineStorageLocations();
       await _host.clearMessages();
 

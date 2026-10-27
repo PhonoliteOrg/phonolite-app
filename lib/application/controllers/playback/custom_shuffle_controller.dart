@@ -7,21 +7,30 @@ import 'package:phonolite_app/application/presentation/genre_labels.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 
 export 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
 
 class CustomShuffleController extends FeatureController {
   final AppController _controller;
+  final bool _autosave;
   String _artistQuery = '';
   String _genreQuery = '';
   late final ControllerSelection<String> _selection;
-  CustomShuffleTarget _target = CustomShuffleTarget.server;
+  CustomShuffleTarget _target;
   final _saveDebounce = DebouncedAction();
   Future<void> _saveChain = Future.value();
   bool _initialized = false;
 
-  CustomShuffleController(AppController app) : _controller = app {
-    final settings = app.customShuffleSettings;
+  CustomShuffleController(
+    AppController app, {
+    CustomShuffleSettings? initialSettings,
+    bool autosave = true,
+    CustomShuffleTarget initialTarget = CustomShuffleTarget.server,
+  }) : _controller = app,
+       _autosave = autosave,
+       _target = initialTarget {
+    final settings = initialSettings ?? app.customShuffleSettings;
 
     _selection = ControllerSelection<String>(
       update,
@@ -70,7 +79,7 @@ class CustomShuffleController extends FeatureController {
   Future<void> initializeFeature() async {
     final app = _controller;
 
-    if (app.authState.isAuthorized && app.artists.isEmpty) {
+    if (showingServerTarget && app.authState.isAuthorized && app.artists.isEmpty) {
       await app.loadArtists();
     }
   }
@@ -159,7 +168,19 @@ class CustomShuffleController extends FeatureController {
   }
 
   void scheduleSave() {
+    if (!_autosave) {
+      return;
+    }
+
     _saveDebounce.schedule(const Duration(milliseconds: 350), flushSave);
+  }
+
+  /// Replaces a draft only after an explicit reload; live updates never call it.
+  void replaceServerSelection({required List<String> artistIds, required List<String> genres}) {
+    _selection.replaceGroups({
+      'serverArtists': artistIds,
+      'serverGenres': genres.map(normalizeGenre).where((value) => value.isNotEmpty),
+    }, activate: null);
   }
 
   void handleArtistSearchChanged(String value) {
@@ -177,7 +198,7 @@ class CustomShuffleController extends FeatureController {
   }
 
   void flushSave() {
-    if (!_initialized) {
+    if (!_initialized || !_autosave) {
       return;
     }
 

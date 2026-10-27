@@ -148,7 +148,7 @@ void main() {
       ]);
 
       expectContainsAll(source, const [
-        "const double playbackCompactPlaybackChromeWidth = 980;",
+        'if (usesSideNavigation(context)) {',
         "bool playbackUsesNativeMobileExpandedSheet(BuildContext context)",
         'platform == TargetPlatform.iOS || platform == TargetPlatform.android',
         'useSafeArea: useNativeMobileTreatment,',

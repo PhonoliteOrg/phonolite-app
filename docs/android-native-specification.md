@@ -289,7 +289,7 @@ The [Dart Android output adapter](../lib/infrastructure/platform/audio/android_c
 
 | Contract | Behavior to preserve |
 | --- | --- |
-| PCM | Signed 16-bit interleaved mono/stereo; channel PCM is ByteArray; progress is interleaved sample count, not bytes or frames |
+| PCM | Signed 16- or 32-bit interleaved mono/stereo with validated valid-bit counts; channel PCM is ByteArray; 32-bit output can use the existing float fallback; progress is interleaved sample count, not bytes or frames |
 | Admission | Queue capacity is five waiting chunks, with a separate pending-frame limit; the writer can hold an already dequeued chunk |
 | Status | Zero write success, `-3` backpressure, existing invalid-session/PCM failures and propagated AudioTrack failures |
 | Writer | Nonblocking AudioTrack writes, partial-write progress and existing retry/sleep behavior outside the channel handler |

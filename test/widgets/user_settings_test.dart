@@ -48,15 +48,19 @@ void main() {
   }
 
   for (final status in SessionStatus.values) {
-    testWidgets('User settings and password availability for $status', (
-      tester,
-    ) async {
+    testWidgets('User settings and password availability for $status', (tester) async {
       final controller = _Controller(status);
       await _pumpSettings(tester, controller);
       final sections = tester
           .widgetList<ObsidianSectionHeader>(find.byType(ObsidianSectionHeader))
           .map((widget) => widget.title);
-      expect(sections, ['General', 'User', 'Local Storage', 'Miscellaneous']);
+      expect(sections, [
+        'General',
+        'User',
+        if (status == SessionStatus.authenticated) 'Display',
+        'Local Storage',
+        'Miscellaneous',
+      ]);
       expect(find.text('Listening statistics'), findsOneWidget);
       expect(find.text('Reset listening statistics'), findsOneWidget);
       expect(
@@ -67,30 +71,20 @@ void main() {
     });
   }
 
-  testWidgets('password settings opens a named page using the shared styles', (
-    tester,
-  ) async {
+  testWidgets('password settings opens a named page using the shared styles', (tester) async {
     final controller = _Controller(SessionStatus.authenticated);
     await _pumpSettings(tester, controller);
     await _openPassword(tester);
     expect(
-      ModalRoute.of(
-        tester.element(find.byType(ResetUserPasswordPage)),
-      )!.settings.name,
+      ModalRoute.of(tester.element(find.byType(ResetUserPasswordPage)))!.settings.name,
       ResetUserPasswordPage.routeName,
     );
-    expect(
-      tester.widget<LibraryHeader>(find.byType(LibraryHeader)).title,
-      'RESET PASSWORD',
-    );
+    expect(tester.widget<LibraryHeader>(find.byType(LibraryHeader)).title, 'RESET PASSWORD');
     expect(find.byType(ObsidianTextField), findsNWidgets(3));
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(TextFormField), findsNothing);
     expect(_action('Reset password'), findsOneWidget);
-    expect(
-      tester.widget<CommandLinkButton>(find.byType(CommandLinkButton)).label,
-      'Back to settings',
-    );
+    expect(tester.widget<CommandLinkButton>(find.byType(CommandLinkButton)).label, 'Back to settings');
     await tester.tap(find.text('BACK TO SETTINGS'));
     await tester.pumpAndSettle();
     expect(find.byType(ResetUserPasswordPage), findsNothing);
@@ -99,17 +93,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('password form validates confirmation and masks every field', (
-    tester,
-  ) async {
+  testWidgets('password form validates confirmation and masks every field', (tester) async {
     final controller = _Controller(SessionStatus.authenticated);
     await _pumpSettings(tester, controller);
     await _openPassword(tester);
     for (final field in tester.widgetList<TextField>(
-      find.descendant(
-        of: find.byType(ResetUserPasswordPage),
-        matching: find.byType(TextField),
-      ),
+      find.descendant(of: find.byType(ResetUserPasswordPage), matching: find.byType(TextField)),
     )) {
       expect(field.obscureText, isTrue);
       expect(field.autocorrect, isFalse);
@@ -150,17 +139,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('password page permits reusing the current password', (
-    tester,
-  ) async {
+  testWidgets('password page permits reusing the current password', (tester) async {
     final controller = _Controller(SessionStatus.authenticated);
     await _pumpSettings(tester, controller);
     await _openPassword(tester);
-    for (final key in [
-      'current-password',
-      'new-password',
-      'confirm-new-password',
-    ]) {
+    for (final key in ['current-password', 'new-password', 'confirm-new-password']) {
       await _fill(tester, key, 'x');
     }
     await _tapAction(tester, 'Reset password');
@@ -169,9 +152,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('account change while form is open cancels secret submission', (
-    tester,
-  ) async {
+  testWidgets('account change while form is open cancels secret submission', (tester) async {
     final controller = _Controller(SessionStatus.authenticated);
     await _pumpSettings(tester, controller);
     await _openPassword(tester);
@@ -184,41 +165,30 @@ void main() {
     expect(find.byType(ObsidianTextField), findsNothing);
     expect(_action('Reset password'), findsNothing);
     expect(controller.changes, isEmpty);
-    expect(
-      find.textContaining('connection or account changed'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('connection or account changed'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'password errors never display server payloads and clear fields',
-    (tester) async {
-      final controller = _Controller(SessionStatus.authenticated)
-        ..failure = ApiException(500, 'private server details and secrets');
-      await _pumpSettings(tester, controller);
-      await _openPassword(tester);
-      await _fill(tester, 'current-password', 'old password');
-      await _fill(tester, 'new-password', _newPassword);
-      await _fill(tester, 'confirm-new-password', _newPassword);
-      await _tapAction(tester, 'Reset password');
-      expect(find.textContaining('private server details'), findsNothing);
-      expect(find.textContaining('could not be confirmed'), findsOneWidget);
-      expect(find.byType(TextField), findsNWidgets(3));
-      for (final field in tester.widgetList<TextField>(
-        find.byType(TextField),
-      )) {
-        expect(field.controller!.text, isEmpty);
-      }
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('pending change prevents duplicate submit and dismissal', (
-    tester,
-  ) async {
+  testWidgets('password errors never display server payloads and clear fields', (tester) async {
     final controller = _Controller(SessionStatus.authenticated)
-      ..pending = Completer<void>();
+      ..failure = ApiException(500, 'private server details and secrets');
+    await _pumpSettings(tester, controller);
+    await _openPassword(tester);
+    await _fill(tester, 'current-password', 'old password');
+    await _fill(tester, 'new-password', _newPassword);
+    await _fill(tester, 'confirm-new-password', _newPassword);
+    await _tapAction(tester, 'Reset password');
+    expect(find.textContaining('private server details'), findsNothing);
+    expect(find.textContaining('could not be confirmed'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(3));
+    for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
+      expect(field.controller!.text, isEmpty);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('pending change prevents duplicate submit and dismissal', (tester) async {
+    final controller = _Controller(SessionStatus.authenticated)..pending = Completer<void>();
     await _pumpSettings(tester, controller);
     await _openPassword(tester);
     await _fill(tester, 'current-password', 'old password');
@@ -234,9 +204,7 @@ void main() {
           .widget<TextButton>(
             find.descendant(
               of: find.byType(CommandLinkButton),
-              matching: find.byWidgetPredicate(
-                (widget) => widget is TextButton,
-              ),
+              matching: find.byWidgetPredicate((widget) => widget is TextButton),
             ),
           )
           .onPressed,
@@ -246,9 +214,7 @@ void main() {
       tester
           .widget<ModalActionButton>(
             find.byWidgetPredicate(
-              (widget) =>
-                  widget is ModalActionButton &&
-                  widget.label == 'Reset password',
+              (widget) => widget is ModalActionButton && widget.label == 'Reset password',
               skipOffstage: false,
             ),
           )
@@ -258,11 +224,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('UPDATING...'), findsNothing);
     expect(
-      tester
-          .widget<CircularProgressIndicator>(
-            find.byType(CircularProgressIndicator),
-          )
-          .semanticsLabel,
+      tester.widget<CircularProgressIndicator>(find.byType(CircularProgressIndicator)).semanticsLabel,
       'Resetting password',
     );
     for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
@@ -271,9 +233,7 @@ void main() {
     await tester.tap(find.byType(CircularProgressIndicator));
     await tester.pump();
     expect(controller.changes, hasLength(1));
-    await Navigator.of(
-      tester.element(find.byType(ResetUserPasswordPage)),
-    ).maybePop();
+    await Navigator.of(tester.element(find.byType(ResetUserPasswordPage))).maybePop();
     await tester.pump();
     expect(find.byType(ResetUserPasswordPage), findsOneWidget);
     controller.pending!.complete();
@@ -283,28 +243,16 @@ void main() {
   });
 
   for (final width in [320.0, 1280.0]) {
-    testWidgets('password page fits $width with larger text and keyboard', (
-      tester,
-    ) async {
+    testWidgets('password page fits $width with larger text and keyboard', (tester) async {
       final controller = _Controller(SessionStatus.authenticated);
-      await _pumpSettings(
-        tester,
-        controller,
-        width: width,
-        height: 640,
-        textScale: 1.4,
-        keyboardHeight: 280,
-      );
+      await _pumpSettings(tester, controller, width: width, height: 640, textScale: 1.4, keyboardHeight: 280);
       await _openPassword(tester);
       await _fill(tester, 'current-password', 'old password');
       await _fill(tester, 'new-password', _newPassword);
       await _fill(tester, 'confirm-new-password', _newPassword);
       await tester.ensureVisible(_action('Reset password'));
       await tester.pumpAndSettle();
-      expect(
-        tester.getRect(_action('Reset password')).bottom,
-        lessThanOrEqualTo(360),
-      );
+      expect(tester.getRect(_action('Reset password')).bottom, lessThanOrEqualTo(360));
       expect(tester.takeException(), isNull);
       await tester.ensureVisible(find.text('BACK TO SETTINGS'));
       await tester.pumpAndSettle();
@@ -345,10 +293,7 @@ Future<void> _pumpSettings(
           child: child!,
         ),
         home: Scaffold(
-          body: Navigator(
-            onGenerateRoute: (_) =>
-                MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
-          ),
+          body: Navigator(onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (_) => const SettingsPage())),
         ),
       ),
     ),
@@ -366,10 +311,7 @@ Future<void> _openPassword(WidgetTester tester) async {
 }
 
 Future<void> _fill(WidgetTester tester, String key, String value) async {
-  final field = find.descendant(
-    of: find.byKey(ValueKey(key)),
-    matching: find.byType(TextField),
-  );
+  final field = find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(TextField));
   await tester.ensureVisible(field);
   await tester.pumpAndSettle();
   await tester.enterText(field, value);
@@ -377,9 +319,7 @@ Future<void> _fill(WidgetTester tester, String key, String value) async {
 }
 
 Finder _action(String label) => find.descendant(
-  of: find.byWidgetPredicate(
-    (widget) => widget is ModalActionButton && widget.label == label,
-  ),
+  of: find.byWidgetPredicate((widget) => widget is ModalActionButton && widget.label == label),
   matching: find.byType(TextButton),
 );
 
@@ -410,18 +350,15 @@ class _Controller extends Fake implements AppController {
   @override
   final connection = ServerConnection(baseUrl: 'https://settings.test/api');
   @override
-  AuthState get authState =>
-      AuthState(baseUrl: connection.baseUrl, status: status);
+  AuthState get authState => AuthState(baseUrl: connection.baseUrl, status: status);
   @override
   Stream<AuthState> get authStream => authUpdates.stream;
   @override
   bool get localNetworkPermissionSupported => false;
   @override
-  LocalNetworkPermissionState get localNetworkPermissionState =>
-      LocalNetworkPermissionState.unknown;
+  LocalNetworkPermissionState get localNetworkPermissionState => LocalNetworkPermissionState.unknown;
   @override
-  Stream<LocalNetworkPermissionState> get localNetworkPermissionStream =>
-      const Stream.empty();
+  Stream<LocalNetworkPermissionState> get localNetworkPermissionStream => const Stream.empty();
   @override
   Future<AuthCredentials?> loadSavedCredentials() async => null;
   @override
@@ -431,12 +368,13 @@ class _Controller extends Fake implements AppController {
   @override
   bool get statsCollectionEnabled => true;
   @override
+  bool get sessionManagementAvailable => false;
+  @override
   Stream<bool> get statsCollectionEnabledStream => const Stream.empty();
   @override
   OfflineStorageLocations? get offlineStorageLocations => null;
   @override
-  Stream<OfflineStorageLocations> get offlineStorageLocationsStream =>
-      const Stream.empty();
+  Stream<OfflineStorageLocations> get offlineStorageLocationsStream => const Stream.empty();
   @override
   Future<void> setStatsCollectionEnabled(bool value) async {}
   @override
@@ -446,10 +384,7 @@ class _Controller extends Fake implements AppController {
   @override
   Future<void> resetListeningStatistics() async {}
   @override
-  Future<void> resetUserPassword({
-    required String currentPassword,
-    required String newPassword,
-  }) async {
+  Future<void> resetUserPassword({required String currentPassword, required String newPassword}) async {
     changes.add((currentPassword, newPassword));
     if (failure != null) throw failure!;
     if (pending != null) await pending!.future;

@@ -89,6 +89,32 @@ void main() {
     }
   });
 
+  test('active work distinguishes queued and removing states for tracks and jobs', () {
+    const activeStatuses = {
+      OfflineDownloadStatus.preparing,
+      OfflineDownloadStatus.downloading,
+      OfflineDownloadStatus.validating,
+      OfflineDownloadStatus.removing,
+    };
+
+    for (final status in OfflineDownloadStatus.values) {
+      final trackState = DownloadManagerViewState([download(track('track'), status: status)], []);
+      final jobState = DownloadManagerViewState([], [
+        OfflineDownloadJob(
+          jobId: 'job',
+          kind: 'album',
+          serverBaseUrl: 'https://server',
+          status: status,
+          createdAt: DateTime.utc(2026),
+          updatedAt: DateTime.utc(2026),
+        ),
+      ]);
+
+      expect(trackState.hasActiveWork, activeStatuses.contains(status), reason: status.name);
+      expect(jobState.hasActiveWork, activeStatuses.contains(status), reason: status.name);
+    }
+  });
+
   test('functional groups keep their order while UI owns headings and spacers', () {
     final lower = download(track('lower'), priority: 1);
     final higher = download(track('higher'), priority: 5);

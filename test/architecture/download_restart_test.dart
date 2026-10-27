@@ -28,6 +28,16 @@ class _Connection extends ServerConnection {
   final requestedAlbums = <String>[];
   final requestedBatches = <List<String>>[];
   final int tracksPerAlbum;
+  bool blockTransfers = false;
+
+  @override
+  String? get token => blockTransfers ? null : super.token;
+
+  @override
+  void setToken(String? token) {
+    blockTransfers = false;
+    super.setToken(token);
+  }
 
   @override
   Future<ServerCapabilities> fetchCapabilities() async => ServerCapabilities(
@@ -55,7 +65,7 @@ class _Connection extends ServerConnection {
   }) async {
     requestedBatches.add(List.of(trackIds));
     // Verify planning without starting any socket or media worker.
-    setToken(null);
+    blockTransfers = true;
     final now = DateTime.now();
     return DownloadBatchManifest(
       schemaVersion: 1,
@@ -117,7 +127,7 @@ class _V2ArtistConnection extends _Connection {
   }) async {
     requestStarted.complete();
     final job = await response.future;
-    setToken(null);
+    blockTransfers = true;
     return DownloadJobV2(
       jobId: job.jobId,
       clientId: clientId,

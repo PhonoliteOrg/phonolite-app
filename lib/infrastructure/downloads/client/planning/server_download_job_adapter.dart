@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _ServerDownloadJobAdapter {
   final _OfflineDownloadActorCore _host;
@@ -15,9 +15,14 @@ class _ServerDownloadJobAdapter {
     String? localIntentJobId,
   }) async {
     final dataRevision = _host._localDataRevision;
+    final origin = _host.connection.baseUrl;
+    final sessionRevision = _host.connection.sessionRevision;
 
     bool requestCurrent() =>
-        _host._localDataCurrent(dataRevision) && (localIntentJobId == null || _host._jobById(localIntentJobId) != null);
+        _host._localDataCurrent(dataRevision) &&
+        _host.connection.baseUrl == origin &&
+        _host.connection.sessionRevision == sessionRevision &&
+        (localIntentJobId == null || _host._jobById(localIntentJobId) != null);
 
     try {
       final capabilities = await _host.connection.fetchCapabilities();
@@ -147,6 +152,14 @@ class _ServerDownloadJobAdapter {
     }
 
     final jobItems = serverJob.items.map(materializeJobItem).toList(growable: false);
+
+    for (final item in jobItems) {
+      await _host._ownerPlaylistDownloads.registerDemand(
+        SourceTrackRef(serverBaseUrl: baseUrl, serverTrackId: item.serverTrackId),
+        ownerKind: 'collection',
+        ownerId: jobId,
+      );
+    }
 
     await _host._insertRollingJob(
       job,

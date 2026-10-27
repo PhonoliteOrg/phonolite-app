@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 void _audioWorkerMain(AudioWorkerInit init) {
   final token = init.rootIsolateToken;

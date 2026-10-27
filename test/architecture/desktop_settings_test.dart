@@ -133,6 +133,178 @@ void main() {
     expect(events, isEmpty);
     expect(controller.supported, isFalse);
   });
+
+  test('rapid edits update immediately and serialize platform changes and persistence', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    controller.dispose();
+    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    await initialize();
+
+    final first = controller.setLaunchAtStartup(false);
+    final second = controller.setRunInBackground(false);
+    final third = controller.setLaunchAtStartup(true);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.settings.launchAtStartup, isTrue);
+    expect(controller.settings.runInBackground, isFalse);
+    expect(controller.saving, isTrue);
+    expect(delayed.started, hasLength(1));
+    delayed.releaseNext();
+    await first;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(delayed.started, hasLength(2));
+    expect(controller.saving, isTrue);
+    delayed.releaseNext();
+    await second;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(delayed.started, hasLength(3));
+    delayed.releaseNext();
+    await third;
+
+    expect(delayed.saved.toJson(), {'launchAtStartup': true, 'runInBackground': false});
+    expect(platform.startupEnabled, isTrue);
+    expect(platform.backgroundEnabled, isFalse);
+    expect(controller.saving, isFalse);
+    expect(delayed.maximumConcurrentWrites, 1);
+  });
+
+  test('a newer snapshot reapplies an older failed setting before it is persisted', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    controller.dispose();
+    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    await initialize();
+
+    final first = controller.setLaunchAtStartup(false);
+    final second = controller.setRunInBackground(false);
+    await Future<void>.delayed(Duration.zero);
+    delayed.releaseNext(fail: true);
+    await first;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.settings.launchAtStartup, isFalse);
+    expect(controller.settings.runInBackground, isFalse);
+    expect(events.where((event) => event == 'startup:false'), hasLength(2));
+    expect(platform.startupEnabled, isFalse);
+    delayed.releaseNext();
+    await second;
+
+    expect(delayed.saved.toJson(), {'launchAtStartup': false, 'runInBackground': false});
+    expect(platform.backgroundEnabled, isFalse);
+    expect(controller.error, isNull);
+  });
+
+  test('a latest failure rolls back only to the last successful settings and platform state', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    controller.dispose();
+    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    await initialize();
+
+    final first = controller.setLaunchAtStartup(false);
+    final second = controller.setRunInBackground(false);
+    await Future<void>.delayed(Duration.zero);
+    delayed.releaseNext();
+    await first;
+    await Future<void>.delayed(Duration.zero);
+    delayed.releaseNext(fail: true);
+    await second;
+
+    expect(controller.settings.toJson(), {'launchAtStartup': false, 'runInBackground': true});
+    expect(delayed.saved.toJson(), controller.settings.toJson());
+    expect(platform.startupEnabled, isFalse);
+    expect(platform.backgroundEnabled, isTrue);
+    expect(controller.error, contains('Could not save'));
+    expect(controller.saving, isFalse);
+  });
+
+  test('quit drains accepted writes before cleanup and refuses new changes', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    controller.dispose();
+    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    await initialize();
+
+    final save = controller.setLaunchAtStartup(false);
+    await Future<void>.delayed(Duration.zero);
+    final quitting = controller.quit();
+    await controller.setRunInBackground(false);
+
+    expect(events, isNot(contains('cleanup')));
+    expect(events, isNot(contains('quit')));
+    expect(controller.settings.runInBackground, isTrue);
+    delayed.releaseNext();
+    await Future.wait([save, quitting]);
+
+    expect(delayed.saved.launchAtStartup, isFalse);
+    expect(events.sublist(events.length - 2), ['cleanup', 'quit']);
+  });
+
+  test('shutdown drains accepted writes before retiring the platform', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    controller.dispose();
+    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    await initialize();
+
+    final save = controller.setRunInBackground(false);
+    await Future<void>.delayed(Duration.zero);
+    final shutdown = controller.shutdown();
+    await controller.setLaunchAtStartup(false);
+
+    expect(controller.ready, isFalse);
+    expect(events, isNot(contains('dispose')));
+    delayed.releaseNext();
+    await Future.wait([save, shutdown]);
+
+    expect(delayed.saved.runInBackground, isFalse);
+    expect(delayed.saved.launchAtStartup, isTrue);
+    expect(events.last, 'dispose');
+  });
+
+  test('closing during a pending background change uses the final applied mode', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    controller.dispose();
+    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    await initialize();
+
+    final save = controller.setRunInBackground(false);
+    await Future<void>.delayed(Duration.zero);
+    final closing = controller.closeWindow();
+
+    expect(events, isNot(contains('hide')));
+    expect(events, isNot(contains('quit')));
+    delayed.releaseNext();
+    await Future.wait([save, closing]);
+
+    expect(events.sublist(events.length - 2), ['cleanup', 'quit']);
+    expect(events, isNot(contains('hide')));
+  });
+
+  test('disposing during a save suppresses late notifications and new mutations', () async {
+    final delayed = _QueuedStorage();
+    addTearDown(delayed.releaseAll);
+    final disposed = DesktopSettingsController(storage: delayed, platform: _Platform([]), isSupported: () => true);
+    await disposed.initialize(beforeQuit: () async {});
+    var notifications = 0;
+    disposed.addListener(() => notifications++);
+
+    final save = disposed.setLaunchAtStartup(false);
+    await Future<void>.delayed(Duration.zero);
+    disposed.dispose();
+    final acceptedNotifications = notifications;
+    await disposed.setRunInBackground(false);
+    delayed.releaseNext();
+    await save;
+    await disposed.shutdown();
+
+    expect(notifications, acceptedNotifications);
+    expect(delayed.started, hasLength(1));
+  });
 }
 
 class _Platform implements DesktopLifecyclePlatform {
@@ -141,6 +313,8 @@ class _Platform implements DesktopLifecyclePlatform {
   Future<void> Function()? onQuit;
   bool failStartup = false;
   bool failBackground = false;
+  bool startupEnabled = false;
+  bool backgroundEnabled = false;
 
   _Platform(this.events);
 
@@ -157,6 +331,8 @@ class _Platform implements DesktopLifecyclePlatform {
     if (failStartup) {
       throw StateError('Login registration denied');
     }
+
+    startupEnabled = enabled;
   }
 
   @override
@@ -165,6 +341,8 @@ class _Platform implements DesktopLifecyclePlatform {
     if (failBackground) {
       throw StateError('Tray unavailable');
     }
+
+    backgroundEnabled = enabled;
   }
 
   @override
@@ -187,4 +365,52 @@ class _FailedWriteStorage extends DesktopSettingsStorage {
 class _UnsupportedStorage extends DesktopSettingsStorage {
   @override
   Future<DesktopSettings> read() async => throw StateError('Unsupported host accessed storage');
+}
+
+class _QueuedStorage extends DesktopSettingsStorage {
+  final List<DesktopSettings> started = [];
+  final List<Completer<bool>> _pending = [];
+  DesktopSettings saved = const DesktopSettings();
+  int _activeWrites = 0;
+  int maximumConcurrentWrites = 0;
+  bool _released = false;
+
+  @override
+  Future<DesktopSettings> read() async => saved;
+
+  @override
+  Future<void> write(DesktopSettings settings) async {
+    started.add(settings);
+    _activeWrites++;
+    if (_activeWrites > maximumConcurrentWrites) {
+      maximumConcurrentWrites = _activeWrites;
+    }
+
+    try {
+      if (!_released) {
+        final completion = Completer<bool>();
+        _pending.add(completion);
+
+        if (await completion.future) {
+          throw const FileSystemException('Settings write failed');
+        }
+      }
+
+      saved = settings;
+    } finally {
+      _activeWrites--;
+    }
+  }
+
+  void releaseNext({bool fail = false}) => _pending.removeAt(0).complete(fail);
+
+  void releaseAll() {
+    _released = true;
+
+    for (final completion in _pending) {
+      completion.complete(false);
+    }
+
+    _pending.clear();
+  }
 }

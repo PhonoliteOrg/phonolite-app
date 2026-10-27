@@ -7,6 +7,7 @@ import 'package:phonolite_app/application/controllers/playback/playback_controls
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
@@ -124,6 +125,7 @@ Widget _player(PlaybackState state, String presentation) {
       onToggleRepeat: () {},
       onStreamModeChanged: (_) {},
       onVolumeChanged: (_) {},
+      onToggleMute: () {},
       onToggleLike: () {},
     );
   }
@@ -140,7 +142,10 @@ Widget _player(PlaybackState state, String presentation) {
     onToggleRepeat: () {},
     onStreamModeChanged: (_) {},
     onVolumeChanged: (_) {},
+    onToggleMute: () {},
     onToggleLike: () {},
+    compact: presentation == 'compact',
+    touchTargets: presentation == 'compact',
   );
 }
 
@@ -165,6 +170,13 @@ class _App extends Fake implements AppController {
   @override
   Map<String, String> get artworkHeaders => const {};
 
+  @override
+  Stream<List<Playlist>> get playlistsStream => const Stream.empty();
+  @override
+  Stream<List<Playlist>> get localPlaylistsStream => const Stream.empty();
+  @override
+  Stream<AuthState> get authStream => const Stream.empty();
+
   final loads = <String>[];
   final additions = <String>[];
 
@@ -176,6 +188,19 @@ class _App extends Fake implements AppController {
   OfflineTrackDownload? availableOfflineDownloadForTrack(String trackId) => null;
   @override
   Track? serverTrackForCurrentServer(Track track) => track.copyWith(id: 'server-track');
+
+  @override
+  SourceTrackRef? localPlaylistSourceForTrack(Track track) =>
+      const SourceTrackRef(serverBaseUrl: 'https://music.test', serverTrackId: 'server-track');
+
+  @override
+  Future<String?> resolveLocalPlaylistTrackId(Track track) async => track.localId;
+
+  @override
+  Future<Track?> resolveServerTrackForCurrentServer(Track track) async => serverTrackForCurrentServer(track);
+
+  @override
+  bool localPlaylistContainsTrack(Playlist playlist, Track track) => playlist.trackIds.contains(track.localId);
   @override
   Future<void> addTrackToPlaylist(Playlist playlist, Track track) async =>
       additions.add('server:${playlist.id}:${track.id}');

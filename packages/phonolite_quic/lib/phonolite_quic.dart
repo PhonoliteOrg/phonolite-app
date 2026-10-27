@@ -1,5 +1,3 @@
-library phonolite_quic;
-
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
@@ -245,8 +243,10 @@ class QuicClient {
   }) {
     _ensureActive();
     final target = targetMs ?? 0;
-    if (!force && _lastBufferMs == bufferMs && _lastBufferTargetMs == target)
+    if (!force && _lastBufferMs == bufferMs && _lastBufferTargetMs == target) {
       return;
+    }
+
     final result = _bindings.sendBuffer(_handle, bufferMs, target);
     if (result != 0) {
       throw QuicException('failed to send buffer stats (code $result)');
@@ -263,8 +263,10 @@ class QuicClient {
     _ensureActive();
     if (_lastPlaybackTrack == trackId &&
         _lastPlaybackPosition == positionMs &&
-        _lastPlaybackPlaying == playing)
+        _lastPlaybackPlaying == playing) {
       return;
+    }
+
     final trackPtr = trackId.toNativeUtf8();
     final result = _bindings.sendPlayback(
       _handle,

@@ -1,13 +1,13 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/rendering.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
-import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
+
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_edit_icon.dart';
@@ -15,6 +15,8 @@ import 'package:phonolite_app/ui/shared/design_system/icons/playlist_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/server_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/stats_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
 
 void main() {
   const icons = {
@@ -30,9 +32,7 @@ void main() {
   };
 
   for (final entry in icons.entries) {
-    testWidgets('${entry.key} SVG loads and follows icon theme changes', (
-      tester,
-    ) async {
+    testWidgets('${entry.key} SVG loads and follows icon theme changes', (tester) async {
       const boundaryKey = ValueKey('icon');
       for (final theme in const [
         IconThemeData(size: 40, color: Color(0xFF3366CC), opacity: 0.5),
@@ -99,74 +99,72 @@ void main() {
   });
 
   for (final width in [390.0, 1280.0]) {
-    testWidgets('playlist control matches neighboring icons at width $width', (
-      tester,
-    ) async {
-      final loader = FontLoader(PhonoliteIcons.fontFamily)
-        ..addFont(rootBundle.load('assets/icons/lucide/PhonoliteLucide.ttf'));
-      await loader.load();
-      final size = width < 820 ? 22.0 : 26.0;
-      await tester.pumpWidget(
-        Directionality(
-          textDirection: TextDirection.ltr,
-          child: MediaQuery(
-            data: MediaQueryData(size: Size(width, 800)),
-            child: ObsidianModalScope(
-              builder: (context) => Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RepaintBoundary(
-                      key: const ValueKey('playlist'),
-                      child: ObsidianHudIconButton(
-                        iconWidget: const PlaylistAddIcon(),
-                        size: size,
-                      ),
+    testWidgets(
+      'playlist control matches neighboring icons at width $width',
+      (tester) async {
+        final loader = FontLoader(PhonoliteIcons.fontFamily)
+          ..addFont(rootBundle.load('assets/icons/lucide/PhonoliteLucide.ttf'));
+        await loader.load();
+        final size = width < 820 ? 22.0 : 26.0;
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: MediaQuery(
+              data: MediaQueryData(size: Size(width, 800)),
+              child: Theme(
+                data: ThemeData(platform: defaultTargetPlatform),
+                child: ObsidianModalScope(
+                  builder: (context) => Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RepaintBoundary(
+                          key: const ValueKey('playlist'),
+                          child: ObsidianHudIconButton(iconWidget: const PlaylistAddIcon(), size: size),
+                        ),
+                        RepaintBoundary(
+                          key: const ValueKey('heart'),
+                          child: LikeIconButton(isLiked: false, size: size),
+                        ),
+                        RepaintBoundary(
+                          key: const ValueKey('device'),
+                          child: ObsidianHudIconButton(icon: PhonoliteIcons.speaker, size: size),
+                        ),
+                      ],
                     ),
-                    RepaintBoundary(
-                      key: const ValueKey('heart'),
-                      child: LikeIconButton(isLiked: false, size: size),
-                    ),
-                    RepaintBoundary(
-                      key: const ValueKey('device'),
-                      child: ObsidianHudIconButton(
-                        icon: PhonoliteIcons.speaker,
-                        size: size,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final painted = <String, Rect>{};
-      final buttonSize = Size.square(width < 820 ? 48 : size + 16);
-      for (final name in ['playlist', 'heart', 'device']) {
-        final finder = find.byKey(ValueKey(name));
-        expect(tester.getSize(finder), buttonSize);
-        painted[name] = await _paintedBounds(tester, finder);
-      }
-      final playlist = painted['playlist']!;
-      final playlistExtent = playlist.size.longestSide;
-      for (final name in ['heart', 'device']) {
-        expect(
-          playlistExtent,
-          closeTo(painted[name]!.size.longestSide, 1.25),
-          reason: 'playlist artwork matches the visible $name size',
         );
-      }
-      expect(playlist.center.dx, closeTo(buttonSize.width / 2, 0.75));
-      expect(playlist.center.dy, closeTo(buttonSize.height / 2, 0.75));
-      expect(tester.takeException(), isNull);
-    });
+        await tester.pumpAndSettle();
+        final painted = <String, Rect>{};
+        final touchLayout = width < 820 || defaultTargetPlatform == TargetPlatform.android;
+        final buttonSize = Size.square(touchLayout ? 48 : size + 16);
+        for (final name in ['playlist', 'heart', 'device']) {
+          final finder = find.byKey(ValueKey(name));
+          expect(tester.getSize(finder), buttonSize);
+          painted[name] = await _paintedBounds(tester, finder);
+        }
+        final playlist = painted['playlist']!;
+        final playlistExtent = playlist.size.longestSide;
+        for (final name in ['heart', 'device']) {
+          expect(
+            playlistExtent,
+            closeTo(painted[name]!.size.longestSide, 1.25),
+            reason: 'playlist artwork matches the visible $name size',
+          );
+        }
+        expect(playlist.center.dx, closeTo(buttonSize.width / 2, 0.75));
+        expect(playlist.center.dy, closeTo(buttonSize.height / 2, 0.75));
+        expect(tester.takeException(), isNull);
+      },
+      variant: TargetPlatformVariant({TargetPlatform.windows, TargetPlatform.android}),
+    );
   }
 
-  testWidgets('SVG icon glow paints outside the icon without changing layout', (
-    tester,
-  ) async {
+  testWidgets('SVG icon glow paints outside the icon without changing layout', (tester) async {
     const boundaryKey = ValueKey('glow');
     const iconKey = ValueKey('reload');
     for (final highlighted in [false, true]) {
@@ -183,12 +181,7 @@ void main() {
                     size: 24,
                     color: const Color(0xFFFF0000),
                     shadows: [
-                      if (highlighted)
-                        const Shadow(
-                          color: Color(0xFF00FF00),
-                          offset: Offset(16, 0),
-                          blurRadius: 4,
-                        ),
+                      if (highlighted) const Shadow(color: Color(0xFF00FF00), offset: Offset(16, 0), blurRadius: 4),
                     ],
                   ),
                   child: const ReloadIcon(key: iconKey),
@@ -215,17 +208,12 @@ void main() {
     }
   });
 
-  testWidgets('Stats keeps its explicit size inside a larger icon theme', (
-    tester,
-  ) async {
+  testWidgets('Stats keeps its explicit size inside a larger icon theme', (tester) async {
     await tester.pumpWidget(
       const Directionality(
         textDirection: TextDirection.ltr,
         child: Center(
-          child: IconTheme(
-            data: IconThemeData(size: 40),
-            child: StatsIcon(size: 20),
-          ),
+          child: IconTheme(data: IconThemeData(size: 40), child: StatsIcon(size: 20)),
         ),
       ),
     );
@@ -240,9 +228,7 @@ Future<Uint8List> _capturePixels(WidgetTester tester, Finder finder) async {
   return (await tester.runAsync(() async {
     final image = await boundary.toImage();
     try {
-      final data = (await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      ))!;
+      final data = (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!;
       return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     } finally {
       image.dispose();
@@ -266,10 +252,5 @@ Future<Rect> _paintedBounds(WidgetTester tester, Finder finder) async {
       if (y > bottom) bottom = y;
     }
   }
-  return Rect.fromLTRB(
-    left.toDouble(),
-    top.toDouble(),
-    right + 1.0,
-    bottom + 1.0,
-  );
+  return Rect.fromLTRB(left.toDouble(), top.toDouble(), right + 1.0, bottom + 1.0);
 }

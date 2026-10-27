@@ -19,8 +19,8 @@ class ServerShuffleDeck {
     : sessionId = first.sessionId,
       total = first.total,
       _load = load {
-    _validate(first, 0);
-    _pages[0] = first;
+    _validate(first, first.offset);
+    _pages[first.offset] = first;
   }
 
   int get position => _position;
@@ -36,6 +36,24 @@ class ServerShuffleDeck {
 
   List<Track> get tracks => _entries.map((entry) => entry.value).toList(growable: false);
   int get queueIndex => _entries.indexWhere((entry) => entry.key == _position);
+
+  /// Restores the absolute cursor, skipping IDs removed since the deck was saved.
+  Future<bool> restorePosition(int position) async {
+    if (position < 0 || position >= total) return false;
+
+    _position = position - 1;
+    if (await move(1)) return true;
+
+    _position = position + 1;
+    return move(-1);
+  }
+
+  /// Keeps a playing track outside the deck while Next selects this candidate.
+  void retainExternalCurrent() {
+    if (_position >= 0) {
+      _position--;
+    }
+  }
 
   Future<bool> initialize({required bool play, String? currentTrackId}) async {
     if (play) return move(1);

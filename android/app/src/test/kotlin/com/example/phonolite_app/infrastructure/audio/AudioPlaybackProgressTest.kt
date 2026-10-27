@@ -11,8 +11,9 @@ object AudioPlaybackProgressTest {
     flushPreservesUncollectedCompletions()
     unsignedPlaybackHeadWrapsWithoutLosingFrames()
     rejectedWriteAccountingCannotBecomeNegative()
+    originalPcm32CountsSamplesIndependentlyOfPrecision()
 
-    println("AudioPlaybackProgress: 7 headless JVM checks passed")
+    println("AudioPlaybackProgress: 8 headless JVM checks passed")
   }
 
   private fun completedFramesAreCollectedExactlyOnce() {
@@ -117,14 +118,24 @@ object AudioPlaybackProgressTest {
     check(fixture.progress.pendingFrameCount() == 0L)
   }
 
-  private class Fixture {
+  private fun originalPcm32CountsSamplesIndependentlyOfPrecision() {
+    val fixture = Fixture(bytesPerSample = 4)
+    fixture.addFrames(1920)
+    fixture.probe.rawHead = 960
+
+    check(fixture.progress.collectDoneSamples() == 1920)
+    check(fixture.progress.pendingFrameCount() == 960L)
+    check(fixture.progress.collectDoneSamples() == 0)
+  }
+
+  private class Fixture(private val bytesPerSample: Int = 2) {
     val probe = Probe()
     var timeNs = 1_000_000_000L
-    val progress = AudioPlaybackProgress(probe, 48_000, 4) { timeNs }
+    val progress = AudioPlaybackProgress(probe, 48_000, 2 * bytesPerSample, bytesPerSample) { timeNs }
 
     fun addFrames(frames: Int) {
       progress.addPendingFrames(frames.toLong())
-      progress.recordWrittenBytes(frames * 4)
+      progress.recordWrittenBytes(frames * 2 * bytesPerSample)
     }
   }
 

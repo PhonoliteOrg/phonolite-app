@@ -8,10 +8,12 @@ import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_bin
 
 const MethodChannel androidAudioOutputChannel = MethodChannel('phonolite/audio_output');
 
-class AndroidChannelPlayer implements AudioPcmOutput {
+class AndroidChannelPlayer implements AudioPcmOutput, AudioPcm32Output {
   final int _sampleRate;
   final int _channels;
   final int _deviceId;
+  final int _bitsPerSample;
+  final int _validBitsPerSample;
   int? _handleId;
   Future<void>? _openFuture;
   Future<void>? _shutdown;
@@ -20,10 +22,17 @@ class AndroidChannelPlayer implements AudioPcmOutput {
   bool _disposed = false;
   int _writeEpoch = 0;
 
-  AndroidChannelPlayer({required int sampleRate, required int channels, required int deviceId})
-    : _sampleRate = sampleRate,
-      _channels = channels,
-      _deviceId = deviceId;
+  AndroidChannelPlayer({
+    required int sampleRate,
+    required int channels,
+    required int deviceId,
+    int bitsPerSample = 16,
+    int validBitsPerSample = 16,
+  }) : _sampleRate = sampleRate,
+       _channels = channels,
+       _deviceId = deviceId,
+       _bitsPerSample = bitsPerSample,
+       _validBitsPerSample = validBitsPerSample;
 
   @override
   Future<void> initialize() {
@@ -58,43 +67,10 @@ class AndroidChannelPlayer implements AudioPcmOutput {
   }
 
   @override
-  Future<void> write(Int16List samples) async {
-    if (samples.isEmpty) {
-      return;
-    }
+  Future<void> write(Int16List samples) => _writePcm(samples, 16);
 
-    final epoch = _writeEpoch;
-
-    final handle = await _handle();
-    if (handle == null) {
-      return;
-    }
-
-    final bytes = Uint8List.view(samples.buffer, samples.offsetInBytes, samples.lengthInBytes);
-
-    while (true) {
-      if (_disposed || epoch != _writeEpoch || handle != _handleId) {
-        return;
-      }
-
-      final result = await androidAudioOutputChannel.invokeMethod<int>('write', {'id': handle, 'pcm': bytes});
-
-      if (_disposed || epoch != _writeEpoch || handle != _handleId) {
-        return;
-      }
-
-      if (result == null || result == 0) {
-        return;
-      }
-
-      if (result == coreAudioQueueFull) {
-        await Future<void>.delayed(const Duration(milliseconds: 2));
-        continue;
-      }
-
-      throw Exception('Android audio write failed: $result');
-    }
-  }
+  @override
+  Future<void> writePcm32(Int32List samples) => _writePcm(samples, 32);
 
   @override
   Future<void> flush() async {
@@ -168,11 +144,55 @@ class AndroidChannelPlayer implements AudioPcmOutput {
     return result ?? true;
   }
 
+  Future<void> _writePcm(TypedData samples, int bitsPerSample) async {
+    if (_bitsPerSample != bitsPerSample) {
+      throw StateError('The PCM precision does not match the configured Android output.');
+    }
+
+    if (samples.lengthInBytes == 0) {
+      return;
+    }
+
+    final epoch = _writeEpoch;
+
+    final handle = await _handle();
+    if (handle == null) {
+      return;
+    }
+
+    final bytes = Uint8List.view(samples.buffer, samples.offsetInBytes, samples.lengthInBytes);
+
+    while (true) {
+      if (_disposed || epoch != _writeEpoch || handle != _handleId) {
+        return;
+      }
+
+      final result = await androidAudioOutputChannel.invokeMethod<int>('write', {'id': handle, 'pcm': bytes});
+
+      if (_disposed || epoch != _writeEpoch || handle != _handleId) {
+        return;
+      }
+
+      if (result == null || result == 0) {
+        return;
+      }
+
+      if (result == coreAudioQueueFull) {
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+        continue;
+      }
+
+      throw Exception('Android audio write failed: $result');
+    }
+  }
+
   Future<void> _open() async {
     final handle = await androidAudioOutputChannel.invokeMethod<int>('open', {
       'sampleRate': _sampleRate,
       'channels': _channels,
       'deviceId': _deviceId,
+      'bitsPerSample': _bitsPerSample,
+      'validBitsPerSample': _validBitsPerSample,
     });
 
     if (handle == null || handle <= 0) {

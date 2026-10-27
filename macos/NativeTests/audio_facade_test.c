@@ -15,8 +15,10 @@ struct PhonoliteAudioPlayer {
 
 enum AudioOperation {
   OPEN,
+  OPEN_FORMAT,
   CLOSE,
   WRITE,
+  WRITE32,
   SET_VOLUME,
   PAUSE,
   RESUME,
@@ -33,6 +35,8 @@ static enum AudioOperation last_operation;
 static int call_count;
 static PhonoliteAudioPlayer *last_player;
 static const int16_t *last_samples;
+static const int32_t *last_samples32;
+static int32_t last_bits_per_sample;
 static int32_t last_sample_count;
 static int32_t last_sample_rate;
 static int32_t last_channels;
@@ -53,6 +57,18 @@ PhonoliteAudioPlayer *audio_queue_player_open(int32_t sample_rate, int32_t chann
   return &resource;
 }
 
+PhonoliteAudioPlayer *audio_queue_player_open_format(int32_t sample_rate, int32_t channels, int32_t device_id,
+                                                     int32_t bits_per_sample) {
+  ++call_count;
+  last_operation = OPEN_FORMAT;
+  last_sample_rate = sample_rate;
+  last_channels = channels;
+  last_device_id = device_id;
+  last_bits_per_sample = bits_per_sample;
+
+  return &resource;
+}
+
 void audio_queue_player_close(PhonoliteAudioPlayer *player) {
   ++call_count;
   last_operation = CLOSE;
@@ -64,6 +80,16 @@ int32_t audio_queue_player_write(PhonoliteAudioPlayer *player, const int16_t *sa
   last_operation = WRITE;
   last_player = player;
   last_samples = samples;
+  last_sample_count = sample_count;
+
+  return -3;
+}
+
+int32_t audio_queue_player_write32(PhonoliteAudioPlayer *player, const int32_t *samples, int32_t sample_count) {
+  ++call_count;
+  last_operation = WRITE32;
+  last_player = player;
+  last_samples32 = samples;
   last_sample_count = sample_count;
 
   return -3;
@@ -180,7 +206,14 @@ int main(void) {
   assert(last_operation == DEVICE_NAME && call_count == 12 && last_name_device_id == UINT32_C(4294967294));
   assert(last_name_buffer == name && last_name_length == 16 && strcmp(name, "DAC") == 0);
 
-  puts("12 native audio facade contracts passed.");
+  assert(phonolite_audio_open_format(192000, 2, -1, 32) == &resource);
+  assert(last_operation == OPEN_FORMAT && last_sample_rate == 192000 && last_bits_per_sample == 32);
+
+  const int32_t samples32[] = {INT32_MIN, 2147483392, -256, 256};
+  assert(phonolite_audio_write32(&resource, samples32, 4) == -3);
+  assert(last_operation == WRITE32 && last_samples32 == samples32 && last_sample_count == 4);
+
+  puts("14 native audio facade contracts passed.");
 
   return 0;
 }

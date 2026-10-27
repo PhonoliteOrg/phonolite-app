@@ -1,5 +1,5 @@
 name: phonolite_local_audio
-description: Local MP3/FLAC decoder FFI bindings for Phonolite.
+description: Source-preserving local and authenticated remote MP3/FLAC decoding for Phonolite.
 version: 0.1.0
 publish_to: 'none'
 

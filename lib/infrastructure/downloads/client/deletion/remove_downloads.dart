@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _DownloadRemoval {
   final _OfflineDownloadActorCore _host;
@@ -21,12 +21,20 @@ class _DownloadRemoval {
   Future<void> removeDownloads(
     Iterable<OfflineTrackDownload> downloads, {
     OfflineDeletionScope scope = const OfflineDeletionScope.track(),
+    bool unfinishedUnclaimedOnly = false,
   }) async {
     await _host._ensureLoaded();
 
     final byKey = <String, OfflineTrackDownload>{};
 
     for (final download in downloads) {
+      if (unfinishedUnclaimedOnly &&
+          !await _host._storage.canRemoveUnclaimedDownload(
+            SourceTrackRef(serverBaseUrl: download.serverBaseUrl, serverTrackId: _host._serverTrackId(download)),
+          )) {
+        continue;
+      }
+
       byKey[_host._downloadKey(download)] = download;
     }
 
@@ -47,11 +55,17 @@ class _DownloadRemoval {
       final key = _host._downloadKey(download);
 
       if (removeKeys.contains(key) && download.status != OfflineDownloadStatus.removing) {
+        if (unfinishedUnclaimedOnly && download.isDownloaded) {
+          continue;
+        }
+
         currentByKey[key] = download;
       }
     }
 
     final removals = currentByKey.values.toList(growable: false);
+
+    removeKeys.removeWhere((key) => !currentByKey.containsKey(key));
 
     if (removals.isEmpty && removedJobIds.isEmpty) {
       return;

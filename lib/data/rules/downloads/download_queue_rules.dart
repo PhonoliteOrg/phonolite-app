@@ -3,6 +3,21 @@ import 'package:phonolite_app/data/models/downloads/offline_track_download.dart'
 
 /// Status eligibility and ordering shared by download execution and observation.
 abstract final class DownloadQueueRules {
+  /// Work currently consuming transfer, validation or removal resources.
+  /// Queued work is pausable but has not started consuming those resources.
+  static bool hasActiveWork(OfflineDownloadStatus status) => switch (status) {
+    OfflineDownloadStatus.preparing ||
+    OfflineDownloadStatus.downloading ||
+    OfflineDownloadStatus.validating ||
+    OfflineDownloadStatus.removing => true,
+    OfflineDownloadStatus.queued ||
+    OfflineDownloadStatus.paused ||
+    OfflineDownloadStatus.downloaded ||
+    OfflineDownloadStatus.failed ||
+    OfflineDownloadStatus.corrupt ||
+    OfflineDownloadStatus.canceled => false,
+  };
+
   static bool canPauseDownloadStatus(OfflineDownloadStatus status) {
     return switch (status) {
       OfflineDownloadStatus.queued ||
@@ -34,6 +49,10 @@ abstract final class DownloadQueueRules {
     return left.createdAt.compareTo(right.createdAt);
   }
 
+  static int compareUpdatedNewestFirst(OfflineTrackDownload left, OfflineTrackDownload right) {
+    return right.updatedAt.compareTo(left.updatedAt);
+  }
+
   static int _queueStatusRank(OfflineDownloadStatus status) {
     return switch (status) {
       OfflineDownloadStatus.downloading => 0,
@@ -47,9 +66,5 @@ abstract final class DownloadQueueRules {
       OfflineDownloadStatus.corrupt ||
       OfflineDownloadStatus.canceled => 4,
     };
-  }
-
-  static int compareUpdatedNewestFirst(OfflineTrackDownload left, OfflineTrackDownload right) {
-    return right.updatedAt.compareTo(left.updatedAt);
   }
 }

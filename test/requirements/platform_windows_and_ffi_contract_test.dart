@@ -126,7 +126,7 @@ void main() {
       ]);
     });
 
-    test('local audio decoder exposes MP3 FLAC PCM and seek ffi surface', () {
+    test('local audio decoder preserves legacy PCM and exposes original precision and seek', () {
       final dartSource = readProjectModule('packages/phonolite_local_audio/lib/phonolite_local_audio.dart');
       final rustSource = readProjectModule('packages/phonolite_local_audio/native/local_audio/src/lib.rs');
       final cargo = readProjectModule('packages/phonolite_local_audio/native/local_audio/Cargo.toml');
@@ -136,28 +136,35 @@ void main() {
         'class LocalAudioDecoder',
         'factory LocalAudioDecoder.open(',
         'int readInto(Int16List buffer)',
+        'int readInto32(Int32List buffer)',
+        'Int32List read32(int maxSamples)',
+        'final int bitDepth;',
         'Duration seek(Duration position)',
         "return ffi.DynamicLibrary.open('libphonolite_local_audio.so');",
         "return ffi.DynamicLibrary.open('phonolite_local_audio.dll');",
       ]);
       expectContainsAll(rustSource, const [
-        'SampleBuffer::<i16>',
+        'SampleBuffer::<i32>',
         'SeekMode::Coarse',
         'pending_skip_frames',
         'phonolite_local_audio_open',
         'phonolite_local_audio_read',
+        'phonolite_local_audio_read32',
+        'phonolite_local_audio_bit_depth',
         'phonolite_local_audio_seek',
         'phonolite_local_audio_last_error',
         'phonolite_local_audio_close',
       ]);
       expectContainsAll(cargo, const [
         'symphonia',
-        'features = ["mp3", "flac"]',
+        'features = ["mp3", "flac", "pcm"]',
         'crate-type = ["cdylib", "staticlib"]',
       ]);
       expectContainsAll(header, const [
         'phonolite_local_audio_open',
         'phonolite_local_audio_read',
+        'phonolite_local_audio_read32',
+        'phonolite_local_audio_bit_depth',
         'phonolite_local_audio_seek',
         'phonolite_local_audio_sample_rate',
         'phonolite_local_audio_channels',

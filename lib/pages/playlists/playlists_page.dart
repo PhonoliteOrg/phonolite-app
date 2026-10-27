@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/playlists/playlists_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/pages/playlists/playlist_detail_view.dart';
@@ -16,12 +17,15 @@ import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/collection_view_toggle_button.dart';
+import 'package:phonolite_app/ui/shared/music/source_section_slivers.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class PlaylistsPage extends BasePage {
-  const PlaylistsPage({super.key});
+  final DisplaySettingsController? displaySettings;
+
+  const PlaylistsPage({super.key, this.displaySettings});
 
   @override
   State<PlaylistsPage> createState() => _PlaylistsPageState();
@@ -29,6 +33,8 @@ class PlaylistsPage extends BasePage {
 
 class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
   late final PlaylistsController _feature = bindController(PlaylistsController(AppScope.of(context)));
+
+  DisplaySettingsController get _displaySettings => widget.displaySettings ?? DisplaySettingsController.instance;
 
   void _openDetail(BuildContext context, Playlist playlist, {required bool isLocal}) {
     Navigator.of(context).push(
@@ -148,78 +154,87 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
     final headerActionIconSize = PageToolbarActionLayout.of(context).iconSize;
     final headerActionSpacing = PageToolbarActionLayout.of(context).spacing;
 
-    return assemble(
-      context,
-      navbar: LibraryHeader(
-        title: 'PLAYLISTS',
-        trailing: _feature.selectionMode
-            ? DownloadSelectionToolbar(
-                selectedCount: selectedPlaylists.length,
-                totalCount: totalPlaylistCount,
-                onCancel: _feature.clearSelection,
-                onSelectAll: () => _feature.selectAll(localPlaylists: localPlaylists, serverPlaylists: serverPlaylists),
-                onDeselectAll: _feature.deselectAll,
-                onRemove: selectedPlaylists.isEmpty
-                    ? null
-                    : () => _deleteSelectedPlaylists(
-                        controller,
-                        localPlaylists: localPlaylists,
-                        serverPlaylists: serverPlaylists,
+    return ListenableBuilder(
+      listenable: _displaySettings,
+      builder: (context, _) => assemble(
+        context,
+        navbar: LibraryHeader(
+          title: 'PLAYLISTS',
+          trailing: _feature.selectionMode
+              ? DownloadSelectionToolbar(
+                  selectedCount: selectedPlaylists.length,
+                  totalCount: totalPlaylistCount,
+                  onCancel: _feature.clearSelection,
+                  onSelectAll: () =>
+                      _feature.selectAll(localPlaylists: localPlaylists, serverPlaylists: serverPlaylists),
+                  onDeselectAll: _feature.deselectAll,
+                  onRemove: selectedPlaylists.isEmpty
+                      ? null
+                      : () => _deleteSelectedPlaylists(
+                          controller,
+                          localPlaylists: localPlaylists,
+                          serverPlaylists: serverPlaylists,
+                        ),
+                )
+              : PageToolbarActions(
+                  spacing: headerActionSpacing,
+                  runSpacing: useCompactHeaderActions ? 4 : 8,
+                  children: [
+                    Tooltip(
+                      message: 'Create playlist',
+                      child: ObsidianHudIconButton(
+                        icon: PhonoliteIcons.plus,
+                        size: headerActionIconSize,
+                        onPressed: () => _openCreate(controller, canCreateServer: authState.isAuthorized),
                       ),
-              )
-            : PageToolbarActions(
-                spacing: headerActionSpacing,
-                runSpacing: useCompactHeaderActions ? 4 : 8,
-                children: [
-                  Tooltip(
-                    message: 'Create playlist',
-                    child: ObsidianHudIconButton(
-                      icon: PhonoliteIcons.plus,
-                      size: headerActionIconSize,
-                      onPressed: () => _openCreate(controller, canCreateServer: authState.isAuthorized),
                     ),
-                  ),
-                  Tooltip(
-                    message: 'Edit playlists',
-                    child: ObsidianHudIconButton(
-                      iconWidget: const EditIcon(),
-                      size: headerActionIconSize,
-                      onPressed: totalPlaylistCount == 0 ? null : _feature.startSelection,
+                    Tooltip(
+                      message: 'Edit playlists',
+                      child: ObsidianHudIconButton(
+                        iconWidget: const EditIcon(),
+                        size: headerActionIconSize,
+                        onPressed: totalPlaylistCount == 0 ? null : _feature.startSelection,
+                      ),
                     ),
-                  ),
-                  CollectionViewToggleButton(
-                    isListView: showListView,
-                    semanticLabel: 'Playlist collection view',
-                    iconSize: headerActionIconSize,
-                    onPressed: controller.toggleCollectionListMode,
-                  ),
-                ],
+                    CollectionViewToggleButton(
+                      isListView: showListView,
+                      semanticLabel: 'Playlist collection view',
+                      iconSize: headerActionIconSize,
+                      onPressed: controller.toggleCollectionListMode,
+                    ),
+                  ],
+                ),
+        ),
+        body: PageBody.slivers(
+          slivers: orderedSourceSlivers(
+            localFirst: _displaySettings.settings.playlistsLocalFirst,
+            localSlivers: [
+              _playlistSection(
+                context,
+                controller,
+                playlists: localPlaylists,
+                showListView: showListView,
+                isLocal: true,
+                title: authState.isAuthorized ? 'Local Playlists' : null,
+                emptyText: authState.isAuthorized ? 'No local playlists' : 'No playlists',
+                headers: const <String, String>{},
               ),
-      ),
-      body: PageBody.slivers(
-        slivers: [
-          _playlistSection(
-            context,
-            controller,
-            playlists: localPlaylists,
-            showListView: showListView,
-            isLocal: true,
-            title: authState.isAuthorized ? 'Local Playlists' : null,
-            emptyText: authState.isAuthorized ? 'No local playlists' : 'No playlists',
-            headers: const <String, String>{},
+            ],
+            serverSlivers: [
+              if (authState.isAuthorized)
+                _playlistSection(
+                  context,
+                  controller,
+                  playlists: serverPlaylists,
+                  showListView: showListView,
+                  isLocal: false,
+                  title: 'Server Playlists',
+                  emptyText: 'No server playlists',
+                  headers: authHeadersMap,
+                ),
+            ],
           ),
-          if (authState.isAuthorized)
-            _playlistSection(
-              context,
-              controller,
-              playlists: serverPlaylists,
-              showListView: showListView,
-              isLocal: false,
-              title: 'Server Playlists',
-              emptyText: 'No server playlists',
-              headers: authHeadersMap,
-            ),
-        ],
+        ),
       ),
     );
   }

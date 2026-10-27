@@ -30,6 +30,14 @@ void ApplicationWindow::set_content(GtkWidget* content) {
   gtk_container_add(GTK_CONTAINER(window_), content);
 }
 
+void ApplicationWindow::set_minimum_content_size(int width, int height) {
+  GtkWidget* content = gtk_bin_get_child(GTK_BIN(window_));
+  g_return_if_fail(content != nullptr);
+
+  // GTK adds its own title bar and shadows around this borrowed content widget.
+  gtk_widget_set_size_request(content, width, height);
+}
+
 void ApplicationWindow::show() {
   gtk_widget_show(GTK_WIDGET(window_));
 }

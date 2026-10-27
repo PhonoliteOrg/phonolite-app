@@ -817,9 +817,24 @@ class _Auth extends AuthStorage {
 class _Shuffle extends CustomShuffleSettingsStorage {
   @override
   Future<CustomShuffleSettings> read() async => const CustomShuffleSettings();
+
+  @override
+  Future<CustomShuffleSettings> readForAccount(String scope) async => const CustomShuffleSettings();
+
+  @override
+  Future<void> writeLocal(CustomShuffleSettings settings) async {}
+
+  @override
+  Future<void> writeForAccount(String scope, CustomShuffleSettings settings) async {}
 }
 
 class _Preferences extends PlaybackPreferencesStorage {
+  @override
+  Future<PlaybackRepeatMode?> readRepeatMode() async => null;
+
+  @override
+  Future<void> writeRepeatMode(PlaybackRepeatMode mode) async {}
+
   @override
   Future<double?> readVolume() async => null;
   @override

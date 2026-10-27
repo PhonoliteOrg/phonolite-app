@@ -9,9 +9,12 @@ constexpr char host_data_key[] = "phonolite-flutter-host";
 
 } // namespace
 
-FlutterHost::FlutterHost(GtkApplication* application) : window_(application), directories_(directory_launcher_) {}
+FlutterHost::FlutterHost(GtkApplication* application)
+    : window_(application), directories_(directory_launcher_),
+      window_constraints_([this](int width, int height) { window_.set_minimum_content_size(width, height); }) {}
 
 FlutterHost::~FlutterHost() {
+  window_constraints_.detach();
   directories_.detach();
 
   if (first_frame_handler_ != 0) {
@@ -95,6 +98,7 @@ void FlutterHost::assemble(gchar** dart_entrypoint_arguments) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view_));
   directories_.attach(fl_engine_get_binary_messenger(engine_));
+  window_constraints_.attach(fl_engine_get_binary_messenger(engine_));
 
   gtk_widget_grab_focus(GTK_WIDGET(view_));
 }

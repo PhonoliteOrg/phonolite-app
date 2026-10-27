@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/playback_modal_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
@@ -20,7 +19,12 @@ Future<void> playbackShowStreamModal(
   final result = await showDialog<StreamMode>(
     context: context,
     builder: (dialogContext) {
-      final items = const [StreamMode.high, StreamMode.medium, StreamMode.low];
+      final items = const [
+        (mode: StreamMode.original, label: 'Original (source bitrate)'),
+        (mode: StreamMode.high, label: 'High quality (160 kbps)'),
+        (mode: StreamMode.medium, label: 'Medium quality (96 kbps)'),
+        (mode: StreamMode.low, label: 'Low quality (48 kbps)'),
+      ];
 
       return ObsidianAlertDialog(
         title: const Text('Stream Quality'),
@@ -34,11 +38,11 @@ Future<void> playbackShowStreamModal(
             separatorBuilder: (context, index) =>
                 Divider(height: playbackScaled(context, 1), color: ObsidianPalette.textMuted.withByteOpacity(0.25)),
             itemBuilder: (context, index) {
-              final mode = items[index];
+              final (:mode, :label) = items[index];
               final isSelected = mode == current;
 
               return PlaybackHudModalListRow(
-                title: playbackStreamLabel(mode),
+                title: label,
                 trailing: isSelected
                     ? const Icon(PhonoliteIcons.check, color: ObsidianPalette.gold)
                     : const SizedBox.shrink(),

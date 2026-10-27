@@ -12,6 +12,9 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Profile;Release" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
 
+# Build the same native audio DLL as production; no audio device is opened.
+add_subdirectory("${APP_ROOT}/windows/runner/infrastructure/audio" "audio")
+
 function(apply_native_check_settings target)
   target_compile_features(${target} PRIVATE cxx_std_17)
   target_compile_options(${target} PRIVATE /W4 /WX /wd4100 /EHsc)
@@ -74,6 +77,11 @@ add_custom_command(TARGET phonolite_native_contract_tests POST_BUILD
 
 enable_testing()
 add_test(NAME phonolite_native_contracts COMMAND phonolite_native_contract_tests)
+
+# Uses fake XAudio2 voices and endpoints; never opens a device or renders audio.
+add_executable(phonolite_xaudio_contract_tests "xaudio_output_test.cpp")
+configure_phonolite_audio_target(phonolite_xaudio_contract_tests)
+add_test(NAME phonolite_xaudio_contracts COMMAND phonolite_xaudio_contract_tests)
 
 # Headless transport tests inject the OS capability and never create a window,
 # register a system media session, or start the application/audio engine.

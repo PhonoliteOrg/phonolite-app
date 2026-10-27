@@ -235,14 +235,14 @@ void main() {
     expect(controller.imageError, 'Failed to save playlist.');
   });
 
-  test('playlist membership projection keeps counts consistent through add/remove', () {
+  test('playlist membership projection keeps counts consistent through add/remove', () async {
     final controller = AddToPlaylistController();
     addTearDown(controller.dispose);
     final playlist = Playlist(id: 'playlist', name: 'Playlist', trackIds: []);
-    controller.add(playlist, (_) {});
+    await controller.add(playlist, (_) {});
     expect(controller.contains(playlist, 'track'), isTrue);
     expect(controller.trackCount(playlist, 'track'), 1);
-    controller.remove(playlist, (_) {});
+    await controller.remove(playlist, (_) {});
     expect(controller.contains(playlist, 'track'), isFalse);
     expect(controller.trackCount(playlist, 'track'), 0);
   });

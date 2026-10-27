@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _PlaybackCoordinator {
   final AppController _host;
@@ -13,6 +13,7 @@ class _PlaybackCoordinator {
   List<OutputDevice> _outputDevices = <OutputDevice>[];
   int _outputDeviceId = kDefaultOutputDeviceId;
   String? _outputDeviceName;
+  double _lastAudibleVolume = 1.0;
 
   _PlaybackCoordinator(this._host);
 
@@ -39,6 +40,10 @@ class _PlaybackCoordinator {
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
+      }
+
+      if (_host._resumeCoordinator.hasDeferredNavigation && !await _host._resumeCoordinator.prepareNavigation(1)) {
+        return;
       }
 
       if (_playbackState.shuffleMode != ShuffleMode.off && _playbackState.shuffleScope == ActionScope.server) {
@@ -76,6 +81,19 @@ class _PlaybackCoordinator {
       }
 
       _host._syncPlayIndexWithCurrent();
+      if (_playbackState.shuffleMode != ShuffleMode.off &&
+          _playbackState.shuffleScope == ActionScope.local &&
+          _host._playIndex >= _host._playQueue.length - 1) {
+        final shuffle = _host._shuffleCoordinator;
+        await shuffle.queueLocalShuffle(
+          playlistId: shuffle._queueShufflePlaylistId,
+          artistId: shuffle._queueShuffleArtistId,
+          albumId: shuffle._queueShuffleAlbumId,
+          preserveContext: true,
+          avoidTrackId: _playbackState.track?.id,
+        );
+        return;
+      }
       _host._playIndex = (_host._playIndex + 1) % _host._playQueue.length;
 
       await _playCurrent();
@@ -94,6 +112,10 @@ class _PlaybackCoordinator {
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
+      }
+
+      if (_host._resumeCoordinator.hasDeferredNavigation && !await _host._resumeCoordinator.prepareNavigation(-1)) {
+        return;
       }
 
       if (_playbackState.shuffleMode != ShuffleMode.off && _playbackState.shuffleScope == ActionScope.server) {
@@ -183,6 +205,7 @@ class _PlaybackCoordinator {
       }
 
       await _host._pushNowPlayingUpdate(force: true);
+      _host._resumeCoordinator.changed();
     } on ApiException catch (err) {
       _host._handleApiError(err, context: 'pause');
     } catch (err) {
@@ -204,6 +227,7 @@ class _PlaybackCoordinator {
       _host._queueShuffleAlbumId = null;
       _host._queueShufflePlaylistId = null;
     }
+    _host._resumeCoordinator.modeChanged();
   }
 
   void toggleRepeatMode() {
@@ -212,11 +236,7 @@ class _PlaybackCoordinator {
     _updatePlayback(repeatMode: next);
     _host._pushMessage('Repeat: ${next.name}');
 
-    if (_host._authState.isAuthorized) {
-      () async {
-        await _host._persistPlaybackSettings(next);
-      }();
-    }
+    unawaited(_host._persistPlaybackSettings(next));
   }
 
   void updateStreamMode(StreamMode mode) {
@@ -243,6 +263,10 @@ class _PlaybackCoordinator {
   void setVolume(double value) {
     _host._volumeTouched = true;
     _applyVolume(value, persist: true);
+  }
+
+  void toggleMute() {
+    setVolume(_playbackState.volume == 0.0 ? _lastAudibleVolume : 0.0);
   }
 
   Future<List<OutputDevice>> listOutputDevices({bool refresh = false}) async {
@@ -287,6 +311,8 @@ class _PlaybackCoordinator {
   }
 
   Future<void> _stop({bool requireFileRelease = false}) async {
+    _host._resumeCoordinator.preserveBeforeStop();
+    _host._accountServices.retireTrackStart();
     _host._shuffleCoordinator._clearServerShuffleSession();
     try {
       _host._resetTrackTransitionState();
@@ -342,6 +368,10 @@ class _PlaybackCoordinator {
   void _applyVolume(double value, {required bool persist}) {
     final clamped = value.clamp(0.0, 1.0);
 
+    if (clamped > 0.0) {
+      _lastAudibleVolume = clamped;
+    }
+
     _host._audioEngine.setVolume(clamped);
     _updatePlayback(volume: clamped);
 
@@ -374,8 +404,12 @@ class _PlaybackCoordinator {
     }
 
     _host._autoAdvanceInFlight = false;
+    _host._accountServices.prepareTrackStart();
 
-    final track = _host._playQueue[_host._playIndex];
+    final queuedTrack = _host._playQueue[_host._playIndex];
+    final track = _playbackState.queueSource == PlaybackQueueSource.offline
+        ? queuedTrack
+        : _host.connection.projectServerTrack(queuedTrack);
 
     _host._playQueue = _host._playQueue.map((item) => item.id == track.id ? track : item).toList();
     _host._pushMessage(
@@ -421,6 +455,7 @@ class _PlaybackCoordinator {
                   (item) => item.id == full.id ? full.copyWith(liked: item.liked, inPlaylists: item.inPlaylists) : item,
                 )
                 .toList();
+            _host._shuffleCoordinator._preloadServerShuffleArtwork();
 
             final current = _playbackState.track;
 
@@ -697,6 +732,8 @@ class _PlaybackCoordinator {
         return const StreamSettings(mode: 'fixed', quality: 'medium', frameMs: 20);
       case StreamMode.low:
         return const StreamSettings(mode: 'fixed', quality: 'low', frameMs: 20);
+      case StreamMode.original:
+        return const StreamSettings(mode: 'original', quality: 'source');
     }
   }
 }
@@ -757,6 +794,8 @@ mixin _PlaybackFacade {
   void updateStreamMode(StreamMode mode) => _playbackCoordinator.updateStreamMode(mode);
 
   void setVolume(double value) => _playbackCoordinator.setVolume(value);
+
+  void toggleMute() => _playbackCoordinator.toggleMute();
 
   Future<List<OutputDevice>> listOutputDevices({bool refresh = false}) =>
       _playbackCoordinator.listOutputDevices(refresh: refresh);

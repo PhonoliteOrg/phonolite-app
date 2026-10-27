@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 class _PlaybackSession
     with
@@ -8,7 +8,7 @@ class _PlaybackSession
         _OpusDecodePipelineFacade,
         _RemoteAudioSourceFacade,
         _AudioTelemetryFacade,
-        _LocalAudioSourceFacade,
+        _FileAudioSourceFacade,
         _AdaptiveAudioBufferPolicyFacade,
         _PcmOutputPumpFacade {
   static const double _prebufferSecondsLocal = 0.1;
@@ -28,7 +28,7 @@ class _PlaybackSession
   @override
   late final _AdaptiveAudioBufferPolicy _ownerBuffer;
   @override
-  late final _LocalAudioSource _ownerLocal;
+  late final _FileAudioSource _ownerFile;
   @override
   late final _AudioTelemetry _ownerTelemetry;
   @override
@@ -57,6 +57,7 @@ class _PlaybackSession
   final String? localFilePath;
   final void Function(QuicClient)? _releaseConnection;
   final OpusDecoder Function(int sampleRate, int channels)? _decoderFactory;
+  final AudioFileDecoder Function(Uri url, Duration startOffset)? _fileDecoderFactory;
   final AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? _outputFactory;
   double _volume;
   int _outputDeviceId;
@@ -67,7 +68,9 @@ class _PlaybackSession
   bool _autoPaused = false;
   QuicClient? _quic;
   OpusDecoder? _decoder;
-  LocalAudioDecoder? _localDecoder;
+  AudioFileDecoder? _fileDecoder;
+  int _sourceBitDepth = 16;
+  int _pcmBitsPerSample = 16;
   AudioPcmOutput? _player;
   PcmRingBuffer? _buffer;
 
@@ -92,6 +95,7 @@ class _PlaybackSession
     this.serverPin = '',
     Map<String, dynamic>? listeningContext,
     OpusDecoder Function(int sampleRate, int channels)? decoderFactory,
+    AudioFileDecoder Function(Uri url, Duration startOffset)? fileDecoderFactory,
     AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? outputFactory,
   }) : _send = send,
        _playbackId = playbackId,
@@ -100,6 +104,7 @@ class _PlaybackSession
        _outputDeviceId = outputDeviceId,
        localFilePath = null,
        _decoderFactory = decoderFactory,
+       _fileDecoderFactory = fileDecoderFactory,
        _outputFactory = outputFactory,
        _quic = reusableConnection,
        _releaseConnection = releaseConnection {
@@ -107,7 +112,7 @@ class _PlaybackSession
     _ownerPump = _PcmOutputPump(this);
     _ownerOutput = _AudioOutputConfiguration(this);
     _ownerBuffer = _AdaptiveAudioBufferPolicy(this);
-    _ownerLocal = _LocalAudioSource(this);
+    _ownerFile = _FileAudioSource(this);
     _ownerTelemetry = _AudioTelemetry(this);
     _ownerRemote = _RemoteAudioSource(this);
     _ownerDecoder = _OpusDecodePipeline(this);
@@ -150,13 +155,14 @@ class _PlaybackSession
        _outputDeviceId = outputDeviceId,
        localFilePath = filePath,
        _decoderFactory = null,
+       _fileDecoderFactory = null,
        _outputFactory = outputFactory,
        _releaseConnection = null {
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _ownerPump = _PcmOutputPump(this);
     _ownerOutput = _AudioOutputConfiguration(this);
     _ownerBuffer = _AdaptiveAudioBufferPolicy(this);
-    _ownerLocal = _LocalAudioSource(this);
+    _ownerFile = _FileAudioSource(this);
     _ownerTelemetry = _AudioTelemetry(this);
     _ownerRemote = _RemoteAudioSource(this);
     _ownerDecoder = _OpusDecodePipeline(this);
@@ -173,6 +179,8 @@ class _PlaybackSession
   }
 
   bool get _isLocalFile => localFilePath != null;
+
+  bool get _isFileSource => _isLocalFile || settings.isOriginal;
 
   bool get _isActive => !_stopRequested && _playbackId == _getPlaybackId();
 
@@ -254,6 +262,10 @@ class _PlaybackSession
 
       final rejected = err is AudioSourceRejected;
 
+      // Invalidate every producer/pump before releasing native resources. File
+      // read failures otherwise leave a detached pump waiting on a disposed output.
+      await requestStop(outcome: 'error');
+
       _sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false, if (rejected) 'source_rejected': true});
 
       if (rejected) {
@@ -272,8 +284,8 @@ class _PlaybackSession
           _decoder?.dispose();
           _decoder = null;
 
-          _localDecoder?.close();
-          _localDecoder = null;
+          await _fileDecoder?.close();
+          _fileDecoder = null;
 
           await _player?.dispose();
         } finally {
@@ -328,9 +340,6 @@ class _PlaybackSession
     _decoder?.dispose();
     _decoder = null;
 
-    _localDecoder?.close();
-    _localDecoder = null;
-
     final player = _player;
 
     _player = null;
@@ -361,6 +370,9 @@ class _PlaybackSession
 
       _quic?.close();
       _quic = null;
+
+      await _fileDecoder?.close();
+      _fileDecoder = null;
     }
   }
 
@@ -384,6 +396,16 @@ class _PlaybackSession
 
     if (localPath != null) {
       await _runLocalFilePlayback(localPath);
+
+      return;
+    }
+
+    if (settings.isOriginal) {
+      // Original is an authenticated source-file stream, independent of Opus.
+      // Retire a reusable Opus connection before opening its HTTP range source.
+      _quic?.close();
+      _quic = null;
+      await _runOriginalFilePlayback();
 
       return;
     }

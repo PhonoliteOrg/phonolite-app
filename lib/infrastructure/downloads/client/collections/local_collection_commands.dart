@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _LocalCollectionCommands {
   final _OfflineDownloadActorCore _host;
@@ -8,7 +8,9 @@ class _LocalCollectionCommands {
   List<Track> _localLiked = <Track>[];
   List<Playlist> _localPlaylists = <Playlist>[];
   List<Track> _localPlaylistTracks = <Track>[];
+  List<LocalPlaylistEntry> _localPlaylistEntries = [];
   String? _localPlaylistTracksId;
+  int _libraryReadRevision = 0;
   Future<void> _localUserDataReloadChain = Future<void>.value();
 
   _LocalCollectionCommands(this._host);
@@ -21,9 +23,18 @@ class _LocalCollectionCommands {
   }
 
   Future<void> loadLocalPlaylistTracks(String playlistId) async {
+    final revision = ++_libraryReadRevision;
     _localPlaylistTracksId = playlistId;
 
-    _localPlaylistTracks = await _host._storage.readLocalPlaylistTracks(playlistId);
+    final tracks = await _host._storage.readLocalPlaylistTracks(playlistId);
+    final entries = await _host._storage.readLocalPlaylistEntries(playlistId);
+
+    if (revision != _libraryReadRevision || _localPlaylistTracksId != playlistId || _host._disposed) {
+      return;
+    }
+
+    _localPlaylistTracks = tracks;
+    _localPlaylistEntries = entries;
 
     _emitLocalPlaylistTracks();
   }
@@ -158,14 +169,24 @@ class _LocalCollectionCommands {
     return playlist;
   }
 
-  Future<void> deleteLocalPlaylist(String playlistId) async {
+  Future<void> deleteLocalPlaylist(String playlistId) =>
+      _host._ownerPlaylistDownloads.mutate(() => _deleteLocalPlaylist(playlistId));
+
+  Future<void> _deleteLocalPlaylist(String playlistId) async {
+    final sources = await _host._storage.releasePlaylistDownloadDemands(playlistId);
+
     await _host._storage.deleteLocalPlaylist(playlistId);
+
+    for (final source in sources) {
+      await _host._cleanupUnclaimedPlaylistDownload(source);
+    }
 
     await _host.loadLocalPlaylists();
 
     if (_localPlaylistTracksId == playlistId) {
       _localPlaylistTracksId = null;
       _localPlaylistTracks = <Track>[];
+      _localPlaylistEntries = [];
       _emitLocalPlaylistTracks();
     }
   }
@@ -183,8 +204,25 @@ class _LocalCollectionCommands {
     return updated;
   }
 
-  Future<Playlist?> removeLocalTrackFromPlaylist(Playlist playlist, Track track) async {
+  Future<Playlist?> removeLocalTrackFromPlaylist(Playlist playlist, Track track) =>
+      _host._ownerPlaylistDownloads.mutate(() => _removeLocalTrackFromPlaylist(playlist, track));
+
+  Future<Playlist?> _removeLocalTrackFromPlaylist(Playlist playlist, Track track) async {
     final localId = _host._localTrackId(track);
+    final source = SourceTrackRef.fromTrack(track, fallbackServerBaseUrl: _host.connection.baseUrl);
+
+    if (source.isValid) {
+      final sources = await _host._storage.removeSourceFromLocalPlaylist(playlist.id, source, localTrackId: localId);
+
+      await _loadLocalUserData();
+
+      for (final candidate in sources) {
+        await _host._cleanupUnclaimedPlaylistDownload(candidate);
+      }
+
+      return _localPlaylists.where((item) => item.id == playlist.id).firstOrNull;
+    }
+
     if (localId == null) {
       return playlist;
     }
@@ -198,6 +236,8 @@ class _LocalCollectionCommands {
 
   Future<void> _loadLocalUserData() async {
     final dataRevision = _host._localDataRevision;
+    final revision = ++_libraryReadRevision;
+    final playlistId = _localPlaylistTracksId;
 
     if (!_host._localDataCurrent(dataRevision)) {
       return;
@@ -206,20 +246,27 @@ class _LocalCollectionCommands {
     final playlists = await _host._storage.readLocalPlaylists();
     final liked = await _host._storage.readLocalLikedTracks();
 
-    if (!_host._localDataCurrent(dataRevision)) {
+    if (!_host._localDataCurrent(dataRevision) || revision != _libraryReadRevision) {
+      return;
+    }
+
+    final exists = playlistId != null && playlists.any((playlist) => playlist.id == playlistId);
+    final tracks = exists ? await _host._storage.readLocalPlaylistTracks(playlistId) : const <Track>[];
+    final entries = exists ? await _host._storage.readLocalPlaylistEntries(playlistId) : const <LocalPlaylistEntry>[];
+
+    if (!_host._localDataCurrent(dataRevision) ||
+        revision != _libraryReadRevision ||
+        playlistId != _localPlaylistTracksId) {
       return;
     }
 
     _localPlaylists = playlists;
     _localLiked = liked;
+    _localPlaylistTracks = tracks;
+    _localPlaylistEntries = entries;
 
-    final playlistId = _localPlaylistTracksId;
-
-    if (playlistId != null && _localPlaylists.any((playlist) => playlist.id == playlistId)) {
-      _localPlaylistTracks = await _host._storage.readLocalPlaylistTracks(playlistId);
-    } else if (playlistId != null) {
+    if (playlistId != null && !exists) {
       _localPlaylistTracksId = null;
-      _localPlaylistTracks = <Track>[];
     }
 
     _host._rebuildDownloadIndexes();

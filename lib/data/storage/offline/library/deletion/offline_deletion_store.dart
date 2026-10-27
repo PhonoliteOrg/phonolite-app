@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+part of '../offline_library.dart';
 
 class _OfflineDeletionStore {
   final OfflineLibraryStorage _host;
@@ -44,8 +44,9 @@ class _OfflineDeletionStore {
       late OfflineDeletionDraft draft;
 
       _host._transaction(db, () {
+        db!.execute("UPDATE pending_playlist_tracks SET request_status = 'canceled', request_error = NULL");
         draft = _removeDownloadsInTransaction(
-          db!,
+          db,
           const OfflineDeletionScope.track(),
           _host._readDownloads(db).where((download) => !download.isDownloaded).toList(growable: false),
           deleteRoots,
@@ -54,6 +55,10 @@ class _OfflineDeletionStore {
         for (final table in ['download_jobs', 'download_batches']) {
           db.execute('DELETE FROM $table WHERE status != ?', [OfflineDownloadStatus.downloaded.name]);
         }
+
+        db.execute('''DELETE FROM download_demands WHERE NOT EXISTS (
+          SELECT 1 FROM source_tracks s WHERE s.server_base_url = download_demands.server_base_url
+            AND s.server_track_id = download_demands.server_track_id AND s.status = 'downloaded')''');
       });
 
       final retainedPaths = {
@@ -240,6 +245,15 @@ class _OfflineDeletionStore {
         download.serverBaseUrl,
         serverTrackId,
       ]);
+      db.execute('DELETE FROM download_demands WHERE server_base_url = ? AND server_track_id = ?', [
+        download.serverBaseUrl,
+        serverTrackId,
+      ]);
+      db.execute(
+        '''UPDATE pending_playlist_tracks SET request_status = 'canceled', request_error = NULL
+        WHERE server_base_url = ? AND server_track_id = ?''',
+        [download.serverBaseUrl, serverTrackId],
+      );
       db.execute('DELETE FROM offline_metadata_fragments WHERE server_base_url = ? AND server_track_id = ?', [
         download.serverBaseUrl,
         serverTrackId,

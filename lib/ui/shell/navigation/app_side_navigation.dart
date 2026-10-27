@@ -11,12 +11,13 @@ class AppSideNavigation extends BaseAppNavigation {
     required super.onDestinationSelected,
   });
 
+  static double widthFor(BuildContext context) => 64 * ObsidianScale.of(context);
+
   @override
   Border surfaceBorder(BuildContext context) => Border(right: navigationBorder);
 
   @override
-  Widget decorateNavigation(BuildContext context, Widget surface) =>
-      SizedBox(width: 64 * ObsidianScale.of(context), child: surface);
+  Widget decorateNavigation(BuildContext context, Widget surface) => SizedBox(width: widthFor(context), child: surface);
 
   @override
   Widget navigationContent(BuildContext context, List<Widget> items) {

@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _DownloadPlanner {
   final _OfflineDownloadActorCore _host;
@@ -6,7 +6,7 @@ class _DownloadPlanner {
 
   _DownloadPlanner(this._host);
 
-  Future<int> downloadTrack(Track track) async {
+  Future<int> downloadTrack(Track track, {bool playlistOwned = false, bool Function()? isCurrent}) async {
     final dataRevision = _localDataRevision;
 
     await _host._ensureLoaded();
@@ -16,13 +16,38 @@ class _DownloadPlanner {
     }
 
     final baseUrl = _host.connection.baseUrl;
+    final sessionRevision = _host.connection.sessionRevision;
     final serverTrackId = (track.serverTrackId ?? track.id).trim();
+    final source = SourceTrackRef(serverBaseUrl: baseUrl, serverTrackId: serverTrackId);
+
+    bool current() =>
+        _host._localDataCurrent(dataRevision) &&
+        _host.connection.sessionRevision == sessionRevision &&
+        (isCurrent?.call() ?? true);
+
+    if (track.serverBaseUrl != null && track.serverBaseUrl != baseUrl) {
+      throw StateError('Connect to the original server to download this track.');
+    }
 
     if (serverTrackId.isEmpty) {
       return 0;
     }
 
+    if (!playlistOwned) {
+      await _host._ownerPlaylistDownloads.registerDemand(source, ownerKind: 'manual', ownerId: source.key);
+    }
+
+    if (!current()) {
+      return 0;
+    }
+
     final existing = _host.find(baseUrl, serverTrackId);
+
+    if (existing != null && _host._canResume(existing.status)) {
+      await _host.resumeDownload(existing);
+
+      return 0;
+    }
 
     if (_host._downloadQueuedOrAvailable(existing)) {
       return 0;
@@ -35,7 +60,7 @@ class _DownloadPlanner {
       try {
         final manifest = await _host.connection.createDownloadBatch(<String>[serverTrackId]);
 
-        if (!_host._localDataCurrent(dataRevision)) {
+        if (!current()) {
           return 0;
         }
 
@@ -54,9 +79,27 @@ class _DownloadPlanner {
           throw Exception(reason ?? 'track unavailable for download');
         }
 
-        return _host.queueBatch(manifest, label: track.title);
+        if (playlistOwned && !await _host._storage.hasDownloadDemand(source)) {
+          return 0;
+        }
+
+        if (!playlistOwned) {
+          return _ownerBatch(manifest, label: track.title, isCurrent: current);
+        }
+
+        return _host._ownerPlaylistDownloads.mutate(() async {
+          if (!current() || !await _host._storage.hasDownloadDemand(source)) {
+            return 0;
+          }
+
+          try {
+            return await _ownerBatch(manifest, label: track.title, playlistOwned: true, isCurrent: current);
+          } finally {
+            await _discardEmptyPlaylistBatch(manifest.batchId);
+          }
+        });
       } catch (err) {
-        if (!_host._localDataCurrent(dataRevision)) {
+        if (!current()) {
           return 0;
         }
 
@@ -71,7 +114,7 @@ class _DownloadPlanner {
       try {
         final metadata = await _host.connection.fetchOfflineMetadata(serverTrackId);
 
-        if (!_host._localDataCurrent(dataRevision)) {
+        if (!current()) {
           return 0;
         }
 
@@ -99,23 +142,31 @@ class _DownloadPlanner {
               createdAt: now,
               updatedAt: now,
             );
-        final queued = await _host._storageOperation(() => _host._storage.prepareDownload(initial));
+        Future<int> stageMetadata() async {
+          if (!current() || (playlistOwned && !await _host._storage.hasDownloadDemand(source))) {
+            return 0;
+          }
 
-        if (!_host._localDataCurrent(dataRevision)) {
-          return 0;
+          final queued = await _host._storageOperation(() => _host._storage.prepareDownload(initial));
+
+          if (!current()) {
+            return 0;
+          }
+
+          _host._clearObsoleteStopMarkersForQueue(queued);
+
+          await _host._replace(queued, persist: true);
+
+          if (!current()) {
+            return 0;
+          }
+
+          _host._schedule();
+
+          return 1;
         }
 
-        _host._clearObsoleteStopMarkersForQueue(queued);
-
-        await _host._replace(queued, persist: true);
-
-        if (!_host._localDataCurrent(dataRevision)) {
-          return 0;
-        }
-
-        _host._schedule();
-
-        return 1;
+        return playlistOwned ? _host._ownerPlaylistDownloads.mutate(stageMetadata) : stageMetadata();
       } catch (err) {
         if (!_host._localDataCurrent(dataRevision)) {
           return 0;
@@ -138,6 +189,13 @@ class _DownloadPlanner {
     }
 
     final baseUrl = _host.connection.baseUrl;
+    final sessionRevision = _host.connection.sessionRevision;
+
+    bool sessionCurrent() =>
+        _host.connection.baseUrl == baseUrl &&
+        _host.connection.sessionRevision == sessionRevision &&
+        _host._localDataCurrent(dataRevision);
+
     final now = DateTime.now();
     final seen = <String>{};
     final trackList = <Track>[];
@@ -147,6 +205,20 @@ class _DownloadPlanner {
 
       if (id.isEmpty || !seen.add(id)) {
         continue;
+      }
+
+      if (track.serverBaseUrl != null && track.serverBaseUrl != baseUrl) {
+        throw StateError('The download source does not belong to the connected server.');
+      }
+
+      await _host._ownerPlaylistDownloads.registerDemand(
+        SourceTrackRef(serverBaseUrl: baseUrl, serverTrackId: id),
+        ownerKind: 'collection',
+        ownerId: '$kind:${sourceId ?? label ?? 'tracks'}',
+      );
+
+      if (!sessionCurrent()) {
+        return 0;
       }
 
       trackList.add(track.copyWith(id: id, serverBaseUrl: baseUrl, serverTrackId: id));
@@ -249,7 +321,27 @@ class _DownloadPlanner {
     return pending.length;
   }
 
-  Future<int> queueBatch(DownloadBatchManifest manifest, {String? label}) async {
+  Future<int> queueBatch(DownloadBatchManifest manifest, {String? label}) => _ownerBatch(manifest, label: label);
+
+  Future<void> _discardEmptyPlaylistBatch(String batchId) async {
+    if (_host._disposed ||
+        _host._resettingLocalData ||
+        _host._downloads.any((download) => download.batchId == batchId) ||
+        _host._isRollingJob(batchId)) {
+      return;
+    }
+
+    await _host._storage.deleteDownloadBatch(batchId);
+    _host._batches = _host._batches.where((batch) => batch.batchId != batchId).toList(growable: false);
+    _host._emitBatches();
+  }
+
+  Future<int> _ownerBatch(
+    DownloadBatchManifest manifest, {
+    String? label,
+    bool playlistOwned = false,
+    bool Function()? isCurrent,
+  }) async {
     final dataRevision = _localDataRevision;
 
     await _host._ensureLoaded();
@@ -260,6 +352,20 @@ class _DownloadPlanner {
 
     if (manifest.items.isEmpty) {
       return 0;
+    }
+
+    if (!(isCurrent?.call() ?? true)) {
+      return 0;
+    }
+
+    if (!playlistOwned) {
+      for (final item in manifest.items) {
+        await _host._ownerPlaylistDownloads.registerDemand(
+          SourceTrackRef(serverBaseUrl: _host.connection.baseUrl, serverTrackId: item.trackId),
+          ownerKind: 'manual',
+          ownerId: 'batch:${manifest.batchId}',
+        );
+      }
     }
 
     if (manifest.items.length > _OfflineDownloadActorCore._rollingWindowSize) {
@@ -288,6 +394,11 @@ class _DownloadPlanner {
 
     for (var index = 0; index < manifest.items.length; index += 1) {
       final item = manifest.items[index];
+      final source = SourceTrackRef(serverBaseUrl: baseUrl, serverTrackId: item.trackId);
+
+      if (!(isCurrent?.call() ?? true) || (playlistOwned && !await _host._storage.hasDownloadDemand(source))) {
+        return 0;
+      }
       final track = item.offlineMetadata.track.copyWith(
         id: item.trackId,
         serverBaseUrl: baseUrl,
@@ -345,6 +456,10 @@ class _DownloadPlanner {
         }
 
         final prepared = await _host._storageOperation(() => _host._storage.prepareDownloads(chunk));
+
+        if (!(isCurrent?.call() ?? true)) {
+          return 0;
+        }
 
         if (!_host._localDataCurrent(dataRevision)) {
           return 0;

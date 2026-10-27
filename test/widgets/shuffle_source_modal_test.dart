@@ -292,6 +292,7 @@ Future<void> _pump(
               onToggleRepeat: () {},
               onStreamModeChanged: (_) {},
               onVolumeChanged: (_) {},
+              onToggleMute: () {},
               onToggleLike: () {},
             ),
           ),

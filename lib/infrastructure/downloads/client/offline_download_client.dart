@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/data/configuration/downloads/offline_storage_config.dart';
 import 'package:phonolite_app/data/files/download_integrity.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/download_outcomes.dart';
 import 'package:phonolite_app/data/models/downloads/download_worker_protocol.dart';
@@ -18,7 +19,9 @@ import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart'
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/offline_library_snapshot.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/library/track_source_match.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/download_job_v2.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart' as offline_views;
@@ -33,28 +36,29 @@ import 'package:phonolite_app/infrastructure/downloads/http/download_range.dart'
 import 'package:phonolite_app/infrastructure/security/server_trust.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
-part 'package:phonolite_app/infrastructure/downloads/client/actor/offline_actor.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/actor/offline_actor_client.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/actor/offline_command_dispatcher.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/artwork/download_artwork_hydrator.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/collections/local_collection_commands.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/deletion/remove_downloads.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/deletion/reset_local_download_data.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/download_runtime.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/metadata/offline_metadata_repair.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/planning/artist_job_discovery.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/planning/download_job_materializer.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/planning/download_planner.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/planning/rolling_download_jobs.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/planning/server_download_job_adapter.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/recovery/interrupted_download_recovery.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/recovery/pending_file_cleanup.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/scheduling/download_commands.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/scheduling/download_scheduler.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/snapshots/download_state_store.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/snapshots/offline_snapshot_publisher.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/transfer/download_worker.dart';
-part 'package:phonolite_app/infrastructure/downloads/client/transfer/transfer_track.dart';
+part 'actor/offline_actor.dart';
+part 'actor/offline_actor_client.dart';
+part 'actor/offline_command_dispatcher.dart';
+part 'artwork/download_artwork_hydrator.dart';
+part 'collections/local_collection_commands.dart';
+part 'collections/local_playlist_downloads.dart';
+part 'deletion/remove_downloads.dart';
+part 'deletion/reset_local_download_data.dart';
+part 'download_runtime.dart';
+part 'metadata/offline_metadata_repair.dart';
+part 'planning/artist_job_discovery.dart';
+part 'planning/download_job_materializer.dart';
+part 'planning/download_planner.dart';
+part 'planning/rolling_download_jobs.dart';
+part 'planning/server_download_job_adapter.dart';
+part 'recovery/interrupted_download_recovery.dart';
+part 'recovery/pending_file_cleanup.dart';
+part 'scheduling/download_commands.dart';
+part 'scheduling/download_scheduler.dart';
+part 'snapshots/download_state_store.dart';
+part 'snapshots/offline_snapshot_publisher.dart';
+part 'transfer/download_worker.dart';
+part 'transfer/transfer_track.dart';
 
 class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorClientFacade {
   static const int maxParallelDownloadsPerServer = 1;
@@ -133,6 +137,7 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
           liked: _inlineCore.localLiked,
           playlists: _inlineCore.localPlaylists,
           playlistTracks: _inlineCore.localPlaylistTracks,
+          playlistEntries: _inlineCore.localPlaylistEntries,
           revision: _librarySnapshot.revision,
         );
 
@@ -141,6 +146,45 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
   List<Playlist> get localPlaylists => _inlineCore?.localPlaylists ?? List.unmodifiable(_localPlaylists);
 
   List<Track> get localPlaylistTracks => _inlineCore?.localPlaylistTracks ?? List.unmodifiable(_localPlaylistTracks);
+
+  List<LocalPlaylistEntry> get localPlaylistEntries => librarySnapshot.playlistEntries;
+
+  Stream<List<LocalPlaylistEntry>> get localPlaylistEntriesStream =>
+      librarySnapshotStream.map((snapshot) => snapshot.playlistEntries);
+
+  Future<void> addSourceToLocalPlaylist(String playlistId, Track track, SourceTrackRef source) => _commandOrInline(
+    'addSourceToLocalPlaylist',
+    OfflinePlaylistSourceRequest(playlistId: playlistId, track: track, source: source),
+    (core) => core.addSourceToLocalPlaylist(playlistId, track, source),
+  );
+
+  Future<void> retryLocalPlaylistEntry(LocalPlaylistEntry entry) =>
+      _commandOrInline('retryLocalPlaylistEntry', entry, (core) => core.retryLocalPlaylistEntry(entry));
+
+  Future<void> resumeLocalPlaylistEntry(LocalPlaylistEntry entry) =>
+      _commandOrInline('resumeLocalPlaylistEntry', entry, (core) => core.resumeLocalPlaylistEntry(entry));
+
+  Future<String?> resolveLocalPlaylistTrackId(Track track) {
+    final core = _inlineCore;
+
+    return core != null
+        ? core.resolveLocalPlaylistTrackId(track)
+        : _send<String?>('resolveLocalPlaylistTrackId', track);
+  }
+
+  Future<List<TrackSourceMatch>> readServerTrackMatches(String serverBaseUrl, String localTrackId) {
+    final core = _inlineCore;
+
+    return core != null
+        ? core._storage.readServerTrackMatches(serverBaseUrl, localTrackId)
+        : _send<List<TrackSourceMatch>>('readTrackSourceMatch', OfflineTrackMatchRequest(localTrackId, serverBaseUrl));
+  }
+
+  Future<void> saveTrackSourceMatch(TrackSourceMatch match) =>
+      _commandOrInline('saveTrackSourceMatch', match, (core) => core._storage.saveTrackSourceMatch(match));
+
+  Future<void> removeTrackSourceMatch(SourceTrackRef source) =>
+      _commandOrInline('removeTrackSourceMatch', source, (core) => core._storage.removeTrackSourceMatch(source));
 
   Future<void> dispose() async {
     _disposed = true;

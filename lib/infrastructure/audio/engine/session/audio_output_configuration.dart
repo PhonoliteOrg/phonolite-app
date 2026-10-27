@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 /// The output-device protocol shared by local and remote playback sources.
 /// Source-specific decoder/header and buffer policy stays with each source.
@@ -36,7 +36,13 @@ class _AudioOutputConfiguration {
       final deviceId = _host._outputDeviceId;
       final player = outputFactory != null
           ? outputFactory(sampleRate, channels, deviceId)
-          : createAudioPcmOutput(sampleRate: sampleRate, channels: channels, deviceId: deviceId);
+          : createAudioPcmOutput(
+              sampleRate: sampleRate,
+              channels: channels,
+              deviceId: deviceId,
+              bitsPerSample: _host._pcmBitsPerSample,
+              validBitsPerSample: _host._sourceBitDepth,
+            );
 
       // Startup is owned immediately: stop must be able to await a device whose
       // native open is still pending, before the worker acknowledges release.

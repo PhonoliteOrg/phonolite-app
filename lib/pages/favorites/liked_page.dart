@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/favorites/liked_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
@@ -12,12 +13,15 @@ import 'package:phonolite_app/ui/features/favorites/widgets/liked_section.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_edit_icon.dart';
+import 'package:phonolite_app/ui/shared/music/source_section_slivers.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class LikedPage extends BasePage {
-  const LikedPage({super.key});
+  final DisplaySettingsController? displaySettings;
+
+  const LikedPage({super.key, this.displaySettings});
 
   @override
   State<LikedPage> createState() => _LikedPageState();
@@ -25,6 +29,8 @@ class LikedPage extends BasePage {
 
 class _LikedPageState extends BasePageState<LikedPage> {
   late final LikedController _feature = bindController(LikedController(AppScope.of(context)));
+
+  DisplaySettingsController get _displaySettings => widget.displaySettings ?? DisplaySettingsController.instance;
 
   Future<void> _removeDownloads(List<Track> tracks, String label) async {
     if (tracks.isEmpty) {
@@ -95,51 +101,59 @@ class _LikedPageState extends BasePageState<LikedPage> {
     final selectedTracks = <Track>[...selectedLocalTracks, ...selectedServerTracks];
     final removableCount = localRemovableTracks.length + serverRemovableTracks.length;
 
-    return assemble(
-      context,
-      navbar: LibraryHeader(
-        title: 'LIKED TRACKS',
-        trailing: _feature.selectionMode
-            ? DownloadSelectionToolbar(
-                selectedCount: selectedTracks.length,
-                totalCount: removableCount,
-                onCancel: _feature.clearSelection,
-                onSelectAll: () =>
-                    _feature.selectAll(localTracks: localRemovableTracks, serverTracks: serverRemovableTracks),
-                onDeselectAll: _feature.deselectAll,
-                onRemove: selectedTracks.isEmpty ? null : () => _removeDownloads(selectedTracks, 'liked tracks'),
-              )
-            : Tooltip(
-                message: 'Edit tracks',
-                child: ObsidianHudIconButton(
-                  iconWidget: const PlaylistEditIcon(),
-                  size: _headerActionIconSize(context),
-                  onPressed: removableCount > 0 ? _feature.startSelection : null,
+    return ListenableBuilder(
+      listenable: _displaySettings,
+      builder: (context, _) => assemble(
+        context,
+        navbar: LibraryHeader(
+          title: 'LIKED TRACKS',
+          trailing: _feature.selectionMode
+              ? DownloadSelectionToolbar(
+                  selectedCount: selectedTracks.length,
+                  totalCount: removableCount,
+                  onCancel: _feature.clearSelection,
+                  onSelectAll: () =>
+                      _feature.selectAll(localTracks: localRemovableTracks, serverTracks: serverRemovableTracks),
+                  onDeselectAll: _feature.deselectAll,
+                  onRemove: selectedTracks.isEmpty ? null : () => _removeDownloads(selectedTracks, 'liked tracks'),
+                )
+              : Tooltip(
+                  message: 'Edit tracks',
+                  child: ObsidianHudIconButton(
+                    iconWidget: const PlaylistEditIcon(),
+                    size: _headerActionIconSize(context),
+                    onPressed: removableCount > 0 ? _feature.startSelection : null,
+                  ),
                 ),
+        ),
+        body: PageBody.slivers(
+          slivers: orderedSourceSlivers(
+            localFirst: _displaySettings.settings.likesLocalFirst,
+            localSlivers: [
+              _trackSection(
+                context,
+                controller,
+                tracks: localTracks,
+                playback: playback,
+                scope: ActionScope.local,
+                title: authState.isAuthorized ? 'Local Liked Tracks' : null,
+                emptyTitle: authState.isAuthorized ? 'No local liked tracks' : 'No liked tracks',
               ),
-      ),
-      body: PageBody.slivers(
-        slivers: [
-          _trackSection(
-            context,
-            controller,
-            tracks: localTracks,
-            playback: playback,
-            scope: ActionScope.local,
-            title: authState.isAuthorized ? 'Local Liked Tracks' : null,
-            emptyTitle: authState.isAuthorized ? 'No local liked tracks' : 'No liked tracks',
+            ],
+            serverSlivers: [
+              if (authState.isAuthorized)
+                _trackSection(
+                  context,
+                  controller,
+                  tracks: serverTracks,
+                  playback: playback,
+                  scope: ActionScope.server,
+                  title: 'Server Liked Tracks',
+                  emptyTitle: 'No server liked tracks',
+                ),
+            ],
           ),
-          if (authState.isAuthorized)
-            _trackSection(
-              context,
-              controller,
-              tracks: serverTracks,
-              playback: playback,
-              scope: ActionScope.server,
-              title: 'Server Liked Tracks',
-              emptyTitle: 'No server liked tracks',
-            ),
-        ],
+        ),
       ),
     );
   }

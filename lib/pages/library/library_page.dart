@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/library_controller.dart';
 import 'package:phonolite_app/application/controllers/library/library_navigation_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
@@ -31,13 +32,16 @@ import 'package:phonolite_app/ui/shared/design_system/layout/loading_widgets.dar
 import 'package:phonolite_app/ui/shared/music/artists/artist_collection_sliver.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/collection_view_toggle_button.dart';
+import 'package:phonolite_app/ui/shared/music/source_section_slivers.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class LibraryPage extends BasePage {
-  const LibraryPage({super.key});
+  final DisplaySettingsController? displaySettings;
+
+  const LibraryPage({super.key, this.displaySettings});
 
   @override
   State<LibraryPage> createState() => _LibraryPageState();
@@ -52,6 +56,8 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   late final LibraryController _feature = bindController(LibraryController(AppScope.of(context)));
   late final TextEditingController _searchController;
   late final ScrollController _scrollController;
+
+  DisplaySettingsController get _displaySettings => widget.displaySettings ?? DisplaySettingsController.instance;
 
   @override
   void initState() {
@@ -297,6 +303,11 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
         _feature.artistVisibilityChanged(artist, visible);
       } else if (visible) {
         unawaited(controller.loadArtistBrowsePage(index));
+      }
+
+      if (visible && !windowed && !_displaySettings.settings.libraryLocalFirst && index == indices.length - 1) {
+        // Local sections below the server catalogue must not delay legacy paging.
+        _feature.loadMoreArtists(0);
       }
     }
 
@@ -580,61 +591,65 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     final localResults = _feature.localResults(offlineTracks, offlineGroups);
     final selectedGroups = _feature.selectedOfflineArtists(offlineGroups);
 
-    final slivers = query.isEmpty
-        ? <Widget>[
-            ..._downloadedMusicSlivers(
-              controller: controller,
-              tracks: offlineTracks,
-              groups: offlineGroups,
-              emptyTitle: 'No downloaded tracks',
-              emptyMessage: 'Download tracks from a connected server to keep them here.',
-              showCollectionList: showCollectionList,
-            ),
-            ..._serverArtistSlivers(
-              controller,
-              artists: artists,
-              authHeadersMap: authHeadersMap,
-              showCollectionList: showCollectionList,
-              isLoading: isLoading,
-            ),
-          ]
-        : <Widget>[
-            ..._localSearchSlivers(controller, results: localResults),
-            ..._connectedSearchSlivers(controller, query: query, results: results, isSearchLoading: isSearchLoading),
-          ];
+    final localSlivers = query.isEmpty
+        ? _downloadedMusicSlivers(
+            controller: controller,
+            tracks: offlineTracks,
+            groups: offlineGroups,
+            emptyTitle: 'No downloaded tracks',
+            emptyMessage: 'Download tracks from a connected server to keep them here.',
+            showCollectionList: showCollectionList,
+          )
+        : _localSearchSlivers(controller, results: localResults);
+    final serverSlivers = query.isEmpty
+        ? _serverArtistSlivers(
+            controller,
+            artists: artists,
+            authHeadersMap: authHeadersMap,
+            showCollectionList: showCollectionList,
+            isLoading: isLoading,
+          )
+        : _connectedSearchSlivers(controller, query: query, results: results, isSearchLoading: isSearchLoading);
 
-    return assemble(
-      context,
-      navbar: LibraryHeader(
-        trailing: _libraryActions(
-          context,
-          controller,
-          groups: offlineGroups,
-          selectedGroups: selectedGroups,
-          showCollectionList: showCollectionList,
-        ),
-      ),
-      body: PageBody.slivers(
-        pinTopInset: true,
-        physics: const AlwaysScrollableScrollPhysics(),
-        controller: _scrollController,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        slivers: [
-          PageSliverBox(
-            pinned: true,
-            top: 12,
-            bottom: 12,
-            child: SearchHud(
-              controller: _searchController,
-              height: _searchFieldHeight,
-              glassBackground: true,
-              onSubmit: () => _feature.runSearch(controller),
-              onChanged: () => _feature.queueSearch(controller),
-              onClear: () => _clearSearch(controller),
-            ),
+    return ListenableBuilder(
+      listenable: _displaySettings,
+      builder: (context, _) => assemble(
+        context,
+        navbar: LibraryHeader(
+          trailing: _libraryActions(
+            context,
+            controller,
+            groups: offlineGroups,
+            selectedGroups: selectedGroups,
+            showCollectionList: showCollectionList,
           ),
-          ...slivers,
-        ],
+        ),
+        body: PageBody.slivers(
+          pinTopInset: true,
+          physics: const AlwaysScrollableScrollPhysics(),
+          controller: _scrollController,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          slivers: [
+            PageSliverBox(
+              pinned: true,
+              top: 12,
+              bottom: 12,
+              child: SearchHud(
+                controller: _searchController,
+                height: _searchFieldHeight,
+                glassBackground: true,
+                onSubmit: () => _feature.runSearch(controller),
+                onChanged: () => _feature.queueSearch(controller),
+                onClear: () => _clearSearch(controller),
+              ),
+            ),
+            ...orderedSourceSlivers(
+              localFirst: _displaySettings.settings.libraryLocalFirst,
+              localSlivers: localSlivers,
+              serverSlivers: serverSlivers,
+            ),
+          ],
+        ),
       ),
     );
   }

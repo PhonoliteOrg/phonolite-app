@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+part of 'offline_library.dart';
 
 class _OfflineSchema {
   final OfflineLibraryStorage _host;
@@ -400,6 +400,61 @@ class _OfflineSchema {
     )''');
     db.execute('''CREATE INDEX IF NOT EXISTS idx_pending_playlist_source
       ON pending_playlist_tracks(server_base_url, server_track_id)''');
+    _ensureColumn(db, 'pending_playlist_tracks', 'track_json', 'TEXT');
+    _ensureColumn(db, 'pending_playlist_tracks', 'local_track_id', 'TEXT REFERENCES tracks(id) ON DELETE SET NULL');
+    _ensureColumn(db, 'pending_playlist_tracks', 'entry_kind', "TEXT NOT NULL DEFAULT 'copy'");
+    _ensureColumn(db, 'pending_playlist_tracks', 'request_status', "TEXT NOT NULL DEFAULT 'queued'");
+    _ensureColumn(db, 'pending_playlist_tracks', 'request_error', 'TEXT');
+    _ensureColumn(db, 'pending_playlist_tracks', 'created_at', 'INTEGER NOT NULL DEFAULT 0');
+    db.execute('''CREATE TABLE IF NOT EXISTS download_demands (
+      server_base_url TEXT NOT NULL,
+      server_track_id TEXT NOT NULL,
+      owner_kind TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (server_base_url, server_track_id, owner_kind, owner_id)
+    )''');
+    db.execute('''CREATE TABLE IF NOT EXISTS local_track_server_matches (
+      server_base_url TEXT NOT NULL,
+      server_track_id TEXT NOT NULL,
+      local_track_id TEXT NOT NULL,
+      match_kind TEXT NOT NULL,
+      score REAL NOT NULL,
+      metadata_signature TEXT NOT NULL,
+      verified_at INTEGER NOT NULL,
+      PRIMARY KEY (server_base_url, server_track_id),
+      FOREIGN KEY (local_track_id) REFERENCES tracks(id) ON DELETE CASCADE
+    )''');
+    db.execute('''CREATE INDEX IF NOT EXISTS idx_local_track_server_matches_local
+      ON local_track_server_matches(local_track_id, server_base_url)''');
+
+    if (!_metadataFlag(db, 'playlist_download_demands_v12')) {
+      db.execute('''INSERT OR IGNORE INTO download_demands
+        SELECT server_base_url, server_track_id, 'legacy', 'existing-download', created_at
+        FROM source_tracks WHERE status != 'downloaded' ''');
+      db.execute('''INSERT OR IGNORE INTO download_demands
+        SELECT server_base_url, server_track_id, 'playlist', playlist_id || ':' || position, created_at
+        FROM pending_playlist_tracks''');
+      db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', ['playlist_download_demands_v12', '1']);
+    }
+
+    if (!_metadataFlag(db, 'track_match_normalization_v12')) {
+      for (final row in db.select('SELECT id, title, artist, album, duration_ms FROM tracks')) {
+        final track = Track(
+          id: row['id'] as String,
+          title: row['title'] as String,
+          artist: row['artist'] as String,
+          album: row['album'] as String,
+          durationMs: row['duration_ms'] as int,
+          liked: false,
+          inPlaylists: false,
+        );
+
+        db.execute('UPDATE tracks SET match_key = ? WHERE id = ?', [TrackMatching.metadataKey(track), track.id]);
+      }
+
+      db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', ['track_match_normalization_v12', '1']);
+    }
 
     db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
       'schema_version',

@@ -76,3 +76,7 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# Independent PCM source gain is applied by XAudio2 at render time.
+add_subdirectory("infrastructure/audio")
+add_dependencies(${BINARY_NAME} phonolite_audio_windows)

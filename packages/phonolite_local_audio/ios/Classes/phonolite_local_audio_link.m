@@ -9,6 +9,14 @@ extern int64_t phonolite_local_audio_read(
     void *handle,
     int16_t *out,
     uint64_t max_samples);
+extern void *phonolite_local_audio_open_remote(
+    const uint8_t *url, uint64_t url_len,
+    const uint8_t *token, uint64_t token_len,
+    const uint8_t *server_pin, uint64_t server_pin_len,
+    int64_t start_ms);
+extern int64_t phonolite_local_audio_read32(void *handle, int32_t *out, uint64_t max_samples);
+extern int32_t phonolite_local_audio_bit_depth(void *handle);
+extern int32_t phonolite_local_audio_error_code(void *handle);
 extern int64_t phonolite_local_audio_seek(void *handle, int64_t position_ms);
 extern int32_t phonolite_local_audio_sample_rate(void *handle);
 extern int32_t phonolite_local_audio_channels(void *handle);
@@ -22,7 +30,11 @@ extern void phonolite_local_audio_close(void *handle);
 
 __attribute__((used)) static void *phonolite_local_audio_keep_symbols[] = {
   (void *)phonolite_local_audio_open,
+  (void *)phonolite_local_audio_open_remote,
   (void *)phonolite_local_audio_read,
+  (void *)phonolite_local_audio_read32,
+  (void *)phonolite_local_audio_bit_depth,
+  (void *)phonolite_local_audio_error_code,
   (void *)phonolite_local_audio_seek,
   (void *)phonolite_local_audio_sample_rate,
   (void *)phonolite_local_audio_channels,

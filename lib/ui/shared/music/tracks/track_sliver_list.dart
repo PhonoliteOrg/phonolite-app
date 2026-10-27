@@ -12,6 +12,8 @@ class TrackSliverList extends StatelessWidget {
   final ValueChanged<Track>? onTrackLongPress;
   final ValueChanged<Track>? onTrackAddToPlaylist;
   final ValueChanged<Track>? onTrackDownload;
+  final ValueChanged<Track>? onTrackRetryDownload;
+  final ValueChanged<Track>? onTrackContinueDownload;
   final ValueChanged<Track>? onTrackRemoveDownload;
   final ValueChanged<Track>? onTrackLike;
   final ValueChanged<Track>? onTrackDelete;
@@ -21,6 +23,8 @@ class TrackSliverList extends StatelessWidget {
   final ValueChanged<Track>? onTrackSelectionToggle;
   final ValueChanged<Track>? onTrackSelectionModeRequested;
   final OfflineTrackDownload? Function(Track track)? offlineDownloadForTrack;
+  final OfflineDownloadStatus? Function(Track track)? downloadStatusForTrack;
+  final bool Function(Track track)? isTrackPlayable;
   final bool showAlbumArt;
   final bool actionsInMenu;
 
@@ -40,6 +44,8 @@ class TrackSliverList extends StatelessWidget {
     this.onTrackLongPress,
     this.onTrackAddToPlaylist,
     this.onTrackDownload,
+    this.onTrackRetryDownload,
+    this.onTrackContinueDownload,
     this.onTrackRemoveDownload,
     this.onTrackLike,
     this.onTrackDelete,
@@ -48,6 +54,8 @@ class TrackSliverList extends StatelessWidget {
     this.onTrackSelectionToggle,
     this.onTrackSelectionModeRequested,
     this.offlineDownloadForTrack,
+    this.downloadStatusForTrack,
+    this.isTrackPlayable,
   });
 
   @override
@@ -63,6 +71,7 @@ class TrackSliverList extends StatelessWidget {
         final track = tracks[index ~/ 2];
         final albumTrackNumber = useAlbumTrackNumbers ? track.trackNo : null;
         final offlineDownload = offlineDownloadForTrack?.call(track);
+        final playable = isTrackPlayable?.call(track) ?? true;
         final isDeleting = offlineDownload?.status == OfflineDownloadStatus.removing;
         final selectable = (canSelectTrack?.call(track) ?? true) && !isDeleting;
 
@@ -72,12 +81,14 @@ class TrackSliverList extends StatelessWidget {
           showAlbumArt: showAlbumArt,
           actionsInMenu: actionsInMenu,
           isPlaying: isPlayingTrack(track),
-          onTap: onTrackTap == null ? null : () => onTrackTap!(track),
+          onTap: onTrackTap == null || !playable ? null : () => onTrackTap!(track),
           onLongPress: onTrackLongPress == null ? null : () => onTrackLongPress!(track),
           onAddToPlaylist: onTrackAddToPlaylist == null ? null : () => onTrackAddToPlaylist!(track),
           onDownload: onTrackDownload == null ? null : () => onTrackDownload!(track),
+          onRetryDownload: onTrackRetryDownload == null ? null : () => onTrackRetryDownload!(track),
+          onContinueDownload: onTrackContinueDownload == null ? null : () => onTrackContinueDownload!(track),
           onRemoveDownload: onTrackRemoveDownload == null ? null : () => onTrackRemoveDownload!(track),
-          onLike: onTrackLike == null ? null : () => onTrackLike!(track),
+          onLike: onTrackLike == null || !playable ? null : () => onTrackLike!(track),
           onDelete: onTrackDelete == null ? null : () => onTrackDelete!(track),
           selectionMode: selectionMode,
           selected: isTrackSelected?.call(track) ?? false,
@@ -86,6 +97,7 @@ class TrackSliverList extends StatelessWidget {
               ? () => onTrackSelectionModeRequested!(track)
               : null,
           offlineDownload: offlineDownload,
+          downloadStatus: downloadStatusForTrack?.call(track),
         );
       }, childCount: itemCount),
     );

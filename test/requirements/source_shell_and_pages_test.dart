@@ -15,7 +15,7 @@ void main() {
         'GoogleFonts.config.allowRuntimeFetching = false;',
         "'PHONOLITE_URL'",
         "'https://127.0.0.1:3000/api'",
-        'await _controller.initialize();',
+        'await Future.wait([_controller.initialize(), DisplaySettingsController.instance.initialize()]);',
         'await _controller.restoreSession();',
         'home: const HomePage(),',
       ]);
@@ -195,7 +195,12 @@ void main() {
         'lib/application/controllers/listening_stats/stats_controller.dart',
       ]);
       final settingsSource = readProjectModule('lib/pages/settings/settings_page.dart');
-      final customShuffleSource = readProjectModule('lib/pages/playback/custom_shuffle_settings_page.dart');
+      final customShuffleSource = readProjectFiles([
+        'lib/pages/playback/custom_shuffle_settings_page.dart',
+        'lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart',
+        'lib/ui/features/playback/widgets/custom_shuffle_filter_editor.dart',
+        'lib/ui/shared/music/local_server_toggle.dart',
+      ]);
       final removeDownloadModalSource = readProjectModule(
         'lib/ui/features/downloads/widgets/remove_download_modal.dart',
       );
@@ -395,8 +400,11 @@ void main() {
         'Scaffold(',
         "backLabel: 'Back to settings'",
         "title: 'CUSTOM SHUFFLE'",
-        "label: 'Server'",
-        "label: 'Local'",
+        'ShufflePresetEditorModal(',
+        'CustomShuffleFilterEditor(',
+        'LocalServerToggle(',
+        "label: 'SERVER'",
+        "label: 'LOCAL'",
         "label: 'Select all'",
         "label: 'Clear'",
       ]);

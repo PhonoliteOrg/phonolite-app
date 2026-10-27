@@ -3,12 +3,13 @@ import 'dart:typed_data';
 
 /// An ordered PCM queue that can grow without invalidating producer references.
 class PcmRingBuffer {
-  Int16List _buffer;
+  final int bitsPerSample;
+  List<int> _buffer;
   int _readIndex = 0;
   int _writeIndex = 0;
   int _length = 0;
 
-  PcmRingBuffer(int capacitySamples) : _buffer = Int16List(capacitySamples);
+  PcmRingBuffer(int capacitySamples, {this.bitsPerSample = 16}) : _buffer = _allocate(capacitySamples, bitsPerSample);
 
   int get _capacity => _buffer.length;
 
@@ -25,7 +26,7 @@ class PcmRingBuffer {
 
     // Grow this object in place: producer and pump can retain references across
     // awaits, and replacing the object would strand pending writes or samples.
-    final grown = Int16List(minimumSamples);
+    final grown = _allocate(minimumSamples, bitsPerSample);
     final firstPart = math.min(_length, _capacity - _readIndex);
 
     grown.setRange(0, firstPart, _buffer, _readIndex);
@@ -40,7 +41,7 @@ class PcmRingBuffer {
     _writeIndex = _length;
   }
 
-  int write(Int16List data, int offset) {
+  int write(List<int> data, int offset) {
     if (offset >= data.length || _length >= _capacity) {
       return 0;
     }
@@ -65,13 +66,13 @@ class PcmRingBuffer {
     return toWrite;
   }
 
-  Int16List? read(int count) {
+  List<int>? read(int count) {
     if (_length == 0 || count <= 0) {
       return null;
     }
 
     final toRead = count < _length ? count : _length;
-    final out = Int16List(toRead);
+    final out = _allocate(toRead, bitsPerSample);
     final firstPart = toRead < (_capacity - _readIndex) ? toRead : (_capacity - _readIndex);
 
     out.setRange(0, firstPart, _buffer, _readIndex);
@@ -85,5 +86,13 @@ class PcmRingBuffer {
     _length -= toRead;
 
     return out;
+  }
+
+  static List<int> _allocate(int length, int bitsPerSample) {
+    return switch (bitsPerSample) {
+      16 => Int16List(length),
+      32 => Int32List(length),
+      _ => throw ArgumentError.value(bitsPerSample, 'bitsPerSample', 'Expected 16 or 32'),
+    };
   }
 }

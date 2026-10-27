@@ -65,17 +65,12 @@ class PlayerControlsSuite {
   AppController get controller => ui.controller;
   Finder get mini => find.byType(NowPlayingMiniBar);
   Finder get sheet => find.byType(NowPlayingExpandedSheet);
-  Finder within(Finder root, Finder control) =>
-      find.descendant(of: root, matching: control);
-  Finder icon(IconData value, {bool compact = false}) =>
-      within(compact ? mini : sheet, find.byIcon(value));
+  Finder within(Finder root, Finder control) => find.descendant(of: root, matching: control);
+  Finder icon(IconData value, {bool compact = false}) => within(compact ? mini : sheet, find.byIcon(value));
 
   void checked(String name, [Object? value = true]) => checks[name] = value;
 
-  Future<void> waitRemote(
-    Future<bool> Function() condition,
-    String description,
-  ) async {
+  Future<void> waitRemote(Future<bool> Function() condition, String description) async {
     final clock = Stopwatch()..start();
     while (!await condition()) {
       if (clock.elapsed > const Duration(seconds: 12)) {
@@ -106,10 +101,7 @@ class PlayerControlsSuite {
           description: description,
           interactions: const [],
           run: (_) async {
-            final before =
-                baseline ??
-                probe.lastNativePositionMs ??
-                controller.playbackState.position.inMilliseconds;
+            final before = baseline ?? probe.lastNativePositionMs ?? controller.playbackState.position.inMilliseconds;
             probe.begin();
             try {
               await action();
@@ -124,18 +116,10 @@ class PlayerControlsSuite {
               extra['commands'] = collected['commands'];
             }
             if (audio) {
-              expect(
-                (observation!['metrics'] as Map)['issues'],
-                isEmpty,
-                reason: '$id: ${observation!['metrics']}',
-              );
+              expect((observation!['metrics'] as Map)['issues'], isEmpty, reason: '$id: ${observation!['metrics']}');
               expect(controller.playbackState.isPlaying, playing);
             }
-            expect(
-              checks,
-              isNotEmpty,
-              reason: 'A control needs an observable effect',
-            );
+            expect(checks, isNotEmpty, reason: 'A control needs an observable effect');
           },
         ),
       );
@@ -145,11 +129,7 @@ class PlayerControlsSuite {
       debugPrintStack(stackTrace: stack);
     } finally {
       final result = (output['journeys'] as List).last as Map<String, Object?>;
-      result.addAll({
-        'checks': checks,
-        ...extra,
-        if (observation != null) 'audio': observation,
-      });
+      result.addAll({'checks': checks, ...extra, if (observation != null) 'audio': observation});
       await reports.publish({'type': 'journey_result', 'journey': result});
       result.remove('frames');
       result.remove('audio');
@@ -165,11 +145,7 @@ class PlayerControlsSuite {
 
   Future<void> seed() async {
     _original = controller.playbackState;
-    expect(
-      controller.authState.isAuthorized,
-      isTrue,
-      reason: 'A signed-in real server is required',
-    );
+    expect(controller.authState.isAuthorized, isTrue, reason: 'A signed-in real server is required');
     await controller.loadArtists();
     final albums = <Album>[];
     const override = String.fromEnvironment('AUDIO_ALBUM_ID');
@@ -185,8 +161,7 @@ class PlayerControlsSuite {
     for (final album in albums.take(12)) {
       final tracks = await controller.connection.fetchTracks(album.id);
       for (var index = 0; index + 1 < tracks.length; index++) {
-        if (tracks[index].durationMs >= 180000 &&
-            tracks[index + 1].durationMs >= 30000) {
+        if (tracks[index].durationMs >= 180000 && tracks[index + 1].durationMs >= 30000) {
           selected = tracks[index];
           albumId = album.id;
           break;
@@ -194,11 +169,7 @@ class PlayerControlsSuite {
       }
       if (selected != null) break;
     }
-    expect(
-      selected,
-      isNotNull,
-      reason: 'Need a three-minute album track and another queue track',
-    );
+    expect(selected, isNotNull, reason: 'Need a three-minute album track and another queue track');
     track = selected!;
     output.addAll({
       'fixture_album_id': albumId,
@@ -210,9 +181,7 @@ class PlayerControlsSuite {
     controller.updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
     await controller.queueAlbum(albumId, startTrackId: track.id);
     await ui.waitUntil(
-      () =>
-          !controller.playbackState.isLoading &&
-          (probe.lastNativePositionMs ?? 0) > 40,
+      () => !controller.playbackState.isLoading && (probe.lastNativePositionMs ?? 0) > 40,
       description: 'initial native audio output',
     );
   }
@@ -224,11 +193,7 @@ class PlayerControlsSuite {
 
   Future<void> dismiss() async {
     final rect = ui.tester.getRect(sheet);
-    await ui.tester.flingFrom(
-      Offset(rect.center.dx, rect.top + 18),
-      Offset(0, rect.height * .8),
-      1800,
-    );
+    await ui.tester.flingFrom(Offset(rect.center.dx, rect.top + 18), Offset(0, rect.height * .8), 1800);
     await ui.animate(800);
     expect(sheet, findsNothing);
   }
@@ -239,16 +204,22 @@ class PlayerControlsSuite {
       StreamMode.medium: 'MQ',
       StreamMode.low: 'LQ',
       StreamMode.auto: 'AUTO',
+      StreamMode.original: 'OG',
     };
-    await ui.tap(
-      within(sheet, find.text(labels[controller.playbackState.streamMode]!)),
-    );
+    const modalLabels = {
+      StreamMode.original: 'Original (source bitrate)',
+      StreamMode.high: 'High quality (160 kbps)',
+      StreamMode.medium: 'Medium quality (96 kbps)',
+      StreamMode.low: 'Low quality (48 kbps)',
+    };
+    await ui.tap(within(sheet, find.text(labels[controller.playbackState.streamMode]!)));
     await ui.waitFor(find.text('Stream Quality'));
-    expect(find.text('HQ'), findsAtLeastNWidgets(1));
-    expect(find.text('MQ'), findsAtLeastNWidgets(1));
-    expect(find.text('LQ'), findsAtLeastNWidgets(1));
+    expect(find.text('Original (source bitrate)'), findsOneWidget);
+    expect(find.text('High quality (160 kbps)'), findsOneWidget);
+    expect(find.text('Medium quality (96 kbps)'), findsOneWidget);
+    expect(find.text('Low quality (48 kbps)'), findsOneWidget);
     // The custom dialog builds a Material dialog, not necessarily AlertDialog.
-    final option = find.text(labels[mode]!).hitTestable();
+    final option = find.text(modalLabels[mode]!).hitTestable();
     await ui.tap(option.last);
     expect(find.text('Stream Quality'), findsNothing);
     expect(controller.playbackState.streamMode, mode);
@@ -267,19 +238,11 @@ class PlayerControlsSuite {
       audio: true,
       playing: false,
     );
-    await capture(
-      'audio.mini_resume',
-      'Compact playbar Play resumes native output',
-      () async {
-        await ui.tap(icon(Icons.play_arrow, compact: true));
-        checked(
-          'resume_reached_engine',
-          probe.commands.any((c) => c['command'] == 'resume'),
-        );
-        expect(checks['resume_reached_engine'], isTrue);
-      },
-      audio: true,
-    );
+    await capture('audio.mini_resume', 'Compact playbar Play resumes native output', () async {
+      await ui.tap(icon(Icons.play_arrow, compact: true));
+      checked('resume_reached_engine', probe.commands.any((c) => c['command'] == 'resume'));
+      expect(checks['resume_reached_engine'], isTrue);
+    }, audio: true);
     await capture(
       'audio.mini_next',
       'Compact Next advances to another playing track',
@@ -287,9 +250,7 @@ class PlayerControlsSuite {
         final previous = controller.playbackState.track!.id;
         await ui.tap(icon(PhonoliteIcons.skipForward, compact: true));
         await ui.waitUntil(
-          () =>
-              controller.playbackState.track?.id != previous &&
-              !controller.playbackState.isLoading,
+          () => controller.playbackState.track?.id != previous && !controller.playbackState.isLoading,
           description: 'next track',
         );
         checked('queue_advanced');
@@ -297,23 +258,17 @@ class PlayerControlsSuite {
       audio: true,
       baseline: 0,
     );
-    await capture(
-      'audio.expand',
-      'Compact player body opens the expanded tray',
-      () async {
-        await open();
-        checked('expanded_tray_visible');
-      },
-    );
+    await capture('audio.expand', 'Compact player body opens the expanded tray', () async {
+      await open();
+      checked('expanded_tray_visible');
+    });
     await capture(
       'audio.expanded_previous',
       'Previous returns to the preceding album track',
       () async {
         await ui.tap(icon(PhonoliteIcons.skipBack));
         await ui.waitUntil(
-          () =>
-              controller.playbackState.track?.id == track.id &&
-              !controller.playbackState.isLoading,
+          () => controller.playbackState.track?.id == track.id && !controller.playbackState.isLoading,
           description: 'previous album track',
         );
         checked('previous_track_restored');
@@ -332,32 +287,21 @@ class PlayerControlsSuite {
       audio: true,
       playing: false,
     );
-    await capture(
-      'audio.expanded_resume',
-      'Expanded Play resumes the same track',
-      () async {
-        await ui.tap(icon(Icons.play_arrow));
-        expect(controller.playbackState.track!.id, track.id);
-        checked('expanded_resume');
-      },
-      audio: true,
-    );
+    await capture('audio.expanded_resume', 'Expanded Play resumes the same track', () async {
+      await ui.tap(icon(Icons.play_arrow));
+      expect(controller.playbackState.track!.id, track.id);
+      checked('expanded_resume');
+    }, audio: true);
     for (final forward in [true, false]) {
       var requested = 0;
       await capture(
         'audio.slider_${forward ? 'forward' : 'backward'}',
         'Visible progress slider commits a ${forward ? 'forward' : 'backward'} seek',
         () async {
-          final slider = within(
-            sheet,
-            find.byWidgetPredicate((w) => w is Slider && w.max > 1),
-          );
+          final slider = within(sheet, find.byWidgetPredicate((w) => w is Slider && w.max > 1));
           final before = controller.playbackState.position.inMilliseconds;
           final rect = ui.tester.getRect(slider);
-          final position = Offset(
-            rect.left + 24 + (rect.width - 48) * (forward ? .35 : .08),
-            rect.center.dy,
-          );
+          final position = Offset(rect.left + 24 + (rect.width - 48) * (forward ? .35 : .08), rect.center.dy);
           await ui.tester.tapAt(position);
           await ui.animate(700);
           final seek = probe.commands.where((c) => c['command'] == 'seek');
@@ -370,25 +314,17 @@ class PlayerControlsSuite {
         requestedPosition: () => requested,
       );
     }
-    for (final quality in [
-      StreamMode.low,
-      StreamMode.medium,
-      StreamMode.high,
-    ]) {
+    for (final quality in [StreamMode.low, StreamMode.medium, StreamMode.high]) {
       await capture(
         'audio.quality_${quality.name}',
         'Select ${quality.name} quality while playing and verify engine request/output',
         () async {
           await chooseQuality(quality);
           await ui.waitUntil(
-            () => probe.commands.any(
-              (c) => c['command'] == 'play' && c['quality'] == quality.name,
-            ),
+            () => probe.commands.any((c) => c['command'] == 'play' && c['quality'] == quality.name),
             description: '${quality.name} engine request',
           );
-          final request = probe.commands.lastWhere(
-            (c) => c['command'] == 'play',
-          );
+          final request = probe.commands.lastWhere((c) => c['command'] == 'play');
           expect(request['mode'], 'fixed');
           expect(request['frame_ms'], 20);
           expect(controller.playbackState.track!.id, track.id);
@@ -413,128 +349,83 @@ class PlayerControlsSuite {
       audio: true,
       playing: false,
     );
-    await capture(
-      'audio.quality_resume',
-      'Resume uses the quality selected while paused',
-      () async {
-        await ui.tap(icon(Icons.play_arrow));
-        await ui.waitUntil(
-          () => probe.lastRequest?.settings.quality == 'low',
-          description: 'LQ applied to resumed native stream',
-          timeout: const Duration(seconds: 5),
-        );
-        checked('resumed_quality', probe.lastRequest!.settings.quality);
-      },
-      audio: true,
-    );
-    await capture(
-      'audio.repeat_button',
-      'Repeat toggles and persists on the server, then restores',
-      () async {
-        final before = controller.playbackState.repeatMode;
-        final expected = before == PlaybackRepeatMode.off
-            ? PlaybackRepeatMode.one
-            : PlaybackRepeatMode.off;
-        await ui.tap(icon(PhonoliteIcons.repeat));
-        expect(controller.playbackState.repeatMode, expected);
-        await waitRemote(
-          () async =>
-              (await controller.connection.fetchPlaybackSettings())
-                  .repeatMode ==
-              expected.name,
-          'server repeat setting',
-        );
-        await ui.tap(icon(PhonoliteIcons.repeat));
-        await waitRemote(
-          () async =>
-              (await controller.connection.fetchPlaybackSettings())
-                  .repeatMode ==
-              before.name,
-          'restored server repeat setting',
-        );
-        checked('repeat_ui_and_server_restored');
-      },
-    );
-    await capture(
-      'audio.shuffle_button',
-      'Shuffle selects Current Album and returns to Off',
-      () async {
-        await ui.tap(icon(PhonoliteIcons.shuffle));
-        await ui.waitFor(find.text('Shuffle'));
-        await ui.text('Current Album');
-        expect(controller.playbackState.shuffleMode, ShuffleMode.album);
-        await ui.tap(icon(PhonoliteIcons.shuffle));
-        await ui.text('Off');
-        expect(controller.playbackState.shuffleMode, ShuffleMode.off);
-        checked('shuffle_album_and_off');
-      },
-    );
+    await capture('audio.quality_resume', 'Resume uses the quality selected while paused', () async {
+      await ui.tap(icon(Icons.play_arrow));
+      await ui.waitUntil(
+        () => probe.lastRequest?.settings.quality == 'low',
+        description: 'LQ applied to resumed native stream',
+        timeout: const Duration(seconds: 5),
+      );
+      checked('resumed_quality', probe.lastRequest!.settings.quality);
+    }, audio: true);
+    await capture('audio.repeat_button', 'Repeat toggles and persists on the server, then restores', () async {
+      final before = controller.playbackState.repeatMode;
+      final expected = before == PlaybackRepeatMode.off ? PlaybackRepeatMode.one : PlaybackRepeatMode.off;
+      await ui.tap(icon(PhonoliteIcons.repeat));
+      expect(controller.playbackState.repeatMode, expected);
+      await waitRemote(
+        () async => (await controller.connection.fetchPlaybackSettings()).repeatMode == expected.name,
+        'server repeat setting',
+      );
+      await ui.tap(icon(PhonoliteIcons.repeat));
+      await waitRemote(
+        () async => (await controller.connection.fetchPlaybackSettings()).repeatMode == before.name,
+        'restored server repeat setting',
+      );
+      checked('repeat_ui_and_server_restored');
+    });
+    await capture('audio.shuffle_button', 'Shuffle selects Current Album and returns to Off', () async {
+      await ui.tap(icon(PhonoliteIcons.shuffle));
+      await ui.waitFor(find.text('Shuffle'));
+      await ui.text('Current Album');
+      expect(controller.playbackState.shuffleMode, ShuffleMode.album);
+      await ui.tap(icon(PhonoliteIcons.shuffle));
+      await ui.text('Off');
+      expect(controller.playbackState.shuffleMode, ShuffleMode.off);
+      checked('shuffle_album_and_off');
+    });
     await capture(
       'audio.volume_slider',
       'Volume slider reaches the engine and returns to the original value',
       () async {
         final initial = controller.playbackState.volume;
-        final slider = within(
-          sheet,
-          find.byWidgetPredicate((w) => w is Slider && w.max == 1),
-        );
+        final slider = within(sheet, find.byWidgetPredicate((w) => w is Slider && w.max == 1));
         if (slider.evaluate().isEmpty) {
           throw const MissingPrerequisite(
             'The native mobile tray intentionally has no app volume slider; use system volume',
           );
         }
         final rect = ui.tester.getRect(slider);
-        await ui.tester.tapAt(
-          Offset(rect.left + 24 + (rect.width - 48) * .4, rect.center.dy),
-        );
+        await ui.tester.tapAt(Offset(rect.left + 24 + (rect.width - 48) * .4, rect.center.dy));
         await ui.animate(500);
         final value = controller.playbackState.volume;
         expect(value, inInclusiveRange(.25, .55));
-        expect(
-          probe.commands.any(
-            (c) => c['command'] == 'volume' && c['value'] == value,
-          ),
-          isTrue,
-        );
+        expect(probe.commands.any((c) => c['command'] == 'volume' && c['value'] == value), isTrue);
         // Drag to the saved value, then use exact cleanup to avoid rounding drift.
-        await ui.tester.tapAt(
-          Offset(rect.left + 24 + (rect.width - 48) * initial, rect.center.dy),
-        );
+        await ui.tester.tapAt(Offset(rect.left + 24 + (rect.width - 48) * initial, rect.center.dy));
         await ui.animate(400);
         controller.setVolume(initial);
         checked('volume_reached_engine_and_restored', value);
       },
     );
-    await capture(
-      'audio.like_button',
-      'Like toggles on the server and restores its original state',
-      () async {
-        _likedTrack = controller.playbackState.track!;
-        _originalLike = (await controller.connection.fetchLikedTracks()).any(
-          (t) => t.id == _likedTrack!.id,
-        );
-        expect(controller.playbackState.track!.liked, _originalLike);
-        await ui.tap(within(sheet, find.byType(LikeIconButton)));
-        await waitRemote(
-          () async =>
-              (await controller.connection.fetchLikedTracks()).any(
-                (t) => t.id == _likedTrack!.id,
-              ) !=
-              _originalLike,
-          'changed server like state',
-        );
-        await ui.tap(within(sheet, find.byType(LikeIconButton)));
-        await waitRemote(
-          () async =>
-              (await controller.connection.fetchLikedTracks()).any(
-                (t) => t.id == _likedTrack!.id,
-              ) ==
-              _originalLike,
-          'restored server like state',
-        );
-        checked('like_server_round_trip_restored');
-      },
-    );
+    await capture('audio.like_button', 'Like toggles on the server and restores its original state', () async {
+      _likedTrack = controller.playbackState.track!;
+      _originalLike = (await controller.connection.fetchLikedTracks()).any((t) => t.id == _likedTrack!.id);
+      expect(controller.playbackState.track!.liked, _originalLike);
+      await ui.tap(within(sheet, find.byType(LikeIconButton)));
+      await waitRemote(
+        () async =>
+            (await controller.connection.fetchLikedTracks()).any((t) => t.id == _likedTrack!.id) != _originalLike,
+        'changed server like state',
+      );
+      await ui.tap(within(sheet, find.byType(LikeIconButton)));
+      await waitRemote(
+        () async =>
+            (await controller.connection.fetchLikedTracks()).any((t) => t.id == _likedTrack!.id) == _originalLike,
+        'restored server like state',
+      );
+      checked('like_server_round_trip_restored');
+    });
     await capture(
       'audio.playlist_button',
       'Add-to-playlist opens and adds to an isolated temporary playlist',
@@ -545,35 +436,21 @@ class PlayerControlsSuite {
         await controller.loadPlaylists();
         await ui.tap(within(sheet, find.byType(PlaylistAddIcon)));
         await ui.waitFor(find.byType(AddToPlaylistModal));
-        final modal = ui.tester.widget<AddToPlaylistModal>(
-          find.byType(AddToPlaylistModal),
-        );
+        final modal = ui.tester.widget<AddToPlaylistModal>(find.byType(AddToPlaylistModal));
         expect(modal.canUsePlaylists, isTrue);
-        final field = within(
-          find.byType(AddToPlaylistModal),
-          find.byType(TextField),
-        );
+        final field = within(find.byType(AddToPlaylistModal), find.byType(TextField));
         await ui.tester.enterText(field, name);
         await ui.animate(350);
         // find.text also matches the identical query in EditableText.
-        await ui.tap(
-          find.byWidgetPredicate((w) => w is Text && w.data == name),
-        );
+        await ui.tap(find.byWidgetPredicate((w) => w is Text && w.data == name));
         await waitRemote(
-          () async => (await controller.connection.fetchPlaylistTracks(
-            playlist.id,
-          )).any((t) => t.id == modal.trackId),
+          () async => (await controller.connection.fetchPlaylistTracks(playlist.id)).any((t) => t.id == modal.trackId),
           'track added by playbar action',
         );
         await ui.closeDialog();
         checked('playlist_add_verified');
         await controller.deletePlaylist(playlist.id);
-        expect(
-          (await controller.connection.fetchPlaylists()).any(
-            (p) => p.id == playlist.id,
-          ),
-          isFalse,
-        );
+        expect((await controller.connection.fetchPlaylists()).any((p) => p.id == playlist.id), isFalse);
         _temporaryPlaylistId = null;
         checked('temporary_playlist_deleted');
       },
@@ -584,18 +461,10 @@ class PlayerControlsSuite {
       () async {
         await ui.tap(icon(PhonoliteIcons.speaker));
         await ui.waitFor(find.byType(DevicePickerModal));
-        await ui.waitUntil(
-          () => controller.outputDevices.isNotEmpty,
-          description: 'output device list',
-        );
+        await ui.waitUntil(() => controller.outputDevices.isNotEmpty, description: 'output device list');
         await ui.text('REFRESH');
-        expect(
-          probe.commands.where((c) => c['command'] == 'list_devices').length,
-          greaterThanOrEqualTo(2),
-        );
-        final selected = controller.outputDevices.firstWhere(
-          (d) => d.id == controller.outputDeviceId,
-        );
+        expect(probe.commands.where((c) => c['command'] == 'list_devices').length, greaterThanOrEqualTo(2));
+        final selected = controller.outputDevices.firstWhere((d) => d.id == controller.outputDeviceId);
         await ui.text(selected.name);
         expect(find.byType(DevicePickerModal), findsNothing);
         expect(controller.outputDeviceId, selected.id);
@@ -604,68 +473,42 @@ class PlayerControlsSuite {
         checked('alternate_hardware_route_tested', false);
       },
     );
-    await capture(
-      'audio.artwork_details',
-      'Expanded artwork/details opens the playing album',
-      () async {
-        // The large artwork and title area share the album navigation action.
-        final gestures = within(
-          sheet,
-          find.byWidgetPredicate(
-            (w) => w is GestureDetector && w.onTap != null,
-          ),
-        );
-        await ui.tap(gestures.first);
-        await ui.waitFor(ui.command('Back to artist'));
-        expect(sheet, findsNothing);
-        checked('playing_album_opened');
-        await ui.resetNavigation();
-        await open();
-      },
-    );
-    await capture(
-      'audio.dismiss',
-      'Swipe dismissal returns to compact playbar without stopping audio',
-      () async {
-        await dismiss();
-        expect(controller.playbackState.isPlaying, isTrue);
-        expect(mini, findsOneWidget);
-        checked('dismiss_preserved_playback');
-        await open();
-      },
-    );
-    await capture(
-      'audio.stop_button',
-      'Stop clears the track and disables idle transport controls',
-      () async {
-        await ui.tap(icon(PhonoliteIcons.square));
-        await ui.waitUntil(
-          () => controller.playbackState.track == null,
-          description: 'stopped and empty player',
-        );
-        expect(controller.playbackState.isPlaying, isFalse);
-        final transport = within(
-          sheet,
-          find.byWidgetPredicate(
-            (w) =>
-                w is ObsidianHudIconButton &&
-                [
-                  PhonoliteIcons.square,
-                  PhonoliteIcons.skipBack,
-                  PhonoliteIcons.skipForward,
-                ].contains(w.icon),
-          ),
-        );
-        for (final button in ui.tester.widgetList<ObsidianHudIconButton>(
-          transport,
-        )) {
-          expect(button.onPressed, isNull);
-        }
-        await ui.tap(icon(Icons.play_arrow));
-        expect(controller.playbackState.track, isNull);
-        checked('stop_and_idle_transport_disabled');
-      },
-    );
+    await capture('audio.artwork_details', 'Expanded artwork/details opens the playing album', () async {
+      // The large artwork and title area share the album navigation action.
+      final gestures = within(sheet, find.byWidgetPredicate((w) => w is GestureDetector && w.onTap != null));
+      await ui.tap(gestures.first);
+      await ui.waitFor(ui.command('Back to artist'));
+      expect(sheet, findsNothing);
+      checked('playing_album_opened');
+      await ui.resetNavigation();
+      await open();
+    });
+    await capture('audio.dismiss', 'Swipe dismissal returns to compact playbar without stopping audio', () async {
+      await dismiss();
+      expect(controller.playbackState.isPlaying, isTrue);
+      expect(mini, findsOneWidget);
+      checked('dismiss_preserved_playback');
+      await open();
+    });
+    await capture('audio.stop_button', 'Stop clears the track and disables idle transport controls', () async {
+      await ui.tap(icon(PhonoliteIcons.square));
+      await ui.waitUntil(() => controller.playbackState.track == null, description: 'stopped and empty player');
+      expect(controller.playbackState.isPlaying, isFalse);
+      final transport = within(
+        sheet,
+        find.byWidgetPredicate(
+          (w) =>
+              w is ObsidianHudIconButton &&
+              [PhonoliteIcons.square, PhonoliteIcons.skipBack, PhonoliteIcons.skipForward].contains(w.icon),
+        ),
+      );
+      for (final button in ui.tester.widgetList<ObsidianHudIconButton>(transport)) {
+        expect(button.onPressed, isNull);
+      }
+      await ui.tap(icon(Icons.play_arrow));
+      expect(controller.playbackState.track, isNull);
+      checked('stop_and_idle_transport_disabled');
+    });
     // Inspect encoded packets after stopping playback, keeping the two
     // observations separate and avoiding competing live output streams.
     final wireResults = <String, Map<String, Object?>>{};
@@ -697,11 +540,7 @@ class PlayerControlsSuite {
         final low = wireResults['low']!['encoded_payload_kbps'] as num;
         expect(high, greaterThan(medium));
         expect(medium, greaterThan(low));
-        checked('encoded_payload_kbps', {
-          'high': high,
-          'medium': medium,
-          'low': low,
-        });
+        checked('encoded_payload_kbps', {'high': high, 'medium': medium, 'low': low});
       },
     );
   }
@@ -722,40 +561,23 @@ class PlayerControlsSuite {
     });
     await attempt('restore quality/shuffle', () async {
       controller.updateStreamMode(_original.streamMode);
-      controller.updateShuffleMode(
-        _original.serverShuffleMode,
-        scope: ActionScope.server,
-      );
-      controller.updateShuffleMode(
-        _original.localShuffleMode,
-        scope: ActionScope.local,
-      );
-      controller.updateShuffleMode(
-        _original.shuffleMode,
-        scope: _original.shuffleScope,
-      );
+      controller.updateShuffleMode(_original.serverShuffleMode, scope: ActionScope.server);
+      controller.updateShuffleMode(_original.localShuffleMode, scope: ActionScope.local);
+      controller.updateShuffleMode(_original.shuffleMode, scope: _original.shuffleScope);
     });
     await attempt('restore repeat', () async {
       if (controller.playbackState.repeatMode != _original.repeatMode) {
         controller.toggleRepeatMode();
       }
-      await controller.connection.updatePlaybackSettings(
-        repeatMode: _original.repeatMode.name,
-      );
+      await controller.connection.updatePlaybackSettings(repeatMode: _original.repeatMode.name);
     });
     if (_likedTrack != null && _originalLike != null) {
       await attempt('restore like', () async {
-        await controller.connection.setLikeState(
-          _likedTrack!.id,
-          _originalLike!,
-        );
+        await controller.connection.setLikeState(_likedTrack!.id, _originalLike!);
       });
     }
     if (_temporaryPlaylistId != null) {
-      await attempt(
-        'delete temporary playlist',
-        () => controller.connection.deletePlaylist(_temporaryPlaylistId!),
-      );
+      await attempt('delete temporary playlist', () => controller.connection.deletePlaylist(_temporaryPlaylistId!));
     }
     output['cleanup_errors'] = errors;
     expect(errors, isEmpty, reason: 'Original state must be restored');

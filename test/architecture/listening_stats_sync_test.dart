@@ -58,6 +58,9 @@ class FakeListeningConnection extends ServerConnection {
   Completer<void>? changesGate;
   Completer<void>? changesStarted;
   int uploads = 0;
+  int preferenceWrites = 0;
+  int activations = 0;
+  int snapshotReads = 0;
   int resets = 0;
   Completer<void>? resetGate;
   Completer<void>? resetStarted;
@@ -147,6 +150,7 @@ class FakeListeningConnection extends ServerConnection {
     required String deviceId,
     required int historyGeneration,
   }) async {
+    activations++;
     checkpoint(deviceId)['upgraded'] = true;
     return Map.of(checkpoint(deviceId));
   }
@@ -211,6 +215,7 @@ class FakeListeningConnection extends ServerConnection {
     int? revision,
     String after = '',
   }) async {
+    snapshotReads++;
     seedLegacy();
     final rows = (counterRows[user]?.values ?? <Map<String, dynamic>>[])
         .where((r) => r['year'] == year && r['month'] == month)
@@ -284,6 +289,7 @@ class FakeListeningConnection extends ServerConnection {
     required bool enabled,
     required int revision,
   }) async {
+    preferenceWrites++;
     final pref = preference(deviceId);
     if (revision >= (pref['revision'] as int)) {
       pref['enabled'] = enabled;
@@ -367,6 +373,81 @@ void main() {
   tearDown(() async {
     await sync.close();
     await history.close();
+  });
+
+  test('pushed statistics pull overlapping devices without uploading or changing consent', () async {
+    await history.recordSegment(localEvent(0));
+    connection.records['user-a'] = [event(0, device: 'mobile').toJson()];
+
+    await sync.refreshFromServer();
+
+    expect((await history.stats(year: 2026)).totalListeningMs, 120000);
+    expect(history.pendingCount, 1);
+    expect(connection.uploads, 0);
+    expect(connection.preferenceWrites, 0);
+    expect(connection.activations, 0);
+    expect(history.enabled, isTrue);
+  });
+
+  test('simultaneous pushed refreshes coalesce and remain pull only', () async {
+    connection.records['user-a'] = [event(0, device: 'mobile').toJson()];
+    final started = connection.changesStarted = Completer<void>();
+    final gate = connection.changesGate = Completer<void>();
+    final first = sync.refreshFromServer();
+    await started.future;
+    final second = sync.refreshFromServer();
+    gate.complete();
+    await Future.wait([first, second]);
+
+    expect(connection.snapshotReads, 1);
+    expect(connection.uploads, 0);
+    expect((await history.stats(year: 2026)).totalListeningMs, 60000);
+  });
+
+  test('pushed reset reaches an opted out device and retires old generation uploads', () async {
+    await history.recordSegment(localEvent(0));
+    await sync.sync(immediate: true);
+    await history.recordSegment(localEvent(1));
+    await history.setEnabled(false);
+    final uploads = connection.uploads;
+    final preferenceWrites = connection.preferenceWrites;
+    connection.generation = 2;
+
+    await sync.refreshFromServer();
+
+    expect(history.historyGeneration, 2);
+    expect(history.pendingCount, 0);
+    expect(await history.counterMonths(), isEmpty);
+    expect(connection.uploads, uploads);
+    expect(connection.preferenceWrites, preferenceWrites);
+    expect(history.enabled, isFalse);
+  });
+
+  test('pull acknowledges a committed counter after a lost upload reply without double counting', () async {
+    await history.recordSegment(localEvent(0));
+    await sync.sync(immediate: true);
+    await history.recordSegment(localEvent(1));
+    connection.loseNextUploadReply = true;
+    await sync.sync(immediate: true);
+    final uploads = connection.uploads;
+
+    await sync.refreshFromServer();
+
+    expect(connection.uploads, uploads);
+    expect(history.pendingCount, 0);
+    expect((await history.stats(year: 2026)).totalListeningMs, 120000);
+  });
+
+  test('failed pushed reads propagate and a later refresh can recover', () async {
+    connection.records['user-a'] = [event(0, device: 'mobile').toJson()];
+    connection.genreMetadata['user-a'] = ['invalid'];
+    await expectLater(sync.refreshFromServer(), throwsStateError);
+    connection.genreMetadata.clear();
+
+    await sync.refreshFromServer();
+
+    expect(connection.uploads, 0);
+    expect((await history.stats(year: 2026)).totalListeningMs, 60000);
   });
 
   test('account reset clears synced and pending history, retaining device-only history', () async {

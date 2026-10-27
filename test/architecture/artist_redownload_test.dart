@@ -83,6 +83,16 @@ class _Connection extends ServerConnection {
   final jobsByClient = <String, DownloadJobV2>{};
   final requests = <({String clientId, String requestId})>[];
   int freshManifests = 0;
+  bool blockTransfers = false;
+
+  @override
+  String? get token => blockTransfers ? null : super.token;
+
+  @override
+  void setToken(String? token) {
+    blockTransfers = false;
+    super.setToken(token);
+  }
 
   @override
   Future<ServerCapabilities> fetchCapabilities() async => ServerCapabilities(
@@ -106,7 +116,7 @@ class _Connection extends ServerConnection {
       () => _job(clientId, clientRequestId, sequence: jobsByClient.length + 1),
     );
     // Planning tests never start media workers or make network connections.
-    setToken(null);
+    blockTransfers = true;
     return job;
   }
 
@@ -121,7 +131,7 @@ class _Connection extends ServerConnection {
     String? clientBatchId,
   }) async {
     freshManifests++;
-    setToken(null);
+    blockTransfers = true;
     return DownloadBatchManifest(
       schemaVersion: 1,
       batchId: clientBatchId!,
@@ -162,7 +172,7 @@ class _PendingConnection extends _Connection {
       response: response,
     ));
     final job = await response.future;
-    setToken(null);
+    blockTransfers = true;
     return job;
   }
 }
@@ -174,7 +184,7 @@ class _OverlappingConnection extends _Connection {
     required String clientRequestId,
     required DownloadJobScopeV2 scope,
   }) async {
-    setToken(null);
+    blockTransfers = true;
     return _job(
       clientId,
       clientRequestId,

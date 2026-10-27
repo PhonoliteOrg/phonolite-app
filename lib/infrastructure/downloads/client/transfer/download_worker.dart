@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
   final request = start.request;

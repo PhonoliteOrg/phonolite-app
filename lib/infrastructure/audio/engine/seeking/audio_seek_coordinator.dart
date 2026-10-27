@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 class _AudioSeekCoordinator {
   final _PlaybackSession _host;
@@ -55,7 +55,7 @@ class _AudioSeekCoordinator {
 
     _seekDeadline = Timer(const Duration(seconds: 5), handleSeekTimeout);
 
-    if (_host._isLocalFile) {
+    if (_host._isFileSource) {
       _pendingSeekMs = ms;
 
       return;

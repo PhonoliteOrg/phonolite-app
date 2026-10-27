@@ -133,7 +133,7 @@ void main() {
       r'PHONOLITE_EXPORT\s+[^;{]+?\b(phonolite_audio_\w+)\(',
     ).allMatches(facade).map((match) => match[1]!).toList();
 
-    expect(expected, hasLength(12));
+    expect(expected, hasLength(14));
     expect(exported, unorderedEquals(expected));
     expect(header, contains('extern "C"'));
 

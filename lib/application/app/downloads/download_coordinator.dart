@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _DownloadCoordinator {
   final AppController _host;
@@ -10,7 +10,9 @@ class _DownloadCoordinator {
 
   OfflineTrackDownload? offlineDownloadForTrack(String trackId) {
     return _host._offlineDownloadManager.findForCurrentServer(trackId) ??
-        _host._offlineDownloadManager.findLocal(trackId);
+        _host._offlineDownloadManager.downloads
+            .where((download) => download.localTrackId == trackId || download.track.localId == trackId)
+            .firstOrNull;
   }
 
   OfflineTrackDownload? availableOfflineDownloadForTrack(String trackId) {
@@ -20,20 +22,16 @@ class _DownloadCoordinator {
       return currentServer;
     }
 
-    final local = _host._offlineDownloadManager.findLocal(trackId);
+    final local = _host._offlineDownloadManager.downloads
+        .where(
+          (download) =>
+              (download.localTrackId == trackId || download.track.localId == trackId) &&
+              _offlineDownloadAvailable(download),
+        )
+        .firstOrNull;
 
     if (local != null && _offlineDownloadAvailable(local)) {
       return local;
-    }
-
-    for (final download in _host._offlineDownloadManager.downloads) {
-      if ((download.track.id == trackId ||
-              download.track.localId == trackId ||
-              download.localTrackId == trackId ||
-              download.track.serverTrackId == trackId) &&
-          _offlineDownloadAvailable(download)) {
-        return download;
-      }
     }
 
     return null;
@@ -44,38 +42,11 @@ class _DownloadCoordinator {
       return null;
     }
 
-    final serverTrackId = track.serverTrackId;
-    final serverBaseUrl = track.serverBaseUrl;
-
-    if (serverTrackId != null &&
-        serverTrackId.isNotEmpty &&
-        (serverBaseUrl == null || serverBaseUrl == _host.connection.baseUrl)) {
-      return track.copyWith(id: serverTrackId);
-    }
-
-    if (track.localId == null && serverBaseUrl == null) {
-      return track;
-    }
-
-    for (final download in _host._offlineDownloadManager.downloads) {
-      if (download.serverBaseUrl != _host.connection.baseUrl) {
-        continue;
-      }
-
-      final localId = download.localTrackId ?? download.track.localId;
-      final matchesLocal = localId != null && (track.localId == localId || track.id == localId);
-      final matchesServer = download.track.id == track.id || download.track.serverTrackId == track.serverTrackId;
-
-      if (matchesLocal || matchesServer) {
-        return download.track.copyWith(
-          id: download.track.serverTrackId ?? download.track.id,
-          serverBaseUrl: download.serverBaseUrl,
-          serverTrackId: download.track.serverTrackId ?? download.track.id,
-        );
-      }
-    }
-
-    return null;
+    return TrackSourceResolver.knownServerTrack(
+      track,
+      serverBaseUrl: _host.connection.baseUrl,
+      downloads: _host._offlineDownloadManager.downloads,
+    );
   }
 
   Future<void> downloadTrack(Track track) async {

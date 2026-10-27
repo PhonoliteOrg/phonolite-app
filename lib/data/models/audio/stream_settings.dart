@@ -6,6 +6,8 @@ class StreamSettings {
 
   const StreamSettings({required this.mode, required this.quality, this.frameMs = 20});
 
+  bool get isOriginal => mode == 'original';
+
   @override
   bool operator ==(Object other) =>
       other is StreamSettings &&

@@ -8,8 +8,10 @@ class AudioOutputCodec {
     val sampleRate = (values?.get("sampleRate") as? Number)?.toInt() ?: return null
     val channels = (values["channels"] as? Number)?.toInt() ?: return null
     val deviceId = (values["deviceId"] as? Number)?.toInt() ?: -1
+    val bitsPerSample = (values["bitsPerSample"] as? Number)?.toInt() ?: 16
+    val validBitsPerSample = (values["validBitsPerSample"] as? Number)?.toInt() ?: 16
 
-    return AudioOutputConfiguration(sampleRate, channels, deviceId)
+    return AudioOutputConfiguration(sampleRate, channels, deviceId, bitsPerSample, validBitsPerSample)
   }
 
   fun id(values: Map<*, *>?): Int? = (values?.get("id") as? Number)?.toInt()

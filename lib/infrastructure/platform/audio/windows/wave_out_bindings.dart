@@ -70,10 +70,6 @@ typedef WaveOutResetNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo);
 
 typedef WaveOutResetDart = int Function(ffi.Pointer<ffi.Void> hwo);
 
-typedef WaveOutSetVolumeNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo, ffi.Uint32 dwVolume);
-
-typedef WaveOutSetVolumeDart = int Function(ffi.Pointer<ffi.Void> hwo, int dwVolume);
-
 typedef WaveOutPauseNative = ffi.Uint32 Function(ffi.Pointer<ffi.Void> hwo);
 
 typedef WaveOutPauseDart = int Function(ffi.Pointer<ffi.Void> hwo);
@@ -108,7 +104,6 @@ class WaveOutBindings {
   final WaveOutUnprepareHeaderDart waveOutUnprepareHeader;
   final WaveOutCloseDart waveOutClose;
   final WaveOutResetDart waveOutReset;
-  final WaveOutSetVolumeDart waveOutSetVolume;
   final WaveOutPauseDart waveOutPause;
   final WaveOutRestartDart waveOutRestart;
 
@@ -125,7 +120,6 @@ class WaveOutBindings {
           .asFunction(),
       waveOutClose = _lib.lookup<ffi.NativeFunction<WaveOutCloseNative>>('waveOutClose').asFunction(),
       waveOutReset = _lib.lookup<ffi.NativeFunction<WaveOutResetNative>>('waveOutReset').asFunction(),
-      waveOutSetVolume = _lib.lookup<ffi.NativeFunction<WaveOutSetVolumeNative>>('waveOutSetVolume').asFunction(),
       waveOutPause = _lib.lookup<ffi.NativeFunction<WaveOutPauseNative>>('waveOutPause').asFunction(),
       waveOutRestart = _lib.lookup<ffi.NativeFunction<WaveOutRestartNative>>('waveOutRestart').asFunction();
 }

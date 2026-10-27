@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 class _PcmOutputPump {
   final _PlaybackSession _host;
@@ -89,7 +89,7 @@ class _PcmOutputPump {
     }
   }
 
-  Future<void> _writeToBuffer(Int16List samples) async {
+  Future<void> _writeToBuffer(List<int> samples) async {
     final buffer = _host._buffer;
     if (buffer == null) {
       return;
@@ -115,10 +115,16 @@ class _PcmOutputPump {
     }
   }
 
-  Future<void> _writeSamples(AudioPcmOutput player, Int16List samples) async {
+  Future<void> _writeSamples(AudioPcmOutput player, List<int> samples) async {
     final epoch = _host._outputEpoch;
 
-    await player.write(samples);
+    if (samples is Int32List) {
+      await player.writePcm32(samples);
+    } else if (samples is Int16List) {
+      await player.write(samples);
+    } else {
+      throw StateError('PCM output requires a typed sample buffer.');
+    }
 
     if (epoch != _host._outputEpoch || !identical(player, _host._player)) {
       return;
@@ -177,5 +183,5 @@ mixin _PcmOutputPumpFacade {
 
   Future<void> _runPump() => _ownerPump._runPump();
 
-  Future<void> _writeToBuffer(Int16List samples) => _ownerPump._writeToBuffer(samples);
+  Future<void> _writeToBuffer(List<int> samples) => _ownerPump._writeToBuffer(samples);
 }

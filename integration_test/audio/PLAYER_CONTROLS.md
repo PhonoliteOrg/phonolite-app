@@ -39,6 +39,12 @@ switching and disabled/enabled shuffle options at compact and wide sizes.
 
 ## Encoded qualities
 
+The chooser also offers **Original (source bitrate)**, abbreviated **OG**. This
+streams the unchanged source file through the native PCM32 decode/output path;
+it has no fixed target bitrate. See [Original audio playback](../../docs/original-audio-playback.md)
+for precision, platform constraints and the separate headless verification.
+The HQ/MQ/LQ measurements below continue to cover the compressed profiles.
+
 The server defines fixed HQ/MQ/LQ targets as 160000 / 96000 / 48000 bits/s.
 After playback stops, independent requests use the production QUIC library and
 the same track's ten-second offset. Each parses a real Opus header and two seconds

@@ -39,7 +39,13 @@ void main() {
     await player.initialize();
 
     expect(calls.map((call) => call.method), ['open', 'setVolume', 'pause']);
-    expect(calls.first.arguments, {'sampleRate': 48000, 'channels': 2, 'deviceId': 7});
+    expect(calls.first.arguments, {
+      'sampleRate': 48000,
+      'channels': 2,
+      'deviceId': 7,
+      'bitsPerSample': 16,
+      'validBitsPerSample': 16,
+    });
     expect(calls[1].arguments, {'id': 42, 'value': 0.25});
 
     await player.dispose();

@@ -7,7 +7,6 @@ import 'dart:ui' show IsolateNameServer, RootIsolateToken;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
-import 'package:phonolite_local_audio/phonolite_local_audio.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
 
@@ -19,6 +18,7 @@ import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/data/rules/listening_stats/listening_recorder.dart';
 import 'package:phonolite_app/data/structures/audio/encoded_audio_cache.dart';
 import 'package:phonolite_app/data/structures/audio/pcm_ring_buffer.dart';
+import 'package:phonolite_app/infrastructure/audio/decoding/audio_file_decoder.dart';
 import 'package:phonolite_app/infrastructure/audio/output/audio_output_factory.dart';
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
 import 'package:phonolite_app/infrastructure/audio/protocol/raw_header_track_id.dart';
@@ -29,19 +29,19 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 export 'package:phonolite_app/data/models/audio/stream_settings.dart';
 export 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
 
-part 'package:phonolite_app/infrastructure/audio/engine/buffering/adaptive_buffer_policy.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/pipeline/opus_decode_pipeline.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/pipeline/pcm_output_pump.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/seeking/audio_seek_coordinator.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/session/audio_listening_session.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/session/audio_output_configuration.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/session/playback_session.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/sources/local_audio_source.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/sources/remote_audio_source.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/telemetry/audio_telemetry.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/testing/audio_playback_harness.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/worker/audio_worker.dart';
-part 'package:phonolite_app/infrastructure/audio/engine/worker/audio_worker_engine.dart';
+part 'buffering/adaptive_buffer_policy.dart';
+part 'pipeline/opus_decode_pipeline.dart';
+part 'pipeline/pcm_output_pump.dart';
+part 'seeking/audio_seek_coordinator.dart';
+part 'session/audio_listening_session.dart';
+part 'session/audio_output_configuration.dart';
+part 'session/playback_session.dart';
+part 'sources/file_audio_source.dart';
+part 'sources/remote_audio_source.dart';
+part 'telemetry/audio_telemetry.dart';
+part 'testing/audio_playback_harness.dart';
+part 'worker/audio_worker.dart';
+part 'worker/audio_worker_engine.dart';
 
 const String _audioWorkerPortName = 'phonolite_audio_worker';
 

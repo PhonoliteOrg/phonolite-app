@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
@@ -12,6 +13,7 @@ import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/settings/sections/desktop_settings_section.dart';
+import 'package:phonolite_app/ui/features/settings/sections/display_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/general_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/local_storage_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/misc_settings_section.dart';
@@ -25,7 +27,9 @@ export 'package:phonolite_app/ui/features/settings/widgets/listening_statistics_
 export 'package:phonolite_app/ui/features/settings/widgets/offline_storage_section.dart' show OfflineStorageSection;
 
 class SettingsPage extends BaseStatelessPage {
-  const SettingsPage({super.key});
+  final DisplaySettingsController? displaySettings;
+
+  const SettingsPage({super.key, this.displaySettings});
 
   Widget _settingsContent(
     BuildContext context,
@@ -63,6 +67,14 @@ class SettingsPage extends BaseStatelessPage {
                   onResetPassword: () => Navigator.of(context).push(ResetUserPasswordPage.route(controller)),
                 ),
                 const SizedBox(height: 24),
+                if (authState.isAuthorized) ...[
+                  ListenableBuilder(
+                    listenable: displaySettings ?? DisplaySettingsController.instance,
+                    builder: (context, _) =>
+                        DisplaySettingsSection(controller: displaySettings ?? DisplaySettingsController.instance),
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 if (DesktopSettingsController.instance.supported) ...[
                   ListenableBuilder(
                     listenable: DesktopSettingsController.instance,

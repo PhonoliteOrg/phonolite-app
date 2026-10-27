@@ -232,12 +232,14 @@ class PlaybackCompactControls extends StatelessWidget {
   final VoidCallback onPlayPause;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onStop;
   final VoidCallback onShuffle;
   final VoidCallback onRepeat;
   final VoidCallback onAddToPlaylist;
   final VoidCallback onToggleLike;
   final VoidCallback onShowDevicePicker;
   final VoidCallback onShowStreamMode;
+  final bool touchTargets;
 
   const PlaybackCompactControls({
     super.key,
@@ -245,12 +247,14 @@ class PlaybackCompactControls extends StatelessWidget {
     required this.onPlayPause,
     required this.onPrev,
     required this.onNext,
+    required this.onStop,
     required this.onShuffle,
     required this.onRepeat,
     required this.onAddToPlaylist,
     required this.onToggleLike,
     required this.onShowDevicePicker,
     required this.onShowStreamMode,
+    this.touchTargets = false,
   });
 
   @override
@@ -269,42 +273,53 @@ class PlaybackCompactControls extends StatelessWidget {
       spacing: s(8),
       runSpacing: s(8),
       children: [
-        ObsidianHudIconButton(
-          icon: PhonoliteIcons.shuffle,
-          isActive: state.shuffleMode != ShuffleMode.off,
-          onPressed: onShuffle,
-          size: s(22),
-        ),
-        ObsidianHudIconButton(icon: PhonoliteIcons.skipBack, onPressed: transportEnabled ? onPrev : null, size: s(24)),
-        PlaybackHudPlayButton(
-          icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-          onPressed: playEnabled ? onPlayPause : null,
-          size: playSize,
-        ),
-        ObsidianHudIconButton(
-          icon: PhonoliteIcons.skipForward,
-          onPressed: transportEnabled ? onNext : null,
-          size: s(24),
-        ),
-        ObsidianHudIconButton(
-          icon: PhonoliteIcons.repeat,
-          isActive: state.repeatMode == PlaybackRepeatMode.one,
-          onPressed: onRepeat,
-          size: s(22),
-        ),
-        ObsidianHudIconButton(
-          iconWidget: const PlaylistAddIcon(),
-          onPressed: userActionsEnabled ? onAddToPlaylist : null,
-          size: s(22),
-        ),
-        LikeIconButton(
-          isLiked: state.track?.liked == true,
-          onPressed: userActionsEnabled ? onToggleLike : null,
-          size: s(22),
-        ),
-        ObsidianHudIconButton(icon: PhonoliteIcons.speaker, onPressed: onShowDevicePicker, size: s(22)),
-        if (state.track != null && !state.isLocalPlayback)
-          PlaybackQualityBadge(label: playbackStreamLabel(state.streamMode), onTap: onShowStreamMode),
+        for (final control in <Widget>[
+          ObsidianHudIconButton(
+            icon: PhonoliteIcons.shuffle,
+            isActive: state.shuffleMode != ShuffleMode.off,
+            onPressed: onShuffle,
+            size: s(22),
+          ),
+          ObsidianHudIconButton(
+            icon: PhonoliteIcons.skipBack,
+            onPressed: transportEnabled ? onPrev : null,
+            size: s(24),
+          ),
+          PlaybackHudPlayButton(
+            icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+            onPressed: playEnabled ? onPlayPause : null,
+            size: playSize,
+          ),
+          ObsidianHudIconButton(icon: PhonoliteIcons.square, onPressed: transportEnabled ? onStop : null, size: s(24)),
+          ObsidianHudIconButton(
+            icon: PhonoliteIcons.skipForward,
+            onPressed: transportEnabled ? onNext : null,
+            size: s(24),
+          ),
+          ObsidianHudIconButton(
+            icon: PhonoliteIcons.repeat,
+            isActive: state.repeatMode == PlaybackRepeatMode.one,
+            onPressed: onRepeat,
+            size: s(22),
+          ),
+          ObsidianHudIconButton(
+            iconWidget: const PlaylistAddIcon(),
+            onPressed: userActionsEnabled ? onAddToPlaylist : null,
+            size: s(22),
+          ),
+          LikeIconButton(
+            isLiked: state.track?.liked == true,
+            onPressed: userActionsEnabled ? onToggleLike : null,
+            size: s(22),
+          ),
+          ObsidianHudIconButton(icon: PhonoliteIcons.speaker, onPressed: onShowDevicePicker, size: s(22)),
+          if (state.track != null && !state.isLocalPlayback)
+            PlaybackQualityBadge(label: playbackStreamLabel(state.streamMode), onTap: onShowStreamMode),
+        ])
+          if (touchTargets)
+            ConstrainedBox(constraints: const BoxConstraints(minWidth: 48, minHeight: 48), child: control)
+          else
+            control,
       ],
     );
   }

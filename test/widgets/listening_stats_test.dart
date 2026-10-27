@@ -22,6 +22,7 @@ import 'package:phonolite_app/pages/listening_stats/stats_page.dart';
 import 'package:phonolite_app/pages/settings/settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
@@ -74,6 +75,8 @@ class _StatsController extends Fake implements AppController {
 
   @override
   ServerConnection get connection => server;
+  @override
+  bool get sessionManagementAvailable => false;
   @override
   List<Artist> get artists => artistMetadata;
   @override
@@ -468,7 +471,7 @@ void main() {
       );
       expect(
         tester
-            .widget<Switch>(
+            .widget<ObsidianSwitch>(
               find.byKey(const ValueKey('listening-statistics-switch')),
             )
             .onChanged,
@@ -998,12 +1001,12 @@ void main() {
       await tester.pumpAndSettle();
       final toggle = find.byKey(const ValueKey('listening-statistics-switch'));
       await tester.ensureVisible(toggle);
-      expect(tester.widget<Switch>(toggle).value, isTrue);
+      expect(tester.widget<ObsidianSwitch>(toggle).value, isTrue);
       expect(find.text('Listening statistics'), findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       expect(controller.choices, [false]);
-      expect(tester.widget<Switch>(toggle).value, isFalse);
+      expect(tester.widget<ObsidianSwitch>(toggle).value, isFalse);
       expect(
         find.text(
           'New listening statistics and uploads are stopped on this device. Existing statistics are kept.',

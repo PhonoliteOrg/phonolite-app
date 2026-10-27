@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:phonolite_app/application/workflows/serial_action_queue.dart';
 import 'package:phonolite_app/data/models/preferences/desktop_settings.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/preferences/desktop_settings_storage.dart';
@@ -12,13 +13,19 @@ class DesktopSettingsController extends ChangeNotifier {
   final DesktopSettingsStorage _storage;
   final DesktopLifecyclePlatform _platform;
   final bool Function() _isSupported;
+  final SerialActionQueue _changes = SerialActionQueue();
   DesktopSettings _settings = const DesktopSettings();
+  DesktopSettings _savedSettings = const DesktopSettings();
   Future<void>? _initialization;
   Future<void>? _quitting;
+  Future<void>? _shutdown;
   Future<void> Function()? _beforeQuit;
+  int _mutation = 0;
   bool _ready = false;
+  bool _platformInitialized = false;
   bool _backgroundActive = false;
   bool _saving = false;
+  bool _disposed = false;
   String? _error;
 
   DesktopSettingsController({
@@ -30,12 +37,58 @@ class DesktopSettingsController extends ChangeNotifier {
        _isSupported = isSupported ?? (() => desktopLifecycleSupported);
 
   bool get supported => _isSupported();
+
   DesktopSettings get settings => _settings;
+
   bool get ready => _ready;
+
   bool get saving => _saving;
+
   String? get error => _error;
 
-  Future<void> initialize({required Future<void> Function() beforeQuit}) => _initialization ??= _initialize(beforeQuit);
+  Future<void> initialize({required Future<void> Function() beforeQuit}) {
+    if (_disposed || _shutdown != null) {
+      return Future<void>.value();
+    }
+
+    return _initialization ??= _initialize(beforeQuit);
+  }
+
+  /// The application owner calls this before releasing its notifier.
+  Future<void> shutdown() => _shutdown ??= _shutdownPlatform();
+
+  @override
+  void dispose() {
+    _disposed = true;
+
+    super.dispose();
+  }
+
+  Future<void> setLaunchAtStartup(bool enabled) => _change(_settings.copyWith(launchAtStartup: enabled));
+
+  Future<void> setRunInBackground(bool enabled) => _change(_settings.copyWith(runInBackground: enabled));
+
+  Future<void> closeWindow() async {
+    if (!_ready || _disposed || _quitting != null || _shutdown != null) {
+      return;
+    }
+
+    if (_saving) {
+      await _changes.drain();
+    }
+
+    if (_disposed || _quitting != null || _shutdown != null) {
+      return;
+    }
+
+    if (_backgroundActive) {
+      await _platform.hide();
+    } else {
+      await quit();
+    }
+  }
+
+  Future<void> quit() => _quitting ??= _quit();
 
   Future<void> _initialize(Future<void> Function() beforeQuit) async {
     if (!supported) {
@@ -47,10 +100,17 @@ class DesktopSettingsController extends ChangeNotifier {
 
     try {
       _settings = await _storage.read();
+      _savedSettings = _settings;
+
+      if (_disposed) {
+        return;
+      }
+
       await _platform.initialize(onClose: closeWindow, onQuit: quit);
-      _ready = true;
+      _platformInitialized = true;
     } catch (error) {
       _saving = false;
+
       try {
         await _platform.dispose();
       } catch (cleanupError) {
@@ -58,7 +118,7 @@ class DesktopSettingsController extends ChangeNotifier {
       }
 
       _report('Desktop integration could not start', error);
-      notifyListeners();
+      _notify();
 
       return;
     }
@@ -78,68 +138,85 @@ class DesktopSettingsController extends ChangeNotifier {
     }
 
     _saving = false;
-    notifyListeners();
+    _ready = !_disposed && _shutdown == null;
+    _notify();
   }
 
-  Future<void> setLaunchAtStartup(bool enabled) => _change(_settings.copyWith(launchAtStartup: enabled), startup: true);
-
-  Future<void> setRunInBackground(bool enabled) =>
-      _change(_settings.copyWith(runInBackground: enabled), startup: false);
-
-  Future<void> _change(DesktopSettings next, {required bool startup}) async {
-    if (!_ready || _saving || _quitting != null) {
-      return;
+  Future<void> _change(DesktopSettings next) {
+    if (!_ready || _disposed || _quitting != null || _shutdown != null || _sameSettings(next, _settings)) {
+      return Future<void>.value();
     }
 
+    final mutation = ++_mutation;
+
+    _settings = next;
     _saving = true;
     _error = null;
-    notifyListeners();
+    final save = _changes.add(() => _save(next, mutation));
+    _notify();
 
-    final previous = _settings;
+    return save;
+  }
 
-    Future<void> apply(DesktopSettings value) => startup
-        ? _platform.setLaunchAtStartup(value.launchAtStartup)
-        : _platform.setBackgroundEnabled(value.runInBackground);
+  Future<void> _save(DesktopSettings next, int mutation) async {
+    final previous = _savedSettings;
+    final backgroundWasActive = _backgroundActive;
+    var startupAttempted = false;
+    var backgroundAttempted = false;
 
     try {
-      await apply(next);
-      await _storage.write(next);
+      if (next.launchAtStartup != previous.launchAtStartup) {
+        startupAttempted = true;
+        await _platform.setLaunchAtStartup(next.launchAtStartup);
+      }
 
-      _settings = next;
-
-      if (!startup) {
+      if (next.runInBackground != previous.runInBackground) {
+        backgroundAttempted = true;
+        await _platform.setBackgroundEnabled(next.runInBackground);
         _backgroundActive = next.runInBackground;
       }
+
+      await _storage.write(next);
+      _savedSettings = next;
     } catch (error) {
-      try {
-        await apply(previous);
-      } catch (rollbackError) {
-        _backgroundActive = false;
-        AppLogger.warning('Desktop setting rollback failed: $rollbackError');
+      if (backgroundAttempted) {
+        try {
+          await _platform.setBackgroundEnabled(backgroundWasActive);
+          _backgroundActive = backgroundWasActive;
+        } catch (rollbackError) {
+          _backgroundActive = false;
+          AppLogger.warning('Desktop background rollback failed: $rollbackError');
+        }
       }
 
-      _report('Could not save the desktop setting', error);
+      if (startupAttempted) {
+        try {
+          await _platform.setLaunchAtStartup(previous.launchAtStartup);
+        } catch (rollbackError) {
+          AppLogger.warning('Desktop startup rollback failed: $rollbackError');
+        }
+      }
+
+      if (mutation == _mutation) {
+        _settings = _savedSettings;
+        _report('Could not save the desktop setting', error);
+      } else {
+        AppLogger.warning('Could not save earlier desktop settings: $error');
+      }
     } finally {
-      _saving = false;
-      notifyListeners();
+      if (mutation == _mutation) {
+        _saving = false;
+        _notify();
+      }
     }
   }
-
-  Future<void> closeWindow() async {
-    if (_quitting != null || _saving) {
-      return;
-    }
-
-    if (_backgroundActive) {
-      await _platform.hide();
-    } else {
-      await quit();
-    }
-  }
-
-  Future<void> quit() => _quitting ??= _quit();
 
   Future<void> _quit() async {
+    if (_saving) {
+      await _initialization;
+      await _changes.drain();
+    }
+
     try {
       await _beforeQuit?.call();
     } catch (error) {
@@ -149,11 +226,23 @@ class DesktopSettingsController extends ChangeNotifier {
     await _platform.quit();
   }
 
-  /// The application owner calls this before releasing its notifier.
-  Future<void> shutdown() async {
-    if (supported && _ready) {
+  Future<void> _shutdownPlatform() async {
+    _ready = false;
+    await _initialization;
+    await _changes.drain();
+
+    if (_platformInitialized) {
       await _platform.dispose();
-      _ready = false;
+      _platformInitialized = false;
+    }
+  }
+
+  bool _sameSettings(DesktopSettings first, DesktopSettings second) =>
+      first.launchAtStartup == second.launchAtStartup && first.runInBackground == second.runInBackground;
+
+  void _notify() {
+    if (!_disposed) {
+      notifyListeners();
     }
   }
 

@@ -6,8 +6,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/library_navigation_controller.dart';
 import 'package:phonolite_app/application/controllers/playback/playback_controls_controller.dart';
-import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
@@ -99,17 +99,9 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
       _selectedIndex = 0;
     }
 
-    _statsCollectionSubscription = controller.statsCollectionEnabledStream.distinct().listen((enabled) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        if (!enabled && _selectedIndex == 3) {
-          _selectedIndex = 0;
-        }
-      });
-    });
+    _statsCollectionSubscription = controller.statsCollectionEnabledStream.distinct().listen(
+      _handleStatsCollectionChanged,
+    );
   }
 
   @override
@@ -123,31 +115,6 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     controller.handleAppLifecycleState(state);
   }
 
-  void _handleAuthState(AuthState state) {
-    if (!state.requiresSignIn || _openingSignIn || !mounted) return;
-    _openingSignIn = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final controller = _controller;
-      if (!mounted || controller == null || !controller.authState.requiresSignIn) {
-        _openingSignIn = false;
-        return;
-      }
-      // A sign-in page may already be open inside a retained tab.
-      final loginTab = _topRouteNames.indexOf(LoginPage.routeName);
-      if (loginTab >= 0) {
-        setState(() => _selectedIndex = loginTab);
-        _openingSignIn = false;
-        return;
-      }
-      try {
-        setState(() => _selectedIndex = 4);
-        await _navigatorKeys[4].currentState!.push(LoginPage.route(controller));
-      } finally {
-        _openingSignIn = false;
-      }
-    });
-  }
-
   @override
   void dispose() {
     _statsCollectionSubscription?.cancel();
@@ -158,6 +125,55 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
 
     super.dispose();
+  }
+
+  void _handleStatsCollectionChanged(bool enabled) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      if (!enabled && _selectedIndex == 3) {
+        _selectedIndex = 0;
+      }
+    });
+  }
+
+  void _handleAuthState(AuthState state) {
+    if (!state.requiresSignIn || _openingSignIn || !mounted) {
+      return;
+    }
+
+    _openingSignIn = true;
+    WidgetsBinding.instance.addPostFrameCallback(_openRequiredSignIn);
+  }
+
+  Future<void> _openRequiredSignIn(Duration timeStamp) async {
+    final controller = _controller;
+
+    if (!mounted || controller == null || !controller.authState.requiresSignIn) {
+      _openingSignIn = false;
+
+      return;
+    }
+
+    // A sign-in page may already be open inside a retained tab.
+    final loginTab = _topRouteNames.indexOf(LoginPage.routeName);
+
+    if (loginTab >= 0) {
+      setState(() => _selectedIndex = loginTab);
+      _openingSignIn = false;
+
+      return;
+    }
+
+    try {
+      setState(() => _selectedIndex = 4);
+
+      await _navigatorKeys[4].currentState!.push(LoginPage.route(controller));
+    } finally {
+      _openingSignIn = false;
+    }
   }
 
   Widget _buildTabNavigator(
@@ -435,7 +451,15 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
   void _selectDestination(int index, List<int> visibleTabIndices) {
     _navigation?.cancelPending();
 
-    setState(() => _selectedIndex = visibleTabIndices[index]);
+    final tabIndex = visibleTabIndices[index];
+
+    if (tabIndex == _selectedIndex) {
+      _navigatorKeys[tabIndex].currentState?.popUntil((route) => route.isFirst);
+
+      return;
+    }
+
+    setState(() => _selectedIndex = tabIndex);
   }
 
   List<NavigationDestination> _destinations({required bool statsEnabled}) => [
@@ -471,6 +495,7 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     onToggleRepeat: controller.toggleRepeatMode,
     onStreamModeChanged: controller.updateStreamMode,
     onVolumeChanged: controller.setVolume,
+    onToggleMute: controller.toggleMute,
     onToggleLike: () => unawaited(PlaybackControlsController.toggleLike(controller, playback)),
   );
 

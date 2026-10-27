@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:phonolite_app/data/models/playback/playback_state.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/preferences/json_settings_file.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
@@ -8,6 +9,7 @@ class PlaybackPreferencesStorage {
   static const String _fileName = 'playback_prefs.json';
   static const String _volumeKey = 'volume';
   static const String _collectionListModeKey = 'collection_list_mode';
+  static const String _repeatModeKey = 'repeat_mode';
 
   final SettingsFiles _files;
 
@@ -58,6 +60,18 @@ class PlaybackPreferencesStorage {
   Future<void> writeCollectionListMode(bool value) async {
     await _writePreference(_collectionListModeKey, value);
   }
+
+  Future<PlaybackRepeatMode?> readRepeatMode() async {
+    final map = await _readPreferences();
+
+    return switch (map?[_repeatModeKey]) {
+      'off' => PlaybackRepeatMode.off,
+      'one' => PlaybackRepeatMode.one,
+      _ => null,
+    };
+  }
+
+  Future<void> writeRepeatMode(PlaybackRepeatMode mode) => _writePreference(_repeatModeKey, mode.name);
 
   Future<Map<String, dynamic>?> _readPreferences() async {
     if (kIsWeb) {

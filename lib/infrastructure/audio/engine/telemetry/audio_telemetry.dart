@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 class _AudioTelemetry {
   final _PlaybackSession _host;
@@ -163,11 +163,11 @@ class _AudioTelemetry {
       _host._sendPlaybackMessage({
         'type': 'stats',
         'position_ms': position.inMilliseconds,
-        'buffered_ms': _host._isLocalFile
+        'buffered_ms': _host._isFileSource
             ? bufferedMs
             : math.max(bufferedMs, _host._encodedCache.bufferedAheadMs(position.inMilliseconds)),
-        'bitrate_kbps': _host._isLocalFile ? null : _currentBitrateKbps(),
-        'rtt_ms': _host._isLocalFile ? null : rttMs,
+        'bitrate_kbps': _host._isFileSource ? null : _currentBitrateKbps(),
+        'rtt_ms': _host._isFileSource ? null : rttMs,
         'local': _host._isLocalFile,
       });
     } finally {

@@ -4,6 +4,7 @@
 #include <flutter_linux/flutter_linux.h>
 
 #include "runner/infrastructure/flutter/directories_channel_adapter.h"
+#include "runner/infrastructure/flutter/window_constraints_channel_adapter.h"
 #include "runner/infrastructure/shell/directory_launcher.h"
 #include "runner/ui/shell/application_window.h"
 
@@ -32,6 +33,7 @@ class FlutterHost {
   ApplicationWindow window_;
   DirectoryLauncher directory_launcher_;
   DirectoriesChannelAdapter directories_;
+  WindowConstraintsChannelAdapter window_constraints_;
 
   FlView* view_ = nullptr;     // Borrowed from the window's container.
   FlEngine* engine_ = nullptr; // Owned until handlers are detached, even during view disposal.

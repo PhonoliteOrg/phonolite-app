@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _FavoritesCoordinator {
   final AppController _host;
@@ -18,8 +18,25 @@ class _FavoritesCoordinator {
     _likedController.add(const []);
   }
 
+  void _applyCollectionSnapshot(List<Track> tracks) {
+    _likedRequests.advance();
+    _liked = tracks;
+
+    for (final track in tracks) {
+      _host._cacheTrackAlbumId(track);
+    }
+
+    _likedController.add(List.unmodifiable(_liked));
+  }
+
   Future<void> loadLikedTracks() async {
     if (!_host._requireServer('loading liked tracks')) {
+      return;
+    }
+
+    if (_host._collectionCoordinator.hasSnapshot) {
+      _host._collectionCoordinator.refresh();
+
       return;
     }
 
@@ -63,6 +80,8 @@ class _FavoritesCoordinator {
 
     final revision = _host.connection.sessionRevision;
     bool isCurrent() => _host._sessionCoordinator._isServerSessionCurrent(revision);
+    final finishMutation = _host._collectionCoordinator.beginMutation();
+
     try {
       final liked = !track.liked;
       final state = await _host.connection.setLikeState(track.id, liked);
@@ -76,6 +95,8 @@ class _FavoritesCoordinator {
     } catch (err) {
       if (!isCurrent()) return;
       _host._pushMessage('Failed to update like: $err');
+    } finally {
+      finishMutation();
     }
   }
 
@@ -101,6 +122,8 @@ class _FavoritesCoordinator {
   }
 
   void _updateLike(String trackId, bool liked, {Track? knownTrack}) {
+    _likedRequests.advance();
+    _host.connection.recordServerLike(trackId, liked);
     _host._tracks = _host._tracks.map((track) => track.id == trackId ? track.copyWith(liked: liked) : track).toList();
     _host._playlistTracks = _host._playlistTracks
         .map((track) => track.id == trackId ? track.copyWith(liked: liked) : track)
@@ -296,6 +319,4 @@ mixin _FavoritesFacade {
   Future<void> toggleLocalLike(Track track) => _favoritesCoordinator.toggleLocalLike(track);
 
   bool _localTrackIsLiked(String trackId) => _favoritesCoordinator._localTrackIsLiked(trackId);
-
-  String? _localTrackIdFor(Track track) => _favoritesCoordinator._localTrackIdFor(track);
 }

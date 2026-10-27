@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+part of '../offline_library.dart';
 
 class _OfflineMetadataStore {
   final OfflineLibraryStorage _host;
@@ -489,19 +489,36 @@ class _OfflineMetadataStore {
   }
 
   String _resolveLocalTrackId(Database db, Track track) {
-    final matchKey = OfflineLibraryStorage._metadataMatchKey(track);
-    final rows = db.select('SELECT id, duration_ms FROM tracks WHERE match_key = ?', [matchKey]);
+    final serverBaseUrl = track.serverBaseUrl?.trim();
+    final serverTrackId = (track.serverTrackId ?? track.id).trim();
 
-    for (final row in rows) {
-      final duration = OfflineLibraryStorage._readInt(row, 'duration_ms');
+    if (serverBaseUrl != null && serverBaseUrl.isNotEmpty && serverTrackId.isNotEmpty) {
+      final knownId = _host._resolveKnownLocalSource(
+        db,
+        track,
+        SourceTrackRef(serverBaseUrl: serverBaseUrl, serverTrackId: serverTrackId),
+      );
 
-      if ((duration - track.durationMs).abs() <= 2000) {
-        final id = OfflineLibraryStorage._readString(row, 'id');
+      if (knownId != null) {
+        _host._upsertTrack(db, knownId, track);
 
-        _host._upsertTrack(db, id, track);
-
-        return id;
+        return knownId;
       }
+    }
+
+    final matchKey = OfflineLibraryStorage._metadataMatchKey(track);
+    final rows = db.select(
+      'SELECT *, NULL AS server_base_url, NULL AS server_track_id FROM tracks WHERE match_key = ?',
+      [matchKey],
+    );
+    final candidates = rows.map((row) => _host._trackFromRow(row, liked: false, inPlaylists: false));
+    final candidate = TrackMatching.uniqueLocalCandidate(track, candidates);
+
+    if (candidate != null) {
+      final id = candidate.localId ?? candidate.id;
+      _host._upsertTrack(db, id, track);
+
+      return id;
     }
 
     var id = OfflineLibraryStorage._stableId('$matchKey|${track.durationMs}');
@@ -539,13 +556,7 @@ class _OfflineMetadataStore {
     throw StateError('Track must be downloaded before saving local user data.');
   }
 
-  static String _metadataMatchKey(Track track) {
-    return [
-      OfflineLibraryStorage._normalizeMetadataText(track.artist),
-      OfflineLibraryStorage._normalizeMetadataText(track.album),
-      OfflineLibraryStorage._normalizeMetadataText(track.title),
-    ].join('|');
-  }
+  static String _metadataMatchKey(Track track) => TrackMatching.metadataKey(track);
 
   String _generateClientId() {
     final random = Random.secure();
@@ -559,25 +570,6 @@ class _OfflineMetadataStore {
     final encoded = base64Url.encode(utf8.encode(value)).replaceAll('=', '');
 
     return 'lt_$encoded';
-  }
-
-  static String _normalizeMetadataText(String value) {
-    final out = StringBuffer();
-    var lastSpace = false;
-
-    for (final codeUnit in value.trim().toLowerCase().codeUnits) {
-      final isAlphaNumeric = (codeUnit >= 48 && codeUnit <= 57) || (codeUnit >= 97 && codeUnit <= 122);
-
-      if (isAlphaNumeric) {
-        out.writeCharCode(codeUnit);
-        lastSpace = false;
-      } else if (!lastSpace) {
-        out.write(' ');
-        lastSpace = true;
-      }
-    }
-
-    return out.toString().trim();
   }
 }
 

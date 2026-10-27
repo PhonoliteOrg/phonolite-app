@@ -67,8 +67,14 @@ update.
 
 Close Phonolite before upgrading or uninstalling. An NSIS upgrade runs the
 previous NSIS uninstaller to remove its exact payload before installing the new
-release. Uninstall removes packaged files and registration, preserving app data,
-logs, downloaded music and unrelated files in the installation directory.
+release, passing `/UPGRADE` to preserve app data during both manual upgrades and
+WinSparkle updates. A normal uninstall removes packaged files, registration and
+the current user's entire `%APPDATA%\Phonolite` folder, including saved settings,
+listening statistics, downloaded music and logs. The uninstall confirmation
+explains this deletion; silent uninstall also removes the folder. Files stored
+outside that folder and unrelated files in the installation directory are
+preserved. If app-data deletion fails, uninstall reports the failure and retains
+its registration so it can be retried.
 
 ## Optional signing
 

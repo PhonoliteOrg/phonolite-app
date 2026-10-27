@@ -29,8 +29,8 @@ class DownloadManagerViewState {
     hasPaused = pausedDownloads.isNotEmpty || visibleJobs.any((job) => job.status == OfflineDownloadStatus.paused);
     isEmpty = visibleDownloads.isEmpty && visibleJobs.isEmpty;
     hasActiveWork =
-        visibleDownloads.any((download) => _hasActiveWork(download.status)) ||
-        visibleJobs.any((job) => _hasActiveWork(job.status));
+        visibleDownloads.any((download) => DownloadQueueRules.hasActiveWork(download.status)) ||
+        visibleJobs.any((job) => DownloadQueueRules.hasActiveWork(job.status));
     this.jobs = List<OfflineDownloadJob>.unmodifiable(visibleJobs);
     this.groups = Map<DownloadSection, List<OfflineTrackDownload>>.unmodifiable({
       for (final entry in groups.entries) entry.key: List<OfflineTrackDownload>.unmodifiable(entry.value),
@@ -75,20 +75,5 @@ class DownloadManagerViewState {
     groups[DownloadSection.needsAttention]!.sort(DownloadQueueRules.compareUpdatedNewestFirst);
 
     return groups;
-  }
-
-  static bool _hasActiveWork(OfflineDownloadStatus status) {
-    return switch (status) {
-      OfflineDownloadStatus.preparing ||
-      OfflineDownloadStatus.downloading ||
-      OfflineDownloadStatus.validating ||
-      OfflineDownloadStatus.removing => true,
-      OfflineDownloadStatus.queued ||
-      OfflineDownloadStatus.paused ||
-      OfflineDownloadStatus.downloaded ||
-      OfflineDownloadStatus.failed ||
-      OfflineDownloadStatus.corrupt ||
-      OfflineDownloadStatus.canceled => false,
-    };
   }
 }

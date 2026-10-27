@@ -136,7 +136,7 @@ void main() {
         'Future<List<String>> _unusedArtworkFiles(',
         'void _ensureColumn(',
         '_metadataMatchKey(Track track)',
-        '(duration - track.durationMs).abs() <= 2000',
+        'TrackMatching.uniqueLocalCandidate(track, candidates)',
         'Future<File> trackFile({',
         'Future<File> albumArtFile({',
         'Future<File> artistArtFile({',
@@ -146,6 +146,14 @@ void main() {
         'extensionFromImageContentType(String? contentType)',
         'extensionFromContentDisposition(String? contentDisposition)',
         'base64Url.encode(utf8.encode(baseUrl.trim()))',
+      ]);
+
+      final matching = readProjectFile('lib/data/rules/library/track_matching.dart');
+
+      expectContainsAll(matching, const [
+        'static Track? uniqueLocalCandidate(Track source, Iterable<Track> candidates)',
+        '(source.durationMs - candidate.durationMs).abs() <= 2000',
+        'matches.length == 1 ? matches.values.single : null',
       ]);
     });
 

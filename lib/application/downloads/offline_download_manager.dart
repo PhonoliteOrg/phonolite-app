@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/offline_download_snapshot.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/offline_library_snapshot.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/library/track_source_match.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
@@ -63,6 +66,26 @@ class OfflineDownloadManager {
   List<Playlist> get localPlaylists => _client.localPlaylists;
 
   List<Track> get localPlaylistTracks => _client.localPlaylistTracks;
+
+  List<LocalPlaylistEntry> get localPlaylistEntries => _client.localPlaylistEntries;
+
+  Stream<List<LocalPlaylistEntry>> get localPlaylistEntriesStream => _client.localPlaylistEntriesStream;
+
+  Future<void> addSourceToLocalPlaylist(String playlistId, Track track, SourceTrackRef source) =>
+      _client.addSourceToLocalPlaylist(playlistId, track, source);
+
+  Future<void> retryLocalPlaylistEntry(LocalPlaylistEntry entry) => _client.retryLocalPlaylistEntry(entry);
+
+  Future<void> resumeLocalPlaylistEntry(LocalPlaylistEntry entry) => _client.resumeLocalPlaylistEntry(entry);
+
+  Future<String?> resolveLocalPlaylistTrackId(Track track) => _client.resolveLocalPlaylistTrackId(track);
+
+  Future<List<TrackSourceMatch>> readServerTrackMatches(String serverBaseUrl, String localTrackId) =>
+      _client.readServerTrackMatches(serverBaseUrl, localTrackId);
+
+  Future<void> saveTrackSourceMatch(TrackSourceMatch match) => _client.saveTrackSourceMatch(match);
+
+  Future<void> removeTrackSourceMatch(SourceTrackRef source) => _client.removeTrackSourceMatch(source);
 
   Future<void> dispose() => _client.dispose();
 

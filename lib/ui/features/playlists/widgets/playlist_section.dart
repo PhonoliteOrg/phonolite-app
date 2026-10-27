@@ -103,7 +103,7 @@ class PlaylistSection extends BaseSliverSection {
       title: playlist.name,
       artist: 'Playlist',
       artistId: '',
-      trackCount: playlist.trackIds.length,
+      trackCount: playlist.totalTrackCount,
     );
   }
 }

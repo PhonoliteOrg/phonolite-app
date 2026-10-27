@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _ShuffleCoordinator {
   final AppController _host;
@@ -108,8 +108,19 @@ class _ShuffleCoordinator {
       }
       final deck = ServerShuffleDeck(
         first,
-        load: (offset) =>
-            _host.connection.fetchShuffleSessionPage(first.sessionId, clientId: _serverClientId, offset: offset),
+        load: (offset) async {
+          try {
+            return await _host.connection.fetchShuffleSessionPage(
+              first.sessionId,
+              clientId: _serverClientId,
+              offset: offset,
+            );
+          } on ApiException catch (error) {
+            if (error.statusCode != 404 || !_host._resumeCoordinator.hasDurableDeck(first.sessionId)) rethrow;
+
+            return _host.connection.fetchAccountPlaybackDeck(first.sessionId, offset: offset);
+          }
+        },
       );
       _serverDeck = deck;
       _serverDeckSessionRevision = revision;
@@ -152,6 +163,7 @@ class _ShuffleCoordinator {
     _serverDeckSessionRevision = null;
     _serverDeckExpired = false;
     _serverDeckReady = false;
+    _host._shuffleArtworkPreloader?.clear();
     deck?.close();
     if (deck != null && revision != null) _releaseServerShuffleSession(deck.sessionId, revision);
   }
@@ -167,8 +179,10 @@ class _ShuffleCoordinator {
 
   void _applyServerShuffleWindow(ServerShuffleDeck deck) {
     final loaded = {for (final track in _host._playQueue) track.id: track};
-    _host._playQueue = _host._normalizeQueueTracks(deck.tracks.map((track) => loaded[track.id] ?? track).toList());
+    final tracks = _host._normalizeQueueTracks(deck.tracks.map((track) => loaded[track.id] ?? track).toList());
+    _host._playQueue = _host.connection.projectServerTracks(tracks);
     _host._playIndex = deck.queueIndex;
+    _preloadServerShuffleArtwork();
   }
 
   void _prefetchServerShuffle() {
@@ -250,6 +264,8 @@ class _ShuffleCoordinator {
     String? albumId,
     bool play = true,
     String? startTrackId,
+    bool preserveContext = false,
+    String? avoidTrackId,
   }) async {
     try {
       final mode = _host._playbackState.shuffleMode;
@@ -299,7 +315,9 @@ class _ShuffleCoordinator {
         offlineSource = OfflineQueueSource.localLiked;
         contextScope = 'localLiked';
       } else if (mode == ShuffleMode.artist) {
-        contextArtistId = _resolveLocalShuffleArtistId(startTrackId: startTrackId, artistId: artistId);
+        contextArtistId = preserveContext
+            ? artistId
+            : _resolveLocalShuffleArtistId(startTrackId: startTrackId, artistId: artistId);
 
         if (contextArtistId == null || contextArtistId.isEmpty) {
           _host._pushMessage('Select a local artist to shuffle');
@@ -319,7 +337,9 @@ class _ShuffleCoordinator {
         offlineSource = OfflineQueueSource.tracks;
         contextScope = 'localArtist';
       } else if (mode == ShuffleMode.album) {
-        contextAlbumId = _resolveLocalShuffleAlbumId(startTrackId: startTrackId, albumId: albumId);
+        contextAlbumId = preserveContext
+            ? albumId
+            : _resolveLocalShuffleAlbumId(startTrackId: startTrackId, albumId: albumId);
 
         if (contextAlbumId == null || contextAlbumId.isEmpty) {
           _host._pushMessage('Select a local album to shuffle');
@@ -374,7 +394,7 @@ class _ShuffleCoordinator {
         albumId: contextAlbumId,
       );
       _host._setQueue(
-        _shuffleTracks(tracks),
+        _shuffleTracks(tracks, avoidTrackId: avoidTrackId),
         startTrackId: startTrackId,
         queueSource: PlaybackQueueSource.offline,
         queueSourcePlaylistId: sourcePlaylistId,
@@ -467,6 +487,12 @@ class _ShuffleCoordinator {
   }
 
   void _rememberShuffleContext({required String scope, String? playlistId, String? artistId, String? albumId}) {
+    _host._resumeCoordinator.rememberShuffle(
+      scope: scope,
+      playlistId: playlistId,
+      artistId: artistId,
+      albumId: albumId,
+    );
     _queueShuffleMode = _host._playbackState.shuffleMode;
     _queueShuffleScope = scope;
     _queueShufflePlaylistId = playlistId;
@@ -573,6 +599,13 @@ class _ShuffleCoordinator {
   }
 
   Future<bool> _ensureServerShuffleQueue({bool play = true, bool preserveNavigation = false}) async {
+    if (_host._playbackState.shuffleMode == ShuffleMode.off) {
+      return false;
+    }
+
+    if (_serverDeck == null && _host._resumeCoordinator.hasDeferredNavigation) {
+      await _host._resumeCoordinator.restoreDeferredDeck();
+    }
     if (_host._playbackState.shuffleMode == ShuffleMode.off) {
       return false;
     }
@@ -685,7 +718,12 @@ class _ShuffleCoordinator {
       return false;
     }
 
-    _host._setQueue(tracks, startTrackId: current.id, queueSource: PlaybackQueueSource.none);
+    _host._setQueue(
+      tracks,
+      startTrackId: current.id,
+      queueSource: PlaybackQueueSource.none,
+      sourceContext: PlaybackSourceContext(kind: 'album', id: albumId),
+    );
     _queueShuffleMode = ShuffleMode.off;
     _queueShuffleScope = null;
 
@@ -932,10 +970,18 @@ class _ShuffleCoordinator {
     }
   }
 
-  List<Track> _shuffleTracks(List<Track> tracks) {
+  List<Track> _shuffleTracks(List<Track> tracks, {String? avoidTrackId}) {
     final shuffled = List<Track>.from(tracks);
 
     shuffled.shuffle(_shuffleRandom);
+    if (shuffled.isNotEmpty && shuffled.first.id == avoidTrackId) {
+      final next = shuffled.indexWhere((track) => track.id != avoidTrackId);
+      if (next > 0) {
+        final first = shuffled[0];
+        shuffled[0] = shuffled[next];
+        shuffled[next] = first;
+      }
+    }
 
     return shuffled;
   }

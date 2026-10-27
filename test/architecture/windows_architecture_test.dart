@@ -14,7 +14,10 @@ void main() {
         .where((path) => !path.contains(r'${FLUTTER_MANAGED_DIR}'))
         .toList();
     final expected = _nativeFiles()
-        .where((file) => !file.path.endsWith('resource.h'))
+        .where(
+          (file) =>
+              !file.path.endsWith('resource.h') && !file.path.replaceAll('\\', '/').contains('/infrastructure/audio/'),
+        )
         .map((file) => file.path.replaceAll('\\', '/').substring('windows/runner/'.length))
         .toSet();
 
@@ -23,6 +26,25 @@ void main() {
     expect(executable, contains(r'"${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"'));
     expect(executable, contains('"Runner.rc"'));
     expect(executable, contains('"runner.exe.manifest"'));
+    expectContainsAll(build, const [
+      'add_subdirectory("infrastructure/audio")',
+      r'add_dependencies(${BINARY_NAME} phonolite_audio_windows)',
+    ]);
+  });
+
+  test('Windows PCM library explicitly registers its own sources once', () {
+    const directory = 'windows/runner/infrastructure/audio';
+    final build = readProjectFile('$directory/CMakeLists.txt');
+    final library = RegExp(r'add_library\(phonolite_audio_windows SHARED[\s\S]*?\n\)').firstMatch(build)![0]!;
+    final references = RegExp(r'"([^"\n]+\.(?:cpp|h))"').allMatches(library).map((match) => match[1]!).toList();
+    final expected = _nativeFiles()
+        .map((file) => file.path.replaceAll('\\', '/'))
+        .where((path) => path.startsWith('$directory/'))
+        .map((path) => path.substring(directory.length + 1))
+        .toSet();
+
+    expect(references.length, references.toSet().length, reason: 'Do not compile or register a component twice');
+    expect(references.toSet(), expected);
   });
 
   test('Windows values, frame and channel transport keep their responsibility boundaries', () {

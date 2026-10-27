@@ -194,6 +194,12 @@ object NativeChannelContractTest {
     check(codec.configuration(mapOf("sampleRate" to "48000", "channels" to 2)) == null)
     val configuration = codec.configuration(mapOf("sampleRate" to 48_000L, "channels" to 2))!!
     check(configuration.sampleRate == 48_000 && configuration.channels == 2 && configuration.deviceId == -1)
+    check(configuration.bitsPerSample == 16 && configuration.validBitsPerSample == 16)
+    val original =
+      codec.configuration(
+        mapOf("sampleRate" to 192_000, "channels" to 2, "bitsPerSample" to 32, "validBitsPerSample" to 24)
+      )!!
+    check(original.sampleRate == 192_000 && original.bitsPerSample == 32 && original.validBitsPerSample == 24)
     check(codec.id(mapOf("id" to 5L)) == 5)
     check(
       codec.encodeDevices(listOf(OutputDevice(-1, "System Default"))) ==

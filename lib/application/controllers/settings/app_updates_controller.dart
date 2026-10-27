@@ -31,56 +31,46 @@ class AppUpdatesController extends ChangeNotifier {
       _isSupported = isSupported;
 
   bool get showInSettings => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
   bool get supported => _isSupported?.call() ?? (showInSettings && !kDebugMode);
+
   String? get disabledReason => showInSettings && !supported && kDebugMode
       ? 'Update checks are disabled in debug builds. Use a release build to check for updates.'
       : null;
+
   bool get ready => _ready;
+
   AppUpdateRelease? get latestRelease => _latestRelease;
+
   bool get canInstall => _ready && _latestRelease != null && !_busy && _installation == null;
+
   bool get busy => _busy;
+
   String? get error => _error;
 
   Future<void> initialize({required Future<void> Function() onInstall}) => _initialization ??= _initialize(onInstall);
 
-  Future<void> _initialize(Future<void> Function() onInstall) async {
-    if (!supported) {
-      return;
-    }
+  Future<void> shutdown() async {
+    ++_generation;
+    _checkTimer?.cancel();
+    _checkTimer = null;
+    _feed.close();
 
-    final generation = _generation;
-    _busy = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      final configuration = await _platform.initialize(onInstall: () => _installation ??= Future<void>.sync(onInstall));
-      if (generation != _generation) {
-        return;
-      }
-
-      _ready = configuration.available;
-      if (_ready) {
-        _configuration = configuration;
-        _checkTimer = Timer.periodic(checkInterval, (_) => unawaited(_checkForUpdates()));
-      } else {
-        _error = 'Update checks are unavailable in this build.';
-      }
-    } catch (error) {
-      if (generation != _generation) {
-        return;
-      }
-      _report('Could not check for app updates', error);
-    } finally {
-      if (generation == _generation) {
-        _busy = false;
-        notifyListeners();
+    if (supported && _initialization != null) {
+      try {
+        await _initialization;
+        await _platform.dispose();
+      } catch (error) {
+        AppLogger.warning('App updater cleanup failed: $error');
       }
     }
 
-    if (generation == _generation && _ready) {
-      await _checkForUpdates();
-    }
+    _ready = false;
+    _busy = false;
+    _latestRelease = null;
+    _configuration = null;
+    _installation = null;
+    _initialization = null;
   }
 
   Future<void> installLatestUpdate() async {
@@ -89,6 +79,7 @@ class AppUpdatesController extends ChangeNotifier {
     }
 
     final generation = _generation;
+
     _busy = true;
     _error = null;
     notifyListeners();
@@ -107,40 +98,66 @@ class AppUpdatesController extends ChangeNotifier {
     }
   }
 
-  Future<void> shutdown() async {
-    ++_generation;
-    _checkTimer?.cancel();
-    _checkTimer = null;
-    _feed.close();
-    if (supported && _initialization != null) {
-      try {
-        await _initialization;
-        await _platform.dispose();
-      } catch (error) {
-        AppLogger.warning('App updater cleanup failed: $error');
+  Future<void> _initialize(Future<void> Function() onInstall) async {
+    if (!supported) {
+      return;
+    }
+
+    final generation = _generation;
+
+    _busy = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final configuration = await _platform.initialize(onInstall: () => _installation ??= Future<void>.sync(onInstall));
+
+      if (generation != _generation) {
+        return;
+      }
+
+      _ready = configuration.available;
+
+      if (_ready) {
+        _configuration = configuration;
+        _checkTimer = Timer.periodic(checkInterval, (_) => unawaited(_checkForUpdates()));
+      } else {
+        _error = 'Update checks are unavailable in this build.';
+      }
+    } catch (error) {
+      if (generation != _generation) {
+        return;
+      }
+
+      _report('Could not check for app updates', error);
+    } finally {
+      if (generation == _generation) {
+        _busy = false;
+        notifyListeners();
       }
     }
-    _ready = false;
-    _busy = false;
-    _latestRelease = null;
-    _configuration = null;
-    _installation = null;
-    _initialization = null;
+
+    if (generation == _generation && _ready) {
+      await _checkForUpdates();
+    }
   }
 
   Future<void> _checkForUpdates() async {
     final configuration = _configuration;
+
     if (!_ready || configuration == null || _busy || _installation != null) {
       return;
     }
 
     final generation = _generation;
+
     _busy = true;
     _error = null;
     notifyListeners();
 
     try {
       final release = await _feed.latest(configuration);
+
       if (generation == _generation) {
         _latestRelease = release;
       }

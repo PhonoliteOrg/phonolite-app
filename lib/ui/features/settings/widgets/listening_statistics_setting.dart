@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/ui/controller_binding.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/stats_icon.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
@@ -89,16 +89,11 @@ class SettingsListeningStatisticsSettingState extends State<ListeningStatisticsS
           ),
           const SizedBox(width: 6),
           SettingsTrailing(
-            child: Semantics(
-              label: 'Collect listening statistics',
-              child: Switch.adaptive(
-                key: const ValueKey('listening-statistics-switch'),
-                value: widget.enabled,
-                activeThumbColor: ObsidianPalette.gold,
-                activeTrackColor: ObsidianPalette.gold.withValues(alpha: 0.3),
-                hoverColor: Colors.transparent,
-                onChanged: withSelectionHaptic(_feature.saving || _feature.resetting ? null : settingsChange),
-              ),
+            child: ObsidianSwitch(
+              key: const ValueKey('listening-statistics-switch'),
+              value: widget.enabled,
+              semanticLabel: 'Collect listening statistics',
+              onChanged: _feature.resetting ? null : settingsChange,
             ),
           ),
         ],

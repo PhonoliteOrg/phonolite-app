@@ -10,8 +10,11 @@ extern "C" {
 typedef struct PhonoliteAudioPlayer PhonoliteAudioPlayer;
 
 PhonoliteAudioPlayer *phonolite_audio_open(int32_t sampleRate, int32_t channels, int32_t deviceId);
+PhonoliteAudioPlayer *phonolite_audio_open_format(int32_t sampleRate, int32_t channels, int32_t deviceId,
+                                                 int32_t bitsPerSample);
 void phonolite_audio_close(PhonoliteAudioPlayer *player);
 int32_t phonolite_audio_write(PhonoliteAudioPlayer *player, const int16_t *samples, int32_t sampleCount);
+int32_t phonolite_audio_write32(PhonoliteAudioPlayer *player, const int32_t *samples, int32_t sampleCount);
 void phonolite_audio_set_volume(PhonoliteAudioPlayer *player, float volume);
 void phonolite_audio_pause(PhonoliteAudioPlayer *player);
 void phonolite_audio_resume(PhonoliteAudioPlayer *player);

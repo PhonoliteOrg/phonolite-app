@@ -4,6 +4,7 @@
 #include <CoreAudio/CoreAudio.h>
 
 #include <pthread.h>
+#include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@ struct PhonoliteAudioPlayer {
   atomic_llong completed_samples;
   int32_t sample_rate;
   int32_t channels;
+  int32_t bits_per_sample;
   bool paused;
   bool started;
   OSStatus output_error;
@@ -86,7 +88,13 @@ static OSStatus audio_queue_player_start_if_ready(PhonoliteAudioPlayer *player) 
 }
 
 PhonoliteAudioPlayer *audio_queue_player_open(int32_t sample_rate, int32_t channels, int32_t device_id) {
-  if (sample_rate <= 0 || channels <= 0) {
+  return audio_queue_player_open_format(sample_rate, channels, device_id, 16);
+}
+
+PhonoliteAudioPlayer *audio_queue_player_open_format(int32_t sample_rate, int32_t channels, int32_t device_id,
+                                                    int32_t bits_per_sample) {
+  if (sample_rate <= 0 || channels <= 0 || channels > 32 ||
+      (bits_per_sample != 16 && bits_per_sample != 32)) {
     return NULL;
   }
 
@@ -100,17 +108,18 @@ PhonoliteAudioPlayer *audio_queue_player_open(int32_t sample_rate, int32_t chann
   pthread_mutex_init(&player->buffer_lock, NULL);
   player->sample_rate = sample_rate;
   player->channels = channels;
+  player->bits_per_sample = bits_per_sample;
 
   AudioStreamBasicDescription asbd;
   memset(&asbd, 0, sizeof(asbd));
   asbd.mSampleRate = sample_rate;
   asbd.mFormatID = kAudioFormatLinearPCM;
   asbd.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
-  asbd.mBytesPerPacket = (UInt32)(channels * 2);
+  asbd.mBytesPerPacket = (UInt32)(channels * bits_per_sample / 8);
   asbd.mFramesPerPacket = 1;
-  asbd.mBytesPerFrame = (UInt32)(channels * 2);
+  asbd.mBytesPerFrame = (UInt32)(channels * bits_per_sample / 8);
   asbd.mChannelsPerFrame = (UInt32)channels;
-  asbd.mBitsPerChannel = 16;
+  asbd.mBitsPerChannel = (UInt32)bits_per_sample;
 
   OSStatus status =
       AudioQueueNewOutput(&asbd, audio_queue_player_output_callback, player, NULL, NULL, 0, &player->queue);
@@ -156,8 +165,10 @@ void audio_queue_player_close(PhonoliteAudioPlayer *player) {
   free(player);
 }
 
-int32_t audio_queue_player_write(PhonoliteAudioPlayer *player, const int16_t *samples, int32_t sample_count) {
-  if (player == NULL || samples == NULL || sample_count <= 0) {
+static int32_t audio_queue_player_write_pcm(PhonoliteAudioPlayer *player, const void *samples, int32_t sample_count,
+                                            int32_t bits_per_sample) {
+  if (player == NULL || samples == NULL || sample_count <= 0 || player->bits_per_sample != bits_per_sample ||
+      sample_count % player->channels != 0 || sample_count > INT32_MAX / (bits_per_sample / 8)) {
     return -1;
   }
 
@@ -178,7 +189,7 @@ int32_t audio_queue_player_write(PhonoliteAudioPlayer *player, const int16_t *sa
     return -4;
   }
 
-  UInt32 byte_size = (UInt32)(sample_count * (int32_t)sizeof(int16_t));
+  UInt32 byte_size = (UInt32)(sample_count * (bits_per_sample / 8));
   AudioQueueBufferRef buffer = NULL;
   OSStatus status = AudioQueueAllocateBuffer(player->queue, byte_size, &buffer);
   if (status != noErr || buffer == NULL) {
@@ -205,6 +216,14 @@ int32_t audio_queue_player_write(PhonoliteAudioPlayer *player, const int16_t *sa
   }
 
   return (int32_t)audio_queue_player_start_if_ready(player);
+}
+
+int32_t audio_queue_player_write(PhonoliteAudioPlayer *player, const int16_t *samples, int32_t sample_count) {
+  return audio_queue_player_write_pcm(player, samples, sample_count, 16);
+}
+
+int32_t audio_queue_player_write32(PhonoliteAudioPlayer *player, const int32_t *samples, int32_t sample_count) {
+  return audio_queue_player_write_pcm(player, samples, sample_count, 32);
 }
 
 int32_t audio_queue_player_flush(PhonoliteAudioPlayer *player) {

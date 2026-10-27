@@ -18,6 +18,7 @@ class PlaybackIntelZone extends StatelessWidget {
   final VoidCallback? onTap;
   final List<Widget> techTags;
   final List<Widget> sourceTags;
+  final bool wrapTags;
 
   const PlaybackIntelZone({
     super.key,
@@ -25,6 +26,7 @@ class PlaybackIntelZone extends StatelessWidget {
     required this.isLoading,
     required this.techTags,
     required this.sourceTags,
+    this.wrapTags = true,
     this.onTap,
   });
 
@@ -86,7 +88,7 @@ class PlaybackIntelZone extends StatelessWidget {
                 gap: s(24),
               ),
               SizedBox(height: s(3)),
-              playbackTechTagRow(context, displayTags, wrap: true),
+              playbackTechTagRow(context, displayTags, wrap: wrapTags),
             ],
           ),
         ),

@@ -41,9 +41,7 @@ void main() {
           addTearDown(tester.view.resetDevicePixelRatio);
           final topInset = ValueNotifier(layout.topInset);
           addTearDown(topInset.dispose);
-          final controller = (await tester.runAsync(
-            () async => _Controller(connected: connected, artistCount: 24),
-          ))!;
+          final controller = (await tester.runAsync(() async => _Controller(connected: connected, artistCount: 24)))!;
           try {
             await tester.pumpWidget(
               AppScope(
@@ -51,11 +49,7 @@ void main() {
                 child: wrapInTestApp(
                   ValueListenableBuilder<double>(
                     valueListenable: topInset,
-                    builder: (context, top, child) => PlaybackContentInset(
-                      top: top,
-                      bottom: 100,
-                      child: child!,
-                    ),
+                    builder: (context, top, child) => PlaybackContentInset(top: top, bottom: 100, child: child!),
                     child: const LibraryPage(),
                   ),
                 ),
@@ -89,33 +83,21 @@ void main() {
 
             await tester.tap(find.byType(TextField));
             await tester.pump();
-            expect(
-              tester
-                  .widget<TextField>(find.byType(TextField))
-                  .focusNode!
-                  .hasFocus,
-              isTrue,
-            );
+            expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue);
             await tester.enterText(find.byType(TextField), 'Alice');
             await tester.pump(const Duration(milliseconds: 500));
             await tester.pumpAndSettle();
             final field = tester.widget<TextField>(find.byType(TextField));
             expect(field.focusNode!.hasFocus, isTrue);
             expect(field.controller!.text, 'Alice');
-            expect(
-              tester.getRect(search).top,
-              greaterThanOrEqualTo(layout.topInset + 12),
-            );
+            expect(tester.getRect(search).top, greaterThanOrEqualTo(layout.topInset + 12));
             position.jumpTo(500);
             await tester.pumpAndSettle();
             expect(tester.getRect(search).top, layout.topInset + 12);
             await tester.tap(find.byTooltip('Clear search'));
             await tester.pumpAndSettle();
             expect(field.controller!.text, isEmpty);
-            expect(
-              tester.getRect(search).top,
-              greaterThanOrEqualTo(layout.topInset + 12),
-            );
+            expect(tester.getRect(search).top, greaterThanOrEqualTo(layout.topInset + 12));
 
             position.jumpTo(500);
             await tester.pumpAndSettle();
@@ -136,84 +118,61 @@ void main() {
   }
 
   for (final isLocal in [true, false]) {
-    testWidgets(
-      '${isLocal ? 'local' : 'server'} mobile track search has the shared actions modal',
-      (tester) async {
-        tester.view.physicalSize = const Size(390, 844);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final controller = (await tester.runAsync(
-          () async => _Controller(connected: !isLocal),
-        ))!;
-        var openedTrack = 0;
-        try {
-          await tester.pumpWidget(
-            AppScope(
-              controller: controller,
-              child: wrapInTestApp(
-                SearchResultTile(
-                  result: SearchResult(
-                    kind: 'track',
-                    id: 'track',
-                    title: 'Morning',
-                    albumId: 'album',
-                  ),
-                  catalog: controller.catalog,
-                  useLocalArtwork: isLocal,
-                  onTap: () => openedTrack++,
-                ),
+    testWidgets('${isLocal ? 'local' : 'server'} mobile track search has the shared actions modal', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = (await tester.runAsync(() async => _Controller(connected: !isLocal)))!;
+      var openedTrack = 0;
+      try {
+        await tester.pumpWidget(
+          AppScope(
+            controller: controller,
+            child: wrapInTestApp(
+              SearchResultTile(
+                result: SearchResult(kind: 'track', id: 'track', title: 'Morning', albumId: 'album'),
+                catalog: controller.catalog,
+                useLocalArtwork: isLocal,
+                onTap: () => openedTrack++,
               ),
             ),
-          );
-          final connection = controller.connection as _SearchConnection;
-          expect(connection.trackFetches, 0);
-          for (final action in [
-            'Like',
-            if (!isLocal) 'Download',
-            'Add to playlist',
-          ]) {
-            await tester.tap(find.byTooltip('Track actions'));
-            await tester.pumpAndSettle();
-            expect(find.byType(ObsidianAlertDialog), findsOneWidget);
-            expect(find.byType(PopupMenuItem<int>), findsNothing);
-            expect(find.text('Like'), findsOneWidget);
-            expect(
-              find.text('Download'),
-              isLocal ? findsNothing : findsOneWidget,
-            );
-            await tester.tap(find.text(action));
-            await tester.pumpAndSettle();
-          }
-          expect(controller.actions, [
-            isLocal ? 'like:local' : 'like:server',
-            if (!isLocal) 'download',
-          ]);
-          expect(find.byType(AddToPlaylistModal), findsOneWidget);
-          expect(
-            find.text('Add to ${isLocal ? 'local' : 'server'} playlist'),
-            findsOneWidget,
-          );
-          expect(connection.trackFetches, isLocal ? 0 : 3);
-          expect(openedTrack, 0);
-          if (!isLocal) {
-            await tester.tap(find.text('CLOSE'));
-            await tester.pumpAndSettle();
-            connection.failTrackFetch = true;
-            await tester.tap(find.byTooltip('Track actions'));
-            await tester.pumpAndSettle();
-            expect(find.text('Unable to load track actions.'), findsOneWidget);
-            await tester.tap(find.text('CLOSE'));
-            await tester.pumpAndSettle();
-            expect(find.byType(ObsidianAlertDialog), findsNothing);
-          }
-          expect(tester.takeException(), isNull);
-        } finally {
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.runAsync(controller.close);
+          ),
+        );
+        final connection = controller.connection as _SearchConnection;
+        expect(connection.trackFetches, 0);
+        for (final action in ['Like', if (!isLocal) 'Download', 'Add to playlist']) {
+          await tester.tap(find.byTooltip('Track actions'));
+          await tester.pumpAndSettle();
+          expect(find.byType(ObsidianAlertDialog), findsOneWidget);
+          expect(find.byType(PopupMenuItem<int>), findsNothing);
+          expect(find.text('Like'), findsOneWidget);
+          expect(find.text('Download'), isLocal ? findsNothing : findsOneWidget);
+          await tester.tap(find.text(action));
+          await tester.pumpAndSettle();
         }
-      },
-    );
+        expect(controller.actions, [isLocal ? 'like:local' : 'like:server', if (!isLocal) 'download']);
+        expect(find.byType(AddToPlaylistModal), findsOneWidget);
+        expect(find.text('Add to ${isLocal ? 'local' : 'server'} playlist'), findsOneWidget);
+        expect(connection.trackFetches, isLocal ? 0 : 3);
+        expect(openedTrack, 0);
+        if (!isLocal) {
+          await tester.tap(find.text('CLOSE'));
+          await tester.pumpAndSettle();
+          connection.failTrackFetch = true;
+          await tester.tap(find.byTooltip('Track actions'));
+          await tester.pumpAndSettle();
+          expect(find.text('Unable to load track actions.'), findsOneWidget);
+          await tester.tap(find.text('CLOSE'));
+          await tester.pumpAndSettle();
+          expect(find.byType(ObsidianAlertDialog), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(controller.close);
+      }
+    });
   }
 
   for (final connected in [false, true]) {
@@ -229,9 +188,7 @@ void main() {
           final field = tester.widget<TextField>(find.byType(TextField));
           expect(field.focusNode!.hasFocus, isTrue);
           final viewport = tester.getRect(find.byType(CustomScrollView));
-          final gesture = await tester.startGesture(
-            Offset(viewport.center.dx, viewport.bottom - 100),
-          );
+          final gesture = await tester.startGesture(Offset(viewport.center.dx, viewport.bottom - 100));
           await gesture.moveBy(const Offset(0, -32));
           await tester.pump();
           await gesture.moveBy(const Offset(0, -128));
@@ -246,10 +203,7 @@ void main() {
           await controller.close();
         }
       },
-      variant: const TargetPlatformVariant({
-        TargetPlatform.iOS,
-        TargetPlatform.android,
-      }),
+      variant: const TargetPlatformVariant({TargetPlatform.iOS, TargetPlatform.android}),
     );
   }
 
@@ -264,9 +218,7 @@ void main() {
           addTearDown(tester.view.resetViewInsets);
           await tester.pumpAndSettle();
           final field = tester.widget<TextField>(find.byType(TextField));
-          final editable = tester.state<EditableTextState>(
-            find.byType(EditableText),
-          );
+          final editable = tester.state<EditableTextState>(find.byType(EditableText));
           editable.selectAll(SelectionChangedCause.toolbar);
           await tester.pump();
           editable.showToolbar();
@@ -274,13 +226,9 @@ void main() {
           expect(field.focusNode!.hasFocus, isTrue);
           expect(field.controller!.selection.isCollapsed, isFalse);
           expect(editable.selectionOverlay, isNotNull);
-          final position = Scrollable.of(
-            tester.element(find.byType(SearchHud)),
-          ).position;
+          final position = Scrollable.of(tester.element(find.byType(SearchHud))).position;
           final viewport = tester.getRect(find.byType(CustomScrollView));
-          final gesture = await tester.startGesture(
-            Offset(viewport.center.dx, viewport.bottom - 100),
-          );
+          final gesture = await tester.startGesture(Offset(viewport.center.dx, viewport.bottom - 100));
           await gesture.moveBy(const Offset(0, -32));
           await tester.pump();
           await gesture.moveBy(const Offset(0, -128));
@@ -310,10 +258,7 @@ void main() {
           await controller.close();
         }
       },
-      variant: const TargetPlatformVariant({
-        TargetPlatform.iOS,
-        TargetPlatform.android,
-      }),
+      variant: const TargetPlatformVariant({TargetPlatform.iOS, TargetPlatform.android}),
     );
 
     testWidgets(
@@ -323,19 +268,12 @@ void main() {
         try {
           await _pumpSearch(tester, controller, 'Alice');
           final field = tester.widget<TextField>(find.byType(TextField));
-          field.controller!.selection = const TextSelection(
-            baseOffset: 0,
-            extentOffset: 5,
-          );
+          field.controller!.selection = const TextSelection(baseOffset: 0, extentOffset: 5);
           await tester.pump();
-          final position = Scrollable.of(
-            tester.element(find.byType(SearchHud)),
-          ).position;
+          final position = Scrollable.of(tester.element(find.byType(SearchHud))).position;
           final viewport = tester.getRect(find.byType(CustomScrollView));
           final pointer = TestPointer(1, PointerDeviceKind.mouse);
-          await tester.sendEventToBinding(
-            pointer.hover(Offset(viewport.center.dx, viewport.bottom - 100)),
-          );
+          await tester.sendEventToBinding(pointer.hover(Offset(viewport.center.dx, viewport.bottom - 100)));
           await tester.sendEventToBinding(pointer.scroll(const Offset(0, 160)));
           await tester.pumpAndSettle();
           expect(position.pixels, greaterThan(0));
@@ -351,142 +289,104 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.windows),
     );
 
-    testWidgets(
-      'cursor changes do not rebuild the library for connected=$connected',
-      (tester) async {
-        final controller = _Controller(connected: connected);
-        try {
-          await _pumpSearch(tester, controller, 'Alice');
-          final text = tester
-              .widget<TextField>(find.byType(TextField))
-              .controller!;
-          final readsBeforeSelection = controller.librarySnapshotReads;
-          text.selection = const TextSelection.collapsed(offset: 0);
-          await tester.pump();
-          expect(
-            controller.librarySnapshotReads,
-            readsBeforeSelection,
-            reason:
-                'Focusing or moving the cursor must not rebuild/filter the full music library',
-          );
-          text.value = text.value.copyWith(
-            composing: const TextRange(start: 0, end: 1),
-          );
-          await tester.pump();
-          expect(controller.librarySnapshotReads, readsBeforeSelection);
-          expect(find.byType(SearchResultTile), findsNWidgets(3));
+    testWidgets('cursor changes do not rebuild the library for connected=$connected', (tester) async {
+      final controller = _Controller(connected: connected);
+      try {
+        await _pumpSearch(tester, controller, 'Alice');
+        final text = tester.widget<TextField>(find.byType(TextField)).controller!;
+        final readsBeforeSelection = controller.librarySnapshotReads;
+        text.selection = const TextSelection.collapsed(offset: 0);
+        await tester.pump();
+        expect(
+          controller.librarySnapshotReads,
+          readsBeforeSelection,
+          reason: 'Focusing or moving the cursor must not rebuild/filter the full music library',
+        );
+        text.value = text.value.copyWith(composing: const TextRange(start: 0, end: 1));
+        await tester.pump();
+        expect(controller.librarySnapshotReads, readsBeforeSelection);
+        expect(find.byType(SearchResultTile), findsNWidgets(3));
 
-          await tester.enterText(find.byType(TextField), 'no matching song');
-          await tester.pump(const Duration(milliseconds: 500));
-          expect(
-            controller.librarySnapshotReads,
-            greaterThan(readsBeforeSelection),
-          );
-          expect(find.byType(SearchResultTile), findsNothing);
-          expect(tester.takeException(), isNull);
-        } finally {
-          await tester.pumpWidget(const SizedBox.shrink());
-          await controller.close();
-        }
-      },
-    );
+        await tester.enterText(find.byType(TextField), 'no matching song');
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(controller.librarySnapshotReads, greaterThan(readsBeforeSelection));
+        expect(find.byType(SearchResultTile), findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await controller.close();
+      }
+    });
   }
 
   for (final connected in [false, true]) {
-    testWidgets(
-      'search shows local types and counts while connected=$connected',
-      (tester) async {
-        final controller = _Controller(connected: connected);
-        try {
-          await _pumpSearch(tester, controller, 'Alice');
-          expect(find.text('Local Library Results'), findsOneWidget);
-          expect(find.text('3 local matches'), findsOneWidget);
-          final localTiles = tester.widgetList<SearchResultTile>(
-            find.byType(SearchResultTile),
-          );
-          expect(localTiles.map((tile) => tile.result.kind), [
-            'artist',
-            'album',
-            'track',
-          ]);
-          expect(localTiles.every((tile) => tile.useLocalArtwork), isTrue);
-          expect(
-            find.text('Server Library Results'),
-            connected ? findsOneWidget : findsNothing,
-          );
-          if (connected) expect(find.text('0 server matches'), findsOneWidget);
-          expect(find.text('Connected Server Results'), findsNothing);
-          expect(tester.takeException(), isNull);
+    testWidgets('search shows local types and counts while connected=$connected', (tester) async {
+      final controller = _Controller(connected: connected);
+      try {
+        await _pumpSearch(tester, controller, 'Alice');
+        expect(find.text('Local Library Results'), findsOneWidget);
+        expect(find.text('3 local matches'), findsOneWidget);
+        final localTiles = tester.widgetList<SearchResultTile>(find.byType(SearchResultTile));
+        expect(localTiles.map((tile) => tile.result.kind), ['artist', 'album', 'track']);
+        expect(localTiles.every((tile) => tile.useLocalArtwork), isTrue);
+        expect(find.text('Server Library Results'), connected ? findsOneWidget : findsNothing);
+        if (connected) expect(find.text('0 server matches'), findsOneWidget);
+        expect(find.text('Connected Server Results'), findsNothing);
+        expect(tester.takeException(), isNull);
 
-          await tester.enterText(find.byType(TextField), 'no matching song');
-          await tester.pump(const Duration(milliseconds: 500));
-          expect(find.text('0 local matches'), findsOneWidget);
-          expect(find.text('No local results'), findsOneWidget);
-          expect(find.byType(SearchResultTile), findsNothing);
-          expect(tester.takeException(), isNull);
-        } finally {
-          await tester.pumpWidget(const SizedBox.shrink());
-          await controller.close();
-        }
-      },
-    );
+        await tester.enterText(find.byType(TextField), 'no matching song');
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.text('0 local matches'), findsOneWidget);
+        expect(find.text('No local results'), findsOneWidget);
+        expect(find.byType(SearchResultTile), findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await controller.close();
+      }
+    });
   }
 
   for (final kind in ['artist', 'album', 'track']) {
-    testWidgets(
-      'local $kind search selection uses downloaded detail and playback',
-      (tester) async {
-        final controller = _Controller(connected: true);
-        try {
-          await _pumpSearch(tester, controller, 'Alice');
-          final tile = find.byWidgetPredicate(
-            (widget) =>
-                widget is SearchResultTile && widget.result.kind == kind,
-          );
-          await tester.tap(tile);
-          await tester.pumpAndSettle();
-          if (kind == 'artist') {
-            expect(find.byType(LocalArtistDetailScreen), findsOneWidget);
-          } else {
-            expect(find.byType(LocalAlbumDetailScreen), findsOneWidget);
-          }
-          expect(controller.played, kind == 'track' ? ['track'] : isEmpty);
-          if (kind == 'track') expect(controller.playedQueue, ['track']);
-          expect(tester.takeException(), isNull);
-        } finally {
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.pump(const Duration(seconds: 1));
-          await controller.close();
+    testWidgets('local $kind search selection uses downloaded detail and playback', (tester) async {
+      final controller = _Controller(connected: true);
+      try {
+        await _pumpSearch(tester, controller, 'Alice');
+        final tile = find.byWidgetPredicate((widget) => widget is SearchResultTile && widget.result.kind == kind);
+        await tester.tap(tile);
+        await tester.pumpAndSettle();
+        if (kind == 'artist') {
+          expect(find.byType(LocalArtistDetailScreen), findsOneWidget);
+        } else {
+          expect(find.byType(LocalAlbumDetailScreen), findsOneWidget);
         }
-      },
-    );
+        expect(controller.played, kind == 'track' ? ['track'] : isEmpty);
+        if (kind == 'track') expect(controller.playedQueue, ['track']);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(seconds: 1));
+        await controller.close();
+      }
+    });
   }
 }
 
-Future<void> _pumpSearch(
-  WidgetTester tester,
-  _Controller controller,
-  String query,
-) async {
+Future<void> _pumpSearch(WidgetTester tester, _Controller controller, String query) async {
   tester.view.physicalSize = const Size(430, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
-  await tester.pumpWidget(
-    AppScope(controller: controller, child: wrapInTestApp(const LibraryPage())),
-  );
+  await tester.pumpWidget(AppScope(controller: controller, child: wrapInTestApp(const LibraryPage())));
   await tester.enterText(find.byType(TextField), query);
   await tester.pump(const Duration(milliseconds: 500));
 }
 
 class _Controller extends AppController {
-  _Controller({
-    required this.connected,
-    this.trackCount = 1,
-    this.artistCount = 1,
-  }) : super(connection: _SearchConnection());
+  _Controller({required this.connected, this.trackCount = 1, this.artistCount = 1})
+    : super(connection: _SearchConnection());
 
   final bool connected;
   final int trackCount;
@@ -508,14 +408,12 @@ class _Controller extends AppController {
   );
 
   @override
-  AuthState get authState =>
-      AuthState(isAuthorized: connected, baseUrl: connection.baseUrl);
+  AuthState get authState => AuthState(isAuthorized: connected, baseUrl: connection.baseUrl);
 
   @override
   List<Artist> get artists => [
     Artist(id: 'artist', name: 'Alice', albumCount: 1),
-    for (var index = 1; index < artistCount; index++)
-      Artist(id: 'artist-$index', name: 'Alice $index', albumCount: 1),
+    for (var index = 1; index < artistCount; index++) Artist(id: 'artist-$index', name: 'Alice $index', albumCount: 1),
   ];
 
   @override
@@ -528,8 +426,7 @@ class _Controller extends AppController {
   @override
   List<Track> get offlineTracks => [
     _track,
-    for (var index = 1; index < trackCount; index++)
-      _track.copyWith(id: 'track-$index'),
+    for (var index = 1; index < trackCount; index++) _track.copyWith(id: 'track-$index'),
     for (var index = 1; index < artistCount; index++)
       _track.copyWith(
         id: 'artist-track-$index',
@@ -563,15 +460,15 @@ class _Controller extends AppController {
   Future<void> downloadTrack(Track track) async => actions.add('download');
   @override
   Future<void> loadLocalPlaylists() async {}
+
+  @override
+  Future<String?> resolveLocalPlaylistTrackId(Track track) async => track.localId ?? track.id;
+
   @override
   Future<void> loadPlaylists() async {}
 
   @override
-  Future<void> playOfflineTrack(
-    String trackId, {
-    List<Track>? tracks,
-    bool localLikedQueue = false,
-  }) async {
+  Future<void> playOfflineTrack(String trackId, {List<Track>? tracks, bool localLikedQueue = false}) async {
     played.add(trackId);
     playedQueue = tracks?.map((track) => track.id).toList() ?? [];
   }

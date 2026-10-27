@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_track_actions.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
@@ -22,6 +23,7 @@ import 'package:phonolite_app/ui/features/downloads/widgets/download_manager_pan
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_adaptive_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
@@ -55,6 +57,13 @@ Widget _dialog(_Kind kind, VoidCallback onAction) => switch (kind) {
     trackId: 'track',
     canUsePlaylists: true,
     onSelected: (_) => onAction(),
+    actionsForScope: (scope) async => PlaylistTrackActions(
+      playlists: [Playlist(id: 'focus', name: 'Focus', trackIds: [])],
+      trackId: 'track',
+      canUsePlaylists: true,
+      add: (_) => onAction(),
+      remove: (_) {},
+    ),
   ),
   _Kind.device => DevicePickerModal(
     fetchDevices: (_) async => [OutputDevice(id: 1, name: 'Speakers')],
@@ -70,8 +79,7 @@ Widget _dialog(_Kind kind, VoidCallback onAction) => switch (kind) {
 };
 
 DownloadManagerPanel _downloadManager([
-  ObsidianAdaptiveModalPresentation presentation =
-      ObsidianAdaptiveModalPresentation.dialog,
+  ObsidianAdaptiveModalPresentation presentation = ObsidianAdaptiveModalPresentation.dialog,
 ]) => DownloadManagerPanel(
   presentation: presentation,
   downloadsOverride: [
@@ -112,12 +120,58 @@ DownloadManagerPanel _downloadManager([
 void main() {
   setUp(configureTestFonts);
 
+  for (final platform in TargetPlatform.values) {
+    testWidgets('wide $platform modal preserves its input sizing and dialog placement', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1024, 768);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      var actionCalls = 0;
+      const scale = 0.7;
+      final touchPlatform = switch (platform) {
+        TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia => true,
+        _ => false,
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ObsidianTheme.build(scale: scale).copyWith(platform: platform),
+          builder: (context, child) => ObsidianScale(scale: scale, child: child!),
+          home: Scaffold(
+            body: ObsidianAlertDialog(
+              title: const Text('Tablet controls'),
+              content: const Text('Choose an action.'),
+              actions: [ModalActionButton(label: 'Save', onPressed: () => actionCalls++)],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final action = find.byType(ModalActionButton);
+      final context = tester.element(action);
+      expect(ObsidianModalScope.isCompact(context), isFalse);
+      expect(ObsidianModalScope.insetsOf(context), const EdgeInsets.all(24));
+      expect(ObsidianModalScope.usesTouchTargets(context), touchPlatform);
+      expect(ObsidianScale.of(context), touchPlatform ? 1 : scale);
+      expect(Theme.of(context).platform, platform);
+      final titleStyle = tester.renderObject<RenderParagraph>(find.text('Tablet controls')).text.style!;
+      expect(
+        titleStyle.fontSize,
+        ObsidianTheme.build(scale: touchPlatform ? 1 : scale).dialogTheme.titleTextStyle!.fontSize,
+      );
+      final rect = tester.getRect(action);
+      expect(rect.height, greaterThanOrEqualTo(touchPlatform ? 52 : 48));
+      await tester.tapAt(rect.bottomRight - const Offset(2, 2));
+      await tester.pump();
+      expect(actionCalls, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final width in [320.0, 390.0, 700.0, 1280.0]) {
     for (final textScale in [1.0, 1.4]) {
       for (final kind in _Kind.values) {
-        testWidgets('${kind.name} modal at $width, scale $textScale', (
-          tester,
-        ) async {
+        testWidgets('${kind.name} modal at $width, scale $textScale', (tester) async {
           tester.view.devicePixelRatio = 1;
           tester.view.physicalSize = Size(width, 844);
           addTearDown(tester.view.resetDevicePixelRatio);
@@ -127,15 +181,19 @@ void main() {
           Object? result;
           final scale = ObsidianScale.compute(width);
           final theme = ObsidianTheme.build(scale: scale);
-          final modalTheme = width < 820 ? ObsidianTheme.build() : theme;
+          final touchLayout =
+              width < 820 ||
+              switch (theme.platform) {
+                TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia => true,
+                _ => false,
+              };
+          final modalTheme = touchLayout ? ObsidianTheme.build() : theme;
 
           await tester.pumpWidget(
             MaterialApp(
               theme: theme,
               builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(textScaler: TextScaler.linear(textScale)),
+                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
                 child: ObsidianScale(scale: scale, child: child!),
               ),
               home: Scaffold(
@@ -146,13 +204,11 @@ void main() {
                           ? await ObsidianAdaptiveModal.show<Object>(
                               context: context,
                               useCompactSheet: false,
-                              builder: (_, presentation) =>
-                                  _downloadManager(presentation),
+                              builder: (_, presentation) => _downloadManager(presentation),
                             )
                           : await showDialog<Object>(
                               context: context,
-                              builder: (_) =>
-                                  _dialog(kind, () => actionCalls++),
+                              builder: (_) => _dialog(kind, () => actionCalls++),
                             );
                       closed = true;
                     },
@@ -168,59 +224,35 @@ void main() {
           final title = find.text(_title(kind));
           expect(find.byType(ObsidianGlassSurface), findsOneWidget);
           if (kind == _Kind.downloads) {
-            expect(
-              tester.widget<Text>(find.text('Jobs')).style,
-              tester.widget<Text>(find.text('Queue')).style,
-            );
+            expect(tester.widget<Text>(find.text('Jobs')).style, tester.widget<Text>(find.text('Queue')).style);
             expect(find.byType(Dialog), findsOneWidget);
             expect(find.byType(BottomSheet), findsNothing);
-            expect(
-              tester
-                  .widget<ObsidianModalSurface>(
-                    find.byType(ObsidianModalSurface),
-                  )
-                  .showDragHandle,
-              isFalse,
-            );
-            for (final tileType in [
-              TrackRowTile,
-              AlbumRowTile,
-              ArtistRowTile,
-            ]) {
+            expect(tester.widget<ObsidianModalSurface>(find.byType(ObsidianModalSurface)).showDragHandle, isFalse);
+            for (final tileType in [TrackRowTile, AlbumRowTile, ArtistRowTile]) {
               final tile = find.byType(tileType);
               final tileRect = tester.getRect(tile);
               if (tileType == TrackRowTile) {
-                final artRect = tester.getRect(
-                  find.descendant(of: tile, matching: find.byType(AlbumArt)),
-                );
+                final artRect = tester.getRect(find.descendant(of: tile, matching: find.byType(AlbumArt)));
                 final progressRect = tester.getRect(
-                  find.descendant(
-                    of: tile,
-                    matching: find.byType(CircularProgressIndicator),
-                  ),
+                  find.descendant(of: tile, matching: find.byType(CircularProgressIndicator)),
                 );
                 expect(progressRect.center, artRect.center);
                 expect(artRect.contains(progressRect.topLeft), isTrue);
                 expect(artRect.contains(progressRect.bottomRight), isTrue);
                 expect(artRect.left - tileRect.left, lessThanOrEqualTo(16));
               }
-              final buttons = find.descendant(
-                of: tile,
-                matching: find.byType(IconButton),
-              );
+              final buttons = find.descendant(of: tile, matching: find.byType(IconButton));
               expect(buttons, findsNWidgets(tileType == TrackRowTile ? 0 : 2));
               for (final button in buttons.evaluate()) {
                 final rect = tester.getRect(find.byWidget(button.widget));
                 expect(rect.center.dy, closeTo(tileRect.center.dy, 0.1));
                 expect(rect.left, greaterThanOrEqualTo(tileRect.left));
                 expect(rect.right, lessThanOrEqualTo(tileRect.right));
-                if (width < 820) {
+                if (touchLayout) {
                   expect(rect.size, const Size(44, 44));
                 }
               }
-              final title = find
-                  .descendant(of: tile, matching: find.byType(Text))
-                  .first;
+              final title = find.descendant(of: tile, matching: find.byType(Text)).first;
               expect(tester.getSize(title).width, greaterThan(0));
             }
           }
@@ -230,34 +262,21 @@ void main() {
             expect(titleRect.left - surface.left, closeTo(24, 0.1));
             expect(tester.widget<Text>(title).textAlign, TextAlign.left);
             final controls = [
-              for (final label in [
-                'Pause all',
-                'Resume paused',
-                'Clear all jobs and cache',
-              ])
+              for (final label in ['Pause all', 'Resume paused', 'Clear all jobs and cache'])
                 tester.getRect(find.byTooltip(label)),
             ];
             expect(titleRect.right, lessThan(controls.first.left));
             for (final control in controls) {
               expect(control.center.dy, closeTo(titleRect.center.dy, 0.1));
-              expect(control.size, Size.square(width < 820 ? 44 : 28));
+              expect(control.size, Size.square(touchLayout ? 44 : 28));
             }
             expect(controls[0].right, closeTo(controls[1].left, 0.1));
             expect(controls[1].right, closeTo(controls[2].left, 0.1));
             expect(surface.right - controls.last.right, closeTo(24, 0.1));
           }
-          final titleStyle = tester
-              .renderObject<RenderParagraph>(title)
-              .text
-              .style!;
-          expect(
-            titleStyle.fontSize,
-            modalTheme.dialogTheme.titleTextStyle!.fontSize,
-          );
-          expect(
-            titleStyle.fontFamily,
-            modalTheme.dialogTheme.titleTextStyle!.fontFamily,
-          );
+          final titleStyle = tester.renderObject<RenderParagraph>(title).text.style!;
+          expect(titleStyle.fontSize, modalTheme.dialogTheme.titleTextStyle!.fontSize);
+          expect(titleStyle.fontFamily, modalTheme.dialogTheme.titleTextStyle!.fontFamily);
           if (textScale == 1) {
             expect(titleRect.left - surface.left, closeTo(24, 0.1));
           }
@@ -273,17 +292,14 @@ void main() {
             _ => ['CLOSE'],
           };
           expect(labels, expected);
-          final dismiss = find.widgetWithText(
-            ModalActionButton,
-            expected.first,
-          );
+          final dismiss = find.widgetWithText(ModalActionButton, expected.first);
           final primary = find.widgetWithText(ModalActionButton, expected.last);
           final dismissRect = tester.getRect(dismiss);
           final primaryRect = tester.getRect(primary);
           expect(surface.right - primaryRect.right, closeTo(24, 0.1));
           expect(surface.bottom - primaryRect.bottom, closeTo(16, 0.1));
           expect(titleRect.bottom, lessThan(dismissRect.top));
-          expect(dismissRect.height, greaterThanOrEqualTo(48));
+          expect(dismissRect.height, greaterThanOrEqualTo(touchLayout ? 52 : 48));
           if (width < 820) {
             expect(surface.width, closeTo(width - 24, 0.1));
           }
@@ -307,16 +323,8 @@ void main() {
     }
   }
 
-  for (final kind in [
-    _Kind.create,
-    _Kind.edit,
-    _Kind.add,
-    _Kind.device,
-    _Kind.confirmation,
-  ]) {
-    testWidgets('${kind.name} stays usable above the mobile keyboard', (
-      tester,
-    ) async {
+  for (final kind in [_Kind.create, _Kind.edit, _Kind.add, _Kind.device, _Kind.confirmation]) {
+    testWidgets('${kind.name} stays usable above the mobile keyboard', (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(320, 640);
       tester.view.viewInsets = const FakeViewPadding(bottom: 280);
@@ -334,9 +342,7 @@ void main() {
     });
   }
 
-  testWidgets('playlist action and search clear accept taps at their edges', (
-    tester,
-  ) async {
+  testWidgets('playlist action and search clear accept taps at their edges', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(320, 640);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -351,121 +357,87 @@ void main() {
     await tester.tapAt(rect.bottomRight - const Offset(2, 2));
     await tester.pumpAndSettle();
     expect(added, 1);
-    expect(
-      tester.getSize(find.byType(ObsidianTextField)).height,
-      greaterThanOrEqualTo(56),
-    );
+    expect(tester.getSize(find.byType(ObsidianTextField)).height, greaterThanOrEqualTo(56));
     await tester.enterText(find.byType(TextField), 'Focus');
     await tester.pumpAndSettle();
-    final clear = find.descendant(
-      of: find.byTooltip('Clear search'),
-      matching: find.byType(ObsidianHudIconButton),
-    );
+    final clear = find.descendant(of: find.byTooltip('Clear search'), matching: find.byType(ObsidianHudIconButton));
     final clearRect = tester.getRect(clear);
     expect(clearRect.width, greaterThanOrEqualTo(48));
     expect(clearRect.height, greaterThanOrEqualTo(48));
     await tester.tapAt(clearRect.bottomRight - const Offset(2, 2));
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      isEmpty,
-    );
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
   for (final useModal in [false, true]) {
-    testWidgets(
-      'mobile ${useModal ? 'modal' : 'popup'} actions wrap labels and accept edge taps',
-      (tester) async {
-        tester.view.devicePixelRatio = 1;
-        tester.view.physicalSize = const Size(320, 640);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        addTearDown(tester.view.resetPhysicalSize);
-        var selected = 0;
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: ObsidianTheme.build(),
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: const TextScaler.linear(1.4)),
-              child: child!,
-            ),
-            home: Scaffold(
-              body: ObsidianOverflowActionButton(
-                tooltip: 'More actions',
-                modalTitle: useModal
-                    ? 'A long album track title that wraps within the modal'
-                    : null,
-                actions: [
-                  ObsidianMenuAction(
-                    label: 'Remove this downloaded selection',
-                    icon: Icons.delete,
-                    onTap: () => selected++,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-        await tester.tap(find.byTooltip('More actions'));
-        await tester.pumpAndSettle();
-        final rect = tester.getRect(
-          useModal
-              ? find.byType(ObsidianHoverRow)
-              : find.byType(PopupMenuItem<int>),
-        );
-        expect(rect.height, greaterThanOrEqualTo(48));
-        expect(rect.left, greaterThanOrEqualTo(0));
-        expect(rect.right, lessThanOrEqualTo(320));
-        await tester.tapAt(rect.bottomRight - const Offset(2, 2));
-        await tester.pumpAndSettle();
-        expect(selected, 1);
-        expect(tester.takeException(), isNull);
-      },
-    );
-  }
-
-  testWidgets(
-    'modal footer wraps long actions and supports keyboard activation',
-    (tester) async {
+    testWidgets('mobile ${useModal ? 'modal' : 'popup'} actions wrap labels and accept edge taps', (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(320, 640);
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.view.resetPhysicalSize);
-      var dismissed = false;
+      var selected = 0;
       await tester.pumpWidget(
-        wrapInTestApp(
-          ObsidianAlertDialog(
-            title: const Text('Confirm changes'),
-            content: const Text('Choose an action.'),
-            actions: [
-              ModalActionButton(
-                label: 'Close without saving changes',
-                onPressed: () => dismissed = true,
-              ),
-              ModalActionButton(
-                label: 'Save all playlist changes',
-                onPressed: () {},
-              ),
-            ],
+        MaterialApp(
+          theme: ObsidianTheme.build(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.4)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: ObsidianOverflowActionButton(
+              tooltip: 'More actions',
+              modalTitle: useModal ? 'A long album track title that wraps within the modal' : null,
+              actions: [
+                ObsidianMenuAction(
+                  label: 'Remove this downloaded selection',
+                  icon: Icons.delete,
+                  onTap: () => selected++,
+                ),
+              ],
+            ),
           ),
         ),
       );
-      final dismiss = find.byType(TextButton).first;
-      final primary = find.byType(TextButton).last;
-      expect(
-        tester.getRect(dismiss).bottom,
-        lessThan(tester.getRect(primary).top),
-      );
-      Focus.of(
-        tester.element(find.text('CLOSE WITHOUT SAVING CHANGES')),
-      ).requestFocus();
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
-      expect(dismissed, isTrue);
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(useModal ? find.byType(ObsidianHoverRow) : find.byType(PopupMenuItem<int>));
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(320));
+      await tester.tapAt(rect.bottomRight - const Offset(2, 2));
+      await tester.pumpAndSettle();
+      expect(selected, 1);
       expect(tester.takeException(), isNull);
-    },
-  );
+    });
+  }
+
+  testWidgets('modal footer wraps long actions and supports keyboard activation', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    var dismissed = false;
+    await tester.pumpWidget(
+      wrapInTestApp(
+        ObsidianAlertDialog(
+          title: const Text('Confirm changes'),
+          content: const Text('Choose an action.'),
+          actions: [
+            ModalActionButton(label: 'Close without saving changes', onPressed: () => dismissed = true),
+            ModalActionButton(label: 'Save all playlist changes', onPressed: () {}),
+          ],
+        ),
+      ),
+    );
+    final dismiss = find.byType(TextButton).first;
+    final primary = find.byType(TextButton).last;
+    expect(tester.getRect(dismiss).bottom, lessThan(tester.getRect(primary).top));
+    Focus.of(tester.element(find.text('CLOSE WITHOUT SAVING CHANGES'))).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(dismissed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }

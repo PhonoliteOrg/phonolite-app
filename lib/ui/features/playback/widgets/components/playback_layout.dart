@@ -7,8 +7,6 @@ const Color playbackQueueSourceGreen = Color(0xFF2ED573);
 
 const Color playbackPlaylistSourcePurple = Color(0xFFB388FF);
 
-const double playbackCompactPlaybackChromeWidth = 980;
-
 const double playbackSubtitleMarqueeSpeedFactor = 0.5;
 
 typedef ShuffleModeChanged = void Function(ShuffleMode mode, {ActionScope? scope});

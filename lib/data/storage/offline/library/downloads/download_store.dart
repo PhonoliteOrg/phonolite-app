@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
+part of '../offline_library.dart';
 
 class _OfflineDownloadStore {
   final OfflineLibraryStorage _host;
@@ -80,7 +80,13 @@ class _OfflineDownloadStore {
 
     return await _host._withDatabase(
       (db) {
-        final localTrackId = _host._resolveLocalTrackId(db, download.track);
+        final localTrackId = _host._resolveLocalTrackId(
+          db,
+          download.track.copyWith(
+            serverBaseUrl: download.serverBaseUrl,
+            serverTrackId: download.track.serverTrackId ?? download.track.id,
+          ),
+        );
 
         return _host._withLocalTrack(download, localTrackId);
       },
@@ -101,7 +107,13 @@ class _OfflineDownloadStore {
       (db) {
         return downloads
             .map((download) {
-              final localTrackId = _host._resolveLocalTrackId(db, download.track);
+              final localTrackId = _host._resolveLocalTrackId(
+                db,
+                download.track.copyWith(
+                  serverBaseUrl: download.serverBaseUrl,
+                  serverTrackId: download.track.serverTrackId ?? download.track.id,
+                ),
+              );
 
               return _host._withLocalTrack(download, localTrackId);
             })
@@ -190,7 +202,13 @@ class _OfflineDownloadStore {
   void _upsertDownload(Database db, OfflineTrackDownload download) {
     final localTrackId = download.localTrackId?.trim().isNotEmpty == true
         ? download.localTrackId!
-        : _host._resolveLocalTrackId(db, download.track);
+        : _host._resolveLocalTrackId(
+            db,
+            download.track.copyWith(
+              serverBaseUrl: download.serverBaseUrl,
+              serverTrackId: download.track.serverTrackId ?? download.track.id,
+            ),
+          );
     final normalized = _host._withLocalTrack(download, localTrackId);
 
     _host._upsertTrack(db, localTrackId, normalized.track);
@@ -313,6 +331,12 @@ class _OfflineDownloadStore {
         normalized.retryCount,
         normalized.priority,
       ],
+    );
+
+    db.execute(
+      '''UPDATE pending_playlist_tracks SET local_track_id = ?
+      WHERE server_base_url = ? AND server_track_id = ?''',
+      [localTrackId, normalized.serverBaseUrl, normalized.track.serverTrackId ?? normalized.track.id],
     );
 
     if (normalized.status == OfflineDownloadStatus.downloaded && normalized.filePath != null) {

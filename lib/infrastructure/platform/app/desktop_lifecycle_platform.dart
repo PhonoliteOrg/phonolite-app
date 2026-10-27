@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'package:phonolite_app/data/configuration/app/desktop_window_configuration.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/platform/app/linux_startup_registration.dart';
 
@@ -28,6 +32,8 @@ abstract interface class DesktopLifecyclePlatform {
 
 /// Owns desktop plugin listeners and the tray; application policy stays in the controller.
 class NativeDesktopLifecyclePlatform with WindowListener, TrayListener implements DesktopLifecyclePlatform {
+  static const _windowConstraints = MethodChannel('phonolite/window');
+
   final WindowManager _window;
   final TrayManager _tray;
   Future<void> Function()? _onClose;
@@ -41,6 +47,7 @@ class NativeDesktopLifecyclePlatform with WindowListener, TrayListener implement
   @override
   Future<void> initialize({required Future<void> Function() onClose, required Future<void> Function() onQuit}) async {
     await _window.ensureInitialized();
+    await _configureMinimumSize();
 
     _onClose = onClose;
     _onQuit = onQuit;
@@ -54,6 +61,39 @@ class NativeDesktopLifecyclePlatform with WindowListener, TrayListener implement
       appName: 'Phonolite',
       appPath: Platform.isWindows ? '"${Platform.resolvedExecutable}"' : Platform.resolvedExecutable,
     );
+  }
+
+  Future<void> _configureMinimumSize() async {
+    if (defaultTargetPlatform == TargetPlatform.linux) {
+      // GTK must own the content minimum so header bars, borders and later
+      // geometry updates retain the same usable area as the desktop layout.
+      await _windowConstraints.invokeMethod<void>('setMinimumContentSize', {
+        'width': DesktopWindowConfiguration.minimumWidth,
+        'height': DesktopWindowConfiguration.minimumHeight,
+      });
+
+      return;
+    }
+
+    final windowSize = await _window.getSize();
+    final view = WidgetsBinding.instance.platformDispatcher.implicitView;
+    final contentSize = view == null ? windowSize : view.physicalSize / view.devicePixelRatio;
+
+    // The plugin sizes native frames on Windows/macOS. Include decorations so
+    // the Flutter content still reaches the desktop layout's minimum width.
+    final minimumSize = Size(
+      DesktopWindowConfiguration.minimumWidth + math.max(0.0, windowSize.width - contentSize.width).ceilToDouble(),
+      DesktopWindowConfiguration.minimumHeight + math.max(0.0, windowSize.height - contentSize.height).ceilToDouble(),
+    );
+    await _window.setMinimumSize(minimumSize);
+
+    final clampedSize = Size(
+      math.max(windowSize.width, minimumSize.width),
+      math.max(windowSize.height, minimumSize.height),
+    );
+    if (clampedSize != windowSize) {
+      await _window.setSize(clampedSize);
+    }
   }
 
   @override

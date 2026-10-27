@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _DownloadDataReset {
   final _OfflineDownloadActorCore _host;
@@ -70,6 +70,7 @@ class _DownloadDataReset {
       }
 
       await _loadFuture;
+      await _host._ownerPlaylistDownloads.mutationsDrained;
       await _host._topUpFuture;
       await Future.wait(_host._active.values.toList(), eagerError: false);
       await _host._localUserDataReloadChain;
@@ -100,6 +101,9 @@ class _DownloadDataReset {
       _host._localPlaylistTracks = _host._localPlaylistTracksId == null
           ? const <Track>[]
           : await _host._storage.readLocalPlaylistTracks(_host._localPlaylistTracksId!);
+      _host._ownerCollections._localPlaylistEntries = _host._localPlaylistTracksId == null
+          ? const []
+          : await _host._storage.readLocalPlaylistEntries(_host._localPlaylistTracksId!);
       _host._localDownloadedTracksCache = const <Track>[];
 
       final retainedJobs = _host._jobs.map((job) => job.jobId).toSet();

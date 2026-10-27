@@ -3,12 +3,14 @@ import 'dart:ui' show RootIsolateToken;
 
 import 'package:phonolite_app/data/configuration/downloads/offline_storage_config.dart';
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/download_batch.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart' as offline_views;
@@ -84,6 +86,7 @@ class OfflineActorLibraryState {
   final List<Track> localDownloadedTracks;
   final List<offline_views.OfflineArtistGroup> offlineArtistGroups;
   final int revision;
+  final List<LocalPlaylistEntry> localPlaylistEntries;
 
   const OfflineActorLibraryState({
     required this.localLiked,
@@ -92,7 +95,23 @@ class OfflineActorLibraryState {
     required this.localDownloadedTracks,
     required this.offlineArtistGroups,
     required this.revision,
+    this.localPlaylistEntries = const [],
   });
+}
+
+class OfflinePlaylistSourceRequest {
+  final String playlistId;
+  final Track track;
+  final SourceTrackRef source;
+
+  const OfflinePlaylistSourceRequest({required this.playlistId, required this.track, required this.source});
+}
+
+class OfflineTrackMatchRequest {
+  final String localTrackId;
+  final String serverBaseUrl;
+
+  const OfflineTrackMatchRequest(this.localTrackId, this.serverBaseUrl);
 }
 
 class OfflineQueueTracksRequest {

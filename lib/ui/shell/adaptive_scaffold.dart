@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/desktop_playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shell/navigation/app_bottom_navigation.dart';
 import 'package:phonolite_app/ui/shell/navigation/app_side_navigation.dart';
 import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 
 class AdaptiveScaffold extends StatelessWidget {
   static const double _nowPlayingPadding = 22;
-  static const double _wideLayoutWidth = 980;
 
   final List<NavigationDestination> destinations;
   final int selectedIndex;
@@ -27,6 +28,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleMute;
   final VoidCallback onToggleLike;
   final bool hidePlaybackChrome;
 
@@ -48,6 +50,7 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.onToggleRepeat,
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
+    required this.onToggleMute,
     required this.onToggleLike,
     this.hidePlaybackChrome = false,
   });
@@ -60,17 +63,33 @@ class AdaptiveScaffold extends StatelessWidget {
 
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
-    final isWide = screenWidth >= _wideLayoutWidth;
+    final layoutMode = obsidianLayoutModeOf(context);
+    final isWide = layoutMode != ObsidianLayoutMode.compact;
+    final compactPlayer = layoutMode == ObsidianLayoutMode.narrow;
 
     final platform = Theme.of(context).platform;
+    final touchPlayer = switch (platform) {
+      TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia => true,
+      _ => false,
+    };
     final edgeToEdge = platform == TargetPlatform.iOS;
     final topEdgeToEdge = edgeToEdge || platform == TargetPlatform.android;
 
-    final nowPlayingHeight = NowPlayingBar.heightForWidth(screenWidth);
+    final playerWidth = screenWidth - (isWide ? AppSideNavigation.widthFor(context) : 0);
+    final desktopLayout = DesktopPlaybackLayout.supports(platform)
+        ? DesktopPlaybackLayout.resolve(availableSize: Size(playerWidth, media.size.height - media.padding.vertical))
+        : null;
+    final nowPlayingHeight = NowPlayingBar.heightForWidth(
+      playerWidth,
+      compact: compactPlayer,
+      touchTargets: touchPlayer,
+    );
     final showWideBar = isWide && !hidePlaybackChrome;
     final showMiniBar = !isWide && !hidePlaybackChrome;
     final miniBarHeight = showMiniBar ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12) : 0.0;
-    final playbackInset = showWideBar ? nowPlayingHeight + s(_nowPlayingPadding) : miniBarHeight;
+    final playbackInset = showWideBar
+        ? desktopLayout?.height ?? nowPlayingHeight + s(_nowPlayingPadding)
+        : miniBarHeight;
 
     final navPad = AppBottomNavigation.height + media.padding.bottom;
     final double navigationInset;
@@ -107,7 +126,11 @@ class AdaptiveScaffold extends StatelessWidget {
       onToggleRepeat: onToggleRepeat,
       onStreamModeChanged: onStreamModeChanged,
       onVolumeChanged: onVolumeChanged,
+      onToggleMute: onToggleMute,
       onToggleLike: onToggleLike,
+      compact: compactPlayer,
+      touchTargets: touchPlayer,
+      desktopLayout: desktopLayout,
     );
 
     if (isWide) {

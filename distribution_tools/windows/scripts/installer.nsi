@@ -31,6 +31,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "${APP_PUBLISHER}"
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
 Var UpdateMode
+Var UpgradeMode
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipUpdatePage
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipUpdatePage
@@ -38,6 +39,7 @@ Var UpdateMode
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipUpdatePage
 !insertmacro MUI_PAGE_FINISH
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "Uninstalling ${APP_NAME} also permanently deletes its settings, listening statistics, downloads and logs."
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
@@ -211,7 +213,7 @@ Section "${APP_NAME}"
   ${AndIf} $0 == $INSTDIR
     IfFileExists "$INSTDIR\Uninstall.exe" 0 upgrade_failed
     ClearErrors
-    ExecWait '"$INSTDIR\Uninstall.exe" /S _?=$INSTDIR' $1
+    ExecWait '"$INSTDIR\Uninstall.exe" /S /UPGRADE _?=$INSTDIR' $1
     IfErrors upgrade_failed
     ${If} $1 != 0
       Goto upgrade_failed
@@ -260,7 +262,46 @@ SectionEnd
 Function un.onInit
   SetRegView 64
   SetShellVarContext current
+  StrCpy $UpgradeMode 0
+  ${un.GetParameters} $R0
+  ClearErrors
+  ${un.GetOptions} $R0 "/UPGRADE" $R1
+  ${IfNot} ${Errors}
+    StrCpy $UpgradeMode 1
+  ${EndIf}
   !insertmacro EnsureAppClosed
+FunctionEnd
+
+Function un.RemoveAppData
+  # Both manual reinstalls and WinSparkle updates run the previous uninstaller.
+  ${If} $UpgradeMode == 1
+    Return
+  ${EndIf}
+
+  # Resolve and verify the fixed app folder before any recursive deletion.
+  ${If} $APPDATA == ""
+    Goto app_data_failed
+  ${EndIf}
+  GetFullPathName $0 "$APPDATA"
+  GetFullPathName $1 "$APPDATA\Phonolite"
+  ${un.GetParent} "$1" $2
+  ${If} $0 == ""
+  ${OrIf} $1 == ""
+  ${OrIf} $2 != $0
+    Goto app_data_failed
+  ${EndIf}
+
+  ${If} ${FileExists} "$1\*.*"
+    ClearErrors
+    RMDir /r "$1"
+    IfErrors app_data_failed
+  ${EndIf}
+  Return
+
+  app_data_failed:
+    MessageBox MB_OK|MB_ICONSTOP "Could not remove $APPDATA\Phonolite. Close any programs using that folder and try uninstalling again." /SD IDOK
+    SetErrorLevel 1
+    Abort
 FunctionEnd
 
 Section "Uninstall"
@@ -269,6 +310,7 @@ Section "Uninstall"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "Phonolite"
   ClearErrors
   !include "uninstall_files.nsh"
+  Call un.RemoveAppData
   Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
@@ -276,5 +318,5 @@ Section "Uninstall"
   DeleteRegKey HKCU "Software\${APP_ID}"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
-  # AppData, downloaded music, logs and other user files are preserved.
+  # Unrelated files in the installation directory and external storage are preserved.
 SectionEnd

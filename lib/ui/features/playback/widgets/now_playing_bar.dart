@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/playback/playback_controls_controller.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/compact_playback_footer.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/desktop_playback_frame.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/desktop_playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_output_controls.dart';
@@ -16,6 +18,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/modals/output_device_
 import 'package:phonolite_app/ui/features/playback/widgets/modals/shuffle_picker_modal.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality_modal.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
@@ -27,7 +30,9 @@ export 'package:phonolite_app/ui/features/playback/widgets/now_playing_mini_bar.
 
 class NowPlayingBar extends StatelessWidget {
   static const double _wideHeight = 147;
-  static const double _compactHeight = 180;
+  static const double _compactHeight = 220;
+  static const double _touchCompactHeight = 280;
+  static const double _touchCompactWrapWidth = 720;
   static const double _tightHeight = 200;
   static const double _compactWidth = 860;
   static const double _tightWidth = 520;
@@ -47,7 +52,11 @@ class NowPlayingBar extends StatelessWidget {
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleMute;
   final VoidCallback onToggleLike;
+  final bool compact;
+  final bool touchTargets;
+  final DesktopPlaybackLayout? desktopLayout;
 
   const NowPlayingBar({
     super.key,
@@ -63,23 +72,121 @@ class NowPlayingBar extends StatelessWidget {
     required this.onToggleRepeat,
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
+    required this.onToggleMute,
     required this.onToggleLike,
+    this.compact = false,
+    this.touchTargets = false,
+    this.desktopLayout,
   });
 
-  static double heightForWidth(double width) {
+  static double heightForWidth(double width, {bool compact = false, bool touchTargets = false}) {
+    if (touchTargets && compact && width < _touchCompactWrapWidth) {
+      return _touchCompactHeight;
+    }
+
     if (width < _tightWidth) {
       return _tightHeight;
     }
 
-    if (width < _compactWidth) {
+    if (compact || width < _compactWidth) {
       return _compactHeight;
     }
 
     return _wideHeight;
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _wideContent(
+    BuildContext context, {
+    required List<Widget> techTags,
+    required SliderThemeData sliderTheme,
+    required double maxSeconds,
+    required double bufferedPositionSeconds,
+    DesktopPlaybackLayout? desktopLayout,
+  }) {
+    double s(double value) => playbackScaled(context, value);
+
+    final sideWidth = desktopLayout?.sideWidth ?? s(_wideSideWidth);
+    final rowGap = desktopLayout == null ? s(_wideRowGap) : DesktopPlaybackLayout.rowGap;
+    final baseRowWidth = sideWidth * 2 + rowGap * 2 + s(_wideCommandMin);
+    final row = Row(
+      children: [
+        SizedBox(
+          width: sideWidth,
+          child: PlaybackIntelZone(
+            track: state.track,
+            isLoading: state.isLoading,
+            onTap: PlaybackControlsController.canOpenPlaybackDetails(state) ? onOpenAlbum : null,
+            techTags: techTags,
+            sourceTags: playbackBuildQueueSourceTags(state),
+            wrapTags: desktopLayout == null,
+          ),
+        ),
+        SizedBox(width: rowGap),
+        Expanded(
+          child: PlaybackCommandZone(
+            state: state,
+            onPlayPause: onPlayPause,
+            onPrev: onPrev,
+            onNext: onNext,
+            onStop: onStop,
+            onShuffle: () => playbackShowShuffleModal(context, onSelected: onShuffleChanged),
+            onRepeat: onToggleRepeat,
+          ),
+        ),
+        SizedBox(width: rowGap),
+        SizedBox(
+          width: sideWidth,
+          child: PlaybackOutputZone(
+            state: state,
+            compact: false,
+            onStreamModeChanged: onStreamModeChanged,
+            onVolumeChanged: onVolumeChanged,
+            onToggleMute: onToggleMute,
+            onToggleLike: onToggleLike,
+            onAddToPlaylist: () => showAddToPlaylistModalForTrack(
+              context,
+              state.track,
+              scope: PlaybackControlsController.actionScopeForPlayback(state),
+            ),
+            onShowDevicePicker: () => playbackShowDevicePicker(context),
+            allowWrap: desktopLayout == null,
+          ),
+        ),
+      ],
+    );
+
+    return Column(
+      children: [
+        Expanded(
+          child: desktopLayout != null
+              ? row
+              : LayoutBuilder(
+                  builder: (context, constraints) => FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: SizedBox(
+                      width: math.max(constraints.maxWidth, baseRowWidth),
+                      height: constraints.maxHeight,
+                      child: row,
+                    ),
+                  ),
+                ),
+        ),
+        PlaybackProgressBar(
+          sliderTheme: sliderTheme,
+          maxSeconds: maxSeconds,
+          position: state.position,
+          duration: state.duration,
+          animate: state.track != null && state.isPlaying && !state.isLoading,
+          bufferedPositionSeconds: bufferedPositionSeconds,
+          onSeek: onSeek,
+          onSeekPreview: onSeekPreview,
+          enabled: state.track != null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBar(BuildContext context, {DesktopPlaybackLayout? desktopLayout}) {
     double s(double value) => playbackScaled(context, value);
 
     final track = state.track;
@@ -129,11 +236,21 @@ class NowPlayingBar extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final isCompact = width < _compactWidth;
-        final barHeight = heightForWidth(width);
-        final baseRowWidth = s(_wideSideWidth) * 2 + s(_wideRowGap) * 2 + s(_wideCommandMin);
-        final sideWidth = s(_wideSideWidth);
-        final rowGap = s(_wideRowGap);
+        final wideContent = _wideContent(
+          context,
+          techTags: techTags,
+          sliderTheme: sliderTheme,
+          maxSeconds: maxSeconds,
+          bufferedPositionSeconds: bufferedPositionSeconds,
+          desktopLayout: desktopLayout,
+        );
+
+        if (desktopLayout != null) {
+          return DesktopPlaybackFrame(layout: desktopLayout, child: wideContent);
+        }
+
+        final isCompact = compact || width < _compactWidth;
+        final barHeight = heightForWidth(width, compact: compact, touchTargets: touchTargets);
 
         final content = isCompact
             ? Column(
@@ -155,6 +272,7 @@ class NowPlayingBar extends StatelessWidget {
                           onPlayPause: onPlayPause,
                           onPrev: onPrev,
                           onNext: onNext,
+                          onStop: onStop,
                           onShuffle: () => playbackShowShuffleModal(context, onSelected: onShuffleChanged),
                           onRepeat: onToggleRepeat,
                           onAddToPlaylist: () => showAddToPlaylistModalForTrack(
@@ -169,6 +287,7 @@ class NowPlayingBar extends StatelessWidget {
                             current: state.streamMode,
                             onSelected: onStreamModeChanged,
                           ),
+                          touchTargets: touchTargets,
                         ),
                       ],
                     ),
@@ -185,80 +304,11 @@ class NowPlayingBar extends StatelessWidget {
                     enabled: state.track != null,
                     volume: state.volume,
                     onVolumeChanged: onVolumeChanged,
+                    onToggleMute: onToggleMute,
                   ),
                 ],
               )
-            : Column(
-                children: [
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => FittedBox(
-                        fit: BoxFit.scaleDown,
-                        // Scale all three groups together, including text,
-                        // artwork, slider shapes, and button hit padding.
-                        child: SizedBox(
-                          width: math.max(constraints.maxWidth, baseRowWidth),
-                          height: constraints.maxHeight,
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: sideWidth,
-                                child: PlaybackIntelZone(
-                                  track: track,
-                                  isLoading: state.isLoading,
-                                  onTap: PlaybackControlsController.canOpenPlaybackDetails(state) ? onOpenAlbum : null,
-                                  techTags: techTags,
-                                  sourceTags: playbackBuildQueueSourceTags(state),
-                                ),
-                              ),
-                              SizedBox(width: rowGap),
-                              Expanded(
-                                child: PlaybackCommandZone(
-                                  state: state,
-                                  onPlayPause: onPlayPause,
-                                  onPrev: onPrev,
-                                  onNext: onNext,
-                                  onStop: onStop,
-                                  onShuffle: () => playbackShowShuffleModal(context, onSelected: onShuffleChanged),
-                                  onRepeat: onToggleRepeat,
-                                ),
-                              ),
-                              SizedBox(width: rowGap),
-                              SizedBox(
-                                width: sideWidth,
-                                child: PlaybackOutputZone(
-                                  state: state,
-                                  compact: false,
-                                  onStreamModeChanged: onStreamModeChanged,
-                                  onVolumeChanged: onVolumeChanged,
-                                  onToggleLike: onToggleLike,
-                                  onAddToPlaylist: () => showAddToPlaylistModalForTrack(
-                                    context,
-                                    state.track,
-                                    scope: PlaybackControlsController.actionScopeForPlayback(state),
-                                  ),
-                                  onShowDevicePicker: () => playbackShowDevicePicker(context),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  PlaybackProgressBar(
-                    sliderTheme: sliderTheme,
-                    maxSeconds: maxSeconds,
-                    position: state.position,
-                    duration: state.duration,
-                    animate: state.track != null && state.isPlaying && !state.isLoading,
-                    bufferedPositionSeconds: bufferedPositionSeconds,
-                    onSeek: onSeek,
-                    onSeekPreview: onSeekPreview,
-                    enabled: state.track != null,
-                  ),
-                ],
-              );
+            : wideContent;
 
         return Padding(
           padding: EdgeInsets.fromLTRB(s(16), s(6), s(16), s(16)),
@@ -269,6 +319,26 @@ class NowPlayingBar extends StatelessWidget {
               child: content,
             ),
           ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!DesktopPlaybackLayout.supports(Theme.of(context).platform)) {
+      return _buildBar(context);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout =
+            desktopLayout ??
+            DesktopPlaybackLayout.resolve(availableSize: Size(constraints.maxWidth, MediaQuery.sizeOf(context).height));
+
+        return ObsidianScale(
+          scale: 1,
+          child: Builder(builder: (context) => _buildBar(context, desktopLayout: layout)),
         );
       },
     );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/listening_statistics_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/account_sessions_setting.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/listening_statistics_setting.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
@@ -56,6 +57,16 @@ class UserSettingsSection extends BaseSection {
           onTap: onResetPassword,
         ),
       ),
+      if (controller.sessionManagementAvailable) ...[
+        const SettingsDivider(),
+        AccountSessionsSetting(
+          key: ValueKey('account-sessions-$sessionRevision'),
+          onSignOutOtherDevices: controller.signOutOtherDevices,
+          onSignOutAllDevices: controller.signOutAllDevices,
+          sessionIsCurrent: () =>
+              controller.authState.isAuthorized && controller.catalog.sessionRevision == sessionRevision,
+        ),
+      ],
     ],
   ];
 }

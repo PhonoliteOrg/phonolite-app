@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.14)
 project(phonolite_local_audio_library LANGUAGES C)
 
 get_filename_component(RUST_ROOT "${CMAKE_CURRENT_LIST_DIR}/../native/local_audio" REALPATH)
+file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS
+  "${RUST_ROOT}/src/*.rs"
+  "${RUST_ROOT}/vendor/*.rs"
+  "${RUST_ROOT}/vendor/Cargo.toml"
+)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(CARGO_PROFILE "debug")
@@ -16,6 +21,7 @@ set(OUTPUT_SO "${CMAKE_CURRENT_BINARY_DIR}/libphonolite_local_audio.so")
 
 add_custom_command(
   OUTPUT "${OUTPUT_SO}"
+  DEPENDS ${RUST_SOURCES} "${RUST_ROOT}/Cargo.toml" "${RUST_ROOT}/Cargo.lock"
   COMMAND cargo build ${CARGO_RELEASE_FLAG} --target-dir "${CARGO_TARGET_DIR}"
   WORKING_DIRECTORY "${RUST_ROOT}"
   COMMAND ${CMAKE_COMMAND} -E copy

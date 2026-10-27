@@ -4,26 +4,27 @@ import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 class ListeningStatisticsController extends FeatureController {
-  bool _saving = false;
+  int _pendingChanges = 0;
   bool _resetting = false;
 
-  bool get saving => _saving;
+  bool get saving => _pendingChanges > 0;
 
   bool get resetting => _resetting;
 
   Future<void> change(bool enabled, Future<void> Function(bool) save) async {
-    if (_saving || _resetting) {
+    if (isDisposed || _resetting) {
       return;
     }
 
-    update(() => _saving = true);
+    // The service applies consent immediately and owns serialized persistence.
+    update(() => _pendingChanges++);
 
     try {
       await save(enabled);
     } catch (error) {
       AppLogger.warning('Could not save the statistics setting: $error');
     } finally {
-      update(() => _saving = false);
+      update(() => _pendingChanges--);
     }
   }
 
@@ -39,11 +40,21 @@ class ListeningStatisticsController extends FeatureController {
     await app.resetListeningStatistics();
   }
 
-  void beginReset() => update(() => _resetting = true);
+  void beginReset() {
+    if (isDisposed || saving || _resetting) {
+      return;
+    }
+
+    update(() => _resetting = true);
+  }
 
   void endReset() => update(() => _resetting = false);
 
   Future<void> reset(Future<void> Function() action, {required bool serverConnected}) async {
+    if (isDisposed || saving) {
+      return;
+    }
+
     try {
       await action();
     } catch (error) {

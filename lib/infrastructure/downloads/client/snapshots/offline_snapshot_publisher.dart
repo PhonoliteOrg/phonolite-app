@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 class _OfflineSnapshotPublisher {
   final OfflineDownloadClient _host;
@@ -109,6 +109,7 @@ class _OfflineSnapshotPublisher {
       if (sameOfflineTrackSnapshots(_librarySnapshot.tracks, tracks) &&
           sameOfflineTrackSnapshots(_localLiked, core.localLiked) &&
           sameOfflinePlaylistSnapshots(_localPlaylists, core.localPlaylists) &&
+          sameLocalPlaylistEntries(_librarySnapshot.playlistEntries, core.localPlaylistEntries) &&
           sameOfflineTrackSnapshots(_localPlaylistTracks, core.localPlaylistTracks)) {
         return;
       }
@@ -118,6 +119,7 @@ class _OfflineSnapshotPublisher {
           localLiked: core.localLiked,
           localPlaylists: core.localPlaylists,
           localPlaylistTracks: core.localPlaylistTracks,
+          localPlaylistEntries: core.localPlaylistEntries,
           localDownloadedTracks: tracks,
           offlineArtistGroups: offline_views.offlineArtistGroups(tracks),
           revision: ++_inlineRevision,
@@ -190,8 +192,9 @@ class _OfflineSnapshotPublisher {
       final playlistsChanged = !sameOfflinePlaylistSnapshots(_localPlaylists, nextPlaylists);
       final playlistTracksChanged = !sameOfflineTrackSnapshots(_localPlaylistTracks, nextPlaylistTracks);
       final tracksChanged = !sameOfflineTrackSnapshots(_librarySnapshot.tracks, nextDownloadedTracks);
+      final entriesChanged = !sameLocalPlaylistEntries(_librarySnapshot.playlistEntries, state.localPlaylistEntries);
 
-      if (!likedChanged && !playlistsChanged && !playlistTracksChanged && !tracksChanged) {
+      if (!likedChanged && !playlistsChanged && !playlistTracksChanged && !tracksChanged && !entriesChanged) {
         return;
       }
 
@@ -205,6 +208,7 @@ class _OfflineSnapshotPublisher {
         liked: _localLiked,
         playlists: _localPlaylists,
         playlistTracks: _localPlaylistTracks,
+        playlistEntries: List.unmodifiable(state.localPlaylistEntries),
         revision: state.revision,
       );
 

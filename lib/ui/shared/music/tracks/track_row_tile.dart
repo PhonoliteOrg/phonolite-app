@@ -34,6 +34,8 @@ class TrackRowTile extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onAddToPlaylist;
   final VoidCallback? onDownload;
+  final VoidCallback? onRetryDownload;
+  final VoidCallback? onContinueDownload;
   final VoidCallback? onRemoveDownload;
   final VoidCallback? onLike;
   final VoidCallback? onDelete;
@@ -42,6 +44,7 @@ class TrackRowTile extends StatefulWidget {
   final VoidCallback? onSelectionToggle;
   final VoidCallback? onSelectionModeRequested;
   final OfflineTrackDownload? offlineDownload;
+  final OfflineDownloadStatus? downloadStatus;
   final bool showAlbumArt;
   final String? subtitle;
   final Widget? trailing;
@@ -61,6 +64,7 @@ class TrackRowTile extends StatefulWidget {
     this.selectionMode = false,
     this.selected = false,
     this.offlineDownload,
+    this.downloadStatus,
     this.showAlbumArt = false,
     this.subtitle,
     this.trailing,
@@ -75,6 +79,8 @@ class TrackRowTile extends StatefulWidget {
     this.onLongPress,
     this.onAddToPlaylist,
     this.onDownload,
+    this.onRetryDownload,
+    this.onContinueDownload,
     this.onRemoveDownload,
     this.onLike,
     this.onDelete,
@@ -85,16 +91,25 @@ class TrackRowTile extends StatefulWidget {
   static List<ObsidianMenuAction> menuActionsFor({
     required Track track,
     OfflineTrackDownload? offlineDownload,
+    OfflineDownloadStatus? downloadStatus,
     VoidCallback? onLike,
     VoidCallback? onDownload,
+    VoidCallback? onRetryDownload,
+    VoidCallback? onContinueDownload,
     VoidCallback? onRemoveDownload,
     VoidCallback? onAddToPlaylist,
     VoidCallback? onDelete,
   }) {
-    final removing = offlineDownload?.status == OfflineDownloadStatus.removing;
-    final showDownload = offlineDownload?.status == OfflineDownloadStatus.downloaded
-        ? onRemoveDownload != null
-        : onDownload != null || offlineDownload != null;
+    final downloadAction = _DownloadStatusButton(
+      download: offlineDownload,
+      status: downloadStatus,
+      onDownload: onDownload,
+      onRetryDownload: onRetryDownload,
+      onContinueDownload: onContinueDownload,
+      onRemoveDownload: onRemoveDownload,
+      isCompact: false,
+    );
+    final removing = downloadAction.effectiveStatus == OfflineDownloadStatus.removing;
 
     return [
       if (onLike != null)
@@ -105,13 +120,7 @@ class TrackRowTile extends StatefulWidget {
           isActive: track.liked,
           onTap: removing ? null : onLike,
         ),
-      if (showDownload)
-        _DownloadStatusButton(
-          download: offlineDownload,
-          onDownload: onDownload,
-          onRemoveDownload: onRemoveDownload,
-          isCompact: false,
-        ).menuAction,
+      if (downloadAction.isVisible) downloadAction.menuAction,
       if (onAddToPlaylist != null)
         ObsidianMenuAction(
           label: 'Add to playlist',
@@ -247,6 +256,45 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
     }
   }
 
+  String? _downloadTitleStatus(OfflineDownloadStatus? status) => switch (status) {
+    OfflineDownloadStatus.queued => 'Queued',
+    OfflineDownloadStatus.preparing ||
+    OfflineDownloadStatus.downloading ||
+    OfflineDownloadStatus.validating => 'Downloading',
+    OfflineDownloadStatus.paused => 'Paused',
+    OfflineDownloadStatus.failed || OfflineDownloadStatus.corrupt => 'Download failed',
+    OfflineDownloadStatus.canceled => 'Download canceled',
+    OfflineDownloadStatus.downloaded || OfflineDownloadStatus.removing || null => null,
+  };
+
+  Widget _trackTitle(TextStyle? style, OfflineDownloadStatus? status) {
+    final label = _downloadTitleStatus(status);
+
+    if (label == null) {
+      return Text(widget.track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+    }
+
+    return Semantics(
+      label: '${widget.track.title}, $label',
+      excludeSemantics: true,
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(widget.track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+          ),
+          Flexible(
+            child: Text(
+              ' · $label',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style?.copyWith(color: ObsidianPalette.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -258,7 +306,10 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
         ? _maybeAppController(context)
         : null;
     final albumId = widget.track.albumId?.trim() ?? '';
-    final canLoadRemoteArt = controller?.authState.isAuthorized == true;
+    final sourceServer = widget.track.serverBaseUrl;
+    final canLoadRemoteArt =
+        controller?.authState.isAuthorized == true &&
+        (sourceServer == null || sourceServer == controller?.catalog.baseUrl);
     final localCoverPath = widget.track.albumArtPath?.trim();
     final hasLocalCover = localCoverPath != null && localCoverPath.isNotEmpty;
     final String? coverUrl;
@@ -279,14 +330,14 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
 
     final selectionMode = widget.selectionMode;
     final showLeading = selectionMode || widget.isPlaying || widget.leading != null || widget.showIndex;
-    final isDeleting = widget.offlineDownload?.status == OfflineDownloadStatus.removing;
-    final showDownloadStatus = widget.offlineDownload?.status == OfflineDownloadStatus.downloaded
-        ? widget.onRemoveDownload != null
-        : widget.onDownload != null || widget.offlineDownload != null;
-
+    final downloadStatus = widget.downloadStatus ?? widget.offlineDownload?.status;
+    final isDeleting = downloadStatus == OfflineDownloadStatus.removing;
     final downloadButton = _DownloadStatusButton(
       download: widget.offlineDownload,
+      status: downloadStatus,
       onDownload: widget.onDownload,
+      onRetryDownload: widget.onRetryDownload,
+      onContinueDownload: widget.onContinueDownload,
       onRemoveDownload: widget.onRemoveDownload,
       isCompact: isCompact,
     );
@@ -295,8 +346,11 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
         ? TrackRowTile.menuActionsFor(
             track: widget.track,
             offlineDownload: widget.offlineDownload,
+            downloadStatus: downloadStatus,
             onLike: widget.onLike,
             onDownload: widget.onDownload,
+            onRetryDownload: widget.onRetryDownload,
+            onContinueDownload: widget.onContinueDownload,
             onRemoveDownload: widget.onRemoveDownload,
             onAddToPlaylist: widget.onAddToPlaylist,
             onDelete: widget.onDelete,
@@ -381,7 +435,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                  _trackTitle(titleStyle, downloadStatus),
                   SizedBox(height: isCompact ? 1 : 2),
                   Text(
                     widget.subtitle ?? _artistAlbumLine(widget.track),
@@ -402,7 +456,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
                 ),
                 const SizedBox(width: 8),
               ],
-              if (!selectionMode && !actionsInMenu && showDownloadStatus) ...[
+              if (!selectionMode && !actionsInMenu && downloadButton.isVisible) ...[
                 downloadButton,
                 SizedBox(width: actionGap),
               ],
@@ -451,63 +505,79 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
 
 class _DownloadStatusButton extends StatelessWidget {
   final OfflineTrackDownload? download;
+  final OfflineDownloadStatus? status;
   final VoidCallback? onDownload;
+  final VoidCallback? onRetryDownload;
+  final VoidCallback? onContinueDownload;
   final VoidCallback? onRemoveDownload;
   final bool isCompact;
 
   const _DownloadStatusButton({
     required this.download,
+    this.status,
     required this.onDownload,
+    this.onRetryDownload,
+    this.onContinueDownload,
     required this.onRemoveDownload,
     required this.isCompact,
   });
 
-  VoidCallback? get action => switch (download?.status) {
+  OfflineDownloadStatus? get effectiveStatus => status ?? download?.status;
+
+  bool get isVisible => effectiveStatus == OfflineDownloadStatus.downloaded
+      ? onRemoveDownload != null
+      : onDownload != null || onRetryDownload != null || onContinueDownload != null || effectiveStatus != null;
+
+  VoidCallback? get action => switch (effectiveStatus) {
     OfflineDownloadStatus.downloaded => onRemoveDownload,
     OfflineDownloadStatus.queued ||
     OfflineDownloadStatus.preparing ||
     OfflineDownloadStatus.downloading ||
     OfflineDownloadStatus.validating ||
     OfflineDownloadStatus.removing => null,
-    OfflineDownloadStatus.paused ||
+    OfflineDownloadStatus.paused => onContinueDownload ?? onDownload,
     OfflineDownloadStatus.failed ||
     OfflineDownloadStatus.corrupt ||
-    OfflineDownloadStatus.canceled ||
+    OfflineDownloadStatus.canceled => onRetryDownload ?? onDownload,
     null => onDownload,
   };
 
-  String get tooltip => switch (download?.status) {
+  String get tooltip => switch (effectiveStatus) {
     OfflineDownloadStatus.removing => 'Removing download',
     OfflineDownloadStatus.downloaded => onRemoveDownload == null ? 'Downloaded' : 'Remove download',
     OfflineDownloadStatus.downloading => 'Downloading',
     OfflineDownloadStatus.validating => 'Validating download',
     OfflineDownloadStatus.preparing => 'Preparing download',
     OfflineDownloadStatus.queued => 'Queued download',
-    OfflineDownloadStatus.failed => 'Retry download',
-    OfflineDownloadStatus.paused ||
-    OfflineDownloadStatus.corrupt ||
-    OfflineDownloadStatus.canceled ||
+    OfflineDownloadStatus.failed || OfflineDownloadStatus.corrupt || OfflineDownloadStatus.canceled => 'Retry download',
+    OfflineDownloadStatus.paused => 'Continue download',
     null => 'Download',
   };
 
-  IconData get icon => switch (download?.status) {
+  IconData get icon => switch (effectiveStatus) {
     OfflineDownloadStatus.downloaded => onRemoveDownload == null ? PhonoliteIcons.circleCheck : PhonoliteIcons.trash2,
     OfflineDownloadStatus.removing => PhonoliteIcons.trash2,
     OfflineDownloadStatus.queued => PhonoliteIcons.clock,
     OfflineDownloadStatus.preparing ||
     OfflineDownloadStatus.downloading ||
-    OfflineDownloadStatus.paused ||
     OfflineDownloadStatus.validating ||
     OfflineDownloadStatus.failed ||
     OfflineDownloadStatus.corrupt ||
     OfflineDownloadStatus.canceled ||
     null => PhonoliteIcons.download,
+    OfflineDownloadStatus.paused => PhonoliteIcons.play,
   };
+
+  bool get showsReload =>
+      effectiveStatus == OfflineDownloadStatus.preparing ||
+      effectiveStatus == OfflineDownloadStatus.failed ||
+      effectiveStatus == OfflineDownloadStatus.corrupt ||
+      effectiveStatus == OfflineDownloadStatus.canceled;
 
   ObsidianMenuAction get menuAction => ObsidianMenuAction(
     label: tooltip,
-    icon: download?.status == OfflineDownloadStatus.preparing ? null : icon,
-    iconWidget: download?.status == OfflineDownloadStatus.preparing ? const ReloadIcon() : null,
+    icon: showsReload ? null : icon,
+    iconWidget: showsReload ? const ReloadIcon() : null,
     variant: download?.isDownloaded == true && onRemoveDownload != null
         ? TechButtonVariant.danger
         : TechButtonVariant.standard,
@@ -519,7 +589,7 @@ class _DownloadStatusButton extends StatelessWidget {
     required Color color,
     required double? progress,
     required bool showProgressRing,
-    required bool preparing,
+    required bool showReload,
   }) {
     if (showProgressRing) {
       return SizedBox(
@@ -534,7 +604,7 @@ class _DownloadStatusButton extends StatelessWidget {
       );
     }
 
-    if (preparing) {
+    if (showReload) {
       return IconTheme.merge(
         data: IconThemeData(color: color, size: iconSize),
         child: const ReloadIcon(),
@@ -546,9 +616,8 @@ class _DownloadStatusButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = download?.status;
+    final status = effectiveStatus;
     final iconSize = isCompact ? 18.0 : 22.0;
-    final preparing = status == OfflineDownloadStatus.preparing;
     final downloading = status == OfflineDownloadStatus.downloading;
     final downloaded = status == OfflineDownloadStatus.downloaded;
     final failed = status == OfflineDownloadStatus.failed;
@@ -577,7 +646,7 @@ class _DownloadStatusButton extends StatelessWidget {
               color: color,
               progress: progress,
               showProgressRing: showProgressRing,
-              preparing: preparing,
+              showReload: showsReload,
             ),
           ),
         ),

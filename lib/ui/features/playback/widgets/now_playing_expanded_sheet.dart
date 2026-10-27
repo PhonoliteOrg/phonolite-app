@@ -19,6 +19,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/modals/shuffle_picker
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
@@ -43,7 +44,7 @@ Completer<void>? _playbackNowPlayingSheetCompleter;
 Future<void> showNowPlayingExpandedSheet(BuildContext context, {VoidCallback? onOpenAlbum}) async {
   final controller = AppScope.of(context);
 
-  if (MediaQuery.of(context).size.width >= playbackCompactPlaybackChromeWidth) {
+  if (usesSideNavigation(context)) {
     return;
   }
 
@@ -90,6 +91,7 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context, {VoidCallback? on
                 onToggleRepeat: controller.toggleRepeatMode,
                 onStreamModeChanged: controller.updateStreamMode,
                 onVolumeChanged: controller.setVolume,
+                onToggleMute: controller.toggleMute,
                 onToggleLike: () => unawaited(PlaybackControlsController.toggleLike(controller, playback)),
               );
             },
@@ -130,6 +132,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   final VoidCallback onToggleRepeat;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleMute;
   final VoidCallback onToggleLike;
 
   const NowPlayingExpandedSheet({
@@ -146,6 +149,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     required this.onToggleRepeat,
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
+    required this.onToggleMute,
     required this.onToggleLike,
     this.useNativeMobileTreatment = false,
   });
@@ -364,6 +368,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
                     onToggleLike: onToggleLike,
                     onStreamModeChanged: onStreamModeChanged,
                     onVolumeChanged: onVolumeChanged,
+                    onToggleMute: onToggleMute,
                     onAddToPlaylist: () => showAddToPlaylistModalForTrack(
                       context,
                       state.track,

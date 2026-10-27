@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _PlaybackQueue {
   final AppController _host;
@@ -111,11 +111,19 @@ class _PlaybackQueue {
       return;
     }
 
+    final localAlbum = tracks != null && !localLikedQueue ? _host._localLibrary.albumForTrackId(trackId) : null;
+    final albumIds = localAlbum?.tracks.map((track) => track.localId ?? track.id).toSet();
+    final source =
+        localAlbum != null && albumIds != null && queue.every((track) => albumIds.contains(track.localId ?? track.id))
+        ? PlaybackSourceContext(kind: 'album', id: localAlbum.id)
+        : null;
+
     _setQueue(
       queue,
       startTrackId: trackId,
       queueSource: PlaybackQueueSource.offline,
       offlineQueueSource: localLikedQueue ? OfflineQueueSource.localLiked : OfflineQueueSource.tracks,
+      sourceContext: source,
     );
     _host._queueShuffleMode = ShuffleMode.off;
     _host._queueShuffleScope = null;
@@ -187,7 +195,12 @@ class _PlaybackQueue {
           .map((track) => (track.albumId == null || track.albumId!.isEmpty) ? track.copyWith(albumId: albumId) : track)
           .toList();
 
-      _setQueue(normalized, startTrackId: startTrackId, queueSource: PlaybackQueueSource.none);
+      _setQueue(
+        normalized,
+        startTrackId: startTrackId,
+        queueSource: PlaybackQueueSource.none,
+        sourceContext: PlaybackSourceContext(kind: 'album', id: albumId),
+      );
       _armAutoAdvanceGuard();
       await _host._playCurrent();
       if (!isCurrent()) return;
@@ -432,6 +445,7 @@ class _PlaybackQueue {
     String? queueSourcePlaylistId,
     OfflineQueueSource offlineQueueSource = OfflineQueueSource.none,
     bool preserveServerShuffle = false,
+    PlaybackSourceContext? sourceContext,
   }) {
     if (!preserveServerShuffle) _host._shuffleCoordinator._clearServerShuffleSession();
     _isServerShuffleWindow = preserveServerShuffle;
@@ -459,6 +473,7 @@ class _PlaybackQueue {
           : LocalPlaybackSource.none,
       nowPlaying: false,
     );
+    _host._resumeCoordinator.queueChanged(sourceContext);
   }
 
   LocalPlaybackSource _localPlaybackSourceFor(OfflineQueueSource source) {
@@ -485,6 +500,10 @@ class _PlaybackQueue {
       return;
     }
 
+    if (_playIndex >= 0 && _playIndex < _playQueue.length && _playQueue[_playIndex].id == currentId) {
+      return;
+    }
+
     final idx = _playQueue.indexWhere((track) => track.id == currentId);
 
     if (idx >= 0 && idx != _playIndex) {
@@ -497,7 +516,9 @@ class _PlaybackQueue {
       return <String>[currentId];
     }
 
-    final startIndex = _playQueue.indexWhere((track) => track.id == currentId);
+    final startIndex = _playIndex >= 0 && _playIndex < _playQueue.length && _playQueue[_playIndex].id == currentId
+        ? _playIndex
+        : _playQueue.indexWhere((track) => track.id == currentId);
     final index = startIndex >= 0 ? startIndex : _playIndex;
     if (_isServerShuffleWindow) {
       return _playQueue.skip(index.clamp(0, _playQueue.length)).take(count).map((track) => track.id).toList();
@@ -673,6 +694,7 @@ mixin _PlaybackQueueFacade {
     String? queueSourcePlaylistId,
     OfflineQueueSource offlineQueueSource = OfflineQueueSource.none,
     bool preserveServerShuffle = false,
+    PlaybackSourceContext? sourceContext,
   }) => _queueCoordinator._setQueue(
     tracks,
     startTrackId: startTrackId,
@@ -680,6 +702,7 @@ mixin _PlaybackQueueFacade {
     queueSourcePlaylistId: queueSourcePlaylistId,
     offlineQueueSource: offlineQueueSource,
     preserveServerShuffle: preserveServerShuffle,
+    sourceContext: sourceContext,
   );
 
   void _armAutoAdvanceGuard([Duration duration = const Duration(milliseconds: 1200)]) =>

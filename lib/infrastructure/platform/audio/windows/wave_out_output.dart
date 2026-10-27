@@ -13,17 +13,25 @@ class WaveOutPlayer implements AudioPcmOutput {
   final int _sampleRate;
   final int _channels;
   final int _deviceId;
+  final WaveOutBindings Function() _bindingsFactory;
+  late final WaveOutBindings _bindings = _bindingsFactory();
   ffi.Pointer<ffi.Pointer<ffi.Void>>? _handle;
   final List<WaveBuffer> _inFlight = [];
+  double _volume = 1.0;
   int _completedSamples = 0;
   int _writeEpoch = 0;
   Future<void>? _initialization;
   Future<void>? _shutdown;
 
-  WaveOutPlayer({required int sampleRate, required int channels, required int deviceId})
-    : _sampleRate = sampleRate,
-      _channels = channels,
-      _deviceId = deviceId;
+  WaveOutPlayer({
+    required int sampleRate,
+    required int channels,
+    required int deviceId,
+    WaveOutBindings Function()? bindingsFactory,
+  }) : _sampleRate = sampleRate,
+       _channels = channels,
+       _deviceId = deviceId,
+       _bindingsFactory = bindingsFactory ?? WaveOutBindings.new;
 
   @override
   Future<void> initialize() => _initialization ??= Future<void>.sync(() {
@@ -48,12 +56,10 @@ class WaveOutPlayer implements AudioPcmOutput {
       return;
     }
 
-    final bindings = WaveOutBindings();
-
-    bindings.waveOutReset(handle.value);
+    _bindings.waveOutReset(handle.value);
     _collectAll(handle.value);
 
-    bindings.waveOutClose(handle.value);
+    _bindings.waveOutClose(handle.value);
     calloc.free(handle);
   }
 
@@ -67,7 +73,18 @@ class WaveOutPlayer implements AudioPcmOutput {
     }
 
     final dataPtr = calloc<ffi.Int16>(samples.length);
-    dataPtr.asTypedList(samples.length).setAll(0, samples);
+    final output = dataPtr.asTypedList(samples.length);
+    final volume = _volume;
+
+    // Apply app gain to our own PCM copy so Windows mixer volume stays independent.
+    // Buffers already submitted to WinMM remain untouched until playback completes.
+    if (volume == 1.0) {
+      output.setAll(0, samples);
+    } else if (volume != 0.0) {
+      for (var i = 0; i < samples.length; i++) {
+        output[i] = (samples[i] * volume).round();
+      }
+    }
 
     final header = calloc<WAVEHDR>();
     header.ref.lpData = dataPtr.cast<ffi.Uint8>();
@@ -79,8 +96,7 @@ class WaveOutPlayer implements AudioPcmOutput {
     header.ref.lpNext = ffi.nullptr;
     header.ref.reserved = 0;
 
-    final bindings = WaveOutBindings();
-    var result = bindings.waveOutPrepareHeader(handle.value, header, ffi.sizeOf<WAVEHDR>());
+    var result = _bindings.waveOutPrepareHeader(handle.value, header, ffi.sizeOf<WAVEHDR>());
 
     if (result != MMSYSERR_NOERROR) {
       calloc.free(header);
@@ -89,10 +105,10 @@ class WaveOutPlayer implements AudioPcmOutput {
       throw Exception('waveOutPrepareHeader failed: $result');
     }
 
-    result = bindings.waveOutWrite(handle.value, header, ffi.sizeOf<WAVEHDR>());
+    result = _bindings.waveOutWrite(handle.value, header, ffi.sizeOf<WAVEHDR>());
 
     if (result != MMSYSERR_NOERROR) {
-      bindings.waveOutUnprepareHeader(handle.value, header, ffi.sizeOf<WAVEHDR>());
+      _bindings.waveOutUnprepareHeader(handle.value, header, ffi.sizeOf<WAVEHDR>());
       calloc.free(header);
       calloc.free(dataPtr);
 
@@ -126,7 +142,7 @@ class WaveOutPlayer implements AudioPcmOutput {
       return;
     }
 
-    final result = WaveOutBindings().waveOutReset(handle.value);
+    final result = _bindings.waveOutReset(handle.value);
 
     if (result != MMSYSERR_NOERROR) {
       throw Exception('waveOutReset failed: $result');
@@ -138,16 +154,7 @@ class WaveOutPlayer implements AudioPcmOutput {
 
   @override
   void setVolume(double value) {
-    final handle = _handle;
-    if (handle == null) {
-      return;
-    }
-
-    final clamped = value.clamp(0.0, 1.0);
-    final level = (clamped * 0xFFFF).round();
-    final packed = (level & 0xFFFF) | (level << 16);
-
-    WaveOutBindings().waveOutSetVolume(handle.value, packed);
+    _volume = value.clamp(0.0, 1.0);
   }
 
   @override
@@ -157,7 +164,7 @@ class WaveOutPlayer implements AudioPcmOutput {
       return;
     }
 
-    final result = WaveOutBindings().waveOutPause(handle.value);
+    final result = _bindings.waveOutPause(handle.value);
 
     if (result != MMSYSERR_NOERROR) {
       throw Exception('waveOutPause failed: $result');
@@ -171,7 +178,7 @@ class WaveOutPlayer implements AudioPcmOutput {
       return;
     }
 
-    final result = WaveOutBindings().waveOutRestart(handle.value);
+    final result = _bindings.waveOutRestart(handle.value);
 
     if (result != MMSYSERR_NOERROR) {
       throw Exception('waveOutRestart failed: $result');
@@ -210,7 +217,7 @@ class WaveOutPlayer implements AudioPcmOutput {
     format.ref.cbSize = 0;
 
     final deviceId = _deviceId == kDefaultOutputDeviceId ? WAVE_MAPPER : _deviceId;
-    final result = WaveOutBindings().waveOutOpen(handle, deviceId, format, ffi.nullptr, ffi.nullptr, CALLBACK_NULL);
+    final result = _bindings.waveOutOpen(handle, deviceId, format, ffi.nullptr, ffi.nullptr, CALLBACK_NULL);
 
     calloc.free(format);
 
@@ -224,14 +231,13 @@ class WaveOutPlayer implements AudioPcmOutput {
   }
 
   void _collectDone(ffi.Pointer<ffi.Void> handle) {
-    final bindings = WaveOutBindings();
     var i = 0;
 
     while (i < _inFlight.length) {
       final buffer = _inFlight[i];
 
       if (buffer.header.ref.dwFlags & WHDR_DONE != 0) {
-        bindings.waveOutUnprepareHeader(handle, buffer.header, ffi.sizeOf<WAVEHDR>());
+        _bindings.waveOutUnprepareHeader(handle, buffer.header, ffi.sizeOf<WAVEHDR>());
         calloc.free(buffer.header);
         calloc.free(buffer.data);
 
@@ -245,10 +251,8 @@ class WaveOutPlayer implements AudioPcmOutput {
   }
 
   void _collectAll(ffi.Pointer<ffi.Void> handle) {
-    final bindings = WaveOutBindings();
-
     for (final buffer in _inFlight) {
-      bindings.waveOutUnprepareHeader(handle, buffer.header, ffi.sizeOf<WAVEHDR>());
+      _bindings.waveOutUnprepareHeader(handle, buffer.header, ffi.sizeOf<WAVEHDR>());
       calloc.free(buffer.header);
       calloc.free(buffer.data);
     }

@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 /// Runs the production receiver/cache/decoder/pump with in-memory test adapters.
 /// Construction never starts an isolate, device, socket, or server.
@@ -62,6 +62,36 @@ class AudioPlaybackHarness {
       outputDeviceId: -1,
       outputFactory: outputFactory,
       listeningContext: listeningContext,
+    );
+  }
+
+  /// Exercises Original's source selection and session behavior with an injected
+  /// decoder and memory output, without an HTTP listener or audio device.
+  AudioPlaybackHarness.original({
+    required AudioFileDecoder Function(Uri url, Duration startOffset) decoderFactory,
+    required AudioPcmOutput Function(int sampleRate, int channels, int deviceId) outputFactory,
+    bool initialPaused = false,
+    Duration startOffset = Duration.zero,
+  }) {
+    _session = _PlaybackSession.remote(
+      releaseConnection: (_) {},
+      send: _recordEvent,
+      playbackId: 1,
+      getPlaybackId: () => 1,
+      trackId: 'track',
+      trackTitle: 'Original test',
+      baseUrl: 'https://source.test/api',
+      token: '',
+      quicPort: null,
+      settings: const StreamSettings(mode: 'original', quality: 'source'),
+      startOffset: startOffset,
+      queueTrackIds: const [],
+      quickStart: true,
+      initialPaused: initialPaused,
+      volume: 1,
+      outputDeviceId: -1,
+      fileDecoderFactory: decoderFactory,
+      outputFactory: outputFactory,
     );
   }
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
@@ -14,6 +15,7 @@ import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/decoded_artwork_preloader.dart';
 
 class PhonoliteApp extends StatefulWidget {
   const PhonoliteApp({super.key});
@@ -25,6 +27,7 @@ class PhonoliteApp extends StatefulWidget {
 class _PhonoliteAppState extends State<PhonoliteApp> {
   late final AppController _controller;
   late final ManagedArtworkLoader _artworkLoader;
+  late final DecodedArtworkPreloader _shuffleArtworkPreloader;
   late final AppLifecycleListener _logLifecycle;
   Future<void>? _shutdown;
 
@@ -37,8 +40,9 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
     const baseUrl = String.fromEnvironment('PHONOLITE_URL', defaultValue: 'https://127.0.0.1:3000/api');
     final connection = ServerConnection(baseUrl: baseUrl);
 
-    _controller = AppController(connection: connection);
     _artworkLoader = ManagedArtworkLoader(connection: connection, accountScope: () => _controller.artworkAccountScope);
+    _shuffleArtworkPreloader = DecodedArtworkPreloader(loader: _artworkLoader);
+    _controller = AppController(connection: connection, shuffleArtworkPreloader: _shuffleArtworkPreloader);
     PaintingBinding.instance.imageCache.maximumSizeBytes = 16 * 1024 * 1024;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -62,7 +66,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
 
   Future<void> _initializeController() async {
     try {
-      await _controller.initialize();
+      await Future.wait([_controller.initialize(), DisplaySettingsController.instance.initialize()]);
 
       if (!mounted) {
         return;
@@ -85,7 +89,9 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   Future<void> _shutdownDesktop() => _shutdown ??= _closeApplication();
 
   Future<void> _closeApplication() async {
-    await Future.wait([_controller.close(), _artworkLoader.close()]);
+    final controllerClosed = _controller.close();
+    _shuffleArtworkPreloader.dispose();
+    await Future.wait([controllerClosed, _artworkLoader.close(), DisplaySettingsController.instance.flush()]);
     _controller.connection.close();
     await AppLogger.instance.flush();
   }

@@ -6,83 +6,133 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 class LocalAudioException implements Exception {
-  LocalAudioException(this.message, {this.code});
-
   final String message;
   final int? code;
+
+  LocalAudioException(this.message, {this.code});
+
+  /// Terminal source/authentication failures should not enter reconnect loops.
+  bool get isSourceRejected {
+    final value = code;
+
+    return value == -100 ||
+        value == -101 ||
+        value == -102 ||
+        (value != null && value >= 400 && value < 500 && value != 408 && value != 429);
+  }
 
   @override
   String toString() {
     if (code == null) {
       return 'LocalAudioException: $message';
     }
+
     return 'LocalAudioException($code): $message';
   }
 }
 
 class LocalAudioDecoder {
+  final int sampleRate;
+  final int channels;
+
+  /// Source PCM precision; lossy sources use the decoder's 32-bit precision.
+  final int bitDepth;
+  final Duration duration;
+  final _Bindings _bindings;
+  ffi.Pointer<_LocalAudioHandle> _handle;
+  bool _closed = false;
+
   LocalAudioDecoder._(
     this._bindings,
     this._handle, {
     required this.sampleRate,
     required this.channels,
+    required this.bitDepth,
     required this.duration,
   });
 
-  factory LocalAudioDecoder.open(
-    String filePath, {
-    Duration startOffset = Duration.zero,
-  }) {
+  factory LocalAudioDecoder.open(String filePath, {Duration startOffset = Duration.zero}) {
     final bindings = _Bindings(_loadLibrary());
     final pathBytes = utf8.encode(filePath);
     if (pathBytes.isEmpty) {
       throw LocalAudioException('empty file path');
     }
+
     final pathPtr = calloc<ffi.Uint8>(pathBytes.length);
     pathPtr.asTypedList(pathBytes.length).setAll(0, pathBytes);
-    final handle = bindings.open(
-      pathPtr,
-      pathBytes.length,
-      startOffset.inMilliseconds,
-    );
-    calloc.free(pathPtr);
 
-    if (handle == ffi.nullptr) {
-      throw LocalAudioException(
-        _lastError(bindings, ffi.nullptr) ?? 'failed to open local audio file',
-      );
+    try {
+      final handle = bindings.open(pathPtr, pathBytes.length, startOffset.inMilliseconds);
+
+      return LocalAudioDecoder._opened(bindings, handle);
+    } finally {
+      calloc.free(pathPtr);
     }
-
-    final sampleRate = bindings.sampleRate(handle);
-    final channels = bindings.channels(handle);
-    final durationMs = bindings.durationMs(handle);
-    if (sampleRate <= 0 || channels <= 0) {
-      final error = _lastError(bindings, handle) ?? 'invalid audio metadata';
-      bindings.close(handle);
-      throw LocalAudioException(error);
-    }
-
-    return LocalAudioDecoder._(
-      bindings,
-      handle,
-      sampleRate: sampleRate,
-      channels: channels,
-      duration: Duration(milliseconds: durationMs < 0 ? 0 : durationMs),
-    );
   }
 
-  final _Bindings _bindings;
-  ffi.Pointer<_LocalAudioHandle> _handle;
-  bool _closed = false;
+  /// Opens a seekable, authenticated HTTPS source with a bounded byte cache.
+  ///
+  /// Calls perform synchronous native I/O and belong in an owned decoder
+  /// isolate. Opening has a fifteen-second network budget; subsequent range
+  /// requests have five-second deadlines. Redirects and
+  /// changes to the pinned server key or source file are rejected.
+  factory LocalAudioDecoder.openRemote(
+    String url, {
+    required String token,
+    required String serverPin,
+    Duration startOffset = Duration.zero,
+  }) {
+    final bindings = _Bindings(_loadLibrary());
+    final urlBytes = utf8.encode(url);
+    final tokenBytes = utf8.encode(token);
+    final pinBytes = utf8.encode(serverPin);
 
-  final int sampleRate;
-  final int channels;
-  final Duration duration;
+    if (urlBytes.isEmpty || tokenBytes.isEmpty || pinBytes.isEmpty) {
+      throw LocalAudioException('Original playback requires an authenticated server', code: -100);
+    }
+
+    final urlPtr = calloc<ffi.Uint8>(urlBytes.length);
+    final tokenPtr = calloc<ffi.Uint8>(tokenBytes.length);
+    final pinPtr = calloc<ffi.Uint8>(pinBytes.length);
+
+    try {
+      urlPtr.asTypedList(urlBytes.length).setAll(0, urlBytes);
+      tokenPtr.asTypedList(tokenBytes.length).setAll(0, tokenBytes);
+      pinPtr.asTypedList(pinBytes.length).setAll(0, pinBytes);
+      final handle = bindings.openRemote(
+        urlPtr,
+        urlBytes.length,
+        tokenPtr,
+        tokenBytes.length,
+        pinPtr,
+        pinBytes.length,
+        startOffset.inMilliseconds,
+      );
+
+      return LocalAudioDecoder._opened(bindings, handle);
+    } finally {
+      tokenPtr.asTypedList(tokenBytes.length).fillRange(0, tokenBytes.length, 0);
+      calloc.free(urlPtr);
+      calloc.free(tokenPtr);
+      calloc.free(pinPtr);
+    }
+  }
 
   Duration get position {
     _ensureActive();
     final ms = _bindings.positionMs(_handle);
+
     return Duration(milliseconds: ms < 0 ? 0 : ms);
+  }
+
+  void close() {
+    if (_closed) {
+      return;
+    }
+
+    _bindings.close(_handle);
+    _handle = ffi.nullptr;
+    _closed = true;
   }
 
   int readInto(Int16List buffer) {
@@ -90,36 +140,77 @@ class LocalAudioDecoder {
     if (buffer.isEmpty) {
       return 0;
     }
+
     final alignedLength = buffer.length - (buffer.length % channels);
     if (alignedLength <= 0) {
       return 0;
     }
+
     final outPtr = calloc<ffi.Int16>(alignedLength);
-    final read = _bindings.read(_handle, outPtr, alignedLength);
-    if (read < 0) {
+
+    try {
+      final read = _bindings.read(_handle, outPtr, alignedLength);
+      _checkRead(read, alignedLength);
+      if (read > 0) {
+        buffer.setRange(0, read, outPtr.asTypedList(read));
+      }
+
+      return read;
+    } finally {
       calloc.free(outPtr);
-      throw LocalAudioException(
-        _lastError(_bindings, _handle) ?? 'local audio read failed',
-        code: read,
-      );
     }
-    if (read > 0) {
-      buffer.setRange(0, read, outPtr.asTypedList(read));
-    }
-    calloc.free(outPtr);
-    return read;
   }
 
   Int16List read(int maxSamples) {
     if (maxSamples <= 0) {
       return Int16List(0);
     }
+
     final buffer = Int16List(maxSamples);
     final read = readInto(buffer);
     if (read <= 0) {
       return Int16List(0);
     }
+
     return Int16List.fromList(buffer.sublist(0, read));
+  }
+
+  /// Reads interleaved signed PCM32 with source samples left-aligned.
+  ///
+  /// A 24-bit value is shifted left eight bits, retaining every source bit.
+  /// No sample-rate conversion or intermediate 16-bit quantization occurs.
+  int readInto32(Int32List buffer) {
+    _ensureActive();
+    final alignedLength = buffer.length - (buffer.length % channels);
+
+    if (alignedLength <= 0) {
+      return 0;
+    }
+
+    final outPtr = calloc<ffi.Int32>(alignedLength);
+
+    try {
+      final read = _bindings.read32(_handle, outPtr, alignedLength);
+      _checkRead(read, alignedLength);
+      if (read > 0) {
+        buffer.setRange(0, read, outPtr.asTypedList(read));
+      }
+
+      return read;
+    } finally {
+      calloc.free(outPtr);
+    }
+  }
+
+  Int32List read32(int maxSamples) {
+    if (maxSamples <= 0) {
+      return Int32List(0);
+    }
+
+    final buffer = Int32List(maxSamples);
+    final count = readInto32(buffer);
+
+    return Int32List.sublistView(buffer, 0, count);
   }
 
   Duration seek(Duration position) {
@@ -129,9 +220,10 @@ class LocalAudioDecoder {
     if (actualMs < 0) {
       throw LocalAudioException(
         _lastError(_bindings, _handle) ?? 'local audio seek failed',
-        code: actualMs,
+        code: _bindings.errorCode(_handle),
       );
     }
+
     return Duration(milliseconds: actualMs);
   }
 
@@ -140,13 +232,33 @@ class LocalAudioDecoder {
     return _lastError(_bindings, _handle);
   }
 
-  void close() {
-    if (_closed) {
-      return;
+  static LocalAudioDecoder _opened(_Bindings bindings, ffi.Pointer<_LocalAudioHandle> handle) {
+    if (handle == ffi.nullptr) {
+      throw LocalAudioException(
+        _lastError(bindings, handle) ?? 'failed to open audio source',
+        code: bindings.errorCode(handle),
+      );
     }
-    _bindings.close(_handle);
-    _handle = ffi.nullptr;
-    _closed = true;
+
+    final sampleRate = bindings.sampleRate(handle);
+    final channels = bindings.channels(handle);
+    final bitDepth = bindings.bitDepth(handle);
+    final durationMs = bindings.durationMs(handle);
+
+    if (sampleRate <= 0 || channels <= 0 || bitDepth <= 0 || bitDepth > 32) {
+      final error = _lastError(bindings, handle) ?? 'invalid audio metadata';
+      bindings.close(handle);
+      throw LocalAudioException(error, code: -101);
+    }
+
+    return LocalAudioDecoder._(
+      bindings,
+      handle,
+      sampleRate: sampleRate,
+      channels: channels,
+      bitDepth: bitDepth,
+      duration: Duration(milliseconds: durationMs < 0 ? 0 : durationMs),
+    );
   }
 
   void _ensureActive() {
@@ -154,9 +266,28 @@ class LocalAudioDecoder {
       throw LocalAudioException('local audio decoder is closed');
     }
   }
+
+  void _checkRead(int count, int capacity) {
+    if (count < 0) {
+      throw LocalAudioException(
+        _lastError(_bindings, _handle) ?? 'audio read failed',
+        code: _bindings.errorCode(_handle),
+      );
+    }
+
+    if (count > capacity || count % channels != 0) {
+      throw LocalAudioException('invalid native audio read size');
+    }
+  }
 }
 
 ffi.DynamicLibrary _loadLibrary() {
+  final configuredLibrary = Platform.environment['PHONOLITE_LOCAL_AUDIO_LIBRARY'];
+
+  if (configuredLibrary != null && configuredLibrary.isNotEmpty) {
+    return ffi.DynamicLibrary.open(configuredLibrary);
+  }
+
   if (Platform.isIOS || Platform.isMacOS) {
     final exec = File(Platform.resolvedExecutable);
     final frameworkPath = Platform.isMacOS
@@ -199,26 +330,36 @@ String? _lastError(_Bindings bindings, ffi.Pointer<_LocalAudioHandle> handle) {
 
 final class _LocalAudioHandle extends ffi.Opaque {}
 
-typedef _OpenNative =
+typedef _OpenNative = ffi.Pointer<_LocalAudioHandle> Function(ffi.Pointer<ffi.Uint8>, ffi.Uint64, ffi.Int64);
+typedef _OpenDart = ffi.Pointer<_LocalAudioHandle> Function(ffi.Pointer<ffi.Uint8>, int, int);
+
+typedef _ReadNative = ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Int16>, ffi.Uint64);
+typedef _ReadDart = int Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Int16>, int);
+
+typedef _OpenRemoteNative =
     ffi.Pointer<_LocalAudioHandle> Function(
+      ffi.Pointer<ffi.Uint8>,
+      ffi.Uint64,
+      ffi.Pointer<ffi.Uint8>,
+      ffi.Uint64,
       ffi.Pointer<ffi.Uint8>,
       ffi.Uint64,
       ffi.Int64,
     );
-typedef _OpenDart =
-    ffi.Pointer<_LocalAudioHandle> Function(ffi.Pointer<ffi.Uint8>, int, int);
-
-typedef _ReadNative =
-    ffi.Int64 Function(
-      ffi.Pointer<_LocalAudioHandle>,
-      ffi.Pointer<ffi.Int16>,
-      ffi.Uint64,
+typedef _OpenRemoteDart =
+    ffi.Pointer<_LocalAudioHandle> Function(
+      ffi.Pointer<ffi.Uint8>,
+      int,
+      ffi.Pointer<ffi.Uint8>,
+      int,
+      ffi.Pointer<ffi.Uint8>,
+      int,
+      int,
     );
-typedef _ReadDart =
-    int Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Int16>, int);
+typedef _Read32Native = ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Int32>, ffi.Uint64);
+typedef _Read32Dart = int Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Int32>, int);
 
-typedef _SeekNative =
-    ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Int64);
+typedef _SeekNative = ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Int64);
 typedef _SeekDart = int Function(ffi.Pointer<_LocalAudioHandle>, int);
 
 typedef _IntGetterNative = ffi.Int32 Function(ffi.Pointer<_LocalAudioHandle>);
@@ -227,67 +368,45 @@ typedef _IntGetterDart = int Function(ffi.Pointer<_LocalAudioHandle>);
 typedef _LongGetterNative = ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>);
 typedef _LongGetterDart = int Function(ffi.Pointer<_LocalAudioHandle>);
 
-typedef _LastErrorNative =
-    ffi.Uint64 Function(
-      ffi.Pointer<_LocalAudioHandle>,
-      ffi.Pointer<ffi.Uint8>,
-      ffi.Uint64,
-    );
-typedef _LastErrorDart =
-    int Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Uint8>, int);
+typedef _LastErrorNative = ffi.Uint64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Uint8>, ffi.Uint64);
+typedef _LastErrorDart = int Function(ffi.Pointer<_LocalAudioHandle>, ffi.Pointer<ffi.Uint8>, int);
 
 typedef _CloseNative = ffi.Void Function(ffi.Pointer<_LocalAudioHandle>);
 typedef _CloseDart = void Function(ffi.Pointer<_LocalAudioHandle>);
 
 class _Bindings {
-  _Bindings(ffi.DynamicLibrary library)
-    : open = library
-          .lookup<ffi.NativeFunction<_OpenNative>>('phonolite_local_audio_open')
-          .asFunction(),
-      read = library
-          .lookup<ffi.NativeFunction<_ReadNative>>('phonolite_local_audio_read')
-          .asFunction(),
-      seek = library
-          .lookup<ffi.NativeFunction<_SeekNative>>('phonolite_local_audio_seek')
-          .asFunction(),
-      sampleRate = library
-          .lookup<ffi.NativeFunction<_IntGetterNative>>(
-            'phonolite_local_audio_sample_rate',
-          )
-          .asFunction(),
-      channels = library
-          .lookup<ffi.NativeFunction<_IntGetterNative>>(
-            'phonolite_local_audio_channels',
-          )
-          .asFunction(),
-      durationMs = library
-          .lookup<ffi.NativeFunction<_LongGetterNative>>(
-            'phonolite_local_audio_duration_ms',
-          )
-          .asFunction(),
-      positionMs = library
-          .lookup<ffi.NativeFunction<_LongGetterNative>>(
-            'phonolite_local_audio_position_ms',
-          )
-          .asFunction(),
-      lastError = library
-          .lookup<ffi.NativeFunction<_LastErrorNative>>(
-            'phonolite_local_audio_last_error',
-          )
-          .asFunction(),
-      close = library
-          .lookup<ffi.NativeFunction<_CloseNative>>(
-            'phonolite_local_audio_close',
-          )
-          .asFunction();
-
   final _OpenDart open;
+  final _OpenRemoteDart openRemote;
   final _ReadDart read;
+  final _Read32Dart read32;
   final _SeekDart seek;
   final _IntGetterDart sampleRate;
   final _IntGetterDart channels;
+  final _IntGetterDart bitDepth;
+  final _IntGetterDart errorCode;
   final _LongGetterDart durationMs;
   final _LongGetterDart positionMs;
   final _LastErrorDart lastError;
   final _CloseDart close;
+
+  _Bindings(ffi.DynamicLibrary library)
+    : open = library.lookup<ffi.NativeFunction<_OpenNative>>('phonolite_local_audio_open').asFunction(),
+      read = library.lookup<ffi.NativeFunction<_ReadNative>>('phonolite_local_audio_read').asFunction(),
+      openRemote = library.lookupFunction<_OpenRemoteNative, _OpenRemoteDart>('phonolite_local_audio_open_remote'),
+      read32 = library.lookupFunction<_Read32Native, _Read32Dart>('phonolite_local_audio_read32'),
+      seek = library.lookup<ffi.NativeFunction<_SeekNative>>('phonolite_local_audio_seek').asFunction(),
+      sampleRate = library
+          .lookup<ffi.NativeFunction<_IntGetterNative>>('phonolite_local_audio_sample_rate')
+          .asFunction(),
+      channels = library.lookup<ffi.NativeFunction<_IntGetterNative>>('phonolite_local_audio_channels').asFunction(),
+      bitDepth = library.lookupFunction<_IntGetterNative, _IntGetterDart>('phonolite_local_audio_bit_depth'),
+      errorCode = library.lookupFunction<_IntGetterNative, _IntGetterDart>('phonolite_local_audio_error_code'),
+      durationMs = library
+          .lookup<ffi.NativeFunction<_LongGetterNative>>('phonolite_local_audio_duration_ms')
+          .asFunction(),
+      positionMs = library
+          .lookup<ffi.NativeFunction<_LongGetterNative>>('phonolite_local_audio_position_ms')
+          .asFunction(),
+      lastError = library.lookup<ffi.NativeFunction<_LastErrorNative>>('phonolite_local_audio_last_error').asFunction(),
+      close = library.lookup<ffi.NativeFunction<_CloseNative>>('phonolite_local_audio_close').asFunction();
 }

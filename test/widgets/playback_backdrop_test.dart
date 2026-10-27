@@ -332,6 +332,7 @@ Future<void> _pumpLayout(
               onToggleRepeat: _noop,
               onStreamModeChanged: (_) {},
               onVolumeChanged: (_) {},
+              onToggleMute: () {},
               onToggleLike: _noop,
               hidePlaybackChrome: hidePlaybackChrome,
             ),

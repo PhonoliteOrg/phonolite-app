@@ -32,47 +32,24 @@ void main() {
           expect(find.text('Change server'), findsOneWidget);
           expect(find.text('Disconnect'), findsOneWidget);
           final retry = _popup('Retry');
-          expect(
-            retry,
-            status == SessionStatus.serverUnavailable
-                ? findsOneWidget
-                : findsNothing,
-          );
+          expect(retry, status == SessionStatus.serverUnavailable ? findsOneWidget : findsNothing);
           if (retry.evaluate().isNotEmpty) {
             expect(tester.widget<PopupMenuItem<int>>(retry).enabled, isTrue);
           }
         } else {
           final label = switch (status) {
-            SessionStatus.authenticated ||
-            SessionStatus.serverUnavailable => 'Change server',
+            SessionStatus.authenticated || SessionStatus.serverUnavailable => 'Change server',
             SessionStatus.serverReachable => 'Log in',
             SessionStatus.checking => 'Checking',
             SessionStatus.offline => 'Connect / Log in',
           };
           if (width < 820) {
-            final button = find.descendant(
-              of: find.byTooltip(label),
-              matching: find.byType(ObsidianHudIconButton),
-            );
-            expect(
-              tester.widget<ObsidianHudIconButton>(button).onPressed == null,
-              status == SessionStatus.checking,
-            );
+            final button = find.descendant(of: find.byTooltip(label), matching: find.byType(ObsidianHudIconButton));
+            expect(tester.widget<ObsidianHudIconButton>(button).onPressed == null, status == SessionStatus.checking);
           } else {
-            expect(
-              tester.widget<TechButton>(_button(label)).onTap == null,
-              status == SessionStatus.checking,
-            );
-            expect(
-              _button('Disconnect'),
-              controller.authState.hasSession ? findsOneWidget : findsNothing,
-            );
-            expect(
-              _button('Retry'),
-              status == SessionStatus.serverUnavailable
-                  ? findsOneWidget
-                  : findsNothing,
-            );
+            expect(tester.widget<TechButton>(_button(label)).onTap == null, status == SessionStatus.checking);
+            expect(_button('Disconnect'), controller.authState.hasSession ? findsOneWidget : findsNothing);
+            expect(_button('Retry'), status == SessionStatus.serverUnavailable ? findsOneWidget : findsNothing);
           }
         }
         expect(controller.retries, 0);
@@ -105,11 +82,8 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('in-flight reconnect cannot be submitted twice at $width', (
-      tester,
-    ) async {
-      final controller = _Controller(SessionStatus.serverUnavailable)
-        ..reconnecting = true;
+    testWidgets('in-flight reconnect cannot be submitted twice at $width', (tester) async {
+      final controller = _Controller(SessionStatus.serverUnavailable)..reconnecting = true;
       await _pump(tester, controller, width);
       if (width < 820) {
         await tester.tap(find.byTooltip('Server actions'));
@@ -130,14 +104,9 @@ void main() {
   }
 }
 
-Finder _button(String label) => find.byWidgetPredicate(
-  (widget) => widget is TechButton && widget.label == label,
-);
+Finder _button(String label) => find.byWidgetPredicate((widget) => widget is TechButton && widget.label == label);
 
-Finder _popup(String label) => find.ancestor(
-  of: find.text(label),
-  matching: find.byType(PopupMenuItem<int>),
-);
+Finder _popup(String label) => find.ancestor(of: find.text(label), matching: find.byType(PopupMenuItem<int>));
 
 Future<void> _action(WidgetTester tester, double width, String label) async {
   if (width < 820) {
@@ -150,11 +119,7 @@ Future<void> _action(WidgetTester tester, double width, String label) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _pump(
-  WidgetTester tester,
-  _Controller controller,
-  double width,
-) async {
+Future<void> _pump(WidgetTester tester, _Controller controller, double width) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, 1000);
   addTearDown(() async {
@@ -187,15 +152,9 @@ class _Controller extends Fake implements AppController {
   int logouts = 0;
   final updates = StreamController<AuthState>.broadcast();
   @override
-  final connection = ServerConnection(
-    baseUrl: 'https://fixture.invalid/api',
-  );
+  final connection = ServerConnection(baseUrl: 'https://fixture.invalid/api');
   @override
-  AuthState get authState => AuthState(
-    baseUrl: connection.baseUrl,
-    status: status,
-    isReconnecting: reconnecting,
-  );
+  AuthState get authState => AuthState(baseUrl: connection.baseUrl, status: status, isReconnecting: reconnecting);
   @override
   Stream<AuthState> get authStream => updates.stream;
   @override
@@ -205,12 +164,13 @@ class _Controller extends Fake implements AppController {
   @override
   bool get statsCollectionEnabled => true;
   @override
+  bool get sessionManagementAvailable => false;
+  @override
   Stream<bool> get statsCollectionEnabledStream => const Stream.empty();
   @override
   OfflineStorageLocations? get offlineStorageLocations => null;
   @override
-  Stream<OfflineStorageLocations> get offlineStorageLocationsStream =>
-      const Stream.empty();
+  Stream<OfflineStorageLocations> get offlineStorageLocationsStream => const Stream.empty();
   @override
   Future<void> retryServerConnection() async {
     retries++;

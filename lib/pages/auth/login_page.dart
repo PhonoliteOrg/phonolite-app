@@ -308,10 +308,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
         ObsidianModalActions(
           children: [
             if (_feature.connected)
-              ModalActionButton(
-                label: 'Change server',
-                onPressed: _feature.isSubmitting ? null : _changeServer,
-              ),
+              ModalActionButton(label: 'Change server', onPressed: _feature.isSubmitting ? null : _changeServer),
             Stack(
               alignment: Alignment.center,
               children: [

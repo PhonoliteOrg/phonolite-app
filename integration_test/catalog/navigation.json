@@ -12,7 +12,7 @@
     {
       "id": "navigation.library",
       "action": "Tap Library",
-      "expected": "Show Library and retain its navigation stack",
+      "expected": "Show Library with its retained stack; reselect to return to its root",
       "availability": "all",
       "risk": "browse",
       "journeys": [
@@ -22,7 +22,7 @@
     {
       "id": "navigation.playlists",
       "action": "Tap Playlists",
-      "expected": "Show Playlists and retain its navigation stack",
+      "expected": "Show Playlists with its retained stack; reselect to return to its root",
       "availability": "all",
       "risk": "browse",
       "journeys": [
@@ -32,7 +32,7 @@
     {
       "id": "navigation.liked",
       "action": "Tap Liked",
-      "expected": "Show Liked Tracks",
+      "expected": "Show Liked Tracks with its retained stack; reselect to return to its root",
       "availability": "all",
       "risk": "browse",
       "journeys": [
@@ -42,7 +42,7 @@
     {
       "id": "navigation.stats",
       "action": "Tap Stats",
-      "expected": "Show Listening Statistics",
+      "expected": "Show Listening Statistics with its retained stack; reselect to return to its root",
       "availability": "Statistics enabled",
       "risk": "browse",
       "journeys": [
@@ -52,7 +52,7 @@
     {
       "id": "navigation.settings",
       "action": "Tap Settings",
-      "expected": "Show Settings",
+      "expected": "Show Settings with its retained stack; reselect to return to its root",
       "availability": "all",
       "risk": "browse",
       "journeys": [

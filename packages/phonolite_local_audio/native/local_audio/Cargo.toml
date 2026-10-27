@@ -8,4 +8,14 @@ name = "phonolite_local_audio"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-symphonia = { version = "0.5.4", default-features = false, features = ["mp3", "flac"] }
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3", "flac", "pcm"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+sha2 = "0.10"
+url = "2.5"
+x509-parser = "0.18"
+
+[dev-dependencies]
+rcgen = "0.13"
+
+[patch.crates-io]
+symphonia-bundle-flac = { path = "vendor/symphonia-bundle-flac" }

@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/downloads/client/offline_download_client.dart';
+part of '../offline_download_client.dart';
 
 void _offlineDownloadActorMain(OfflineActorInit init) {
   installServerTrustOverrides();
@@ -25,6 +25,7 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
   List<Track> lastLocalLiked = const <Track>[];
   List<Playlist> lastLocalPlaylists = const <Playlist>[];
   List<Track> lastLocalPlaylistTracks = const <Track>[];
+  List<LocalPlaylistEntry> lastLocalPlaylistEntries = const [];
   List<Track> lastLocalDownloadedTracks = const <Track>[];
   final subscriptions = <StreamSubscription<dynamic>>[];
 
@@ -57,6 +58,7 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
       if (sameOfflineTrackSnapshots(lastLocalLiked, localLiked) &&
           sameOfflinePlaylistSnapshots(lastLocalPlaylists, localPlaylists) &&
           sameOfflineTrackSnapshots(lastLocalPlaylistTracks, localPlaylistTracks) &&
+          sameLocalPlaylistEntries(lastLocalPlaylistEntries, core.localPlaylistEntries) &&
           sameOfflineTrackSnapshots(lastLocalDownloadedTracks, localDownloadedTracks)) {
         return;
       }
@@ -64,6 +66,7 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
       lastLocalLiked = localLiked;
       lastLocalPlaylists = localPlaylists;
       lastLocalPlaylistTracks = localPlaylistTracks;
+      lastLocalPlaylistEntries = core.localPlaylistEntries;
       lastLocalDownloadedTracks = localDownloadedTracks;
 
       init.replyPort.send(
@@ -71,6 +74,7 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
           localLiked: localLiked,
           localPlaylists: localPlaylists,
           localPlaylistTracks: localPlaylistTracks,
+          localPlaylistEntries: lastLocalPlaylistEntries,
           localDownloadedTracks: localDownloadedTracks,
           offlineArtistGroups: offline_views.offlineArtistGroups(localDownloadedTracks),
           revision: ++revision,
@@ -231,6 +235,9 @@ bool _offlineActorCommandMayChangeLibraryState(String name) {
     'updateLocalPlaylistImage' ||
     'deleteLocalPlaylist' ||
     'addLocalTrackToPlaylist' ||
+    'addSourceToLocalPlaylist' ||
+    'retryLocalPlaylistEntry' ||
+    'resumeLocalPlaylistEntry' ||
     'removeLocalTrackFromPlaylist' => true,
     _ => false,
   };

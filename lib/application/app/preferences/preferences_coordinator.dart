@@ -1,9 +1,20 @@
-part of 'package:phonolite_app/application/app/app_controller.dart';
+part of '../app_controller.dart';
 
 class _PreferencesCoordinator {
   final AppController _host;
   CustomShuffleSettings _customShuffleSettings = const CustomShuffleSettings();
   Future<void>? _customShuffleLoadFuture;
+  Future<void> _customShuffleSaveChain = Future.value();
+  String? _shuffleAccountScope;
+  int _shuffleAccountGeneration = 0;
+  int _shuffleLoadGeneration = 0;
+  int _localShuffleLoadGeneration = 0;
+  int _serverShuffleMutation = 0;
+  int _localShuffleMutation = 0;
+  Future<PlaybackRepeatMode?>? _repeatModeLoadFuture;
+  Future<void> _repeatModeSaveChain = Future.value();
+  bool _repeatModeTouched = false;
+  bool _repeatModeHasLocalValue = false;
   final _volumeSaveDebounce = DebouncedAction();
   Future<void> _volumeSaveChain = Future.value();
   double _pendingVolumeSave = 1.0;
@@ -30,6 +41,10 @@ class _PreferencesCoordinator {
 
   bool get collectionListMode => _collectionListMode;
 
+  Future<void> close() async {
+    await Future.wait([_customShuffleSaveChain, _repeatModeSaveChain]);
+  }
+
   Future<void> loadCustomShuffleSettings() async {
     await _ensureCustomShuffleSettingsLoaded(force: true);
   }
@@ -40,6 +55,14 @@ class _PreferencesCoordinator {
     List<String>? localArtistIds,
     List<String>? localGenres,
   }) async {
+    if (_host._disposed) {
+      return;
+    }
+
+    final scope = _shuffleAccountScope;
+    final accountGeneration = _shuffleAccountGeneration;
+    final changesServerFilters = artistIds != null || genres != null;
+    final changesLocalFilters = localArtistIds != null || localGenres != null;
     final next = CustomShuffleSettings(
       artistIds: _normalizeCustomList(artistIds ?? _customShuffleSettings.artistIds),
       genres: _normalizeCustomList(genres ?? _customShuffleSettings.genres, lowerCase: true),
@@ -47,12 +70,73 @@ class _PreferencesCoordinator {
       localGenres: _normalizeCustomList(localGenres ?? _customShuffleSettings.localGenres, lowerCase: true),
     );
 
+    if (changesServerFilters) {
+      _serverShuffleMutation++;
+    }
+
+    if (changesLocalFilters) {
+      _localShuffleMutation++;
+    }
+
     _customShuffleSettings = next;
     _customShuffleSettingsController.add(_host.customShuffleSettings);
 
-    await _host._customShuffleStorage.write(next);
+    final save = _customShuffleSaveChain.then((_) async {
+      if (changesLocalFilters) {
+        await _host._customShuffleStorage.writeLocal(next);
+      }
+
+      if (changesServerFilters &&
+          scope != null &&
+          _shuffleAccountScope == scope &&
+          _shuffleAccountGeneration == accountGeneration) {
+        await _host._customShuffleStorage.writeForAccount(scope, next);
+      }
+    });
+
+    _customShuffleSaveChain = save.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+
+    await save;
+
+    if (_host._disposed || _shuffleAccountGeneration != accountGeneration) {
+      return;
+    }
 
     await _host._refreshCustomShuffleQueueIfNeeded();
+
+    final state = _host._playbackState;
+    final changedActiveFilters = state.shuffleScope == ActionScope.local ? changesLocalFilters : changesServerFilters;
+
+    if (!_host._disposed &&
+        _shuffleAccountGeneration == accountGeneration &&
+        state.shuffleMode == ShuffleMode.custom &&
+        changedActiveFilters) {
+      _host._resumeCoordinator.changed();
+    }
+  }
+
+  void _setShuffleAccount(String? scope) {
+    if (_host._disposed ||
+        (_shuffleAccountScope == scope &&
+            (scope != null || (_customShuffleSettings.artistIds.isEmpty && _customShuffleSettings.genres.isEmpty)))) {
+      return;
+    }
+
+    _shuffleAccountScope = scope;
+    _shuffleAccountGeneration++;
+    final accountGeneration = _shuffleAccountGeneration;
+    _serverShuffleMutation++;
+    _customShuffleSettings = _customShuffleSettings.copyWith(artistIds: const [], genres: const []);
+    _customShuffleSettingsController.add(_host.customShuffleSettings);
+    _customShuffleLoadFuture = _loadCustomShuffleSettings(loadLocal: false);
+
+    unawaited(
+      _customShuffleLoadFuture!.catchError((Object error) {
+        if (!_host._disposed && _shuffleAccountScope == scope && _shuffleAccountGeneration == accountGeneration) {
+          _host._pushMessage('Failed to load custom shuffle settings.', level: LogLevel.warning);
+        }
+      }),
+    );
   }
 
   void setCollectionListMode(bool value, {bool persist = true}) {
@@ -80,18 +164,44 @@ class _PreferencesCoordinator {
     _volumeSaveChain = _volumeSaveChain.then((_) => _host._playbackPreferencesStorage.writeCollectionListMode(value));
   }
 
-  Future<void> _loadCustomShuffleSettings() async {
-    final settings = await _host._customShuffleStorage.read();
+  Future<void> _loadCustomShuffleSettings({bool loadLocal = true}) async {
+    final scope = _shuffleAccountScope;
+    final generation = ++_shuffleLoadGeneration;
+    final localGeneration = loadLocal ? ++_localShuffleLoadGeneration : _localShuffleLoadGeneration;
+    final serverMutation = _serverShuffleMutation;
+    final localMutation = _localShuffleMutation;
+    final settings = loadLocal ? await _host._customShuffleStorage.read() : null;
+    final accountSettings = scope == null
+        ? const CustomShuffleSettings()
+        : await _host._customShuffleStorage.readForAccount(scope);
 
     if (_host._disposed) {
       return;
     }
 
-    _customShuffleSettings = settings;
+    final applyServer =
+        generation == _shuffleLoadGeneration &&
+        scope == _shuffleAccountScope &&
+        serverMutation == _serverShuffleMutation;
+    final applyLocal =
+        settings != null && localGeneration == _localShuffleLoadGeneration && localMutation == _localShuffleMutation;
+
+    if (!applyServer && !applyLocal) {
+      return;
+    }
+
+    _customShuffleSettings = CustomShuffleSettings(
+      artistIds: applyServer ? accountSettings.artistIds : _customShuffleSettings.artistIds,
+      genres: applyServer ? accountSettings.genres : _customShuffleSettings.genres,
+      localArtistIds: applyLocal ? settings.localArtistIds : _customShuffleSettings.localArtistIds,
+      localGenres: applyLocal ? settings.localGenres : _customShuffleSettings.localGenres,
+    );
     _customShuffleSettingsController.add(_host.customShuffleSettings);
   }
 
   Future<void> _loadPlaybackPreferences() async {
+    await _loadLocalRepeatMode();
+
     final storedCollectionListMode = await _host._playbackPreferencesStorage.readCollectionListMode();
 
     if (_host._disposed) {
@@ -161,26 +271,72 @@ class _PreferencesCoordinator {
 
   Future<void> _loadPlaybackSettings() async {
     final revision = _host.connection.sessionRevision;
+
+    await _loadLocalRepeatMode();
+
+    if (_repeatModeHasLocalValue || _host._disposed || !_host._sessionCoordinator._isServerSessionCurrent(revision)) {
+      return;
+    }
+
     try {
       final settings = await _host.connection.fetchPlaybackSettings();
-      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
 
-      _host._updatePlayback(repeatMode: _parseRepeatMode(settings.repeatMode));
+      await _adoptLegacyRepeatMode(settings.repeatMode, sessionRevision: revision);
     } catch (err) {
       if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
       _host._pushMessage('Failed to load playback settings: $err', level: LogLevel.warning);
     }
   }
 
+  Future<void> _adoptLegacyRepeatMode(String? value, {required int sessionRevision}) async {
+    await _loadLocalRepeatMode();
+
+    if (_host._disposed ||
+        _repeatModeHasLocalValue ||
+        _repeatModeTouched ||
+        !_host._sessionCoordinator._isServerSessionCurrent(sessionRevision)) {
+      return;
+    }
+
+    final mode = _parseRepeatMode(value);
+
+    _repeatModeHasLocalValue = true;
+    _host._updatePlayback(repeatMode: mode);
+
+    await _saveRepeatMode(mode);
+  }
+
   Future<void> _persistPlaybackSettings(PlaybackRepeatMode mode) async {
-    if (!_host._authState.isAuthorized) return;
-    final revision = _host.connection.sessionRevision;
+    _repeatModeTouched = true;
+    _repeatModeHasLocalValue = true;
+
     try {
-      await _host.connection.updatePlaybackSettings(repeatMode: mode == PlaybackRepeatMode.one ? 'one' : 'off');
+      await _saveRepeatMode(mode);
     } catch (err) {
-      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
+      if (_host._disposed) return;
       _host._pushMessage('Failed to update playback settings: $err');
     }
+  }
+
+  Future<void> _loadLocalRepeatMode() async {
+    _repeatModeLoadFuture ??= _host._playbackPreferencesStorage.readRepeatMode();
+
+    final mode = await _repeatModeLoadFuture;
+
+    if (_host._disposed || _repeatModeTouched || _repeatModeHasLocalValue || mode == null) {
+      return;
+    }
+
+    _repeatModeHasLocalValue = true;
+    _host._updatePlayback(repeatMode: mode);
+  }
+
+  Future<void> _saveRepeatMode(PlaybackRepeatMode mode) {
+    final save = _repeatModeSaveChain.then((_) => _host._playbackPreferencesStorage.writeRepeatMode(mode));
+
+    _repeatModeSaveChain = save.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+
+    return save;
   }
 }
 
@@ -254,8 +410,6 @@ mixin _PreferencesFacade {
 
   Future<void> _ensureCustomShuffleSettingsLoaded({bool force = false}) =>
       _preferencesCoordinator._ensureCustomShuffleSettingsLoaded(force: force);
-
-  PlaybackRepeatMode _parseRepeatMode(String? value) => _preferencesCoordinator._parseRepeatMode(value);
 
   Future<void> _loadPlaybackSettings() => _preferencesCoordinator._loadPlaybackSettings();
 

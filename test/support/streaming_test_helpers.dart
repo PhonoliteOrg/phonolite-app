@@ -168,7 +168,7 @@ class MemoryOpusDecoder implements OpusDecoder {
   }
 }
 
-class MemoryPcmOutput implements AudioPcmOutput {
+class MemoryPcmOutput implements AudioPcmOutput, AudioPcm32Output {
   Future<bool> Function()? idleCheck;
   Future<void> Function()? flushCheck;
   bool paused = false;
@@ -185,7 +185,12 @@ class MemoryPcmOutput implements AudioPcmOutput {
   Future<void> initialize() async {}
 
   @override
-  Future<void> write(Int16List samples) async {
+  Future<void> write(Int16List samples) => _writeSamples(samples);
+
+  @override
+  Future<void> writePcm32(Int32List samples) => _writeSamples(samples);
+
+  Future<void> _writeSamples(List<int> samples) async {
     final generation = epoch;
     while (blockWrites && generation == epoch && !disposed) {
       await Future<void>.delayed(const Duration(milliseconds: 2));

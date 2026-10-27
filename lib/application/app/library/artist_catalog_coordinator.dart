@@ -83,6 +83,7 @@ class _ArtistCatalogCoordinator {
     try {
       await browse.loadIndex(index);
     } on ApiException catch (error) {
+      _library._catalogueReadFailures++;
       _host._handleApiError(error, context: 'artists');
     } catch (error) {
       if (!_host._disposed) {
@@ -141,10 +142,12 @@ class _ArtistCatalogCoordinator {
       hasMore = page.nextOffset != null;
     } on ApiException catch (error) {
       if (!_host._disposed && requests.isCurrent(generation)) {
+        _library._catalogueReadFailures++;
         _host._handleApiError(error, context: 'artists');
       }
     } catch (error) {
       if (!_host._disposed && requests.isCurrent(generation)) {
+        _library._catalogueReadFailures++;
         _host._pushMessage('Failed to load artists: $error', level: LogLevel.warning);
       }
     } finally {

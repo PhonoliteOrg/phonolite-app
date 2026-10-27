@@ -75,6 +75,7 @@ void main() {
                           onToggleRepeat: _noop,
                           onStreamModeChanged: (_) {},
                           onVolumeChanged: (_) {},
+                          onToggleMute: () {},
                           onToggleLike: _noop,
                         ),
                 ),

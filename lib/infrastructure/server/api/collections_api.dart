@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:phonolite_app/data/models/collections/like_state.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
@@ -115,6 +116,35 @@ class CollectionsApi extends JsonApiEndpoint {
         headers: transport.buildHeaders(),
       ),
       label: 'DELETE playlist cover',
+    );
+
+    return Playlist.fromJson(await transport.decode(response));
+  }
+
+  /// Replaces an ordered list only if the server still has the caller's version.
+  Future<Playlist> replacePlaylistTracks(String playlistId, List<String> trackIds, {required int expectedRevision}) {
+    final encoded = ApiTransport.encodePathSegment(playlistId);
+
+    return postValue('/library/playlists/$encoded', {
+      'track_ids': trackIds,
+      'expected_revision': expectedRevision,
+    }, Playlist.fromJson);
+  }
+
+  Future<Playlist> addPlaylistTracks(String playlistId, List<String> trackIds) {
+    final encoded = ApiTransport.encodePathSegment(playlistId);
+
+    return postValue('/library/playlists/$encoded/tracks', {'track_ids': trackIds}, Playlist.fromJson);
+  }
+
+  Future<Playlist> removePlaylistTracks(String playlistId, List<String> trackIds) async {
+    final encoded = ApiTransport.encodePathSegment(playlistId);
+    final uri = Uri.parse('${transport.baseUrl}/library/playlists/$encoded/tracks');
+    final headers = transport.buildHeaders(contentType: true);
+    final payload = jsonEncode({'track_ids': trackIds});
+    final response = await transport.executeRequest(
+      () => transport.client.delete(uri, headers: headers, body: payload),
+      label: 'DELETE playlist tracks',
     );
 
     return Playlist.fromJson(await transport.decode(response));

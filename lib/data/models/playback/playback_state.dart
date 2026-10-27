@@ -8,7 +8,7 @@ enum ActionScope { local, server }
 
 enum PlaybackRepeatMode { off, one }
 
-enum StreamMode { auto, high, medium, low }
+enum StreamMode { auto, high, medium, low, original }
 
 enum PlaybackQueueSource { none, liked, playlist, offline }
 

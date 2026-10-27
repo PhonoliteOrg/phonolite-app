@@ -1,4 +1,4 @@
-part of 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+part of '../audio_engine.dart';
 
 class _AudioWorkerEngine {
   final void Function(Map<String, dynamic> message) _send;
@@ -128,9 +128,9 @@ class _AudioWorkerEngine {
     final generation = ++_startGeneration;
     final listeningRevision = _listeningRevision;
     final key = '$baseUrl|$quicPort|$token|$serverPin';
-    var reusable = _session?.takeConnection(key, trackId);
+    var reusable = settings.isOriginal ? null : _session?.takeConnection(key, trackId);
 
-    if (reusable == null && _idleConnectionKey == key && _idleTrackId != trackId) {
+    if (!settings.isOriginal && reusable == null && _idleConnectionKey == key && _idleTrackId != trackId) {
       reusable = _idleConnection;
       _idleConnection = null;
     }

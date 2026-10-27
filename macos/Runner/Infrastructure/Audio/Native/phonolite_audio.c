@@ -9,6 +9,11 @@ PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open(int32_t sample_rate,
   return audio_queue_player_open(sample_rate, channels, device_id);
 }
 
+PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open_format(int32_t sample_rate, int32_t channels,
+                                                                  int32_t device_id, int32_t bits_per_sample) {
+  return audio_queue_player_open_format(sample_rate, channels, device_id, bits_per_sample);
+}
+
 PHONOLITE_EXPORT void phonolite_audio_close(PhonoliteAudioPlayer *player) {
   audio_queue_player_close(player);
 }
@@ -16,6 +21,11 @@ PHONOLITE_EXPORT void phonolite_audio_close(PhonoliteAudioPlayer *player) {
 PHONOLITE_EXPORT int32_t phonolite_audio_write(PhonoliteAudioPlayer *player, const int16_t *samples,
                                                int32_t sample_count) {
   return audio_queue_player_write(player, samples, sample_count);
+}
+
+PHONOLITE_EXPORT int32_t phonolite_audio_write32(PhonoliteAudioPlayer *player, const int32_t *samples,
+                                                 int32_t sample_count) {
+  return audio_queue_player_write32(player, samples, sample_count);
 }
 
 PHONOLITE_EXPORT void phonolite_audio_set_volume(PhonoliteAudioPlayer *player, float volume) {

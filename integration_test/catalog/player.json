@@ -16,6 +16,7 @@
     "lib/ui/features/playback/widgets/components/playback_track_details.dart",
     "lib/ui/features/playback/widgets/components/playback_transport_controls.dart",
     "lib/ui/features/playback/widgets/components/playback_tray_transition.dart",
+    "lib/ui/features/playback/widgets/components/playback_volume_button.dart",
     "lib/ui/features/playback/widgets/components/scrubber_display_position.dart",
     "lib/ui/features/playback/widgets/modals/output_device_modal.dart",
     "lib/ui/features/playback/widgets/modals/playback_modal_row.dart",
@@ -167,6 +168,15 @@
       ]
     },
     {
+      "id": "player.mute",
+      "action": "Click volume icon",
+      "expected": "Mute playback or restore the previous audible volume",
+      "availability": "Layout exposing volume",
+      "risk": "preference",
+      "journeys": [],
+      "playback_journeys": []
+    },
+    {
       "id": "player.tags_scroll",
       "action": "Scroll clipped playback tags horizontally",
       "expected": "Reveal overflow source/format tags",
@@ -279,6 +289,14 @@
         "audio.quality_medium",
         "audio.quality_high"
       ]
+    },
+    {
+      "id": "quality.original",
+      "action": "Select Original (source bitrate)",
+      "expected": "Stream the unchanged original file with source rate and precision",
+      "availability": "Quality dialog",
+      "risk": "preference",
+      "journeys": []
     },
     {
       "id": "quality.high",

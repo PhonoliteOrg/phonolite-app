@@ -4,13 +4,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_scrubber.dart';
-import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_volume_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class PlaybackCompactFooterRow extends PlaybackScrubber {
   final double volume;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleMute;
 
   const PlaybackCompactFooterRow({
     super.key,
@@ -25,6 +26,7 @@ class PlaybackCompactFooterRow extends PlaybackScrubber {
     required super.enabled,
     required this.volume,
     required this.onVolumeChanged,
+    required this.onToggleMute,
   });
 
   @override
@@ -109,7 +111,7 @@ class PlaybackCompactFooterRowState extends PlaybackScrubberState<PlaybackCompac
           width: s(110),
           child: Row(
             children: [
-              Icon(PhonoliteIcons.volume2, size: s(18), color: ObsidianPalette.textMuted),
+              PlaybackVolumeButton(muted: widget.volume == 0.0, onPressed: widget.onToggleMute, size: s(18)),
               SizedBox(width: s(6)),
               Expanded(
                 child: SliderTheme(

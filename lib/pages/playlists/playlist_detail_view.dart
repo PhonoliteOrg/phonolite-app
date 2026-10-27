@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/playlists/playlist_detail_controller.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
@@ -71,7 +72,7 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
     return BannerPlaybackButton(
       message: 'Play playlist',
       visible: !_feature.selectionMode,
-      onPressed: _feature.tracksLoading || tracks.isEmpty
+      onPressed: _feature.tracksLoading || !tracks.any(_feature.isTrackPlayable)
           ? null
           : () => widget.isLocal
                 ? controller.playLocalPlaylistFromTop(widget.playlistId)
@@ -228,13 +229,17 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                       scope: widget.isLocal ? ActionScope.local : ActionScope.server,
                     ),
                     onTrackDownload: widget.isLocal ? null : controller.downloadTrack,
+                    onTrackRetryDownload: widget.isLocal ? _feature.retryTrackDownload : null,
+                    onTrackContinueDownload: widget.isLocal ? _feature.continueTrackDownload : null,
+                    downloadStatusForTrack: widget.isLocal ? _feature.downloadStatusForTrack : null,
+                    isTrackPlayable: _feature.isTrackPlayable,
                     onTrackLike: widget.isLocal ? controller.toggleLocalLike : controller.toggleLike,
                     selectionMode: _feature.selectionMode,
                     canSelectTrack: (track) => _feature.canRemoveTrack(controller, track),
                     isTrackSelected: (track) => _feature.selectedTrackIds.contains(_feature.selectionKey(track)),
                     onTrackSelectionToggle: (track) => _feature.toggleSelection(controller, track),
                     onTrackSelectionModeRequested: (track) => _feature.enterSelection(controller, track),
-                    offlineDownloadForTrack: (track) => controller.offlineDownloadForTrack(track.id),
+                    offlineDownloadForTrack: _feature.offlineDownloadForTrack,
                   );
                 },
               ),
@@ -252,6 +257,14 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
       stream: widget.isLocal ? controller.localPlaylistsStream : controller.playlistsStream,
       initialData: widget.isLocal ? controller.localPlaylists : controller.playlists,
       builder: (context, snapshot) {
+        if (_feature.playlistDeleted) {
+          return assemble(
+            context,
+            navbar: DetailActionHeader(backLabel: 'Back to playlists', onBack: () => Navigator.of(context).pop()),
+            body: const PageBody.box(child: Center(child: Text('This playlist was deleted.'))),
+          );
+        }
+
         final playlist = (snapshot.data ?? []).firstWhere(
           (item) => item.id == widget.playlistId,
           orElse: () => Playlist(id: widget.playlistId, name: 'Playlist', trackIds: const []),
@@ -261,6 +274,35 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
             : _feature.serverPlaylistCoverUrl(controller, playlist) ?? '';
         final playlistAlbum = _feature.playlistAlbum(playlist);
         final playlistHeaders = widget.isLocal ? const <String, String>{} : authHeaders(controller);
+
+        if (widget.isLocal) {
+          return StreamBuilder<List<LocalPlaylistEntry>>(
+            stream: controller.localPlaylistEntriesStream,
+            initialData: controller.localPlaylistEntries,
+            builder: (context, entriesSnapshot) {
+              final entries = (entriesSnapshot.data ?? const <LocalPlaylistEntry>[])
+                  .where((entry) => entry.playlistId == widget.playlistId)
+                  .toList(growable: false);
+              final tracks = entries.map((entry) => entry.track).toList(growable: false);
+
+              return StreamBuilder<List<OfflineTrackDownload>>(
+                stream: controller.offlineDownloadsStream,
+                initialData: controller.offlineDownloads,
+                builder: (context, _) => _playlistContent(
+                  context,
+                  assemble,
+                  controller,
+                  playlist: playlist,
+                  playlistCoverUrl: playlistCoverUrl,
+                  playlistAlbum: playlistAlbum,
+                  playlistHeaders: playlistHeaders,
+                  tracks: tracks,
+                  displayedTracks: _feature.tracksLoading ? const <Track>[] : tracks,
+                ),
+              );
+            },
+          );
+        }
 
         return StreamBuilder<List<Track>>(
           stream: widget.isLocal ? controller.localPlaylistTracksStream : controller.playlistTracksStream,

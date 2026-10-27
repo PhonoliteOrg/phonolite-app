@@ -6,10 +6,16 @@
 static_assert(
     std::is_same<decltype(&phonolite_audio_open), PhonoliteAudioPlayer *(*)(int32_t, int32_t, int32_t)>::value,
     "open ABI");
+static_assert(std::is_same<decltype(&phonolite_audio_open_format),
+                           PhonoliteAudioPlayer *(*)(int32_t, int32_t, int32_t, int32_t)>::value,
+              "original format ABI");
 static_assert(std::is_same<decltype(&phonolite_audio_close), void (*)(PhonoliteAudioPlayer *)>::value, "close ABI");
 static_assert(std::is_same<decltype(&phonolite_audio_write),
                            int32_t (*)(PhonoliteAudioPlayer *, const int16_t *, int32_t)>::value,
               "write ABI");
+static_assert(std::is_same<decltype(&phonolite_audio_write32),
+                           int32_t (*)(PhonoliteAudioPlayer *, const int32_t *, int32_t)>::value,
+              "original PCM32 ABI");
 static_assert(std::is_same<decltype(&phonolite_audio_set_volume), void (*)(PhonoliteAudioPlayer *, float)>::value,
               "volume ABI");
 static_assert(std::is_same<decltype(&phonolite_audio_pause), void (*)(PhonoliteAudioPlayer *)>::value, "pause ABI");

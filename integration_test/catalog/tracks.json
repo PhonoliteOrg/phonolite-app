@@ -42,7 +42,7 @@
     {
       "id": "track.add_open",
       "action": "Tap Add to playlist",
-      "expected": "Open scoped playlist chooser",
+      "expected": "Open playlist chooser in the originating Local/Server scope",
       "availability": "Track exists",
       "risk": "browse",
       "journeys": []
@@ -64,6 +64,14 @@
       "journeys": []
     },
     {
+      "id": "add_to_playlist.target",
+      "action": "Select Local or Server",
+      "expected": "Switch playlist destination and membership while retaining the search filter; no transfer status appears in the modal",
+      "availability": "Track playlist chooser open",
+      "risk": "browse",
+      "journeys": []
+    },
+    {
       "id": "add_to_playlist.search",
       "action": "Type/clear playlist filter",
       "expected": "Filter chooser's playlist list",
@@ -74,7 +82,7 @@
     {
       "id": "add_to_playlist.add",
       "action": "Tap eligible playlist/add control",
-      "expected": "Add song to chosen playlist",
+      "expected": "Add to the server playlist or persist a local addition before scheduling its download; show normal added membership",
       "availability": "Eligible playlist",
       "risk": "mutation",
       "journeys": []
@@ -90,7 +98,7 @@
     {
       "id": "add_to_playlist.remove_confirm",
       "action": "Confirm song removal",
-      "expected": "Remove song from that playlist",
+      "expected": "Remove membership; clean unfinished local downloads only when unshared, retaining completed downloads",
       "availability": "Confirmation open",
       "risk": "mutation",
       "journeys": []

@@ -170,7 +170,8 @@ class MetadataEventListener {
       );
       _resyncPending = true;
     } else {
-      _pending['${event.kind}:${event.id}'] = event;
+      final key = event.kind == 'catalogue' ? 'catalogue' : '${event.kind}:${event.id}';
+      _pending[key] = event;
     }
     _debounce.schedule(debounceDelay, () {
       _flushReady = true;

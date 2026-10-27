@@ -93,8 +93,8 @@ def main() -> None:
     run([str(executable)], environment)
 
     result = {
-        "facade_forwarding_cases": 12,
-        "cpp_header_type_assertions": 12,
+        "facade_forwarding_cases": 14,
+        "cpp_header_type_assertions": 14,
         "compiler_target": target,
         "apple_audio_implementations_compiled": False,
         "apple_symbol_visibility_verified": False,

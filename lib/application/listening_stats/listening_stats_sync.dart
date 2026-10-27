@@ -13,6 +13,7 @@ class ListeningStatsSync {
   final void Function() onChanged;
   final Future<void> Function(String serverId, String userId) onIdentity;
   Future<void>? _running;
+  Future<void>? _pulling;
   Future<void>? _resetting;
   Timer? _retry;
   Timer? _periodic;
@@ -79,6 +80,46 @@ class ListeningStatsSync {
     }
 
     return work.whenComplete(clearCompletedSync);
+  }
+
+  /// Pulls committed account changes without uploading another device response.
+  /// Failures propagate so the account event owner retains its pending revision.
+  Future<void> refreshFromServer() {
+    final pulling = _pulling;
+
+    if (pulling != null) {
+      return pulling;
+    }
+
+    final work = _refreshFromServer();
+    _pulling = work;
+
+    return work.whenComplete(() {
+      if (identical(_pulling, work)) {
+        _pulling = null;
+      }
+    });
+  }
+
+  Future<void> _refreshFromServer() async {
+    while (_running != null) {
+      await _running;
+    }
+
+    if (_closed || !isAuthorized() || history.deviceId.isEmpty || _resetting != null) {
+      throw StateError('Listening statistics are not ready to refresh.');
+    }
+
+    final work = _sync(upload: false);
+    _running = work;
+
+    try {
+      await work;
+    } finally {
+      if (identical(_running, work)) {
+        _running = null;
+      }
+    }
   }
 
   Future<void> resetAccountHistory() {
@@ -185,7 +226,7 @@ class ListeningStatsSync {
     onChanged();
   }
 
-  Future<void> _sync() async {
+  Future<void> _sync({bool upload = true}) async {
     final revision = connection.sessionRevision;
 
     syncing = true;
@@ -237,108 +278,110 @@ class ListeningStatsSync {
       var serverEnabled = state.deviceEnabled;
       var acknowledgedIntent = await history.counterConsent(scope: scope, generation: generation);
 
-      // A toggle can occur while a request is in flight. Complete the latest
-      // preference before sending any further listening events.
-      for (var attempt = 0; attempt < 4; attempt++) {
-        final desired = history.enabled;
-        final localRevision = history.preferenceRevision;
-        final intent = history.collectionIntentRevision;
-
-        if (serverEnabled == desired && acknowledgedIntent == intent) {
-          break;
-        }
-
-        final pref = await connection.updateListeningPreference(
-          deviceId: history.deviceId,
-          enabled: desired,
-          revision: max(localRevision, serverPreference + 1),
-        );
-
-        if (!_current(revision) || history.accountScope != scope) {
-          return;
-        }
-
-        serverPreference = (pref['revision'] as num?)?.toInt() ?? serverPreference;
-        serverEnabled = pref['enabled'] == true;
-
-        if (history.enabled == desired && serverEnabled == desired && localRevision == history.preferenceRevision) {
-          await history.acknowledgeCounterConsent(intent, scope: scope, generation: generation);
-          acknowledgedIntent = intent;
-          break;
-        }
-      }
-
-      if (serverEnabled != history.enabled || acknowledgedIntent != history.collectionIntentRevision) {
-        throw StateError('Collection preference not acknowledged');
-      }
-
       final preferenceRevision = history.preferenceRevision;
 
-      if (serverCollectionEnabled && history.enabled) {
-        for (var batch = 0; batch < 5; batch++) {
-          final events = await history.pendingEvents(limit: 200);
+      if (upload) {
+        // A toggle can occur while a request is in flight. Complete the latest
+        // preference before sending any further listening events.
+        for (var attempt = 0; attempt < 4; attempt++) {
+          final desired = history.enabled;
+          final localRevision = history.preferenceRevision;
+          final intent = history.collectionIntentRevision;
 
-          if (!_current(revision) || !history.enabled || history.accountScope != scope) {
-            return;
-          }
-
-          if (events.isEmpty) {
+          if (serverEnabled == desired && acknowledgedIntent == intent) {
             break;
           }
 
-          final result = await connection.uploadListeningEvents(
+          final pref = await connection.updateListeningPreference(
             deviceId: history.deviceId,
-            historyGeneration: generation,
-            events: events.map((event) => event.toJson()).toList(),
+            enabled: desired,
+            revision: max(localRevision, serverPreference + 1),
           );
 
           if (!_current(revision) || history.accountScope != scope) {
             return;
           }
 
-          final accepted = (result['accepted'] as List? ?? const []).map((id) => id.toString()).toList();
+          serverPreference = (pref['revision'] as num?)?.toInt() ?? serverPreference;
+          serverEnabled = pref['enabled'] == true;
 
-          await history.acknowledge(accepted, scope: scope);
-
-          final rejected = result['rejected'] as List? ?? const [];
-
-          if (rejected.isNotEmpty) {
-            // Keep invalid records locally, but do not let one permanently
-            // rejected record block every following batch.
-            await history.reject(
-              rejected.whereType<Map>().map((item) => item['event_id'].toString()).toList(),
-              scope: scope,
-            );
-            message = 'Some listening records could not be synced. Your local history is retained.';
+          if (history.enabled == desired && serverEnabled == desired && localRevision == history.preferenceRevision) {
+            await history.acknowledgeCounterConsent(intent, scope: scope, generation: generation);
+            acknowledgedIntent = intent;
+            break;
           }
-
-          if (accepted.isEmpty && rejected.isEmpty) {
-            throw StateError('Missing upload acknowledgment');
-          }
-
-          continueSoon = batch == 4 && (await history.pendingEvents(limit: 1)).isNotEmpty;
         }
+
+        if (serverEnabled != history.enabled || acknowledgedIntent != history.collectionIntentRevision) {
+          throw StateError('Collection preference not acknowledged');
+        }
+
+        if (serverCollectionEnabled && history.enabled) {
+          for (var batch = 0; batch < 5; batch++) {
+            final events = await history.pendingEvents(limit: 200);
+
+            if (!_current(revision) || !history.enabled || history.accountScope != scope) {
+              return;
+            }
+
+            if (events.isEmpty) {
+              break;
+            }
+
+            final result = await connection.uploadListeningEvents(
+              deviceId: history.deviceId,
+              historyGeneration: generation,
+              events: events.map((event) => event.toJson()).toList(),
+            );
+
+            if (!_current(revision) || history.accountScope != scope) {
+              return;
+            }
+
+            final accepted = (result['accepted'] as List? ?? const []).map((id) => id.toString()).toList();
+
+            await history.acknowledge(accepted, scope: scope);
+
+            final rejected = result['rejected'] as List? ?? const [];
+
+            if (rejected.isNotEmpty) {
+              // Keep invalid records locally, but do not let one permanently
+              // rejected record block every following batch.
+              await history.reject(
+                rejected.whereType<Map>().map((item) => item['event_id'].toString()).toList(),
+                scope: scope,
+              );
+              message = 'Some listening records could not be synced. Your local history is retained.';
+            }
+
+            if (accepted.isEmpty && rejected.isEmpty) {
+              throw StateError('Missing upload acknowledgment');
+            }
+
+            continueSoon = batch == 4 && (await history.pendingEvents(limit: 1)).isNotEmpty;
+          }
+        }
+
+        if (!_current(revision) || history.accountScope != scope) {
+          return;
+        }
+
+        // Drain the old queue using original IDs before retiring this device's
+        // v1 writer. The server can then safely discard its old event ledger.
+        if ((await history.pendingEvents(limit: 1)).isNotEmpty) {
+          continueSoon = history.enabled && serverCollectionEnabled;
+
+          return;
+        }
+
+        await connection.activateListeningCounters(deviceId: history.deviceId, historyGeneration: generation);
+
+        if (!_current(revision) || history.accountScope != scope) {
+          return;
+        }
+
+        await history.compactLegacyCounters(scope: scope, generation: generation);
       }
-
-      if (!_current(revision) || history.accountScope != scope) {
-        return;
-      }
-
-      // Drain the old queue using original IDs before retiring this device's
-      // v1 writer. The server can then safely discard its old event ledger.
-      if ((await history.pendingEvents(limit: 1)).isNotEmpty) {
-        continueSoon = history.enabled && serverCollectionEnabled;
-
-        return;
-      }
-
-      await connection.activateListeningCounters(deviceId: history.deviceId, historyGeneration: generation);
-
-      if (!_current(revision) || history.accountScope != scope) {
-        return;
-      }
-
-      await history.compactLegacyCounters(scope: scope, generation: generation);
 
       for (var pass = 0; pass < 5; pass++) {
         // This read occurs after the preference barrier. A canceled request
@@ -364,8 +407,14 @@ class ListeningStatsSync {
           );
           continueSoon = true;
 
+          if (!upload) {
+            throw StateError('Account history changed while refreshing.');
+          }
+
           return;
         }
+
+        ListeningCounterBatch? batch;
 
         await history.applyCounterCheckpoint(
           current.checkpoint,
@@ -374,15 +423,17 @@ class ListeningStatsSync {
           generation: generation,
         );
 
-        final pendingBeforePrepare = history.pendingCount;
-        final batch = await history.prepareCounterBatch(
-          collectionRevision: serverPreference,
-          scope: scope,
-          generation: generation,
-        );
+        if (upload) {
+          final pendingBeforePrepare = history.pendingCount;
+          batch = await history.prepareCounterBatch(
+            collectionRevision: serverPreference,
+            scope: scope,
+            generation: generation,
+          );
 
-        if (history.pendingCount < pendingBeforePrepare) {
-          message = 'Some listening updates could not be synced. Your local history is retained.';
+          if (history.pendingCount < pendingBeforePrepare) {
+            message = 'Some listening updates could not be synced. Your local history is retained.';
+          }
         }
 
         if (!_current(revision) || history.accountScope != scope) {
@@ -481,6 +532,10 @@ class ListeningStatsSync {
             if (page.historyGeneration != generation) {
               continueSoon = true;
 
+              if (!upload) {
+                throw StateError('Account history changed while refreshing.');
+              }
+
               return;
             }
 
@@ -502,6 +557,10 @@ class ListeningStatsSync {
         continueSoon = pass == 4 && history.pendingCount > 0;
       }
 
+      if (!upload && continueSoon) {
+        throw StateError('More account history remains to refresh.');
+      }
+
       if (message?.startsWith('Some listening') != true) {
         message = null;
       }
@@ -510,6 +569,10 @@ class ListeningStatsSync {
     } on ApiException catch (error) {
       if (!_current(revision)) {
         return;
+      }
+
+      if (!upload) {
+        rethrow;
       }
 
       if (error.statusCode == 404 || error.statusCode == 405) {
@@ -523,6 +586,10 @@ class ListeningStatsSync {
         _scheduleRetry();
       }
     } catch (_) {
+      if (!upload) {
+        rethrow;
+      }
+
       if (_current(revision)) {
         message = 'Waiting to sync. Listening is saved on this device.';
         _scheduleRetry();
@@ -534,7 +601,7 @@ class ListeningStatsSync {
         onChanged();
       }
 
-      if (continueSoon && !_closed && _resetting == null && history.enabled) {
+      if (upload && continueSoon && !_closed && _resetting == null && history.enabled) {
         _scheduleRetry(soon: true);
       }
     }

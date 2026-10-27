@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_quality_badge.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_volume_button.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
@@ -14,8 +15,10 @@ import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
 class PlaybackOutputZone extends StatelessWidget {
   final PlaybackState state;
   final bool compact;
+  final bool allowWrap;
   final ValueChanged<StreamMode> onStreamModeChanged;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleMute;
   final VoidCallback onToggleLike;
   final VoidCallback onAddToPlaylist;
   final VoidCallback onShowDevicePicker;
@@ -26,9 +29,11 @@ class PlaybackOutputZone extends StatelessWidget {
     required this.compact,
     required this.onStreamModeChanged,
     required this.onVolumeChanged,
+    required this.onToggleMute,
     required this.onToggleLike,
     required this.onAddToPlaylist,
     required this.onShowDevicePicker,
+    this.allowWrap = true,
   });
 
   @override
@@ -46,7 +51,7 @@ class PlaybackOutputZone extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTight = compact || constraints.maxWidth < s(320);
+        final isTight = compact || (allowWrap && constraints.maxWidth < s(320));
         final controlSpacing = isTight ? s(10) : s(16);
         final userActionsEnabled = state.track != null;
 
@@ -95,7 +100,7 @@ class PlaybackOutputZone extends StatelessWidget {
             width: sliderWidth,
             child: Row(
               children: [
-                Icon(PhonoliteIcons.volume2, size: s(26)),
+                PlaybackVolumeButton(muted: state.volume == 0.0, onPressed: onToggleMute, size: s(26)),
                 SizedBox(width: s(8)),
                 Expanded(
                   child: SliderTheme(

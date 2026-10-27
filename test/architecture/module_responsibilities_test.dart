@@ -98,6 +98,11 @@ void main() {
       final component = _path(entry.parent);
       final expected = <String>{_path(entry)};
       for (final directive in parts) {
+        expect(
+          Uri.parse(directive[1]!).hasScheme,
+          isFalse,
+          reason: '${entry.path}: part directives stay relative to their owning component',
+        );
         final file = _resolve(entry, directive[1]!);
         expect(
           _path(file).startsWith('$component/'),
@@ -107,7 +112,12 @@ void main() {
         expect(file.existsSync(), isTrue, reason: file.path);
         final owner = partOf.firstMatch(file.readAsStringSync());
         expect(owner, isNotNull, reason: file.path);
-        expect(_path(_resolve(file, owner![1]!)), _path(entry));
+        expect(
+          Uri.parse(owner![1]!).hasScheme,
+          isFalse,
+          reason: '${file.path}: part of directives stay relative to their owning library',
+        );
+        expect(_path(_resolve(file, owner[1]!)), _path(entry));
         expected.add(_path(file));
       }
       final actual = _dartFiles(entry.parent.path).map(_path).toSet();

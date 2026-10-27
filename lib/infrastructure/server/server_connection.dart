@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
+import 'package:phonolite_app/data/models/auth/account_state.dart';
+import 'package:phonolite_app/data/models/collections/account_collection_event.dart';
+import 'package:phonolite_app/data/models/collections/account_collection_snapshot.dart';
 import 'package:phonolite_app/data/models/collections/like_state.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
@@ -15,6 +18,12 @@ import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/library/track_match.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/playback/account_last_track.dart';
+import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dart';
+import 'package:phonolite_app/data/models/playback/playback_resume_checkpoint.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_preset_snapshot.dart';
+import 'package:phonolite_app/data/models/server/revision_event.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/download_job_v2.dart';
 import 'package:phonolite_app/data/models/server/playback_settings_response.dart';
@@ -22,8 +31,14 @@ import 'package:phonolite_app/data/models/server/server_artwork.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 import 'package:phonolite_app/data/models/server/server_ports_response.dart';
-import 'package:phonolite_app/data/models/server/track_download_stream.dart';
 import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
+import 'package:phonolite_app/data/models/server/track_download_stream.dart';
+import 'package:phonolite_app/data/structures/collections/server_collection_membership.dart';
+import 'package:phonolite_app/infrastructure/server/api/account_events_api.dart';
+import 'package:phonolite_app/infrastructure/server/api/account_playback_api.dart';
+import 'package:phonolite_app/infrastructure/server/api/account_state_api.dart';
+import 'package:phonolite_app/infrastructure/server/api/session_management_api.dart';
+import 'package:phonolite_app/infrastructure/server/api/shuffle_presets_api.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_api.dart';
 import 'package:phonolite_app/infrastructure/server/api/auth_api.dart';
 import 'package:phonolite_app/infrastructure/server/api/collections_api.dart';
@@ -57,6 +72,13 @@ class ServerConnection {
   );
   late final PlaybackApi _playbackApi = PlaybackApi(_transport);
   late final ServerEventsApi _serverEventsApi = ServerEventsApi(_transport);
+  late final AccountEventsApi _accountEventsApi = AccountEventsApi(_transport);
+  late final AccountStateApi _accountStateApi = AccountStateApi(_transport);
+  late final AccountPlaybackApi _accountPlaybackApi = AccountPlaybackApi(_transport);
+  late final SessionManagementApi _sessionManagementApi = SessionManagementApi(_transport);
+  late final ShufflePresetsApi _shufflePresetsApi = ShufflePresetsApi(_transport);
+  final ServerCollectionMembership _collectionMembership = ServerCollectionMembership();
+  int? _projectionSession;
 
   ServerConnection({required String baseUrl, http.Client? client, ServerReachabilityProbe? serverProbe})
     : _transport = ApiTransport(baseUrl: baseUrl, client: client, serverProbe: serverProbe);
@@ -79,6 +101,15 @@ class ServerConnection {
 
   /// A fresh header map; callers cannot mutate connection authentication state.
   Map<String, String> get authorizationHeaders => _transport.authorizationHeaders;
+
+  ServerCollectionMembership get _currentMembership {
+    if (_projectionSession != sessionRevision) {
+      _collectionMembership.clear();
+      _projectionSession = sessionRevision;
+    }
+
+    return _collectionMembership;
+  }
 
   /// Streams artwork over the current trusted transport without following redirects.
   /// Supplied validators cannot replace the current session's authentication.
@@ -149,13 +180,14 @@ class ServerConnection {
 
   Future<ArtistReleases> fetchArtistReleases(String artistId) => _libraryApi.fetchArtistReleases(artistId);
 
-  Future<List<Track>> fetchTracks(String albumId) => _libraryApi.fetchTracks(albumId);
+  Future<List<Track>> fetchTracks(String albumId) => _projectTrackListRead(_libraryApi.fetchTracks(albumId));
 
   Future<List<Playlist>> fetchPlaylists() => _collectionsApi.fetchPlaylists();
 
-  Future<List<Track>> fetchPlaylistTracks(String playlistId) => _collectionsApi.fetchPlaylistTracks(playlistId);
+  Future<List<Track>> fetchPlaylistTracks(String playlistId) =>
+      _projectTrackListRead(_collectionsApi.fetchPlaylistTracks(playlistId));
 
-  Future<List<Track>> fetchLikedTracks() => _collectionsApi.fetchLikedTracks();
+  Future<List<Track>> fetchLikedTracks() => _projectTrackListRead(_collectionsApi.fetchLikedTracks());
 
   Future<List<Track>> fetchShuffleTracks({
     required String mode,
@@ -163,12 +195,14 @@ class ServerConnection {
     String? albumId,
     List<String>? artistIds,
     List<String>? genres,
-  }) => _playbackApi.fetchShuffleTracks(
-    mode: mode,
-    artistId: artistId,
-    albumId: albumId,
-    artistIds: artistIds,
-    genres: genres,
+  }) => _projectTrackListRead(
+    _playbackApi.fetchShuffleTracks(
+      mode: mode,
+      artistId: artistId,
+      albumId: albumId,
+      artistIds: artistIds,
+      genres: genres,
+    ),
   );
 
   Future<ShuffleSessionPage> createShuffleSession({
@@ -181,23 +215,25 @@ class ServerConnection {
     List<String> genres = const [],
     String? playlistId,
     String? startTrackId,
-  }) => _playbackApi.createShuffleSession(
-    mode: mode,
-    clientId: clientId,
-    requestId: requestId,
-    artistId: artistId,
-    albumId: albumId,
-    artistIds: artistIds,
-    genres: genres,
-    playlistId: playlistId,
-    startTrackId: startTrackId,
+  }) => _projectShufflePageRead(
+    _playbackApi.createShuffleSession(
+      mode: mode,
+      clientId: clientId,
+      requestId: requestId,
+      artistId: artistId,
+      albumId: albumId,
+      artistIds: artistIds,
+      genres: genres,
+      playlistId: playlistId,
+      startTrackId: startTrackId,
+    ),
   );
 
   Future<ShuffleSessionPage> fetchShuffleSessionPage(
     String sessionId, {
     required String clientId,
     required int offset,
-  }) => _playbackApi.fetchShuffleSessionPage(sessionId, clientId: clientId, offset: offset);
+  }) => _projectShufflePageRead(_playbackApi.fetchShuffleSessionPage(sessionId, clientId: clientId, offset: offset));
 
   Future<void> releaseShuffleSession(String sessionId, {required String clientId}) =>
       _playbackApi.releaseShuffleSession(sessionId, clientId: clientId);
@@ -256,7 +292,7 @@ class ServerConnection {
 
   Future<Artist> fetchArtistById(String artistId) => _libraryApi.fetchArtistById(artistId);
 
-  Future<Track> fetchTrackById(String trackId) => _libraryApi.fetchTrackById(trackId);
+  Future<Track> fetchTrackById(String trackId) => _projectTrackRead(_libraryApi.fetchTrackById(trackId));
 
   Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) => _libraryApi.fetchOfflineMetadata(trackId);
 
@@ -309,6 +345,15 @@ class ServerConnection {
   Future<Playlist> updatePlaylistTracks(String playlistId, List<String> trackIds) =>
       _collectionsApi.updatePlaylistTracks(playlistId, trackIds);
 
+  Future<Playlist> replacePlaylistTracks(String playlistId, List<String> trackIds, {required int expectedRevision}) =>
+      _collectionsApi.replacePlaylistTracks(playlistId, trackIds, expectedRevision: expectedRevision);
+
+  Future<Playlist> addPlaylistTracks(String playlistId, List<String> trackIds) =>
+      _collectionsApi.addPlaylistTracks(playlistId, trackIds);
+
+  Future<Playlist> removePlaylistTracks(String playlistId, List<String> trackIds) =>
+      _collectionsApi.removePlaylistTracks(playlistId, trackIds);
+
   Future<PlaybackSettingsResponse> fetchPlaybackSettings({
     Duration timeout = ApiTransport.defaultRequestTimeout,
     bool retryable = true,
@@ -323,6 +368,99 @@ class ServerConnection {
   }) => _playbackApi.fetchServerPorts(timeout: timeout, retryable: retryable);
 
   Stream<MetadataUpdateEvent> streamMetadataEvents() => _serverEventsApi.streamMetadataEvents();
+
+  Stream<AccountCollectionEvent> streamCollectionEvents() => _accountEventsApi.streamCollectionEvents();
+
+  Future<AccountCollectionSnapshot> fetchCollectionSnapshot() => _accountEventsApi.fetchCollectionSnapshot();
+
+  Stream<RevisionEvent<AccountRevisions>> streamAccountEvents() => _accountStateApi.streamEvents();
+
+  Future<AccountState> fetchAccountState() => _accountStateApi.fetchState();
+
+  Future<AccountLastTrack> fetchAccountLastTrack() => _accountStateApi.fetchLastTrack();
+
+  Future<AccountPlaybackSnapshot> fetchAccountPlayback() => _accountPlaybackApi.fetch();
+
+  Future<AccountPlaybackSnapshot> saveAccountPlayback({
+    required int expectedRevision,
+    required String sessionId,
+    required int sequence,
+    required String requestId,
+    required String intent,
+    required PlaybackResumeCheckpoint checkpoint,
+    String? generation,
+    String? clientId,
+  }) => _accountPlaybackApi.save(
+    expectedRevision: expectedRevision,
+    sessionId: sessionId,
+    sequence: sequence,
+    requestId: requestId,
+    intent: intent,
+    checkpoint: checkpoint,
+    generation: generation,
+    clientId: clientId,
+  );
+
+  Future<ShuffleSessionPage> fetchAccountPlaybackDeck(String deckId, {int offset = 0, int limit = 10}) =>
+      _projectShufflePageRead(_accountPlaybackApi.fetchDeck(deckId, offset: offset, limit: limit));
+
+  Future<void> clearAccountPlayback({required int expectedRevision}) =>
+      _accountPlaybackApi.clear(expectedRevision: expectedRevision);
+
+  Future<AccountLastTrack> reportAccountTrackStart({
+    required String trackId,
+    required String sessionId,
+    required int sequence,
+    required String requestId,
+  }) => _accountStateApi.reportTrack(trackId: trackId, sessionId: sessionId, sequence: sequence, requestId: requestId);
+
+  Future<int> revokeOtherSessions() => _sessionManagementApi.revokeOtherSessions();
+
+  Future<int> revokeAllSessions() => _sessionManagementApi.revokeAllSessions();
+
+  Future<ShufflePresetSnapshot> fetchShufflePresets() => _shufflePresetsApi.fetchPresets();
+
+  Future<ShufflePreset> createShufflePreset({
+    required String name,
+    required List<String> artistIds,
+    required List<String> genres,
+  }) => _shufflePresetsApi.createPreset(name: name, artistIds: artistIds, genres: genres);
+
+  Future<ShufflePreset> updateShufflePreset(
+    String id, {
+    required String name,
+    required List<String> artistIds,
+    required List<String> genres,
+    required int expectedRevision,
+  }) => _shufflePresetsApi.updatePreset(
+    id,
+    name: name,
+    artistIds: artistIds,
+    genres: genres,
+    expectedRevision: expectedRevision,
+  );
+
+  Future<void> deleteShufflePreset(String id, {required int expectedRevision}) =>
+      _shufflePresetsApi.deletePreset(id, expectedRevision: expectedRevision);
+
+  /// The caller verifies that the snapshot still belongs to its active session.
+  void applyCollectionSnapshot(AccountCollectionSnapshot snapshot) => _currentMembership.replace(snapshot);
+
+  void clearCollectionSnapshot() {
+    _collectionMembership.clear();
+    _projectionSession = sessionRevision;
+  }
+
+  void recordServerLike(String trackId, bool liked) => _currentMembership.recordLike(trackId, liked);
+
+  void recordServerPlaylist(Playlist playlist) => _currentMembership.recordPlaylist(playlist);
+
+  void recordServerPlaylistDeleted(String playlistId) => _currentMembership.recordPlaylistDeleted(playlistId);
+
+  /// Applies current account flags to already loaded remote track metadata.
+  Track projectServerTrack(Track track) => _currentMembership.project(track);
+
+  List<Track> projectServerTracks(Iterable<Track> tracks) => _currentMembership.projectAll(tracks);
 
   String buildAlbumCoverUrl(String albumId) => _artworkApi.buildAlbumCoverUrl(albumId);
 
@@ -362,6 +500,39 @@ class ServerConnection {
       _transport.pingHealthMs(timeout: timeout);
 
   Future<bool> hasServerIdentityChanged() => _transport.hasServerIdentityChanged();
+
+  Future<Track> _projectTrackRead(Future<Track> pending) async {
+    final revision = sessionRevision;
+    final track = await pending;
+
+    return revision == sessionRevision ? projectServerTrack(track) : track;
+  }
+
+  Future<List<Track>> _projectTrackListRead(Future<List<Track>> pending) async {
+    final revision = sessionRevision;
+    final tracks = await pending;
+
+    return revision == sessionRevision ? projectServerTracks(tracks) : tracks;
+  }
+
+  Future<ShuffleSessionPage> _projectShufflePageRead(Future<ShuffleSessionPage> pending) async {
+    final revision = sessionRevision;
+    final page = await pending;
+
+    if (revision != sessionRevision) {
+      return page;
+    }
+
+    return ShuffleSessionPage(
+      sessionId: page.sessionId,
+      offset: page.offset,
+      nextOffset: page.nextOffset,
+      total: page.total,
+      hasMore: page.hasMore,
+      items: projectServerTracks(page.items),
+      itemOffsets: page.itemOffsets,
+    );
+  }
 
   /// The creator closes the connection after its borrowing workloads drain.
   void close() => _transport.close();

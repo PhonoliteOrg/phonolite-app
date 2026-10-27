@@ -17,24 +17,47 @@ class _ObservedPcmOutput extends MemoryPcmOutput {
     writeAttempts++;
     await super.write(samples);
   }
+
+  @override
+  Future<void> writePcm32(Int32List samples) async {
+    writeAttempts++;
+    await super.writePcm32(samples);
+  }
+}
+
+Future<void> _waitForSession(AudioPlaybackHarness session, bool Function() predicate, String description) async {
+  try {
+    await waitUntil(predicate);
+  } catch (error) {
+    fail('Timed out waiting for $description: $error\nSession events:\n${session.messages.join('\n')}');
+  }
 }
 
 void main() {
+  test('PCM32 writes dispatch through the optional output capability', () async {
+    final memoryOutput = MemoryPcmOutput();
+    final AudioPcmOutput output = memoryOutput;
+    final samples = Int32List.fromList([0x12345678, -0x12345678, 1]);
+
+    await output.writePcm32(samples);
+
+    expect(memoryOutput.writes, 1);
+    expect(memoryOutput.samplesWritten, samples.length);
+    expect(memoryOutput.values, [samples.first]);
+  });
+
   final candidates = [
+    if (Platform.environment['PHONOLITE_LOCAL_AUDIO_LIBRARY'] case final String library) library,
     'build/windows/x64/plugins/phonolite_local_audio/phonolite_local_audio.dll',
     'build/windows/x64/plugins/phonolite_local_audio/cargo/release/phonolite_local_audio.dll',
     'build/windows/x64/runner/Release/phonolite_local_audio.dll',
   ];
-  final libraryPath = Platform.isWindows
-      ? candidates.where((path) => File(path).existsSync()).firstOrNull
-      : null;
+  final libraryPath = Platform.isWindows ? candidates.where((path) => File(path).existsSync()).firstOrNull : null;
   // Only the decoder is loaded. PCM output remains an in-memory test adapter.
   if (libraryPath != null) {
     ffi.DynamicLibrary.open(File(libraryPath).absolute.path);
   }
-  final skip = libraryPath == null
-      ? 'Requires a compiled Windows phonolite_local_audio.dll.'
-      : false;
+  final skip = libraryPath == null ? 'Requires a compiled Windows phonolite_local_audio.dll.' : false;
 
   for (final extension in ['flac', 'mp3']) {
     final filePath = File(
@@ -63,7 +86,7 @@ void main() {
         await session.close();
       });
       session.start();
-      await waitUntil(() => idleCalls > 0);
+      await _waitForSession(session, () => idleCalls > 0, 'the decoder to reach EOF');
       final writesAtEof = output.writes;
       expect(writesAtEof, greaterThan(0));
       session.pause();
@@ -78,98 +101,65 @@ void main() {
       expect(output.flushes, 1);
       expect(opens, 1);
       expect(output.disposed, isFalse);
-      expect(
-        session.messages.where((event) => event['type'] == 'complete'),
-        isEmpty,
-      );
+      expect(session.messages.where((event) => event['type'] == 'complete'), isEmpty);
       session.resume();
-      await waitUntil(
-        () => session.messages.any((event) => event['type'] == 'complete'),
-      );
+      await _waitForSession(session, () => session.messages.any((event) => event['type'] == 'complete'), 'completion');
       expect(output.writes, greaterThan(writesAtEof));
     }, skip: skip);
 
-    test(
-      '$extension paused endpoint seek is ready and completes on resume',
-      () async {
-        final metadata = LocalAudioDecoder.open(filePath);
-        final duration = metadata.duration;
-        metadata.close();
-        expect(duration, greaterThan(Duration.zero));
-        final output = MemoryPcmOutput();
-        var opens = 0;
-        final session = AudioPlaybackHarness.local(
-          filePath: filePath,
-          initialPaused: true,
-          outputFactory: (_, __, ___) {
-            opens++;
-            return output;
-          },
-        );
-        addTearDown(session.close);
-        session.start();
-        await waitUntil(
-          () => session.messages.any((event) => event['type'] == 'started'),
-        );
-        expect(
-          await session.seek(duration).timeout(const Duration(seconds: 2)),
-          isTrue,
-        );
-        expect(session.paused, isTrue);
-        expect(output.writes, 0);
-        expect(output.flushes, 1);
-        expect(opens, 1);
-        expect(
-          session.messages.where((event) => event['type'] == 'complete'),
-          isEmpty,
-        );
-        session.resume();
-        await waitUntil(
-          () => session.messages.any((event) => event['type'] == 'complete'),
-        );
-        expect(
-          session.messages.where((event) => event['type'] == 'seek_failed'),
-          isEmpty,
-        );
-      },
-      skip: skip,
-    );
+    test('$extension paused endpoint seek is ready and completes on resume', () async {
+      final metadata = LocalAudioDecoder.open(filePath);
+      final duration = metadata.duration;
+      metadata.close();
+      expect(duration, greaterThan(Duration.zero));
+      final output = MemoryPcmOutput();
+      var opens = 0;
+      final session = AudioPlaybackHarness.local(
+        filePath: filePath,
+        initialPaused: true,
+        outputFactory: (_, __, ___) {
+          opens++;
+          return output;
+        },
+      );
+      addTearDown(session.close);
+      session.start();
+      await _waitForSession(session, () => session.messages.any((event) => event['type'] == 'started'), 'startup');
+      expect(await session.seek(duration).timeout(const Duration(seconds: 2)), isTrue);
+      expect(session.paused, isTrue);
+      expect(output.writes, 0);
+      expect(output.flushes, 1);
+      expect(opens, 1);
+      expect(session.messages.where((event) => event['type'] == 'complete'), isEmpty);
+      session.resume();
+      await _waitForSession(session, () => session.messages.any((event) => event['type'] == 'complete'), 'completion');
+      expect(session.messages.where((event) => event['type'] == 'seek_failed'), isEmpty);
+    }, skip: skip);
 
-    test(
-      '$extension blocked output is cancelled by a paused local seek',
-      () async {
-        final output = _ObservedPcmOutput()..blockWrites = true;
-        var opens = 0;
-        final session = AudioPlaybackHarness.local(
-          filePath: filePath,
-          outputFactory: (_, __, ___) {
-            opens++;
-            return output;
-          },
-        );
-        addTearDown(session.close);
-        session.start();
-        await waitUntil(() => output.writeAttempts > 0);
-        session.pause();
-        expect(
-          await session
-              .seek(const Duration(milliseconds: 200))
-              .timeout(const Duration(seconds: 2)),
-          isTrue,
-        );
-        expect(session.paused, isTrue);
-        expect(output.writes, 0);
-        expect(output.flushes, 1);
-        expect(opens, 1);
-        expect(output.disposed, isFalse);
-        output.blockWrites = false;
-        session.resume();
-        await waitUntil(
-          () => session.messages.any((event) => event['type'] == 'complete'),
-        );
-        expect(output.writes, greaterThan(0));
-      },
-      skip: skip,
-    );
+    test('$extension blocked output is cancelled by a paused local seek', () async {
+      final output = _ObservedPcmOutput()..blockWrites = true;
+      var opens = 0;
+      final session = AudioPlaybackHarness.local(
+        filePath: filePath,
+        outputFactory: (_, __, ___) {
+          opens++;
+          return output;
+        },
+      );
+      addTearDown(session.close);
+      session.start();
+      await _waitForSession(session, () => output.writeAttempts > 0, 'the first PCM write');
+      session.pause();
+      expect(await session.seek(const Duration(milliseconds: 200)).timeout(const Duration(seconds: 2)), isTrue);
+      expect(session.paused, isTrue);
+      expect(output.writes, 0);
+      expect(output.flushes, 1);
+      expect(opens, 1);
+      expect(output.disposed, isFalse);
+      output.blockWrites = false;
+      session.resume();
+      await _waitForSession(session, () => session.messages.any((event) => event['type'] == 'complete'), 'completion');
+      expect(output.writes, greaterThan(0));
+    }, skip: skip);
   }
 }
