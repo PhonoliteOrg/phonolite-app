@@ -66,8 +66,8 @@ flutter run -d YOUR_IOS_DEVICE_ID --release
 ## Maintainer packaging and releases
 
 Maintainers use this section to build installers and publish app updates.
-Set the version in `pubspec.yaml` before packaging, for example
-`version: 0.2.1+1`. Build outputs and release uploads are managed manually.
+Set the release version and build number in `pubspec.yaml` before packaging.
+Build outputs and release uploads are managed manually.
 
 ### Windows installer and updates
 
@@ -79,8 +79,10 @@ Studio's C++ redistributable SDK components. Run the existing packaging script:
 ```
 
 It compiles a release build and creates an installer, `release.json` and
-`SHA256SUMS.txt` under `build\windows_distribution\<version>\x64`. For example,
-`0.2.1+1` produces `Phonolite_0.2.1.1_x64_setup.exe` in the `0.2.1.1\x64` folder.
+`SHA256SUMS.txt` under `build\windows_distribution\<version>\x64`. The Windows
+package version uses `major.minor.patch.build`, with the build number taken from
+the `+build` suffix in `pubspec.yaml`. The installer is named
+`Phonolite_<version>_x64_setup.exe`.
 Use `-SkipBuild` only when the existing release bundle matches the package version.
 
 Windows publisher signing (Authenticode) is optional. If used, pass the certificate
@@ -88,26 +90,28 @@ options to `build_nsis.ps1` so signing happens before preparing the update feed.
 
 Prepare the WinSparkle update feed with the existing Ed25519 private key that
 matches the app's configured public key. Keep this key outside the repository
-and reuse it across releases:
+and reuse it across releases. Replace `<version>` below with the Windows package
+version from the build output:
 
 ```powershell
 .\distribution_tools\windows\prepare_update.ps1 `
-    -PackagePath .\build\windows_distribution\0.2.1.1\x64\Phonolite_0.2.1.1_x64_setup.exe `
+    -PackagePath ".\build\windows_distribution\<version>\x64\Phonolite_<version>_x64_setup.exe" `
     -PrivateKeyPath C:\Signing\phonolite-windows-ed25519.key
 ```
 
 The GitHub release tag comes automatically from `pubspec.yaml`, prefixed with
-`v` and excluding the `+build` suffix. For example, `0.2.1+1` uses tag `v0.2.1`,
-while the installer and update comparison use `0.2.1.1`. Increase the major,
-minor or patch version for each new default release tag; changing only `+build`
-reuses the same tag. The default requires the installer version to match the
-current pubspec version. Use `-ReleaseTag` only when overriding the tag, such as
-for an older package or a build made with a different `-PackageVersion`.
+`v` and excluding the `+build` suffix, giving `v<major>.<minor>.<patch>`.
+The installer and update comparison use the four-part Windows package version.
+Increase the major, minor or patch version for each new default release tag;
+changing only `+build` reuses the same tag. The default requires the installer
+version to match the current pubspec version. Use `-ReleaseTag` only when
+overriding the tag, such as for an older package or a build made with a different
+`-PackageVersion`.
 
 Draft a GitHub Release at that tag and the exact commit built. Upload these four
 files from the version's `x64` output directory:
 
-- `Phonolite_0.2.1.1_x64_setup.exe`
+- `Phonolite_<version>_x64_setup.exe`
 - `release.json`
 - `SHA256SUMS.txt`
 - `windows-appcast.xml`
@@ -116,9 +120,6 @@ Publish the complete release and mark it **Latest**. Every stable release marked
 Latest must include `windows-appcast.xml`, since installed apps read that feed
 to find updates. Keep the `package` and `nsis` working directories local.
 The scripts prepare files; they do not create or upload a GitHub Release.
-
-See the [Windows maintainer packaging guide](distribution_tools/windows/README.md)
-for signing setup, certificate options and verification without installation.
 
 ### iOS IPA
 

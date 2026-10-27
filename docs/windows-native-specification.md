@@ -373,7 +373,7 @@ show the tile nor initialize or schedule the desktop updater.
 `updates.cmake` generates the feed URL and public key from the distribution
 configuration, prepares the checksum-pinned SDK and installs its DLL and license.
 The private signing key remains outside the app repository. See
-[Windows packaging](../distribution_tools/windows/README.md#windows-updates-and-manual-github-releases)
-for the manual build/sign/upload sequence and the explicit NSIS `/UPDATE` mode.
+[Windows packaging](../README.md#windows-installer-and-updates)
+for the manual build/sign/upload sequence.
 The native updater contract test injects a fake service and never starts
 WinSparkle, contacts GitHub or executes an installer.
