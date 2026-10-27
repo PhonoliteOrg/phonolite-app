@@ -407,6 +407,202 @@ final class RunnerTests: XCTestCase {
     XCTAssertNil(artwork())
   }
 
+  func testPreloadingDeduplicatesAndBoundsCoversWithoutChangingCurrentPresentation() {
+    let session = artworkTestSession()
+    defer {
+      session.invalidateAndCancel()
+      ArtworkURLProtocol.respond = nil
+    }
+
+    coordinator = NowPlayingCoordinator(artworkSession: session)
+    var args = metadata()
+    args["artworkBytes"] = FlutterStandardTypedData(bytes: imageData())
+    coordinator.update(NowPlayingCodec.decode(args))
+    let original = artwork()
+    let png = imageData()
+    let warmed = expectation(description: "first two upcoming covers decoded")
+    var requests: [String] = []
+
+    ArtworkURLProtocol.respond = { request in
+      requests.append(request.url!.lastPathComponent)
+      XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+
+      // A request starts only after the previous cover has been decoded.
+      if requests.count == 3 {
+        warmed.fulfill()
+      }
+
+      return (200, png)
+    }
+
+    coordinator.preloadArtwork([
+      artworkSource("b"), artworkSource("b"), artworkSource("c"), artworkSource("d"), artworkSource("e"),
+    ])
+    wait(for: [warmed], timeout: 3)
+
+    XCTAssertTrue(original === artwork())
+    XCTAssertEqual(coordinator.buildNowPlayingInfo()[MPMediaItemPropertyTitle] as? String, "Track A")
+
+    args = metadata(key: "c")
+    args["artworkUrl"] = artworkSource("c").url
+    args["token"] = "secret"
+    args["serverPin"] = String(repeating: "a", count: 64)
+    coordinator.update(NowPlayingCodec.decode(args))
+
+    let next = artwork()
+
+    XCTAssertNotNil(next, "Upcoming artwork must be available synchronously at the track change")
+    XCTAssertFalse(original === next)
+    XCTAssertEqual(requests, ["b", "c", "d"])
+
+    coordinator.refreshPresentation()
+
+    XCTAssertTrue(
+      next === MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork,
+      "CarPlay refresh must publish the same prepared artwork"
+    )
+  }
+
+  func testAnInflightPreloadBecomesCurrentWithoutAnotherRequest() {
+    let session = artworkTestSession()
+    let release = DispatchSemaphore(value: 0)
+    defer {
+      release.signal()
+      session.invalidateAndCancel()
+      ArtworkURLProtocol.respond = nil
+    }
+
+    coordinator = NowPlayingCoordinator(artworkSession: session)
+    let png = imageData()
+    let started = expectation(description: "preload started")
+    var requests = 0
+
+    ArtworkURLProtocol.respond = { _ in
+      requests += 1
+
+      if requests == 1 {
+        started.fulfill()
+        _ = release.wait(timeout: .now() + 3)
+      }
+
+      return (200, png)
+    }
+
+    coordinator.preloadArtwork([artworkSource("b")])
+    wait(for: [started], timeout: 3)
+
+    var args = metadata(key: "b")
+    args["artworkUrl"] = artworkSource("b").url
+    args["token"] = "secret"
+    args["serverPin"] = String(repeating: "a", count: 64)
+    coordinator.update(NowPlayingCodec.decode(args))
+    release.signal()
+    expectation(for: NSPredicate { [weak self] _, _ in self?.artwork() != nil }, evaluatedWith: nil)
+    waitForExpectations(timeout: 3)
+
+    XCTAssertEqual(requests, 1)
+  }
+
+  func testCurrentArtworkPreemptsASlowPreloadAndRejectsItsLateCover() throws {
+    let session = artworkTestSession()
+    let release = DispatchSemaphore(value: 0)
+    let local = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 40), format: format).image { context in
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 80, height: 40))
+    }
+
+    try image.pngData()!.write(to: local)
+    defer {
+      release.signal()
+      session.invalidateAndCancel()
+      ArtworkURLProtocol.respond = nil
+      try? FileManager.default.removeItem(at: local)
+    }
+
+    coordinator = NowPlayingCoordinator(artworkSession: session)
+    let png = imageData()
+    let started = expectation(description: "slow preload started")
+    let completed = expectation(description: "obsolete preload replied")
+
+    ArtworkURLProtocol.respond = { _ in
+      started.fulfill()
+      _ = release.wait(timeout: .now() + 3)
+      completed.fulfill()
+
+      return (200, png)
+    }
+
+    coordinator.preloadArtwork([artworkSource("b")])
+    wait(for: [started], timeout: 3)
+
+    var args = metadata(key: "c")
+    args["artworkPath"] = local.path
+    coordinator.update(NowPlayingCodec.decode(args))
+    coordinator.preloadArtwork([])
+    let currentReady = expectation(for: NSPredicate { [weak self] _, _ in self?.artwork() != nil }, evaluatedWith: nil)
+    wait(for: [currentReady], timeout: 2)
+
+    XCTAssertEqual(artwork()?.bounds.size, image.size, "Current artwork must not wait for a speculative request")
+
+    release.signal()
+    wait(for: [completed], timeout: 3)
+    let settled = expectation(description: "late preload settled")
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
+    wait(for: [settled], timeout: 3)
+
+    XCTAssertEqual(artwork()?.bounds.size, image.size)
+  }
+
+  func testClearingRejectsAnInflightPreloadAndKeepsCarPlayEmpty() {
+    let session = artworkTestSession()
+    let release = DispatchSemaphore(value: 0)
+    defer {
+      release.signal()
+      session.invalidateAndCancel()
+      ArtworkURLProtocol.respond = nil
+    }
+
+    coordinator = NowPlayingCoordinator(artworkSession: session)
+    let png = imageData()
+    let started = expectation(description: "preload started")
+    let completed = expectation(description: "cancelled request completed")
+
+    ArtworkURLProtocol.respond = { _ in
+      started.fulfill()
+      _ = release.wait(timeout: .now() + 3)
+      completed.fulfill()
+
+      return (200, png)
+    }
+
+    coordinator.preloadArtwork([artworkSource("b")])
+    wait(for: [started], timeout: 3)
+    coordinator.clear()
+    release.signal()
+    wait(for: [completed], timeout: 3)
+    coordinator.refreshPresentation()
+
+    XCTAssertNil(artwork())
+    XCTAssertNil(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+  }
+
+  private func artworkTestSession() -> URLSession {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [ArtworkURLProtocol.self]
+
+    return URLSession(configuration: configuration)
+  }
+
+  private func artworkSource(_ key: String) -> ArtworkSource {
+    return ArtworkSource(
+      key: key, url: "https://artwork.invalid/\(key)", token: "secret", serverPin: String(repeating: "a", count: 64)
+    )
+  }
+
   private func metadata(key: String = "album-a") -> [String: Any] {
     return [
       "trackId": "track-a",

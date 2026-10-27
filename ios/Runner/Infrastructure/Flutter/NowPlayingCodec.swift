@@ -15,14 +15,30 @@ enum NowPlayingCodec {
       liked: parseBool(args["liked"]),
       duration: parseDouble(args["duration"]),
       position: parseDouble(args["position"]),
-      artworkSource: ArtworkSource(
-        key: nonEmptyString(args["artworkKey"]),
-        url: nonEmptyString(args["artworkUrl"]),
-        path: nonEmptyString(args["artworkPath"]),
-        token: nonEmptyString(args["token"]),
-        serverPin: nonEmptyString(args["serverPin"])
-      ),
+      artworkSource: decodeArtworkSource(args),
       artworkData: (args["artworkBytes"] as? FlutterStandardTypedData)?.data
+    )
+  }
+
+  static func decodeArtworkSources(_ arguments: [Any]) -> [ArtworkSource] {
+    return arguments.compactMap { value in
+      guard let args = value as? [String: Any] else {
+        return nil
+      }
+
+      let source = decodeArtworkSource(args)
+
+      return source.path != nil || source.url != nil ? source : nil
+    }
+  }
+
+  private static func decodeArtworkSource(_ args: [String: Any]) -> ArtworkSource {
+    return ArtworkSource(
+      key: nonEmptyString(args["artworkKey"]),
+      url: nonEmptyString(args["artworkUrl"]),
+      path: nonEmptyString(args["artworkPath"]),
+      token: nonEmptyString(args["token"]),
+      serverPin: nonEmptyString(args["serverPin"])
     )
   }
 

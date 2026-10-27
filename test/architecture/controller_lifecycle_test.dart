@@ -22,6 +22,7 @@ import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/device_playback_snapshot.dart';
+import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/data/models/playback/playback_resume_checkpoint.dart';
 import 'package:phonolite_app/data/models/playback/playback_source_context.dart';
 import 'package:phonolite_app/data/storage/playback/playback_resume_storage.dart';
@@ -819,6 +820,54 @@ void main() {
     ]);
   });
 
+  test('native shuffle artwork advances and clears without a Flutter preloader', () async {
+    final connection = _WindowShuffleConnection()..distinctAlbumIds = true;
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.nowPlaying
+      ..supported = true
+      ..nativeArtwork = true;
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+
+    await harness.controller.queueShuffle(scope: 'library');
+
+    final initial = harness.nowPlaying.preloads.last;
+    expect(initial.map((source) => source.url), [
+      for (var i = 0; i < 3; i++) connection.buildAlbumCoverUrl('album-$i'),
+    ]);
+    expect(initial.every((source) => source.token == connection.token), isTrue);
+    expect(initial.every((source) => source.serverPin == connection.trust?.spki), isTrue);
+    expect(initial.first.key, harness.nowPlaying.updates.last['artworkKey']);
+    expect(harness.audio.starts.single.trackId, 'deck-track-0');
+
+    await harness.controller.nextTrack();
+
+    expect(harness.nowPlaying.preloads.last.map((source) => source.url), [
+      for (var i = 1; i < 4; i++) connection.buildAlbumCoverUrl('album-$i'),
+    ]);
+
+    await harness.controller.stop();
+
+    expect(harness.nowPlaying.preloads.last, isEmpty);
+  });
+
+  test('a failed native artwork preload does not prevent shuffle playback', () async {
+    final harness = _Harness(authenticated: true, connection: _WindowShuffleConnection());
+    harness.nowPlaying
+      ..nativeArtwork = true
+      ..preloadFailure = StateError('artwork unavailable');
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+
+    await harness.controller.queueShuffle(scope: 'library');
+
+    expect(harness.audio.starts.single.trackId, 'deck-track-0');
+  });
+
   test('server shuffle warms each album once when upcoming tracks share a cover', () async {
     final connection = _Connection()
       ..trackResponse = [
@@ -851,6 +900,7 @@ void main() {
       ];
     final artwork = _RecordingArtworkPreloader();
     final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    harness.nowPlaying.nativeArtwork = true;
     addTearDown(harness.controller.close);
     await harness.controller.initialize();
     await harness.controller.restoreSession();
@@ -864,6 +914,11 @@ void main() {
     ]);
     expect(artwork.current.first.headers, isEmpty);
     expect(artwork.current.last.headers, harness.controller.artworkHeaders);
+    expect(harness.nowPlaying.preloads.last.map((source) => source.url), [
+      connection.buildAlbumCoverUrl('album-1'),
+      connection.buildAlbumCoverUrl('remote-album'),
+    ]);
+    expect(harness.nowPlaying.preloads.last.every((source) => source.path == null), isTrue);
   });
 
   test('a delayed shuffle refill warms the next page as it enters the artwork window', () async {
@@ -4156,6 +4211,8 @@ class _NowPlaying extends NowPlayingPlatformService {
   Future<void> Function(NativeRemoteCommand)? commandHandler;
   bool supported = false;
   bool nativeArtwork = false;
+  Object? preloadFailure;
+  final preloads = <List<NativeArtworkSource>>[];
   final updates = <Map<String, dynamic>>[];
   @override
   bool get isSupported => supported;
@@ -4168,6 +4225,14 @@ class _NowPlaying extends NowPlayingPlatformService {
 
   @override
   Future<void> setNowPlaying(Map<String, dynamic> payload) async => updates.add(payload);
+  @override
+  Future<void> preloadArtwork(Iterable<NativeArtworkSource> sources) async {
+    preloads.add(sources.toList());
+
+    final failure = preloadFailure;
+    if (failure != null) throw failure;
+  }
+
   @override
   Future<void> clearNowPlaying() async {
     clears++;

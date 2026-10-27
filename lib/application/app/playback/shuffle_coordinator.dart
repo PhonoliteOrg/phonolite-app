@@ -164,6 +164,7 @@ class _ShuffleCoordinator {
     _serverDeckExpired = false;
     _serverDeckReady = false;
     _host._shuffleArtworkPreloader?.clear();
+    _preloadNativeArtwork(const []);
     deck?.close();
     if (deck != null && revision != null) _releaseServerShuffleSession(deck.sessionId, revision);
   }

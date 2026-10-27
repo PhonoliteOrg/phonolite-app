@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/data/models/playback/native_now_playing_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 import 'package:phonolite_app/infrastructure/platform/media/now_playing_codec.dart';
@@ -40,6 +41,14 @@ class NowPlayingPlatformService {
   }
 
   Future<void> publish(NativeNowPlayingSnapshot snapshot) => setNowPlaying(NowPlayingCodec.encodeSnapshot(snapshot));
+
+  Future<void> preloadArtwork(Iterable<NativeArtworkSource> sources) async {
+    if (!loadsArtworkNatively) {
+      return;
+    }
+
+    await _channel.invokeMethod('preloadArtwork', sources.map(NowPlayingCodec.encodeArtworkSource).toList());
+  }
 
   Future<void> clearNowPlaying() async {
     await _channel.invokeMethod('clearNowPlaying');

@@ -70,9 +70,9 @@ void main() {
       expectContainsAll(artwork, const [
         'task?.cancel()',
         'generation == requestGeneration',
-        'source.key == artworkKey',
+        'loadingSource == requestSource',
         '(200..<300).contains(response.statusCode)',
-        'isLoading = false',
+        'loadingSource = nil',
         'URL(fileURLWithPath: path)',
         'inlineData != current?.data',
         'request.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")',

@@ -20,6 +20,7 @@ final class NativeHost {
 
   private lazy var nowPlayingChannel = NowPlayingChannelAdapter(
     onUpdate: { [weak self] update in self?.nowPlaying.update(update) },
+    onPreloadArtwork: { [weak self] sources in self?.nowPlaying.preloadArtwork(sources) },
     onClear: { [weak self] in self?.nowPlaying.clear() },
     onAttached: { [weak self] in self?.remoteCommands.configure() }
   )

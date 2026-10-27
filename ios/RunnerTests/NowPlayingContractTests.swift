@@ -82,6 +82,25 @@ final class NowPlayingContractTests: XCTestCase {
     XCTAssertNil(malformed.artworkData)
   }
 
+  func testPreloadSourcesUseTheSameIdentityNormalizationAndSkipMalformedEntries() {
+    let sources = NowPlayingCodec.decodeArtworkSources([
+      [
+        "artworkKey": " cover ", "artworkUrl": " https://server.test/cover ", "token": " secret ", "serverPin": " pin ",
+      ],
+      ["artworkKey": " local ", "artworkPath": " /local/cover "],
+      ["artworkUrl": " \n "],
+      ["artworkPath": 12],
+      NSNull(),
+      "invalid",
+    ])
+
+    XCTAssertEqual(sources, [
+      ArtworkSource(key: "cover", url: "https://server.test/cover", token: "secret", serverPin: "pin"),
+      ArtworkSource(key: "local", path: "/local/cover"),
+    ])
+    XCTAssertTrue(NowPlayingCodec.decodeArtworkSources([]).isEmpty)
+  }
+
   func testCodecRetainsNumericBridgingWithoutParsingTextNumbers() {
     let numeric = NowPlayingCodec.decode([
       "isPlaying": NSNumber(value: 1),

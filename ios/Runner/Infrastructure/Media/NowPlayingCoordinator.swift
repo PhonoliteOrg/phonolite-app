@@ -36,6 +36,11 @@ final class NowPlayingCoordinator {
     artwork.loadIfNeeded()
   }
 
+  /// CarPlay's Now Playing template shares this publisher and decoded cache.
+  func preloadArtwork(_ sources: [ArtworkSource]) {
+    artwork.preload(sources)
+  }
+
   /// Republish without briefly telling the system that playback has stopped.
   func refreshPresentation() {
     publisher.publish(state: state, artwork: artwork.current?.mediaArtwork)

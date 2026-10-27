@@ -1,7 +1,14 @@
+import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/data/models/playback/native_now_playing_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 
 class NowPlayingCodec {
+  static Map<String, dynamic> encodeArtworkSource(NativeArtworkSource source) => {
+    'artworkKey': source.key,
+    if (source.url != null) ...{'artworkUrl': source.url, 'token': source.token, 'serverPin': source.serverPin},
+    if (source.path != null) 'artworkPath': source.path,
+  };
+
   static NativeRemoteCommand decodeCommand(Map<String, dynamic> arguments) {
     final action = switch (arguments['type']?.toString()) {
       'play' => NativeRemoteAction.play,

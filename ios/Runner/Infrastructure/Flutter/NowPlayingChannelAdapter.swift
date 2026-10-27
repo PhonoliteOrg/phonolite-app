@@ -2,6 +2,7 @@ import Flutter
 
 final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
   private let onUpdate: (NowPlayingUpdate) -> Void
+  private let onPreloadArtwork: ([ArtworkSource]) -> Void
   private let onClear: () -> Void
   private let onAttached: () -> Void
 
@@ -9,10 +10,12 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
 
   init(
     onUpdate: @escaping (NowPlayingUpdate) -> Void,
+    onPreloadArtwork: @escaping ([ArtworkSource]) -> Void,
     onClear: @escaping () -> Void,
     onAttached: @escaping () -> Void
   ) {
     self.onUpdate = onUpdate
+    self.onPreloadArtwork = onPreloadArtwork
     self.onClear = onClear
     self.onAttached = onAttached
   }
@@ -49,6 +52,15 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
       }
 
       onUpdate(NowPlayingCodec.decode(arguments))
+      result(true)
+    case "preloadArtwork":
+      guard let arguments = call.arguments as? [Any] else {
+        result(FlutterError(code: "bad_args", message: "Missing artwork sources", details: nil))
+
+        return
+      }
+
+      onPreloadArtwork(NowPlayingCodec.decodeArtworkSources(arguments))
       result(true)
     case "clearNowPlaying":
       onClear()

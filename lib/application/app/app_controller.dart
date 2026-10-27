@@ -48,6 +48,7 @@ import 'package:phonolite_app/data/models/listening_stats/listening_stats_snapsh
 import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/playback/device_playback_snapshot.dart';
+import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/data/models/playback/native_now_playing_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
