@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -23,6 +25,38 @@ String _appcast(List<String> items) => '''
 <channel>${items.join()}</channel></rss>''';
 
 void main() {
+  test('the default update client bypasses music-server overrides without changing them', () async {
+    var pinnedClientCreations = 0;
+    await HttpOverrides.runZoned(
+      () async {
+        final overrides = HttpOverrides.current;
+        final feed = HttpAppUpdateFeed();
+        addTearDown(feed.close);
+
+        // Reject before opening any socket. The default client is constructed
+        // first, which used to inherit the server-only override and fail here.
+        await expectLater(
+          feed.latest(
+            const AppUpdateConfiguration(
+              available: true,
+              feedUrl: 'http://example.com/appcast.xml',
+              currentVersion: '0.2.0.0',
+            ),
+          ),
+          throwsFormatException,
+        );
+        expect(pinnedClientCreations, 0);
+        expect(HttpOverrides.current, same(overrides));
+        expect(HttpClient.new, throwsStateError);
+        expect(pinnedClientCreations, 1);
+      },
+      createHttpClient: (_) {
+        pinnedClientCreations++;
+        throw StateError('Only authenticated music servers may use this client.');
+      },
+    );
+  });
+
   test('selects the numerically newest Windows release regardless of feed ordering', () {
     final release = AppUpdateRelease.latestFromAppcast(
       _appcast([

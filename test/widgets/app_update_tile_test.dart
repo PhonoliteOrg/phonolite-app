@@ -36,7 +36,7 @@ void main() {
     find.ancestor(of: find.text('App updates'), matching: find.byType(ObsidianListRow)),
   );
 
-  testWidgets('one greyed update tile lives under Miscellaneous when no update exists', (tester) async {
+  testWidgets('clicking the update tile checks and then offers download and install', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     final platform = _Platform();
     final feed = _Feed()..result.complete(null);
@@ -47,10 +47,33 @@ void main() {
       expect(find.text('Miscellaneous'), findsOneWidget);
       expect(find.descendant(of: find.byType(MiscSettingsSection), matching: find.text('App updates')), findsOneWidget);
       expect(find.byType(Switch), findsNothing);
-      expect(find.text('You’re up to date.'), findsOneWidget);
-      expect(updateRow(tester).onTap, isNull);
-      expect(updateRow(tester).titleColor, ObsidianPalette.textMuted);
+      expect(find.text('You’re up to date. Select to check again.'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNotNull);
       expect(platform.opens, 0);
+
+      feed.result = Completer<AppUpdateRelease?>();
+      await tester.tap(find.text('App updates'));
+      await tester.pump();
+      expect(feed.checks, 2);
+      expect(find.text('Checking for updates…'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNull);
+      expect(platform.opens, 0);
+
+      feed.result.complete(const AppUpdateRelease(version: '0.3.0.1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Version 0.3.0.1 is available. Download and install.'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNotNull);
+      expect(platform.opens, 0);
+
+      platform.pendingShow = Completer<void>();
+      await tester.tap(find.text('App updates'));
+      await tester.pump();
+      expect(find.text('Opening updater…'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNull);
+      expect(platform.opens, 1);
+      expect(feed.checks, 2);
+      platform.pendingShow!.complete();
+      await tester.pumpAndSettle();
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.shutdown();
@@ -86,6 +109,60 @@ void main() {
     }
   });
 
+  testWidgets('a failed check leaves the tile clickable for an immediate retry', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final platform = _Platform();
+    final feed = _Feed()..fail = true;
+    final controller = AppUpdatesController(platform: platform, feed: feed, isSupported: () => true);
+    try {
+      await controller.initialize(onInstall: () async {});
+      await pumpSettings(tester, controller);
+      expect(find.text('Could not check for updates. Select to try again.'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNotNull);
+
+      feed.fail = false;
+      await tester.tap(find.text('App updates'));
+      await tester.pump();
+      expect(find.text('Checking for updates…'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNull);
+      feed.result.complete(null);
+      await tester.pumpAndSettle();
+      expect(find.text('You’re up to date. Select to check again.'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNotNull);
+      expect(feed.checks, 2);
+      expect(platform.opens, 0);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.shutdown();
+      controller.dispose();
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Windows debug builds explain why the update tile is disabled', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final platform = _Platform();
+    final feed = _Feed();
+    final controller = AppUpdatesController(platform: platform, feed: feed);
+    try {
+      await controller.initialize(onInstall: () async {});
+      await pumpSettings(tester, controller);
+      expect(
+        find.text('Update checks are disabled in debug builds. Use a release build to check for updates.'),
+        findsOneWidget,
+      );
+      expect(updateRow(tester).onTap, isNull);
+      expect(updateRow(tester).titleColor, ObsidianPalette.textMuted);
+      expect(feed.checks, 0);
+      expect(platform.opens, 0);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.shutdown();
+      controller.dispose();
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   for (final target in [TargetPlatform.iOS, TargetPlatform.android]) {
     testWidgets('Miscellaneous excludes the desktop update tile on $target', (tester) async {
       debugDefaultTargetPlatformOverride = target;
@@ -107,6 +184,7 @@ void main() {
 
 class _Platform implements AppUpdatePlatform {
   int opens = 0;
+  Completer<void>? pendingShow;
 
   @override
   Future<AppUpdateConfiguration> initialize({required Future<void> Function() onInstall}) async =>
@@ -117,17 +195,26 @@ class _Platform implements AppUpdatePlatform {
       );
 
   @override
-  Future<void> showUpdate() async => opens++;
+  Future<void> showUpdate() async {
+    opens++;
+    await pendingShow?.future;
+  }
 
   @override
   Future<void> dispose() async {}
 }
 
 class _Feed implements AppUpdateFeed {
-  final result = Completer<AppUpdateRelease?>();
+  var result = Completer<AppUpdateRelease?>();
+  int checks = 0;
+  bool fail = false;
 
   @override
-  Future<AppUpdateRelease?> latest(AppUpdateConfiguration configuration) => result.future;
+  Future<AppUpdateRelease?> latest(AppUpdateConfiguration configuration) async {
+    checks++;
+    if (fail) throw StateError('offline');
+    return result.future;
+  }
 
   @override
   void close() {

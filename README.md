@@ -129,6 +129,18 @@ Latest must include `windows-appcast.xml`, since installed apps read that feed
 to find updates. Keep the `package` and `nsis` working directories local.
 The scripts prepare files; they do not create or upload a GitHub Release.
 
+Windows release builds check the feed on startup and every two hours. Select
+**Settings > Miscellaneous > App updates** to check immediately or retry a failed
+check. When a newer version is found, the tile offers **Download and install**;
+select it again to open the signed WinSparkle update flow. Debug builds disable
+update checks.
+
+Versions 0.2.0 and 0.3.0 inherit the music-server HTTP certificate pins for feed
+requests, which reject GitHub before update discovery. They also disable the
+tile until an automatic check finds an update. Those versions require a manual
+installer upgrade to a release containing the dedicated HTTPS client and
+click-to-check tile fix. Publishing a new feed cannot repair installed code.
+
 ### iOS IPA
 
 On a Mac, configure the signing certificates and provisioning profiles for your

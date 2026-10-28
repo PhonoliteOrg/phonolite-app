@@ -14,25 +14,32 @@ class AppUpdateTile extends StatelessWidget {
     if (controller.disabledReason case final reason?) {
       return reason;
     }
+    if (controller.openingUpdater) {
+      return 'Opening updater…';
+    }
     if (controller.busy) {
       return 'Checking for updates…';
     }
     if (controller.error != null) {
       return controller.latestRelease != null
           ? 'Could not open the updater. Select to try again.'
-          : 'Could not check for updates. Checks run on startup and every 2 hours.';
+          : controller.canCheckForUpdates
+          ? 'Could not check for updates. Select to try again.'
+          : 'Update checks are unavailable in this build.';
     }
     if (controller.latestRelease case final release?) {
       return 'Version ${release.displayVersion} is available. Download and install.';
     }
-    return controller.ready ? 'You’re up to date.' : 'Updates are checked on startup and every 2 hours.';
+    return controller.ready
+        ? 'You’re up to date. Select to check again.'
+        : 'Updates are checked on startup and every 2 hours.';
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
-      final enabled = controller.canInstall;
+      final enabled = controller.canCheckForUpdates;
       final color = enabled ? ObsidianPalette.gold : ObsidianPalette.textMuted;
 
       return Semantics(
@@ -47,7 +54,11 @@ class AppUpdateTile extends StatelessWidget {
             subtitle: _subtitle,
             titleColor: enabled ? null : color,
             trailing: const Icon(PhonoliteIcons.chevronRight),
-            onTap: enabled ? controller.installLatestUpdate : null,
+            onTap: enabled
+                ? controller.canInstall
+                      ? controller.installLatestUpdate
+                      : controller.checkForUpdates
+                : null,
           ),
         ),
       );

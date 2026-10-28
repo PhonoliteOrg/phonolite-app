@@ -362,9 +362,15 @@ The Dart `AppUpdatesController` owns settings actions and hands installation
 shutdown to the existing `DesktopSettingsController.quit` workflow so tray mode
 cannot intercept it. Shared updater settings remain independent of music-server
 authentication and local library resets. A separate HTTPS feed probe checks
-at startup and every two hours without WinSparkle UI, and the controller enables the single
-Miscellaneous tile only when a newer Windows version is known. WinSparkle's own
-automatic checks are disabled so its dialog opens only from that tile. WinSparkle
+at startup and every two hours without WinSparkle UI. Selecting the single
+Miscellaneous tile runs the same quiet check immediately, including after a failed
+feed request. The feed uses a dedicated system-CA HTTPS client so the global
+music-server certificate pins cannot reject GitHub or its asset redirects.
+Music-server trust and authentication are unchanged. When a newer Windows
+version is known, the tile switches to a
+download and install action that opens WinSparkle. Checks and updater actions
+disable the tile while pending. WinSparkle's own automatic checks are disabled
+so its dialog opens only from that tile. WinSparkle
 verifies every installer against the compiled Ed25519 key.
 The controller owns the polling timer, skips overlapping checks and cancels it
 on shutdown. The tile and updater are Windows-only; mobile platforms neither

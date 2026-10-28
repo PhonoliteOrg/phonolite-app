@@ -42,8 +42,10 @@ void main() {
   test('unsupported builds make no native or feed requests', () async {
     final unsupported = AppUpdatesController(platform: platform, feed: feed, isSupported: () => false);
     await unsupported.initialize(onInstall: () async {});
+    await unsupported.checkForUpdates();
     await unsupported.installLatestUpdate();
     await unsupported.shutdown();
+    expect(unsupported.canCheckForUpdates, isFalse);
     expect(platform.calls, isEmpty);
     expect(feed.checks, 0);
     unsupported.dispose();
@@ -57,8 +59,10 @@ void main() {
       expect(development.supported, isFalse);
       expect(development.disabledReason, contains('disabled in debug builds'));
       await development.initialize(onInstall: () async {});
+      await development.checkForUpdates();
       await development.installLatestUpdate();
       await development.shutdown();
+      expect(development.canCheckForUpdates, isFalse);
       expect(development.canInstall, isFalse);
       expect(platform.calls, isEmpty);
       expect(feed.checks, 0);
@@ -76,6 +80,45 @@ void main() {
     expect(feed.configuration?.currentVersion, '0.2.0.0');
     expect(controller.latestRelease?.displayVersion, '0.2.1');
     expect(controller.canInstall, isTrue);
+  });
+
+  test('a manual check discovers a newly published release without opening the updater', () async {
+    await initialize();
+    expect(controller.canCheckForUpdates, isTrue);
+    expect(controller.canInstall, isFalse);
+
+    feed.pending = Completer<AppUpdateRelease?>();
+    final checking = controller.checkForUpdates();
+    expect(controller.busy, isTrue);
+    expect(controller.canCheckForUpdates, isFalse);
+    expect(controller.openingUpdater, isFalse);
+    await controller.checkForUpdates();
+    await controller.installLatestUpdate();
+    expect(feed.checks, 2);
+    expect(platform.calls, ['initialize']);
+
+    feed.pending!.complete(const AppUpdateRelease(version: '0.3.0.1'));
+    await checking;
+    expect(controller.latestRelease?.version, '0.3.0.1');
+    expect(controller.canCheckForUpdates, isTrue);
+    expect(controller.canInstall, isTrue);
+    expect(controller.busy, isFalse);
+    expect(platform.calls, ['initialize']);
+  });
+
+  test('a manual check retries a failed startup check and clears its error', () async {
+    feed.fail = true;
+    await initialize();
+    expect(controller.canCheckForUpdates, isTrue);
+    expect(controller.error, contains('offline'));
+
+    feed.fail = false;
+    feed.release = const AppUpdateRelease(version: '0.3.0.1');
+    await controller.checkForUpdates();
+    expect(feed.checks, 2);
+    expect(controller.error, isNull);
+    expect(controller.canInstall, isTrue);
+    expect(platform.calls, ['initialize']);
   });
 
   testWidgets('checks every two hours, refreshes availability and cancels on shutdown', (tester) async {
@@ -124,6 +167,7 @@ void main() {
       await tester.pump(const Duration(hours: 2));
       expect(feed.checks, 2);
       expect(polling.busy, isTrue);
+      await polling.checkForUpdates();
       await tester.pump(const Duration(hours: 2));
       expect(feed.checks, 2);
       feed.pending!.complete(const AppUpdateRelease(version: '0.2.1.0'));
@@ -131,10 +175,14 @@ void main() {
       feed.pending = null;
       platform.pendingShow = Completer<void>();
       final opening = polling.installLatestUpdate();
+      expect(polling.openingUpdater, isTrue);
+      expect(polling.canCheckForUpdates, isFalse);
+      await polling.checkForUpdates();
       await tester.pump(const Duration(hours: 2));
       expect(feed.checks, 2);
       platform.pendingShow!.complete();
       await opening;
+      expect(polling.openingUpdater, isFalse);
       await tester.pump(const Duration(hours: 2));
       expect(feed.checks, 3);
     });
@@ -148,12 +196,14 @@ void main() {
         expect(mobile.showInSettings, isFalse);
         expect(mobile.supported, isFalse);
         await mobile.initialize(onInstall: () async {});
+        await mobile.checkForUpdates();
         await mobile.installLatestUpdate();
         await tester.pump(const Duration(hours: 4));
         await mobile.shutdown();
         expect(platform.calls, isEmpty);
         expect(feed.checks, 0);
         expect(mobile.canInstall, isFalse);
+        expect(mobile.canCheckForUpdates, isFalse);
       } finally {
         mobile.dispose();
         debugDefaultTargetPlatformOverride = null;
@@ -183,10 +233,11 @@ void main() {
     expect(controller.canInstall, isTrue);
   });
 
-  test('failed startup probes stay disabled and report the failure', () async {
+  test('failed startup probes allow another check and report the failure', () async {
     feed.fail = true;
     await initialize();
     expect(controller.canInstall, isFalse);
+    expect(controller.canCheckForUpdates, isTrue);
     expect(controller.busy, isFalse);
     expect(controller.error, contains('offline'));
     expect(platform.calls, ['initialize']);
@@ -221,7 +272,10 @@ void main() {
     );
     final first = platform.onInstall!();
     final second = platform.onInstall!();
+    expect(controller.canCheckForUpdates, isFalse);
+    await controller.checkForUpdates();
     await controller.installLatestUpdate();
+    expect(feed.checks, 1);
     expect(shutdowns, 1);
     expect(platform.calls, ['initialize']);
     closing.complete();
@@ -245,8 +299,11 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await controller.shutdown();
     await starting;
+    await controller.checkForUpdates();
     expect(feed.closed, isTrue);
+    expect(feed.checks, 1);
     expect(controller.canInstall, isFalse);
+    expect(controller.canCheckForUpdates, isFalse);
     expect(controller.latestRelease, isNull);
     expect(platform.calls, ['initialize', 'dispose']);
   });

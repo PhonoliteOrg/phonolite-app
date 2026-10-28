@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import 'package:phonolite_app/data/models/updates/app_update_configuration.dart';
 import 'package:phonolite_app/data/models/updates/app_update_release.dart';
@@ -18,7 +20,9 @@ class HttpAppUpdateFeed implements AppUpdateFeed {
   final http.Client Function() _createClient;
   http.Client? _activeClient;
 
-  HttpAppUpdateFeed({http.Client Function()? createClient}) : _createClient = createClient ?? http.Client.new;
+  HttpAppUpdateFeed({http.Client Function()? createClient}) : _createClient = createClient ?? _createUpdateClient;
+
+  static http.Client _createUpdateClient() => IOClient(_UpdateHttpOverrides().createHttpClient(null));
 
   @override
   Future<AppUpdateRelease?> latest(AppUpdateConfiguration configuration) async {
@@ -80,3 +84,8 @@ class HttpAppUpdateFeed implements AppUpdateFeed {
     return utf8.decode(bytes);
   }
 }
+
+// Public update hosts use system certificate authorities, independently of the
+// global authenticated music-server pins. The base factory retains normal TLS
+// validation without changing HttpOverrides.global or accepting bad certificates.
+class _UpdateHttpOverrides extends HttpOverrides {}

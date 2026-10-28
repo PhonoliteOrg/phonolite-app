@@ -22,6 +22,7 @@ class AppUpdatesController extends ChangeNotifier {
   bool _ready = false;
   AppUpdateRelease? _latestRelease;
   bool _busy = false;
+  bool _openingUpdater = false;
   int _generation = 0;
   String? _error;
 
@@ -42,9 +43,13 @@ class AppUpdatesController extends ChangeNotifier {
 
   AppUpdateRelease? get latestRelease => _latestRelease;
 
-  bool get canInstall => _ready && _latestRelease != null && !_busy && _installation == null;
+  bool get canCheckForUpdates => _ready && !_busy && _installation == null;
+
+  bool get canInstall => canCheckForUpdates && _latestRelease != null;
 
   bool get busy => _busy;
+
+  bool get openingUpdater => _openingUpdater;
 
   String? get error => _error;
 
@@ -67,6 +72,7 @@ class AppUpdatesController extends ChangeNotifier {
 
     _ready = false;
     _busy = false;
+    _openingUpdater = false;
     _latestRelease = null;
     _configuration = null;
     _installation = null;
@@ -81,6 +87,7 @@ class AppUpdatesController extends ChangeNotifier {
     final generation = _generation;
 
     _busy = true;
+    _openingUpdater = true;
     _error = null;
     notifyListeners();
 
@@ -93,6 +100,7 @@ class AppUpdatesController extends ChangeNotifier {
     } finally {
       if (generation == _generation) {
         _busy = false;
+        _openingUpdater = false;
         notifyListeners();
       }
     }
@@ -120,7 +128,7 @@ class AppUpdatesController extends ChangeNotifier {
 
       if (_ready) {
         _configuration = configuration;
-        _checkTimer = Timer.periodic(checkInterval, (_) => unawaited(_checkForUpdates()));
+        _checkTimer = Timer.periodic(checkInterval, (_) => unawaited(checkForUpdates()));
       } else {
         _error = 'Update checks are unavailable in this build.';
       }
@@ -138,14 +146,14 @@ class AppUpdatesController extends ChangeNotifier {
     }
 
     if (generation == _generation && _ready) {
-      await _checkForUpdates();
+      await checkForUpdates();
     }
   }
 
-  Future<void> _checkForUpdates() async {
+  Future<void> checkForUpdates() async {
     final configuration = _configuration;
 
-    if (!_ready || configuration == null || _busy || _installation != null) {
+    if (!canCheckForUpdates || configuration == null) {
       return;
     }
 
