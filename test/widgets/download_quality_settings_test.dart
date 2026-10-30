@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
@@ -30,7 +31,11 @@ void main() {
 
       expect(find.byType(Radio<DownloadQuality>), findsNWidgets(5));
       expect(find.text('High · Recommended'), findsOneWidget);
-      expect(find.text('128 kbps · ~58 MB/hour'), findsOneWidget);
+      expect(find.text('128 kbps · About 58 MB for 1 hour of audio'), findsOneWidget);
+      expect(
+        tester.renderObject<RenderParagraph>(find.text('128 kbps · About 58 MB for 1 hour of audio')).didExceedMaxLines,
+        isFalse,
+      );
       final choice = find.byKey(const ValueKey('download-quality-opus_64'));
       await tester.ensureVisible(choice);
       await tester.tap(choice);
@@ -90,7 +95,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(DownloadQualityPage), findsNothing);
-    expect(find.text('Standard · 96 kbps · ~43 MB/hour'), findsOneWidget);
+    expect(find.text('Standard · 96 kbps · About 43 MB for 1 hour of audio'), findsOneWidget);
+    expect(
+      tester
+          .renderObject<RenderParagraph>(find.text('Standard · 96 kbps · About 43 MB for 1 hour of audio'))
+          .didExceedMaxLines,
+      isFalse,
+    );
     expect(tester.takeException(), isNull);
   });
 

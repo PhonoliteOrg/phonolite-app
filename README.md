@@ -32,6 +32,15 @@ To compile without launching the app, use `flutter build windows --debug` or
 `build\windows\x64\runner\Debug` or `Release`; keep the complete bundle together.
 App update checks are disabled in debug builds.
 
+Windows debug launches capture up to 128 accessibility updates in `debug.log` in
+the configured log directory (by default `%APPDATA%\Phonolite\logs`). Entries
+begin with `Windows accessibility update ` and record node IDs and parent/child
+links, without UI text or field values. The capture preserves Flutter's original
+updates and does not enable accessibility. Keep the log from the same launch as
+the first native `accessibility_bridge.cc` error for replay and diagnosis.
+See the [accessibility replay tools](tools/accessibility/README.md) for native
+tree validation and the synthetic missing-descendant regression.
+
 ### iOS
 
 Requires a Mac with Xcode, its command-line tools, CocoaPods and CMake.

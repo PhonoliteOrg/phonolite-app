@@ -13,9 +13,9 @@ class DownloadQualitySelection extends StatelessWidget {
   const DownloadQualitySelection({super.key, required this.quality, required this.onSelected, this.enabled = true});
 
   static String description(DownloadQuality quality) {
-    if (quality.isOriginal) return 'Source file unchanged · Size varies';
+    if (quality.isOriginal) return 'Download size depends on the source file.';
 
-    return '${quality.bitrateKbps} kbps · ~${quality.megabytesPerHour!.round()} MB/hour';
+    return '${quality.bitrateKbps} kbps · About ${quality.megabytesPerHour!.round()} MB for 1 hour of audio';
   }
 
   @override
@@ -34,6 +34,7 @@ class DownloadQualitySelection extends StatelessWidget {
             value: option,
             title: option == DownloadQuality.high ? '${option.label} · Recommended' : option.label,
             subtitle: description(option),
+            subtitleMaxLines: null,
             selected: quality == option,
             enabled: enabled,
             onSelected: onSelected,

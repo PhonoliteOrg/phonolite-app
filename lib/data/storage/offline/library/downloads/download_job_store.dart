@@ -360,7 +360,7 @@ class _OfflineDownloadJobStore {
               materialized,
               created_at,
               updated_at,
-              NULL AS track_json,
+              CASE WHEN materialized = 0 THEN track_json ELSE NULL END AS track_json,
               NULL AS metadata_json,
               error
             FROM download_job_items

@@ -4,11 +4,11 @@ import 'package:phonolite_app/data/models/playback/playback_state.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 
 void main() {
-  test('Original streaming displays its badge and available network measurements', () {
+  test('Original streaming retains its quality badge and hides its bitrate measurement', () {
     final state = _state();
 
     expect(playbackStreamLabel(StreamMode.original), 'OG');
-    expect(playbackBitrateLabel(state), '497 KBPS');
+    expect(playbackBitrateLabel(state), isNull);
     expect(playbackRttLabel(state), '42ms');
   });
 

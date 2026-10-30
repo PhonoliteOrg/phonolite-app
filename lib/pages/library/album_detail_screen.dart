@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/album_detail_controller.dart';
-import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_snapshot.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
@@ -84,7 +84,7 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
     required String coverUrl,
     required bool compactHeaderActions,
   }) {
-    final downloadSummary = AlbumDetailController.summarizeDownloads(controller, tracks);
+    final downloadSummary = AlbumDetailController.summarizeDownloads(controller, tracks, albumId: _feature.album.id);
     final removableTracks = _feature.removableTracks(controller, tracks);
     final selectedTracks = _feature.selectedTracks(removableTracks);
 
@@ -199,9 +199,9 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
                 final playback = playbackSnapshot.data ?? controller.playbackState;
                 final playingId = playback.track?.id;
 
-                return StreamBuilder<List<OfflineTrackDownload>>(
-                  stream: controller.offlineDownloadsStream,
-                  initialData: controller.offlineDownloads,
+                return StreamBuilder<OfflineDownloadSnapshot>(
+                  stream: controller.offlineDownloadSnapshotStream,
+                  initialData: controller.offlineDownloadSnapshot,
                   builder: (context, _) => _albumContent(
                     context,
                     assemble,

@@ -84,6 +84,7 @@ Widget buildSettingsRow(
   required Widget leading,
   required String title,
   String? subtitle,
+  int? subtitleMaxLines = 1,
   Widget? trailing,
   VoidCallback? onTap,
   Color? titleColor,
@@ -100,6 +101,7 @@ Widget buildSettingsRow(
   return ObsidianListRow(
     title: title,
     subtitle: subtitle?.trim().isNotEmpty == true ? subtitle : null,
+    subtitleMaxLines: subtitleMaxLines,
     titleColor: titleColor,
     onTap: onTap,
     enabled: onTap != null,

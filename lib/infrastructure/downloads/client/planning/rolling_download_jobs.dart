@@ -10,6 +10,16 @@ class _RollingDownloadJobs {
 
   _RollingDownloadJobs(this._host);
 
+  List<OfflineDownloadJobItem> get jobItems => List<OfflineDownloadJobItem>.unmodifiable([
+    for (final job in _jobs)
+      if (job.status != OfflineDownloadStatus.downloaded && job.status != OfflineDownloadStatus.canceled)
+        for (final item in _jobItemsByJobId[job.jobId] ?? const <OfflineDownloadJobItem>[])
+          if (!item.materialized &&
+              item.status != OfflineDownloadStatus.downloaded &&
+              item.status != OfflineDownloadStatus.canceled)
+            item,
+  ]);
+
   Future<int> _queueRollingBatch(DownloadBatchManifest manifest, {String? label}) async {
     final baseUrl = _host.connection.baseUrl;
     final now = DateTime.now();
@@ -524,6 +534,8 @@ class _RollingDownloadJobs {
         job.failedCount == updated.failedCount &&
         job.materializedCount == updated.materializedCount &&
         job.totalCount == updated.totalCount) {
+      _host._emitJobs();
+
       return;
     }
 
@@ -803,6 +815,8 @@ class _RollingDownloadJobs {
 // Forwarding preserves the existing library entry point and virtual dispatch.
 mixin _RollingDownloadJobsFacade {
   _RollingDownloadJobs get _ownerRolling;
+
+  List<OfflineDownloadJobItem> get jobItems => _ownerRolling.jobItems;
 
   List<OfflineDownloadJob> get _jobs => _ownerRolling._jobs;
 

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_scrubber.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_slider_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
@@ -47,13 +48,15 @@ class PlaybackProgressBarState extends PlaybackScrubberState<PlaybackProgressBar
       height: usesTouchTargets ? 48 : s(36),
       child: SliderTheme(
         data: progressTheme,
-        child: Slider(
-          value: positionSeconds,
-          max: widget.maxSeconds,
-          secondaryTrackValue: bufferedPositionSeconds,
-          onChangeStart: widget.enabled ? beginDrag : null,
-          onChanged: widget.enabled ? updateDrag : null,
-          onChangeEnd: widget.enabled ? endDrag : null,
+        child: ObsidianSliderScope(
+          child: Slider(
+            value: positionSeconds,
+            max: widget.maxSeconds,
+            secondaryTrackValue: bufferedPositionSeconds,
+            onChangeStart: widget.enabled ? beginDrag : null,
+            onChanged: widget.enabled ? updateDrag : null,
+            onChangeEnd: widget.enabled ? endDrag : null,
+          ),
         ),
       ),
     );

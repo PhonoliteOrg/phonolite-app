@@ -38,6 +38,7 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
           downloads: core.downloads,
           batches: core.batches,
           jobs: core.jobs,
+          jobItems: core.jobItems,
           revision: ++revision,
         ),
       );

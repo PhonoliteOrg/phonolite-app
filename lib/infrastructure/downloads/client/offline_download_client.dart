@@ -133,6 +133,7 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
           downloads: _inlineCore.downloads,
           batches: _inlineCore.batches,
           jobs: _inlineCore.jobs,
+          jobItems: _inlineCore.jobItems,
           revision: _downloadSnapshot.revision,
         );
 

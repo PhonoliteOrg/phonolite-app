@@ -82,6 +82,7 @@ class _OfflineSnapshotPublisher {
           downloads: _host._inlineCore!.downloads,
           batches: _host._inlineCore.batches,
           jobs: _host._inlineCore.jobs,
+          jobItems: _host._inlineCore.jobItems,
           revision: ++_inlineRevision,
         ),
       );
@@ -137,11 +138,13 @@ class _OfflineSnapshotPublisher {
       final nextDownloads = List<OfflineTrackDownload>.unmodifiable(state.downloads);
       final nextBatches = List<OfflineDownloadBatch>.unmodifiable(state.batches);
       final nextJobs = List<OfflineDownloadJob>.unmodifiable(state.jobs);
+      final nextJobItems = List<OfflineDownloadJobItem>.unmodifiable(state.jobItems);
       final downloadsChanged = !_sameDownloadSnapshots(_downloads, nextDownloads);
       final batchesChanged = !_sameBatchSnapshots(_batches, nextBatches);
       final jobsChanged = !_sameJobSnapshots(_jobs, nextJobs);
+      final jobItemsChanged = !_sameJobItemSnapshots(_downloadSnapshot.jobItems, nextJobItems);
 
-      if (!downloadsChanged && !batchesChanged && !jobsChanged) {
+      if (!downloadsChanged && !batchesChanged && !jobsChanged && !jobItemsChanged) {
         return;
       }
 
@@ -153,6 +156,7 @@ class _OfflineSnapshotPublisher {
         downloads: _downloads,
         batches: _batches,
         jobs: _jobs,
+        jobItems: nextJobItems,
         revision: state.revision,
       );
 
@@ -314,6 +318,34 @@ class _OfflineSnapshotPublisher {
           a.label != b.label ||
           a.sourceId != b.sourceId ||
           a.error != b.error) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool _sameJobItemSnapshots(List<OfflineDownloadJobItem> left, List<OfflineDownloadJobItem> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    for (var i = 0; i < left.length; i++) {
+      final a = left[i];
+      final b = right[i];
+      final aTrack = a.track ?? a.offlineMetadata?.track;
+      final bTrack = b.track ?? b.offlineMetadata?.track;
+
+      if (a.jobId != b.jobId ||
+          a.position != b.position ||
+          a.serverTrackId != b.serverTrackId ||
+          a.status != b.status ||
+          a.materialized != b.materialized ||
+          a.createdAt != b.createdAt ||
+          a.updatedAt != b.updatedAt ||
+          a.error != b.error ||
+          (aTrack == null) != (bTrack == null) ||
+          (aTrack != null && bTrack != null && !sameOfflineTrackSnapshot(aTrack, bTrack))) {
         return false;
       }
     }

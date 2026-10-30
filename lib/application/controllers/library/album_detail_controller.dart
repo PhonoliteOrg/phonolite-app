@@ -81,27 +81,72 @@ class AlbumDetailController extends FeatureController {
     return DownloadedTrackSelection(controller).canRemove(track);
   }
 
-  static CollectionDownloadSummary summarizeDownloads(AppController controller, List<Track> tracks) {
+  static CollectionDownloadSummary summarizeDownloads(
+    AppController controller,
+    List<Track> tracks, {
+    required String albumId,
+  }) {
     var downloaded = 0;
     var active = 0;
     var failed = 0;
+    final statuses = <OfflineDownloadStatus>{};
 
     for (final track in tracks) {
       final download = controller.offlineDownloadForTrack(track.id);
 
       if (controller.availableOfflineDownloadForTrack(track.id) != null) {
         downloaded++;
-      } else if (download?.status == OfflineDownloadStatus.queued ||
+        continue;
+      }
+
+      if (download != null) {
+        statuses.add(download.status);
+      }
+
+      if (download?.status == OfflineDownloadStatus.queued ||
           download?.status == OfflineDownloadStatus.preparing ||
           download?.status == OfflineDownloadStatus.downloading ||
           download?.status == OfflineDownloadStatus.validating ||
           download?.status == OfflineDownloadStatus.removing) {
         active++;
-      } else if (download?.status == OfflineDownloadStatus.failed) {
+      } else if (download?.status == OfflineDownloadStatus.failed ||
+          download?.status == OfflineDownloadStatus.corrupt) {
         failed++;
       }
     }
 
-    return CollectionDownloadSummary(total: tracks.length, downloaded: downloaded, active: active, failed: failed);
+    // A queued collection exists before server preparation creates track transfers.
+    for (final job in controller.offlineDownloadJobs) {
+      if (job.serverBaseUrl == controller.connection.baseUrl && job.kind == 'album' && job.sourceId == albumId) {
+        statuses.add(job.status);
+      }
+    }
+
+    return CollectionDownloadSummary(
+      total: tracks.length,
+      downloaded: downloaded,
+      active: active,
+      failed: failed,
+      requestStatus: _requestStatus(statuses),
+    );
+  }
+
+  static OfflineDownloadStatus? _requestStatus(Set<OfflineDownloadStatus> statuses) {
+    for (final status in const [
+      OfflineDownloadStatus.removing,
+      OfflineDownloadStatus.downloading,
+      OfflineDownloadStatus.validating,
+      OfflineDownloadStatus.preparing,
+      OfflineDownloadStatus.queued,
+      OfflineDownloadStatus.paused,
+      OfflineDownloadStatus.failed,
+      OfflineDownloadStatus.corrupt,
+    ]) {
+      if (statuses.contains(status)) {
+        return status;
+      }
+    }
+
+    return null;
   }
 }

@@ -44,10 +44,21 @@ import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 import 'package:phonolite_app/ui/shell/adaptive_scaffold.dart';
 import 'package:phonolite_app/ui/shell/navigation/base_app_navigation.dart';
 
+import '../support/accessibility_update_binding.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
+  final binding = AccessibilityUpdateBinding();
+
   setUpAll(configureTestFonts);
+
+  setUp(() {
+    binding.resetAccessibilityTree();
+
+    final semantics = binding.ensureSemantics();
+
+    addTearDown(semantics.dispose);
+  });
 
   for (final width in [430.0, 1280.0]) {
     for (final statsEnabled in [false, true]) {

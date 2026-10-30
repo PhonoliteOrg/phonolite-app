@@ -6,9 +6,10 @@ class _DownloadJobMaterializer {
   _DownloadJobMaterializer(this._host);
 
   Future<void> _materializeJobItems(OfflineDownloadJob job, List<OfflineDownloadJobItem> items) async {
+    final dataRevision = _host._localDataRevision;
     items = await _hydrateMaterializationWindow(job.jobId, items);
 
-    if (!_canMaterializeJob(job.jobId)) {
+    if (!_host._localDataCurrent(dataRevision) || !_canMaterializeJob(job.jobId)) {
       return;
     }
 
@@ -29,19 +30,23 @@ class _DownloadJobMaterializer {
       try {
         final manifest = await _host.connection.createDownloadBatch(ids, clientBatchId: job.jobId);
 
-        if (!_canMaterializeJob(job.jobId)) {
+        if (!_host._localDataCurrent(dataRevision) || !_canMaterializeJob(job.jobId)) {
           return;
         }
 
         await _materializeManifestItems(job, manifest.items);
 
-        if (manifest.unavailable.isNotEmpty) {
+        if (manifest.unavailable.isNotEmpty && _host._localDataCurrent(dataRevision) && _canMaterializeJob(job.jobId)) {
           await _markJobItems(
             job.jobId,
             manifest.unavailable.map((item) => item.trackId),
             OfflineDownloadStatus.failed,
             error: 'unavailable',
           );
+
+          if (_host._localDataCurrent(dataRevision) && _canMaterializeJob(job.jobId)) {
+            await _host._refreshJobCounts(job.jobId);
+          }
         }
 
         return;
@@ -50,7 +55,7 @@ class _DownloadJobMaterializer {
       }
     }
 
-    if (!_canMaterializeJob(job.jobId)) {
+    if (!_host._localDataCurrent(dataRevision) || !_canMaterializeJob(job.jobId)) {
       return;
     }
 
@@ -269,9 +274,10 @@ class _DownloadJobMaterializer {
     bool clearPayload = false,
     String? error,
   }) async {
+    final dataRevision = _host._localDataRevision;
     final ids = serverTrackIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
 
-    if (ids.isEmpty) {
+    if (ids.isEmpty || !_host._localDataCurrent(dataRevision) || _host._jobById(jobId) == null) {
       return;
     }
 
@@ -309,6 +315,10 @@ class _DownloadJobMaterializer {
     _host._jobItemsByJobId[jobId] = items;
 
     await _host._storage.upsertDownloadJobItems(changed);
+
+    if (_host._localDataCurrent(dataRevision) && _host._jobById(jobId) != null) {
+      _host._emitJobs();
+    }
   }
 
   Future<void> _syncJobItemFromDownload(OfflineTrackDownload download) async {

@@ -7,6 +7,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/components/playback_q
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_volume_button.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_slider_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
@@ -114,7 +115,9 @@ class PlaybackExpandedExtras extends StatelessWidget {
             Expanded(
               child: SliderTheme(
                 data: volumeTheme,
-                child: Slider(value: state.volume, onChanged: onVolumeChanged),
+                child: ObsidianSliderScope(
+                  child: Slider(value: state.volume, onChanged: onVolumeChanged),
+                ),
               ),
             ),
           ],

@@ -13,6 +13,7 @@ import 'package:phonolite_app/data/models/downloads/offline_track_download.dart'
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/downloads/pending_download_track.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/presentation/download_manager_entries.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
@@ -45,6 +46,7 @@ class DownloadManagerPanel extends StatelessWidget {
   final AppController? controller;
   final List<OfflineTrackDownload>? downloadsOverride;
   final List<OfflineDownloadJob>? jobsOverride;
+  final List<OfflineDownloadJobItem>? jobItemsOverride;
   final ObsidianAdaptiveModalPresentation presentation;
 
   const DownloadManagerPanel({
@@ -52,22 +54,25 @@ class DownloadManagerPanel extends StatelessWidget {
     this.controller,
     this.downloadsOverride,
     this.jobsOverride,
+    this.jobItemsOverride,
     this.presentation = ObsidianAdaptiveModalPresentation.dialog,
   }) : assert(
-         controller != null || downloadsOverride != null || jobsOverride != null,
-         'controller, downloadsOverride, or jobsOverride is required',
+         controller != null || downloadsOverride != null || jobsOverride != null || jobItemsOverride != null,
+         'controller or download overrides are required',
        );
 
   Widget _buildPanel(BuildContext context) {
     final downloadsOverride = this.downloadsOverride;
     final jobsOverride = this.jobsOverride;
+    final jobItemsOverride = this.jobItemsOverride;
 
-    if (downloadsOverride != null || jobsOverride != null) {
+    if (downloadsOverride != null || jobsOverride != null || jobItemsOverride != null) {
       return _panel(
         context,
         DownloadManagerViewState(
           downloadsOverride ?? const <OfflineTrackDownload>[],
           jobsOverride ?? const <OfflineDownloadJob>[],
+          jobItems: jobItemsOverride ?? const <OfflineDownloadJobItem>[],
         ),
       );
     }
@@ -85,7 +90,7 @@ class DownloadManagerPanel extends StatelessWidget {
               revision: 0,
             );
 
-        return _panel(context, DownloadManagerViewState(state.downloads, state.jobs));
+        return _panel(context, DownloadManagerViewState(state.downloads, state.jobs, jobItems: state.jobItems));
       },
     );
   }
@@ -197,6 +202,9 @@ class DownloadManagerPanel extends StatelessWidget {
         ),
         DownloadManagerEntryKind.download => RepaintBoundary(
           child: _DownloadItemRow(download: entry.download!, controller: controller),
+        ),
+        DownloadManagerEntryKind.pendingTrack => RepaintBoundary(
+          child: _PendingDownloadItemRow(pending: entry.pendingTrack!, controller: controller),
         ),
         DownloadManagerEntryKind.spacer => SizedBox(height: entry.height),
       },
@@ -368,6 +376,68 @@ class _DownloadJobActions extends StatelessWidget {
   }
 }
 
+String _downloadTrackMetadataLine(Track track) {
+  final artist = track.artist.trim();
+  final album = track.album.trim();
+
+  if (artist.isEmpty) {
+    return album;
+  }
+
+  if (album.isEmpty) {
+    return artist;
+  }
+
+  return '$artist / $album';
+}
+
+class _PendingDownloadItemRow extends StatelessWidget {
+  final PendingDownloadTrack pending;
+  final AppController? controller;
+
+  const _PendingDownloadItemRow({required this.pending, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final sourceTrack =
+        pending.item.track ??
+        pending.item.offlineMetadata?.track ??
+        Track(
+          id: pending.item.serverTrackId,
+          title: 'Track ${pending.item.position + 1}',
+          artist: '',
+          album: pending.job.kind == 'album' ? pending.job.label ?? '' : '',
+          durationMs: 0,
+          liked: false,
+          inPlaylists: false,
+          serverBaseUrl: pending.job.serverBaseUrl,
+          serverTrackId: pending.item.serverTrackId,
+        );
+    final track = sourceTrack.copyWith(
+      serverBaseUrl: pending.job.serverBaseUrl,
+      serverTrackId: pending.item.serverTrackId,
+    );
+    final metadata = _downloadTrackMetadataLine(track);
+    final error = pending.error?.trim();
+    final coverUrl =
+        track.albumArtPath ?? (pending.job.kind == 'album' ? CatalogController.downloadJobCoverUrl(pending.job) : null);
+    final headers =
+        controller != null &&
+            pending.job.serverBaseUrl == controller!.catalog.baseUrl &&
+            (track.albumArtPath?.trim().isEmpty ?? true)
+        ? authHeaders(controller!)
+        : const <String, String>{};
+
+    return _DownloadTrackRow(
+      track: track,
+      status: pending.status,
+      subtitle: [metadata, if (error != null && error.isNotEmpty) error].where((part) => part.isNotEmpty).join(' - '),
+      albumArtUrl: coverUrl,
+      albumArtHeaders: headers,
+    );
+  }
+}
+
 class _DownloadItemRow extends StatelessWidget {
   final OfflineTrackDownload download;
   final AppController? controller;
@@ -375,7 +445,7 @@ class _DownloadItemRow extends StatelessWidget {
   const _DownloadItemRow({required this.download, required this.controller});
 
   String get _subtitle {
-    final metadata = _trackMetadataLine(download.track);
+    final metadata = _downloadTrackMetadataLine(download.track);
     final size = _downloadSizeText(download);
 
     return [metadata, size].where((part) => part.isNotEmpty).join(' - ');
@@ -395,21 +465,6 @@ class _DownloadItemRow extends StatelessWidget {
     return authHeaders(activeController);
   }
 
-  String _trackMetadataLine(Track track) {
-    final artist = track.artist.trim();
-    final album = track.album.trim();
-
-    if (artist.isEmpty) {
-      return album;
-    }
-
-    if (album.isEmpty) {
-      return artist;
-    }
-
-    return '$artist / $album';
-  }
-
   String _downloadSizeText(OfflineTrackDownload download) {
     final total = download.bytesTotal;
 
@@ -427,21 +482,60 @@ class _DownloadItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = _DownloadRetryAction(download: download, controller: controller);
 
-    final row = TrackRowTile(
+    return _DownloadTrackRow(
       track: download.track,
+      status: download.status,
+      subtitle: _subtitle,
+      progress: download.progress,
+      albumArtUrl: _albumArtUrl,
+      albumArtHeaders: _headers,
+      download: download,
+      trailing: actions,
+    );
+  }
+}
+
+class _DownloadTrackRow extends StatelessWidget {
+  final Track track;
+  final OfflineDownloadStatus status;
+  final String subtitle;
+  final double? progress;
+  final String? albumArtUrl;
+  final Map<String, String> albumArtHeaders;
+  final OfflineTrackDownload? download;
+  final Widget? trailing;
+
+  const _DownloadTrackRow({
+    required this.track,
+    required this.status,
+    required this.subtitle,
+    this.progress,
+    this.albumArtUrl,
+    this.albumArtHeaders = const {},
+    this.download,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final row = TrackRowTile(
+      track: track,
       index: 0,
       showIndex: false,
       showAlbumArt: true,
       showDuration: false,
-      albumArtUrl: _albumArtUrl,
-      albumArtHeaders: _headers,
-      subtitle: _subtitle,
+      albumArtUrl: albumArtUrl,
+      albumArtHeaders: albumArtHeaders,
+      subtitle: subtitle,
       offlineDownload: download,
+      downloadStatus: status,
       albumArtOverlay: ColoredBox(
         color: Colors.black.withValues(alpha: 0.6),
-        child: Center(child: _DownloadStatusGlyph(download: download)),
+        child: Center(
+          child: _DownloadStatusGlyph(status: status, progress: progress),
+        ),
       ),
-      trailing: actions,
+      trailing: trailing ?? const SizedBox.shrink(),
     );
 
     return Padding(padding: const EdgeInsets.only(bottom: 8), child: row);
@@ -449,12 +543,13 @@ class _DownloadItemRow extends StatelessWidget {
 }
 
 class _DownloadStatusGlyph extends StatelessWidget {
-  final OfflineTrackDownload download;
+  final OfflineDownloadStatus status;
+  final double? progress;
 
-  const _DownloadStatusGlyph({required this.download});
+  const _DownloadStatusGlyph({required this.status, this.progress});
 
   Widget _buildGlyph(BuildContext context) {
-    final icon = switch (download.status) {
+    final icon = switch (status) {
       OfflineDownloadStatus.queued => PhonoliteIcons.clock,
       OfflineDownloadStatus.preparing => null,
       OfflineDownloadStatus.downloading => PhonoliteIcons.download,
@@ -466,14 +561,14 @@ class _DownloadStatusGlyph extends StatelessWidget {
       OfflineDownloadStatus.downloaded => PhonoliteIcons.circleCheck,
     };
 
-    if (download.status == OfflineDownloadStatus.downloading) {
+    if (status == OfflineDownloadStatus.downloading) {
       return SizedBox.square(
         dimension: 24,
         child: Center(
           child: SizedBox.square(
             dimension: 22,
             child: CircularProgressIndicator(
-              value: download.progress,
+              value: progress,
               strokeWidth: 2,
               color: ObsidianPalette.gold,
               backgroundColor: Colors.white.withValues(alpha: 0.3),
@@ -483,7 +578,7 @@ class _DownloadStatusGlyph extends StatelessWidget {
       );
     }
 
-    final color = switch (download.status) {
+    final color = switch (status) {
       OfflineDownloadStatus.queued || OfflineDownloadStatus.preparing => ObsidianPalette.textMuted,
       OfflineDownloadStatus.failed ||
       OfflineDownloadStatus.corrupt ||
@@ -495,7 +590,7 @@ class _DownloadStatusGlyph extends StatelessWidget {
       OfflineDownloadStatus.removing => ObsidianPalette.textPrimary,
     };
 
-    return download.status == OfflineDownloadStatus.preparing
+    return status == OfflineDownloadStatus.preparing
         ? IconTheme.merge(
             data: IconThemeData(size: 22, color: color),
             child: const ReloadIcon(),
@@ -504,8 +599,7 @@ class _DownloadStatusGlyph extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      Semantics(label: '${download.status.name} download', child: _buildGlyph(context));
+  Widget build(BuildContext context) => Semantics(label: '${status.name} download', child: _buildGlyph(context));
 }
 
 class _DownloadRetryAction extends StatelessWidget {

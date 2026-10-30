@@ -33,6 +33,7 @@ class DownloadQualitySetting extends StatelessWidget {
         leading: const Icon(PhonoliteIcons.download),
         title: 'Download quality',
         subtitle: _subtitle,
+        subtitleMaxLines: null,
         trailing: const Icon(PhonoliteIcons.chevronRight),
         onTap: onOpen,
       ),

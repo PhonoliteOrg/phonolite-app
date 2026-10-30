@@ -8,6 +8,7 @@ class ObsidianRadioRow<T> extends StatelessWidget {
   final T value;
   final String title;
   final String? subtitle;
+  final int? subtitleMaxLines;
   final bool selected;
   final bool enabled;
   final ValueChanged<T> onSelected;
@@ -19,6 +20,7 @@ class ObsidianRadioRow<T> extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.subtitle,
+    this.subtitleMaxLines = 1,
     this.enabled = true,
   });
 
@@ -27,6 +29,7 @@ class ObsidianRadioRow<T> extends StatelessWidget {
     child: ObsidianListRow(
       title: title,
       subtitle: subtitle,
+      subtitleMaxLines: subtitleMaxLines,
       isActive: selected,
       enabled: enabled,
       canRequestFocus: false,

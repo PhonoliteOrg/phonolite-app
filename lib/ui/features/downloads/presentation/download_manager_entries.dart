@@ -1,8 +1,9 @@
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/projections/downloads/download_manager_view_state.dart';
+import 'package:phonolite_app/data/projections/downloads/pending_download_track.dart';
 
-enum DownloadManagerEntryKind { jobHeader, job, sectionHeader, download, spacer }
+enum DownloadManagerEntryKind { jobHeader, job, sectionHeader, download, pendingTrack, spacer }
 
 /// Assembles the panel's visual rows, captions and inter-section spacing.
 abstract final class DownloadManagerEntries {
@@ -23,15 +24,20 @@ abstract final class DownloadManagerEntries {
 
     void addSection(DownloadSection section, String title) {
       final downloads = groups[section]!;
+      final pending = state.pendingGroups[section]!;
 
-      if (downloads.isEmpty) {
+      if (downloads.isEmpty && pending.isEmpty) {
         return;
       }
 
-      entries.add(DownloadManagerEntry.sectionHeader(section.name, title, downloads.length));
+      entries.add(DownloadManagerEntry.sectionHeader(section.name, title, downloads.length + pending.length));
 
       for (final download in downloads) {
         entries.add(DownloadManagerEntry.download(download));
+      }
+
+      for (final track in pending) {
+        entries.add(DownloadManagerEntry.pendingTrack(track));
       }
 
       entries.add(DownloadManagerEntry.spacer('${section.name}-bottom', 12));
@@ -51,6 +57,7 @@ class DownloadManagerEntry {
   final String key;
   final OfflineDownloadJob? job;
   final OfflineTrackDownload? download;
+  final PendingDownloadTrack? pendingTrack;
   final String? title;
   final int count;
   final double height;
@@ -60,6 +67,7 @@ class DownloadManagerEntry {
     required this.kind,
     this.job,
     this.download,
+    this.pendingTrack,
     this.title,
     this.count = 0,
     this.height = 0,
@@ -78,6 +86,13 @@ class DownloadManagerEntry {
         kind: DownloadManagerEntryKind.download,
         key: 'download:${download.serverBaseUrl}:${download.track.serverTrackId ?? download.track.id}',
         download: download,
+      );
+
+  DownloadManagerEntry.pendingTrack(PendingDownloadTrack track)
+    : this._(
+        kind: DownloadManagerEntryKind.pendingTrack,
+        key: 'download:${track.job.serverBaseUrl}:${track.item.serverTrackId}',
+        pendingTrack: track,
       );
 
   const DownloadManagerEntry.spacer(String key, double height)

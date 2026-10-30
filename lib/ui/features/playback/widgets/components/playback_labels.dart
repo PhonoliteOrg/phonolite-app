@@ -54,7 +54,7 @@ String playbackShuffleLabel(ShuffleMode mode) {
 }
 
 String? playbackBitrateLabel(PlaybackState state) {
-  if (state.isLocalPlayback) {
+  if (state.isLocalPlayback || state.streamMode == StreamMode.original) {
     return null;
   }
 

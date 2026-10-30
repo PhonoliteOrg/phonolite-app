@@ -6,6 +6,9 @@ class OfflineDownloadSnapshot {
   final List<OfflineTrackDownload> downloads;
   final List<OfflineDownloadBatch> batches;
   final List<OfflineDownloadJob> jobs;
+
+  /// Unfinished job tracks that have not become individual transfer records.
+  final List<OfflineDownloadJobItem> jobItems;
   final int revision;
 
   const OfflineDownloadSnapshot({
@@ -13,5 +16,6 @@ class OfflineDownloadSnapshot {
     required this.batches,
     required this.jobs,
     required this.revision,
+    this.jobItems = const [],
   });
 }

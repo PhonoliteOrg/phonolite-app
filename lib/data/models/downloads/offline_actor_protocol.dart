@@ -71,6 +71,7 @@ class OfflineActorDownloadState {
   final List<OfflineTrackDownload> downloads;
   final List<OfflineDownloadBatch> batches;
   final List<OfflineDownloadJob> jobs;
+  final List<OfflineDownloadJobItem> jobItems;
   final int revision;
 
   const OfflineActorDownloadState({
@@ -78,6 +79,7 @@ class OfflineActorDownloadState {
     required this.batches,
     required this.jobs,
     required this.revision,
+    this.jobItems = const [],
   });
 }
 

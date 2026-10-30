@@ -12,6 +12,7 @@ class ObsidianListRow extends StatelessWidget {
   final Widget leading;
   final String title;
   final String? subtitle;
+  final int? subtitleMaxLines;
   final Widget? trailing;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -30,6 +31,7 @@ class ObsidianListRow extends StatelessWidget {
     required this.leading,
     required this.title,
     this.subtitle,
+    this.subtitleMaxLines = 1,
     this.trailing,
     this.isActive = false,
     this.enabled = true,
@@ -71,6 +73,7 @@ class ObsidianListRow extends StatelessWidget {
               child: ObsidianRowLabels(
                 title: title,
                 subtitle: subtitle,
+                subtitleMaxLines: subtitleMaxLines,
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
@@ -87,6 +90,7 @@ class ObsidianListRow extends StatelessWidget {
 class ObsidianRowLabels extends StatelessWidget {
   final String title;
   final String? subtitle;
+  final int? subtitleMaxLines;
   final Color? titleColor;
   final Color subtitleColor;
 
@@ -94,6 +98,7 @@ class ObsidianRowLabels extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.subtitleMaxLines = 1,
     this.titleColor,
     this.subtitleColor = ObsidianPalette.textMuted,
   });
@@ -120,8 +125,8 @@ class ObsidianRowLabels extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             subtitle!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: subtitleMaxLines,
+            overflow: subtitleMaxLines == null ? TextOverflow.visible : TextOverflow.ellipsis,
             style: textTheme.bodySmall?.copyWith(
               fontSize: compact ? 12 : null,
               letterSpacing: compact ? 0 : null,
