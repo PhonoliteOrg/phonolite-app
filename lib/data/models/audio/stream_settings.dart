@@ -6,6 +6,9 @@ class StreamSettings {
 
   const StreamSettings({required this.mode, required this.quality, this.frameMs = 20});
 
+  const StreamSettings.original() : this(mode: 'original', quality: 'source');
+
+  /// Unmodified source bytes delivered through the authenticated QUIC transport.
   bool get isOriginal => mode == 'original';
 
   @override

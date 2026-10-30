@@ -1,23 +1,40 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/ui/features/settings/dialogs/settings_dialogs.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/download_quality_setting.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/offline_storage_section.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
 import 'package:phonolite_app/ui/structures/sections/base_section.dart';
 
 class LocalStorageSettingsSection extends BaseSection {
   final AppController controller;
+  final DownloadSettingsController? downloadSettings;
+  final VoidCallback? onDownloadQuality;
 
-  const LocalStorageSettingsSection({super.key, required this.controller});
+  const LocalStorageSettingsSection({
+    super.key,
+    required this.controller,
+    this.downloadSettings,
+    this.onDownloadQuality,
+  });
 
   @override
   String get sectionTitle => 'Local Storage';
 
   @override
   List<Widget> sectionContent(BuildContext context) => [
+    if (onDownloadQuality != null) ...[
+      DownloadQualitySetting(
+        controller: downloadSettings ?? DownloadSettingsController.instance,
+        onOpen: onDownloadQuality!,
+      ),
+      const SettingsDivider(),
+    ],
     StreamBuilder<OfflineStorageLocations>(
       stream: controller.offlineStorageLocationsStream,
       initialData: controller.offlineStorageLocations,

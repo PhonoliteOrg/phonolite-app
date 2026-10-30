@@ -8,6 +8,7 @@ enum ActionScope { local, server }
 
 enum PlaybackRepeatMode { off, one }
 
+/// Original preserves source-file bytes over QUIC; the other qualities use Opus.
 enum StreamMode { auto, high, medium, low, original }
 
 enum PlaybackQueueSource { none, liked, playlist, offline }

@@ -7,6 +7,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_choice_r
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_option.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/server_icon.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/structures/sections/selection_sliver_section.dart';
 
@@ -245,10 +246,7 @@ class _CustomShuffleFilterEditorState extends State<CustomShuffleFilterEditor> {
 
   Widget _buildInlineMessage(String message) {
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(message, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted)),
-      ),
+      child: EmptyStateText(title: message, padding: const EdgeInsets.symmetric(vertical: 16)),
     );
   }
 

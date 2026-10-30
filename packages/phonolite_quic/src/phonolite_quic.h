@@ -39,13 +39,32 @@ int32_t phonolite_quic_seek(
 int32_t phonolite_quic_advance(QuicHandle* handle);
 int32_t phonolite_quic_suspend_audio(QuicHandle* handle);
 uint64_t phonolite_quic_generation(QuicHandle* handle);
-int32_t phonolite_quic_read(QuicHandle* handle, uint8_t* buffer, uint64_t buffer_len);
+int32_t phonolite_quic_read(QuicHandle* handle, uint8_t* buffer, size_t buffer_len);
 char* phonolite_quic_poll_event(QuicHandle* handle);
 char* phonolite_quic_last_error(QuicHandle* handle);
 char* phonolite_quic_poll_stats(QuicHandle* handle);
 long long phonolite_quic_poll_rtt_ms(QuicHandle* handle);
 void phonolite_quic_free_string(char* ptr);
 void phonolite_quic_close(QuicHandle* handle);
+QuicHandle* phonolite_quic_connect_owned(const char* host, uint16_t port, const char* token, const char* expected_pin);
+void phonolite_quic_heartbeat(QuicHandle* handle);
+uint64_t phonolite_quic_owner_create(void);
+void phonolite_quic_owner_heartbeat(uint64_t owner_id);
+void phonolite_quic_owner_cancel(uint64_t owner_id);
+int32_t phonolite_quic_owner_alive(uint64_t owner_id);
+uint64_t phonolite_quic_owner_interrupt(uint64_t owner_id);
+int32_t phonolite_quic_owner_begin_operation(uint64_t owner_id, uint64_t epoch);
+void phonolite_quic_owner_release(void* owner_id);
+void phonolite_quic_owner_release_finalizer(void* owner_id);
+void* phonolite_quic_source_connect_owned(const char* host, uint16_t port, const char* track_id,
+    const char* token, const char* server_pin, uint64_t owner_id);
+void* phonolite_quic_source_connect(const char* host, uint16_t port, const char* track_id,
+    const char* token, const char* server_pin);
+int64_t phonolite_quic_source_read_range(void* handle, uint64_t offset, uint8_t* output,
+    size_t capacity, uint32_t timeout_ms, uint64_t* total_length);
+int32_t phonolite_quic_source_error_code(const void* handle);
+size_t phonolite_quic_source_error(const void* handle, uint8_t* output, size_t capacity);
+void phonolite_quic_source_close(void* handle);
 
 #ifdef __cplusplus
 }

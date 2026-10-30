@@ -95,7 +95,7 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
     if (response.statusCode != HttpStatus.ok && response.statusCode != HttpStatus.partialContent) {
       final body = await response.transform(utf8.decoder).join();
 
-      throw Exception('ApiException(${response.statusCode}): $body');
+      throw DownloadWorkerHttpError(response.statusCode, 'ApiException(${response.statusCode}): $body');
     }
 
     if (response.statusCode == HttpStatus.ok && bytesDownloaded > 0) {
@@ -202,6 +202,14 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
         contentDisposition: contentDisposition,
         etag: etag,
         sha256: actualSha256 ?? sha256Header,
+      ),
+    );
+  } on DownloadWorkerHttpError catch (error) {
+    start.sendPort.send(
+      DownloadWorkerFailure(
+        kind: DownloadWorkerFailureKind.error,
+        message: error.message,
+        statusCode: error.statusCode,
       ),
     );
   } on DownloadWorkerCanceled {

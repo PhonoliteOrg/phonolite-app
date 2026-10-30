@@ -25,21 +25,25 @@ void main() {
     final first = PlaybackPreferencesStorage(files: files);
     final second = PlaybackPreferencesStorage(files: files);
     expect(await first.readRepeatMode(), isNull);
+    expect(await first.readGaplessResampling(), isNull);
 
     await Future.wait([
       first.writeRepeatMode(PlaybackRepeatMode.one),
       second.writeVolume(0.4),
       second.writeCollectionListMode(true),
+      first.writeGaplessResampling(true),
     ]);
     expect(await second.readRepeatMode(), PlaybackRepeatMode.one);
     expect(await first.readVolume(), 0.4);
     expect(await first.readCollectionListMode(), isTrue);
+    expect(await second.readGaplessResampling(), isTrue);
 
     await second.writeRepeatMode(PlaybackRepeatMode.off);
     expect(await first.readRepeatMode(), PlaybackRepeatMode.off);
     final file = await files.resolve('playback_prefs.json');
-    await file.writeAsString(jsonEncode({'repeat_mode': 'invalid'}));
+    await file.writeAsString(jsonEncode({'repeat_mode': 'invalid', 'gapless_resampling': 'true'}));
     expect(await first.readRepeatMode(), isNull);
+    expect(await first.readGaplessResampling(), isNull);
   });
 
   test('active server filters are isolated by account and server identity', () async {

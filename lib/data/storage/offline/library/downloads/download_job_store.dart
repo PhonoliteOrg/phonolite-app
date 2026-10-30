@@ -454,8 +454,10 @@ class _OfflineDownloadJobStore {
         source_cursor,
         label,
         source_id,
-        error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        error,
+        profile,
+        server_job_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(job_id) DO UPDATE SET
         kind = excluded.kind,
         server_base_url = excluded.server_base_url,
@@ -469,7 +471,9 @@ class _OfflineDownloadJobStore {
         source_cursor = excluded.source_cursor,
         label = excluded.label,
         source_id = excluded.source_id,
-        error = excluded.error
+        error = excluded.error,
+        profile = excluded.profile,
+        server_job_id = excluded.server_job_id
     ''',
       [
         job.jobId,
@@ -487,6 +491,8 @@ class _OfflineDownloadJobStore {
         job.label,
         job.sourceId,
         job.error,
+        job.profile,
+        job.serverJobId,
       ],
     );
   }

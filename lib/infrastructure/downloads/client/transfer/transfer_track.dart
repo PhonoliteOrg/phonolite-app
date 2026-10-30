@@ -29,9 +29,14 @@ class _TrackDownloadTransfer {
         throw const DownloadPaused('server disconnected');
       }
 
+      if (download.profile != 'original' &&
+          (download.renditionId == null || download.downloadUrl?.isNotEmpty != true)) {
+        throw StateError('Compressed download has no prepared file. Retry the download job.');
+      }
+
       partialFile = await _host._storage.partialTrackFile(
         serverBaseUrl: download.serverBaseUrl,
-        trackId: _host._serverTrackId(download),
+        trackId: _host._downloadFileId(download),
       );
 
       if (await partialFile.exists()) {
@@ -141,8 +146,8 @@ class _TrackDownloadTransfer {
           OfflineLibraryStorage.extensionFromContentType(workerResult.contentType ?? download.contentType);
       final finalFile = await _host._storage.trackFile(
         serverBaseUrl: download.serverBaseUrl,
-        trackId: _host._serverTrackId(download),
-        extension: extension,
+        trackId: _host._downloadFileId(download),
+        extension: download.profile == 'original' ? extension : 'opus',
       );
 
       developer.Timeline.startSync('offline.download.promote');
@@ -230,6 +235,32 @@ class _TrackDownloadTransfer {
       }
 
       AppLogger.warning('Download corrupt for ${download.track.title}: $err');
+    } on DownloadRenditionExpired {
+      if (download.profile == 'original' || download.batchId == null) {
+        await _host._replace(
+          download.copyWith(status: OfflineDownloadStatus.failed, error: 'Download file expired. Retry the download.'),
+          persist: true,
+        );
+        return;
+      }
+      await _host._deleteIfExists(partialFile?.path);
+      await _host._replace(
+        download.copyWith(
+          status: OfflineDownloadStatus.failed,
+          partialPath: null,
+          bytesDownloaded: 0,
+          error: 'Preparing download file again.',
+        ),
+        persist: true,
+      );
+      await _host._markJobItems(
+        download.batchId!,
+        [_host._serverTrackId(download)],
+        OfflineDownloadStatus.queued,
+        materialized: false,
+      );
+      await _host._refreshJobCounts(download.batchId!);
+      _host._compressedJobs._pollLater();
     } catch (err) {
       if (partialFile != null && await partialFile.exists()) {
         bytesDownloaded = await partialFile.length();
@@ -338,6 +369,9 @@ class _TrackDownloadTransfer {
             throw DownloadCorrupt(message.message);
           }
 
+          if (message.statusCode == HttpStatus.gone) {
+            throw const DownloadRenditionExpired();
+          }
           throw Exception(message.message);
         }
       }

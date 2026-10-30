@@ -389,6 +389,10 @@ The creator owns cleanup unless ownership is transferred. Release notification o
 
 Keep timing-sensitive native audio execution separate from ordinary Swift orchestration. Do not add main-actor hops, channels or general task scheduling to the audio callback path as part of organization. Preserve C ABI symbols, buffer ownership, generation counters, error reporting and linking. AudioQueue completion callbacks and Audio Unit realtime render blocks have different contracts; assess the actual API before applying realtime restrictions or replacing the existing C/Objective-C implementation. [Apple realtime render guidance](https://developer.apple.com/documentation/AVFAudio/building-a-signal-generator)
 
+AudioQueue buffer reuse does not establish audible completion. The native adapter retains scheduled playback spans after their buffers return, credits frames from `AudioQueueGetCurrentTime`, and reports idleness only after those spans finish. Reset cancels old generations and creates a fresh queue timeline. iOS and macOS share the portable progress calculations under `native/audio`; callback/storage lifetime and platform queue calls stay in their native adapters.
+
+`AudioSessionService` forwards interruption begin/end (including the system's resume hint) and media-services reset through typed native media commands. The Dart media coordinator owns preserved playback intent and the output-release barrier. User pause during an interruption prevents automatic resumption. A media-services reset retires orphaned output and recreates it paused; an explicit Play received during cleanup waits for release and then applies to the current occurrence.
+
 ## 10. Formatter configuration
 
 The project now includes [ios/.swift-format](../ios/.swift-format) with the following configuration. Use the Swift project's `swift-format` tool with a pinned compatible version. Tool availability is separate from the app's Swift language mode; this Windows workspace has neither executed the formatter nor established a toolchain/version pin.

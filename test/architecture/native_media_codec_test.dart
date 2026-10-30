@@ -153,6 +153,10 @@ void main() {
       'prev': NativeRemoteAction.previous,
       'toggleLike': NativeRemoteAction.toggleLike,
       'startLibraryShuffle': NativeRemoteAction.startLibraryShuffle,
+      'audioInterruptionBegan': NativeRemoteAction.audioInterruptionBegan,
+      'audioInterruptionEnded': NativeRemoteAction.audioInterruptionEnded,
+      'audioInterruptionEndedPaused': NativeRemoteAction.audioInterruptionEndedPaused,
+      'audioServicesReset': NativeRemoteAction.audioServicesReset,
       'unrecognized': NativeRemoteAction.unknown,
     };
 

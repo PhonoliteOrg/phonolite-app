@@ -11,6 +11,7 @@ class _AudioSeekCoordinator {
   int _seekRequestGeneration = 0;
   int _seekReadyRequestId = 0;
   Timer? _seekDeadline;
+  Completer<bool>? _seekCompletion;
   EncodedAudioCursor? _cachedSeek;
   bool _pumpSuspended = false;
   bool _remotePlaybackComplete = false;
@@ -34,6 +35,7 @@ class _AudioSeekCoordinator {
     final generation = _seekRequestGeneration;
 
     _failSeek('superseded');
+    _seekCompletion = Completer<bool>();
     _seekReadyRequestId = requestId;
 
     final ms = math.max(0, position.inMilliseconds);
@@ -57,6 +59,7 @@ class _AudioSeekCoordinator {
 
     if (_host._isFileSource) {
       _pendingSeekMs = ms;
+      _host._fileDecoder?.interruptRead();
 
       return;
     }
@@ -106,6 +109,8 @@ class _AudioSeekCoordinator {
   }
 
   void _failSeek(String outcome) {
+    final completion = _seekCompletion;
+    if (completion != null && !completion.isCompleted) completion.complete(false);
     _seekDeadline?.cancel();
     _seekDeadline = null;
 
@@ -118,6 +123,8 @@ class _AudioSeekCoordinator {
   }
 
   void _markSeekReady() {
+    final completion = _seekCompletion;
+    if (completion != null && !completion.isCompleted) completion.complete(true);
     _seekDeadline?.cancel();
     _seekDeadline = null;
 

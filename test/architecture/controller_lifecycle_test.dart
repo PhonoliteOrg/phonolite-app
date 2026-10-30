@@ -60,6 +60,367 @@ import '../support/offline_library_test_helpers.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('seamless format conversion is opt-in, persistent, and changing it preserves pause intent', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    expect(harness.controller.gaplessResampling, isFalse);
+    harness.controller.setGaplessResampling(true);
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+    expect(harness.audio.gaplessPolicies.last, isTrue);
+    await harness.controller.pause(true);
+    harness.controller.setGaplessResampling(false);
+    await _resumeUntil(() => harness.audio.starts.length == 3);
+    expect(harness.audio.starts.last.initialPaused, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    await _resumeUntil(() => harness.preferences.gaplessWrites.length == 2);
+    expect(harness.preferences.gaplessWrites, [true, false]);
+  });
+
+  test('late mixed-format preference loading cannot override an explicit user choice', () async {
+    final harness = _Harness();
+    addTearDown(harness.controller.close);
+    final stored = Completer<bool?>();
+    harness.preferences.pendingGapless = stored.future;
+    final loading = harness.controller.initialize();
+    await _resumeUntil(() => harness.preferences.gaplessReads > 0);
+    harness.controller.setGaplessResampling(true);
+    stored.complete(false);
+    await loading;
+    expect(harness.controller.gaplessResampling, isTrue);
+  });
+
+  test('gapless preparation leaves the audible track unchanged until its occurrence renders', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    final prepared = harness.audio.preparations.single;
+    expect(prepared.track.id, 'b');
+    expect(harness.controller.playbackState.track?.id, 'a');
+    expect(harness.audio.starts, hasLength(1));
+    expect(prepared.context?['track_id'], 'b');
+    expect(prepared.context?['session_id'], isNot(harness.audio.listeningContext?['session_id']));
+
+    harness.audio.onGaplessTransition!(prepared.id);
+    expect(harness.controller.playbackState.track?.id, 'b');
+    expect(harness.controller.playbackState.isLoading, isFalse);
+    expect(harness.controller.playbackState.position, Duration.zero);
+    expect(harness.audio.starts, hasLength(1));
+    await _resumeUntil(() => harness.audio.preparations.length == 2);
+    expect(harness.audio.preparations.last.track.id, 'a');
+    expect(harness.audio.preparations.last.id, isNot(prepared.id));
+  });
+
+  test('short-track chains prepare two occurrences before the first successor becomes audible', () async {
+    final connection = _Connection()
+      ..trackResponse = [
+        offlineTestTrack(id: 'a'),
+        offlineTestTrack(id: 'b', durationMs: 80),
+        offlineTestTrack(id: 'c', durationMs: 100),
+        offlineTestTrack(id: 'd'),
+      ];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.length == 2);
+    final first = harness.audio.preparations[0];
+    final second = harness.audio.preparations[1];
+    expect([first.track.id, second.track.id], ['b', 'c']);
+    expect(second.afterId, first.id);
+    expect(harness.controller.playbackState.track?.id, 'a');
+    harness.audio.onGaplessTransition!(first.id);
+    await _resumeUntil(() => harness.audio.preparations.length == 3);
+    final third = harness.audio.preparations.last;
+    expect(third.track.id, 'd');
+    expect(third.afterId, second.id);
+    harness.audio.onGaplessTransition!(second.id);
+    expect(harness.controller.playbackState.track?.id, 'c');
+    harness.audio.onGaplessTransition!(third.id);
+    expect(harness.controller.playbackState.track?.id, 'd');
+    expect(harness.audio.starts, hasLength(1));
+  });
+
+  test('short repeat occurrences have separate identities and a queue edit cancels the whole prepared chain', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a', durationMs: 80)];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.length == 2);
+    harness.controller.toggleRepeatMode();
+    await _resumeUntil(() => harness.audio.preparations.length == 4);
+    final head = harness.audio.preparations.lastWhere((entry) => entry.afterId == null);
+    final tail = harness.audio.preparations.last;
+    expect(tail.afterId, head.id);
+    expect(tail.id, isNot(head.id));
+    expect(tail.context?['session_id'], isNot(head.context?['session_id']));
+    await harness.controller.nextTrack();
+    expect(harness.audio.cancellationIds, contains(head.id));
+    harness.audio.onGaplessTransition!(tail.id);
+    expect(harness.controller.playbackState.track?.id, 'a');
+  });
+
+  test('a failed second lookahead leaves the first short successor ready to commit', () async {
+    final connection = _Connection()
+      ..trackResponse = [
+        offlineTestTrack(id: 'a'),
+        offlineTestTrack(id: 'b', durationMs: 80),
+        offlineTestTrack(id: 'c'),
+      ];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.length == 2);
+    final head = harness.audio.preparations[0];
+    final tail = harness.audio.preparations[1];
+    harness.audio.onGaplessPreparationFailed!(tail.id);
+    expect(harness.audio.cancellationIds, isNot(contains(head.id)));
+    expect(harness.controller.playbackState.track?.id, 'a');
+    harness.audio.onGaplessTransition!(head.id);
+    expect(harness.controller.playbackState.track?.id, 'b');
+    expect(harness.audio.starts, hasLength(1));
+  });
+
+  test('short server shuffle lookahead reserves two deck steps before either is committed', () async {
+    final connection = _Connection()
+      ..trackResponse = [
+        offlineTestTrack(id: 'a'),
+        offlineTestTrack(id: 'b', durationMs: 80),
+        offlineTestTrack(id: 'c'),
+      ];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueServerShuffle(scope: 'library');
+    harness.onStarted!();
+    await _resumeUntil(() => harness.audio.preparations.length == 2);
+    final first = harness.audio.preparations[0];
+    final second = harness.audio.preparations[1];
+    expect([first.track.id, second.track.id], ['b', 'c']);
+    expect(second.afterId, first.id);
+    harness.audio.onGaplessTransition!(first.id);
+    expect(harness.controller.playbackState.track?.id, 'b');
+    harness.audio.onGaplessTransition!(second.id);
+    expect(harness.controller.playbackState.track?.id, 'c');
+    expect(harness.audio.starts, hasLength(1));
+  });
+
+  test('repeat changes cancel one occurrence and stale transition acknowledgments are ignored', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    final old = harness.audio.preparations.single;
+    harness.controller.toggleRepeatMode();
+    await _resumeUntil(() => harness.audio.preparations.length == 2);
+    final repeat = harness.audio.preparations.last;
+    expect(harness.audio.cancellationIds, contains(old.id));
+    expect(repeat.track.id, 'a');
+    harness.audio.onGaplessTransition!(old.id);
+    expect(harness.controller.playbackState.track?.id, 'a');
+    harness.audio.onGaplessTransition!(repeat.id);
+    await _resumeUntil(() => harness.audio.preparations.length == 3);
+    expect(harness.audio.preparations.last.track.id, 'a');
+    expect(harness.audio.preparations.last.context?['session_id'], isNot(repeat.context?['session_id']));
+    expect(harness.audio.starts, hasLength(1));
+  });
+
+  test('a rendered boundary delivered during pause commits track identity without resuming', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    final prepared = harness.audio.preparations.single;
+    await harness.controller.pause(true);
+    harness.audio.onGaplessTransition!(prepared.id);
+    expect(harness.controller.playbackState.track?.id, 'b');
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.paused, isTrue);
+    expect(harness.audio.starts, hasLength(1));
+  });
+
+  test('a late successor shows buffering and retains that state across pause and resume', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    harness.audio.onGaplessBuffering!(true);
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    expect(harness.controller.playbackState.track?.id, 'a');
+    await harness.controller.pause(true);
+    expect(harness.controller.playbackState.isLoading, isFalse);
+    await harness.controller.pause(false);
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    harness.audio.onGaplessTransition!(harness.audio.preparations.first.id);
+    expect(harness.controller.playbackState.track?.id, 'b');
+    expect(harness.controller.playbackState.isLoading, isFalse);
+  });
+
+  test('failed successor preparation leaves the current track running and completion falls back once', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    harness.audio.onGaplessPreparationFailed!(harness.audio.preparations.single.id);
+    harness.onStats!(const Duration(seconds: 1), const Duration(seconds: 2), null, null, false);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.audio.preparations, hasLength(1));
+    expect(harness.controller.playbackState.track?.id, 'a');
+    harness.onComplete!();
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.trackId, 'b');
+  });
+
+  test('short repeat-one completions are not suppressed by wall-clock duplicate guards', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.controller.toggleRepeatMode();
+    harness.onComplete!();
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+    harness.onStarted!();
+    harness.onComplete!();
+    await _resumeUntil(() => harness.audio.starts.length == 3);
+    expect(harness.audio.starts.every((start) => start.offset == Duration.zero), isTrue);
+  });
+
+  test('statistics opt-out cancels prepared listening context before another occurrence is armed', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    final old = harness.audio.preparations.single;
+    await harness.controller.setStatsCollectionEnabled(false);
+    await _resumeUntil(() => harness.audio.preparations.length >= 2);
+    expect(harness.audio.cancellationIds, contains(old.id));
+    expect(harness.audio.preparations.last.context, isNull);
+    harness.audio.onGaplessTransition!(old.id);
+    expect(harness.controller.playbackState.track?.id, 'a');
+  });
+
+  test(
+    'gapless shuffle reservations commit one cursor step and reserve a fresh pass without restarting audio',
+    () async {
+      final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+      await harness.controller.queueServerShuffle(scope: 'library');
+      harness.onStarted!();
+      await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+      final first = harness.audio.preparations.single;
+      expect(first.track.id, 'b');
+      expect(connection._shuffleSessionSequence, 1);
+      expect(harness.controller.playbackState.track?.id, 'a');
+      harness.audio.onGaplessTransition!(first.id);
+      expect(harness.controller.playbackState.track?.id, 'b');
+      await _resumeUntil(() => harness.audio.preparations.length == 2);
+      final nextPass = harness.audio.preparations.last;
+      expect(nextPass.track.id, 'a');
+      expect(connection._shuffleSessionSequence, 2);
+      expect(harness.controller.playbackState.track?.id, 'b');
+      harness.audio.onGaplessTransition!(nextPass.id);
+      expect(harness.controller.playbackState.track?.id, 'a');
+      expect(harness.audio.starts, hasLength(1));
+    },
+  );
+
+  for (final mode in [StreamMode.original, StreamMode.high]) {
+    test('playback presence follows actual remote output, pause, local switches and close: $mode', () async {
+      final connection = _Connection()..playbackPresenceEnabled = true;
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      await _resumeUntil(() => connection.presenceBindings == 1);
+      await harness.controller.setStatsCollectionEnabled(false);
+      harness.controller.updateStreamMode(mode);
+      await harness.controller.queueAlbum('album');
+      expect(harness.controller.playbackState.isLoading, isTrue);
+      expect(connection.presenceReports, isEmpty);
+
+      harness.onStarted!();
+      await Future<void>.delayed(Duration.zero);
+      expect(connection.presenceReports.last.$3, isTrue);
+      await harness.controller.pause(true);
+      expect(connection.presenceReports.last.$3, isFalse);
+      await harness.controller.pause(false);
+      expect(connection.presenceReports.last.$3, isTrue);
+
+      harness.onStats!(const Duration(seconds: 1), const Duration(seconds: 4), null, null, true);
+      await Future<void>.delayed(Duration.zero);
+      expect(connection.presenceReports.last.$3, isFalse);
+      harness.onStats!(const Duration(seconds: 2), const Duration(seconds: 4), null, 1, false);
+      await Future<void>.delayed(Duration.zero);
+      expect(connection.presenceReports.last.$3, isTrue);
+      await harness.controller.close();
+      expect(connection.presenceReports.last.$3, isFalse);
+      expect(connection.presenceReports.map((report) => report.$1).toSet(), hasLength(1));
+      final sequences = connection.presenceReports.map((report) => report.$2).toList();
+      expect(sequences, orderedEquals([...sequences]..sort()));
+    });
+  }
+
+  test('playback presence clears on engine failure and sign out and requires server support', () async {
+    _mockTrustVault();
+    final connection = _Connection()..playbackPresenceEnabled = true;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => connection.presenceReports.isNotEmpty);
+    expect(connection.presenceReports.last.$3, isTrue);
+    harness.failTransport();
+    await Future<void>.delayed(Duration.zero);
+    expect(connection.presenceReports.last.$3, isFalse);
+    harness.onStarted!();
+    await Future<void>.delayed(Duration.zero);
+    expect(connection.presenceReports.last.$3, isTrue);
+    await harness.controller.logout();
+    expect(connection.presenceReports.last.$3, isFalse);
+
+    final legacy = _Harness(authenticated: true);
+    addTearDown(legacy.controller.close);
+    await legacy.startRemote();
+    await Future<void>.delayed(Duration.zero);
+    expect(legacy.connection.presenceBindings, 0);
+    expect(legacy.connection.presenceReports, isEmpty);
+  });
+
+  test('playback presence stops before shutdown persistence and late stats cannot restart it', () async {
+    final connection = _Connection()..playbackPresenceEnabled = true;
+    final resume = _PresenceResumeStorage();
+    final gate = Completer<void>();
+    final harness = _Harness(authenticated: true, connection: connection, playbackResumeStorage: resume);
+    addTearDown(() async {
+      if (!gate.isCompleted) gate.complete();
+      await harness.controller.close();
+    });
+    await harness.startRemote();
+    await _resumeUntil(() => connection.presenceReports.isNotEmpty);
+    resume.pendingFlush = gate.future;
+    var closed = false;
+    final closing = harness.controller.close().then((_) => closed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(closed, isFalse);
+    expect(connection.presenceReports.last.$3, isFalse);
+    final count = connection.presenceReports.length;
+    harness.onStats!(const Duration(seconds: 1), const Duration(seconds: 4), null, 1, false);
+    await Future<void>.delayed(Duration.zero);
+    expect(connection.presenceReports, hasLength(count));
+    gate.complete();
+    await closing;
+  });
+
   for (final knownUser in <String?>['resume-user', 'other-user', null]) {
     test('resume offline cache requires the saved verified account UUID: $knownUser', () async {
       _mockTrustVault();
@@ -1720,18 +2081,36 @@ void main() {
     expect(harness.audio.settings.last.quality, 'low');
   });
 
+  test('default Original profile applies to both active and prepared streaming requests', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => harness.audio.preparationSettings.isNotEmpty);
+
+    for (final settings in [harness.audio.settings.single, harness.audio.preparationSettings.single]) {
+      expect(settings.mode, 'original');
+      expect(settings.quality, 'source');
+      expect(settings.frameMs, 20);
+    }
+    expect(harness.audio.preparations.single.track.id, 'b');
+    expect(harness.controller.playbackState.track?.id, 'a');
+  });
+
   test('selecting the current streaming quality does not restart output', () async {
     final harness = _Harness(authenticated: true);
     addTearDown(harness.controller.close);
     await harness.startRemote();
     expect(harness.controller.playbackState.streamMode, StreamMode.original);
-    expect(harness.audio.settings.single.isOriginal, isTrue);
+    expect(harness.audio.settings.single.mode, 'original');
+    expect(harness.audio.settings.single.quality, 'source');
+    expect(harness.audio.settings.single.frameMs, 20);
     harness.controller.updateStreamMode(StreamMode.original);
     await Future<void>.delayed(Duration.zero);
     expect(harness.audio.starts, hasLength(1));
   });
 
-  test('Original selection restarts at the paused position without requesting Opus', () async {
+  test('Original selection preserves the paused position and source identity', () async {
     final harness = _Harness(authenticated: true);
     addTearDown(harness.controller.close);
     harness.controller.updateStreamMode(StreamMode.high);
@@ -1746,8 +2125,9 @@ void main() {
     expect(harness.controller.playbackState.isPlaying, isFalse);
     expect(harness.audio.starts.last.offset, const Duration(seconds: 7));
     expect(harness.audio.starts.last.initialPaused, isTrue);
-    expect(harness.audio.settings.last.isOriginal, isTrue);
+    expect(harness.audio.settings.last.mode, 'original');
     expect(harness.audio.settings.last.quality, 'source');
+    expect(harness.audio.settings.last.frameMs, 20);
 
     harness.controller.updateStreamMode(StreamMode.high);
     await Future<void>.delayed(Duration.zero);
@@ -1859,6 +2239,209 @@ void main() {
     await closing;
     expect(closed, isTrue);
   });
+
+  for (final userPaused in [false, true]) {
+    test('audio interruption preserves intent and honors user pause=$userPaused', () async {
+      final harness = _Harness(authenticated: true);
+      harness.nowPlaying.supported = true;
+      addTearDown(harness.controller.close);
+      await harness.startRemote();
+      final commands = harness.nowPlaying.commandHandler!;
+      await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+      expect(harness.audio.paused, isTrue);
+      expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.nowPlaying.updates.last['isPlaying'], isFalse);
+      if (userPaused) await harness.controller.pause(true);
+      final resumes = harness.audio.resumes;
+      await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+      expect(harness.controller.playbackState.isPlaying, !userPaused);
+      expect(harness.audio.paused, userPaused);
+      expect(harness.audio.resumes, resumes + (userPaused ? 0 : 1));
+    });
+  }
+
+  test('interruption end cannot start audio that was already paused', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await harness.controller.pause(true);
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.paused, isTrue);
+    expect(harness.audio.resumes, 0);
+  });
+
+  test('interruption without a resume hint stays paused until explicit Play', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEndedPaused));
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.resumes, 0);
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.audio.resumes, 1);
+  });
+
+  test('Play during an interruption records intent without resuming the output', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await harness.controller.pause(true);
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.resumes, 0);
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.audio.resumes, 1);
+  });
+
+  test('media services reset recreates playback paused at the audible position', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.onStats!(const Duration(seconds: 12), const Duration(seconds: 2), null, null, false);
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioServicesReset));
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.stops, greaterThan(0));
+    expect(harness.audio.starts.last.offset, const Duration(seconds: 12));
+    expect(harness.audio.starts.last.initialPaused, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.audio.paused, isFalse);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+  });
+
+  test('Play received during media reset waits for release and starts fresh output', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    final release = Completer<void>();
+    addTearDown(() async {
+      if (!release.isCompleted) release.complete();
+      await harness.controller.close();
+    });
+    await harness.startRemote();
+    harness.audio.stopGate = release.future;
+    final commands = harness.nowPlaying.commandHandler!;
+    final resetting = commands(const NativeRemoteCommand(action: NativeRemoteAction.audioServicesReset));
+    await offlineTestWaitFor(() => harness.audio.stops > 0);
+    final playing = commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.audio.starts, hasLength(1));
+    expect(harness.audio.resumes, 0);
+    release.complete();
+    await Future.wait([resetting, playing]);
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.initialPaused, isFalse);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+  });
+
+  test('a newer track waits for media reset without being stopped by the old reset', () async {
+    final connection = _Connection()
+      ..trackResponse = [
+        _metadataTrack().copyWith(id: 'first', albumId: 'album'),
+        _metadataTrack().copyWith(id: 'second', albumId: 'album'),
+      ];
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.nowPlaying.supported = true;
+    final release = Completer<void>();
+    addTearDown(() async {
+      if (!release.isCompleted) release.complete();
+      await harness.controller.close();
+    });
+    await harness.startRemote();
+    final oldTrack = harness.controller.playbackState.track!.id;
+    harness.audio.stopGate = release.future;
+    final resetting = harness.nowPlaying.commandHandler!(
+      const NativeRemoteCommand(action: NativeRemoteAction.audioServicesReset),
+    );
+    await offlineTestWaitFor(() => harness.audio.stops > 0);
+    await harness.controller.nextTrack();
+    final newTrack = harness.controller.playbackState.track!.id;
+    expect(newTrack, isNot(oldTrack));
+    expect(harness.audio.starts, hasLength(1));
+    release.complete();
+    await resetting;
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.trackId, newTrack);
+    expect(harness.audio.active, isTrue);
+    expect(harness.audio.paused, isFalse);
+  });
+
+  test('seeking during an interruption keeps Now Playing paused', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+    await harness.controller.seekTo(const Duration(seconds: 12));
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.nowPlaying.updates.last['isPlaying'], isFalse);
+    expect(harness.audio.paused, isTrue);
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+  });
+
+  for (final interruptedSeek in [false, true]) {
+    test('offline output failure retries once, interrupted seek=$interruptedSeek', () async {
+      final directory = await Directory.systemTemp.createTemp('offline_output_recovery_');
+      final library = await _seedResumeLibrary(directory, 1);
+      final track = (await library.readLocalDownloadedTracks()).single;
+      final connection = _Connection();
+      final harness = _Harness(
+        authenticated: false,
+        connection: connection,
+        offlineStorage: library,
+        offlineDownloadManager: OfflineDownloadManager(connection: connection, storage: library),
+      );
+      addTearDown(() async {
+        await harness.controller.close();
+        await library.close();
+        await directory.delete(recursive: true);
+      });
+      await harness.controller.initialize();
+      await harness.controller.playOfflineTrack(track.id, tracks: [track]);
+      expect(harness.audio.localStarts, hasLength(1));
+      harness.onStarted!();
+      harness.onStats!(Duration(seconds: interruptedSeek ? 5 : 12), Duration.zero, null, null, true);
+      final pendingSeek = Completer<bool>();
+      addTearDown(() {
+        if (!pendingSeek.isCompleted) pendingSeek.complete(false);
+      });
+      Future<void>? seeking;
+      if (interruptedSeek) {
+        harness.audio.seekResults.add(pendingSeek.future);
+        seeking = harness.controller.seekTo(const Duration(seconds: 12));
+        await Future<void>.delayed(Duration.zero);
+      }
+      harness.failTransport();
+      await offlineTestWaitFor(() => harness.audio.localStarts.length == 2);
+      expect(harness.audio.localStarts.last.offset, const Duration(seconds: 12));
+      if (interruptedSeek) {
+        pendingSeek.complete(false);
+        await seeking;
+        harness.onStarted!();
+        harness.onStats!(const Duration(seconds: 13), Duration.zero, null, null, true);
+        expect(harness.controller.playbackState.position, const Duration(seconds: 13));
+      }
+      harness.failTransport();
+      expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.controller.playbackState.isLoading, isFalse);
+      expect(harness.audio.localStarts, hasLength(2));
+    });
+  }
 
   test('system media commands keep controlling playback while the desktop window is hidden', () async {
     final connection = _Connection()
@@ -3140,6 +3723,158 @@ void main() {
     expect(harness.controller.artists.map((artist) => artist.id), ['guest']);
   });
 
+  test('artist loading is shown only until the first successful page including an empty page', () async {
+    final initial = Completer<List<Artist>>();
+    final connection = _Connection()..pendingArtistsPage = initial.future;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+
+    final first = harness.controller.loadArtists();
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.artistsLoading, isTrue);
+    expect(harness.controller.artists, isEmpty);
+    initial.complete([]);
+    await first;
+    expect(harness.controller.artistsLoading, isFalse);
+
+    final replacement = Completer<List<Artist>>();
+    connection.pendingArtistsPage = replacement.future;
+    final loading = <bool>[];
+    final subscription = harness.controller.artistsLoadingStream.listen(loading.add);
+    addTearDown(subscription.cancel);
+    final refresh = harness.controller.loadArtists(refresh: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.artistsLoading, isFalse);
+    expect(harness.controller.artists, isEmpty);
+    replacement.complete([Artist(id: 'new', name: 'New artist', albumCount: 1)]);
+    await refresh;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(harness.controller.artists.single.id, 'new');
+    expect(loading, isNot(contains(true)));
+  });
+
+  test('artist background refresh retains the roster and browse window until replacement succeeds', () async {
+    final connection = _Connection()..artistsPageResponse = [Artist(id: 'old', name: 'Old artist', albumCount: 1)];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.loadArtists();
+
+    final artists = <List<Artist>>[];
+    final totals = <int>[];
+    final loading = <bool>[];
+    final artistSubscription = harness.controller.artistsStream.listen(artists.add);
+    final browseSubscription = harness.controller.artistBrowseStream.listen((snapshot) => totals.add(snapshot.total));
+    final loadingSubscription = harness.controller.artistsLoadingStream.listen(loading.add);
+    addTearDown(artistSubscription.cancel);
+    addTearDown(browseSubscription.cancel);
+    addTearDown(loadingSubscription.cancel);
+    final replacement = Completer<List<Artist>>();
+    connection.pendingArtistsPage = replacement.future;
+
+    final refresh = harness.controller.loadArtists(refresh: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.artists.single.id, 'old');
+    expect(harness.controller.artistBrowseSnapshot.total, 1);
+    expect(harness.controller.artistBrowseSnapshot.at(0)!.id, 'old');
+    expect(harness.controller.artistsLoading, isFalse);
+    replacement.complete([
+      Artist(id: 'new-a', name: 'New artist A', albumCount: 1),
+      Artist(id: 'new-b', name: 'New artist B', albumCount: 1),
+    ]);
+    await refresh;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(harness.controller.artists.map((artist) => artist.id), ['new-a', 'new-b']);
+    expect(harness.controller.artistBrowseSnapshot.total, 2);
+    expect(harness.controller.artistBrowseSnapshot.at(0)!.id, 'new-a');
+    expect(artists, isNot(isEmpty));
+    expect(artists.every((value) => value.isNotEmpty), isTrue);
+    expect(totals, isNot(contains(0)));
+    expect(loading, isNot(contains(true)));
+    expect(connection.artistPageOffsets, [0, 0]);
+  });
+
+  test('failed artist background refresh keeps the previous library and allows a later retry', () async {
+    final connection = _Connection()..artistsPageResponse = [Artist(id: 'old', name: 'Old artist', albumCount: 1)];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.loadArtists();
+
+    final replacement = Completer<List<Artist>>();
+    connection.pendingArtistsPage = replacement.future;
+    final refresh = harness.controller.loadArtists(refresh: true);
+    await Future<void>.delayed(Duration.zero);
+    replacement.completeError(StateError('Artist refresh unavailable'));
+    await refresh;
+
+    expect(harness.controller.artists.single.id, 'old');
+    expect(harness.controller.artistBrowseSnapshot.total, 1);
+    expect(harness.controller.artistBrowseSnapshot.at(0)!.id, 'old');
+    expect(harness.controller.artistsLoading, isFalse);
+
+    connection.artistsPageResponse = [Artist(id: 'recovered', name: 'Recovered artist', albumCount: 1)];
+    await harness.controller.loadArtists(refresh: true);
+    expect(harness.controller.artists.single.id, 'recovered');
+    expect(harness.controller.artistBrowseSnapshot.at(0)!.id, 'recovered');
+    expect(harness.controller.artistsLoading, isFalse);
+    expect(connection.artistPageOffsets, [0, 0, 0]);
+  });
+
+  test('successful empty artist refresh replaces previous content without reentering initial loading', () async {
+    final connection = _Connection()..artistsPageResponse = [Artist(id: 'old', name: 'Old artist', albumCount: 1)];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.loadArtists();
+
+    final replacement = Completer<List<Artist>>();
+    connection.pendingArtistsPage = replacement.future;
+    final refresh = harness.controller.loadArtists(refresh: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.artists.single.id, 'old');
+    replacement.complete([]);
+    await refresh;
+
+    expect(harness.controller.artists, isEmpty);
+    expect(harness.controller.artistBrowseSnapshot.total, 0);
+    expect(harness.controller.artistBrowseSnapshot.at(0), isNull);
+    expect(harness.controller.hasMoreArtists, isFalse);
+    expect(harness.controller.artistsLoading, isFalse);
+  });
+
+  test('disconnect clears retained artists and fences a pending background refresh', () async {
+    _mockTrustVault();
+    final connection = _PasswordConnection()
+      ..artistsPageResponse = [Artist(id: 'old', name: 'Old artist', albumCount: 1)];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.loadArtists();
+
+    final replacement = Completer<List<Artist>>();
+    connection.pendingArtistsPage = replacement.future;
+    final refresh = harness.controller.loadArtists(refresh: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.controller.artists.single.id, 'old');
+    await harness.controller.logout();
+    expect(harness.controller.artists, isEmpty);
+    expect(harness.controller.artistBrowseSnapshot.total, 0);
+
+    replacement.complete([Artist(id: 'late', name: 'Previous account artist', albumCount: 1)]);
+    await refresh;
+    expect(harness.controller.artists, isEmpty);
+    expect(harness.controller.artistBrowseSnapshot.total, 0);
+  });
+
   test('loaded releases update compact roster counts without detail metadata requests', () async {
     final album = Album(id: 'one', title: 'One', artist: 'A', artistId: 'a', trackCount: 1);
     final credit = ArtistReleaseContribution(album: album, roles: const ['composer']);
@@ -3546,7 +4281,54 @@ class _Harness {
   }
 }
 
+class _PresenceResumeStorage extends PlaybackResumeStorage {
+  Future<void>? pendingFlush;
+  @override
+  Future<void> flush() => pendingFlush ?? Future<void>.value();
+  @override
+  Future<DevicePlaybackSnapshot?> readLocal() async => null;
+  @override
+  Future<String?> readActiveScope() async => null;
+}
+
 class _Audio implements AudioEngine {
+  @override
+  void Function(int)? onGaplessTransition;
+  @override
+  void Function(bool)? onGaplessBuffering;
+  @override
+  void acknowledgeGaplessTransition(int preparationId) {}
+  @override
+  void setGaplessResampling(bool enabled) => gaplessPolicies.add(enabled);
+  final gaplessPolicies = <bool>[];
+  @override
+  void Function(int)? onGaplessPreparationFailed;
+  final preparations = <({int id, int? afterId, Track track, Map<String, dynamic>? context})>[];
+  final preparationSettings = <StreamSettings>[];
+  final cancellationIds = <int?>[];
+  @override
+  Future<void> prepareNext({
+    required int preparationId,
+    int? afterPreparationId,
+    required Track track,
+    required ServerConnection connection,
+    required StreamSettings settings,
+    String? filePath,
+    int? quicPort,
+    Map<String, dynamic>? listeningContext,
+  }) async {
+    preparations.add((id: preparationId, afterId: afterPreparationId, track: track, context: listeningContext));
+    preparationSettings.add(settings);
+  }
+
+  @override
+  void cancelPreparedNext({int? preparationId}) {
+    cancellationIds.add(preparationId);
+  }
+
+  @override
+  Future<void> releasePreparedNext({int? preparationId}) async {}
+
   @override
   Future<void> initialize() async {}
 
@@ -3635,6 +4417,16 @@ class _Audio implements AudioEngine {
     if (gate != null) await gate;
     active = false;
     paused = false;
+  }
+
+  @override
+  Future<void> resetOutput() async {
+    try {
+      await stop(waitForRelease: true);
+    } catch (_) {
+      active = false;
+      paused = false;
+    }
   }
 
   @override
@@ -3738,6 +4530,17 @@ class _Connection extends ServerConnection {
     setTrust(testServerTrust);
   }
   int pings = 0;
+  bool playbackPresenceEnabled = false;
+  int presenceBindings = 0;
+  final presenceReports = <(String, int, bool)>[];
+  @override
+  Future<void> Function(String, int, bool) createPlaybackPresenceSender({
+    Duration timeout = const Duration(seconds: 3),
+  }) {
+    presenceBindings++;
+    return (id, sequence, playing) async => presenceReports.add((id, sequence, playing));
+  }
+
   bool identityChanged = false;
   Future<bool>? pendingIdentityCheck;
   bool playbackSettingsFailure = false;
@@ -3857,6 +4660,7 @@ class _Connection extends ServerConnection {
     metadataSnapshotsV2: true,
     eventReplayV2: true,
     trackFileContractV2: true,
+    playbackPresence: playbackPresenceEnabled,
   );
   @override
   Future<PlaybackSettingsResponse> fetchPlaybackSettings({
@@ -4134,6 +4938,22 @@ class _Storage extends OfflineLibraryStorage {
 }
 
 class _Preferences extends PlaybackPreferencesStorage {
+  bool? gaplessResampling;
+  int gaplessReads = 0;
+  Future<bool?>? pendingGapless;
+  final gaplessWrites = <bool>[];
+  @override
+  Future<bool?> readGaplessResampling() {
+    gaplessReads++;
+    return pendingGapless ?? Future.value(gaplessResampling);
+  }
+
+  @override
+  Future<void> writeGaplessResampling(bool enabled) async {
+    gaplessResampling = enabled;
+    gaplessWrites.add(enabled);
+  }
+
   int reads = 0;
   Future<bool?>? pending;
   PlaybackRepeatMode? repeatMode;

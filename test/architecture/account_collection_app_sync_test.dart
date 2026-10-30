@@ -553,12 +553,13 @@ void main() {
     expect(harness.app.playbackState.track, isNull);
   });
 
-  test('catalogue invalidation refreshes visible tracks and search without restarting active playback', () async {
+  test('catalogue background refresh retains tracks and search without loading or restarting playback', () async {
     final server = _AccountServer();
     final connection = _Connection(server, supportsV2: true);
     final harness = _Harness(connection);
     addTearDown(harness.close);
     await harness.start();
+    await harness.app.loadArtists();
     await harness.playAndOpenPlaylist();
     await harness.app.search('track', filter: 'track');
     expect(harness.app.searchResults.single.title, 'track');
@@ -566,10 +567,54 @@ void main() {
     final stops = harness.audio.stops;
     final trackReads = connection.trackReads;
     final searchReads = connection.searchReads;
+    final artistReads = connection.artistReads;
+    final artistPage = Completer<ArtistSummaryPage>();
+    final trackPage = Completer<List<Track>>();
+    final searchPage = Completer<List<SearchResult>>();
+    connection.nextArtistSummariesPage = artistPage.future;
+    connection.nextTracks = trackPage.future;
+    connection.nextSearch = searchPage.future;
+    addTearDown(() {
+      if (!artistPage.isCompleted) {
+        artistPage.complete(ArtistSummaryPage(items: [], total: 0, browseRevision: server.catalogueRevision));
+      }
+      if (!trackPage.isCompleted) trackPage.complete([]);
+      if (!searchPage.isCompleted) searchPage.complete([]);
+    });
+    final trackSnapshots = <List<Track>>[];
+    final searchSnapshots = <List<SearchResult>>[];
+    final loading = <bool>[];
+    final subscriptions = [
+      harness.app.tracksStream.listen(trackSnapshots.add),
+      harness.app.searchStream.listen(searchSnapshots.add),
+      harness.app.artistsLoadingStream.listen(loading.add),
+      harness.app.tracksLoadingStream.listen(loading.add),
+      harness.app.searchLoadingStream.listen(loading.add),
+    ];
+    addTearDown(() => Future.wait(subscriptions.map((subscription) => subscription.cancel())));
+
+    void expectPreviousContent() {
+      expect(harness.app.tracks.first.title, 'track');
+      expect(harness.app.searchResults.single.title, 'track');
+      expect(harness.app.artistsLoading, isFalse);
+      expect(harness.app.tracksLoading, isFalse);
+      expect(harness.app.searchLoading, isFalse);
+    }
 
     server.catalogueTitle = 'Rescanned ';
     server.catalogueRevision = 'rescan-2';
     connection.metadataEvents.add(MetadataUpdateEvent(revision: 1, kind: 'catalogue', id: 'rescan-2', updatedAt: 1));
+    await _until(() => connection.artistReads > artistReads, 'pending catalogue artist refresh');
+    expectPreviousContent();
+    artistPage.complete(ArtistSummaryPage(items: [], total: 0, browseRevision: server.catalogueRevision));
+    await _until(() => connection.trackReads > trackReads, 'pending catalogue track refresh');
+    expectPreviousContent();
+    trackPage.complete([connection._remoteTrack('track'), connection._remoteTrack('other')]);
+    await _until(() => connection.searchReads > searchReads, 'pending catalogue search refresh');
+    expect(harness.app.tracks.first.title, 'Rescanned track');
+    expect(harness.app.searchResults.single.title, 'track');
+    expect(harness.app.searchLoading, isFalse);
+    searchPage.complete([SearchResult(kind: 'track', id: 'track', title: 'Rescanned track', albumId: 'album')]);
     await _until(
       () =>
           harness.app.tracks.isNotEmpty &&
@@ -582,12 +627,54 @@ void main() {
     expect(connection.trackReads, greaterThan(trackReads));
     expect(connection.searchReads, greaterThan(searchReads));
     expect(connection.artistReads, greaterThanOrEqualTo(1));
+    expect(trackSnapshots, isNotEmpty);
+    expect(trackSnapshots.every((tracks) => tracks.isNotEmpty), isTrue);
+    expect(searchSnapshots, isNotEmpty);
+    expect(searchSnapshots.every((results) => results.isNotEmpty), isTrue);
+    expect(loading, isNot(contains(true)));
     expect(harness.audio.starts, 1);
     expect(harness.audio.stops, stops);
     expect(harness.audio.seeks, 0);
     expect(harness.app.playbackState.isPlaying, isTrue);
     expect(harness.app.playbackState.track!.id, 'track');
     expect(harness.app.playbackState.position, position);
+  });
+
+  test('failed catalogue track refresh retains visible tracks and the next marker retries them', () async {
+    final server = _AccountServer();
+    final connection = _Connection(server, supportsV2: true);
+    final harness = _Harness(connection);
+    addTearDown(harness.close);
+    await harness.start();
+    await harness.app.loadArtists();
+    await harness.app.loadTracks('album');
+    await harness.app.search('track', filter: 'track');
+    final trackReads = connection.trackReads;
+    final searchReads = connection.searchReads;
+    final response = Completer<List<Track>>();
+    connection.nextTracks = response.future;
+    addTearDown(() {
+      if (!response.isCompleted) response.complete([]);
+    });
+    final snapshots = <List<Track>>[];
+    final subscription = harness.app.tracksStream.listen(snapshots.add);
+    addTearDown(subscription.cancel);
+    server.catalogueTitle = 'Recovered ';
+    server.catalogueRevision = 'rescan-2';
+    connection.metadataEvents.add(MetadataUpdateEvent(revision: 1, kind: 'catalogue', id: 'rescan-2', updatedAt: 1));
+    await _until(() => connection.trackReads > trackReads, 'pending failed catalogue refresh');
+    expect(harness.app.tracks.first.title, 'track');
+    expect(harness.app.tracksLoading, isFalse);
+    response.completeError(StateError('Temporary catalogue read failure'));
+    await _until(() => connection.searchReads > searchReads, 'catalogue refresh after failed track read');
+
+    expect(harness.app.tracks.first.title, 'track');
+    expect(harness.app.tracksLoading, isFalse);
+    expect(harness.app.searchResults.single.title, 'Recovered track');
+    connection.metadataEvents.add(MetadataUpdateEvent(revision: 2, kind: 'catalogue', id: 'rescan-2', updatedAt: 2));
+    await _until(() => harness.app.tracks.first.title == 'Recovered track', 'catalogue retry replacement');
+    expect(snapshots.every((tracks) => tracks.isNotEmpty), isTrue);
+    expect(harness.app.tracksLoading, isFalse);
   });
 
   test('authorized account switches immediately clear presets even when revision clocks are equal', () async {
@@ -882,6 +969,9 @@ class _Connection extends ServerConnection {
   final reports = <({String userId, String trackId, String sessionId, int sequence, String requestId})>[];
   Future<AccountLastTrack>? nextLastTrack;
   Future<Track>? nextTrackMetadata;
+  Future<ArtistSummaryPage>? nextArtistSummariesPage;
+  Future<List<Track>>? nextTracks;
+  Future<List<SearchResult>>? nextSearch;
   Future<AccountState>? nextAccountState;
   Future<ShufflePresetSnapshot>? nextPresetSnapshot;
   Future<ShufflePreset>? nextPresetWrite;
@@ -1080,15 +1170,20 @@ class _Connection extends ServerConnection {
   @override
   Future<ArtistSummaryPage> fetchArtistSummariesPage({int limit = 60, int offset = 0, String? revision}) async {
     artistReads++;
+    final pending = nextArtistSummariesPage;
+    nextArtistSummariesPage = null;
 
-    return ArtistSummaryPage(items: [], total: 0, browseRevision: server.catalogueRevision);
+    return pending ?? ArtistSummaryPage(items: [], total: 0, browseRevision: server.catalogueRevision);
   }
 
   @override
   Future<List<SearchResult>> search(String query, {String filter = 'all'}) async {
     searchReads++;
+    final pending = nextSearch;
+    nextSearch = null;
 
-    return [SearchResult(kind: 'track', id: 'track', title: '${server.catalogueTitle}track', albumId: 'album')];
+    return pending ??
+        [SearchResult(kind: 'track', id: 'track', title: '${server.catalogueTitle}track', albumId: 'album')];
   }
 
   @override
@@ -1109,8 +1204,10 @@ class _Connection extends ServerConnection {
   @override
   Future<List<Track>> fetchTracks(String albumId) async {
     trackReads++;
+    final pending = nextTracks;
+    nextTracks = null;
 
-    return [_remoteTrack('track'), _remoteTrack('other')];
+    return pending ?? [_remoteTrack('track'), _remoteTrack('other')];
   }
 
   @override
@@ -1280,6 +1377,32 @@ class _Harness {
 }
 
 class _Audio extends Fake implements AudioEngine {
+  @override
+  void Function(int)? onGaplessTransition;
+  @override
+  void Function(bool)? onGaplessBuffering;
+  @override
+  void acknowledgeGaplessTransition(int preparationId) {}
+  @override
+  void setGaplessResampling(bool enabled) {}
+  @override
+  void Function(int)? onGaplessPreparationFailed;
+  @override
+  Future<void> prepareNext({
+    required int preparationId,
+    int? afterPreparationId,
+    required Track track,
+    required ServerConnection connection,
+    required StreamSettings settings,
+    String? filePath,
+    int? quicPort,
+    Map<String, dynamic>? listeningContext,
+  }) async {}
+  @override
+  void cancelPreparedNext({int? preparationId}) {}
+  @override
+  Future<void> releasePreparedNext({int? preparationId}) async {}
+
   @override
   void Function(Map<String, dynamic>)? onListeningSegment;
   bool _active = false;
@@ -1462,6 +1585,10 @@ class _Storage extends OfflineLibraryStorage {
 }
 
 class _Preferences extends PlaybackPreferencesStorage {
+  @override
+  Future<bool?> readGaplessResampling() async => null;
+  @override
+  Future<void> writeGaplessResampling(bool enabled) async {}
   @override
   Future<PlaybackRepeatMode?> readRepeatMode() async => null;
 

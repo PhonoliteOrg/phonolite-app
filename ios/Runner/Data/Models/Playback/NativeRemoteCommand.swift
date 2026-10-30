@@ -5,4 +5,8 @@ enum NativeRemoteCommand: String {
   case next
   case previous = "prev"
   case toggleLike
+  case audioInterruptionBegan
+  case audioInterruptionEnded
+  case audioInterruptionEndedPaused
+  case audioServicesReset
 }

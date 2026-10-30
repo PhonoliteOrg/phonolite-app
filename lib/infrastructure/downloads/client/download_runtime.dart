@@ -67,12 +67,26 @@ class _OfflineDownloadActorCore
   late final _LocalPlaylistDownloads _ownerPlaylistDownloads;
   @override
   late final _DownloadStateStore _ownerState;
+  late final _CompressedDownloadJobs _compressedJobs;
+
+  String get _queueProfile => Zone.current[#downloadQueueProfile] as String? ?? 'original';
+
+  String _downloadFileId(OfflineTrackDownload download) {
+    final id = download.track.serverTrackId ?? download.track.id;
+    if (download.profile == 'original') {
+      return id;
+    }
+    final digest = sha1.convert(utf8.encode('${download.profile}\n${download.renditionId}')).toString();
+    return '${id}_$digest';
+  }
+
   final ServerConnection connection;
   final OfflineLibraryStorage _storage;
 
   _OfflineDownloadActorCore({required this.connection, OfflineLibraryStorage storage = const OfflineLibraryStorage()})
     : _storage = storage {
     // Create state owners in the same zone as the parent and before UI subscriptions.
+    _compressedJobs = _CompressedDownloadJobs(this);
     _ownerRecovery = _InterruptedDownloadRecovery(this);
     _ownerMaterialize = _DownloadJobMaterializer(this);
     _ownerDiscovery = _ArtistJobDiscovery(this);
@@ -120,6 +134,7 @@ class _OfflineDownloadActorCore
 
   Future<void> dispose() async {
     _disposed = true;
+    _compressedJobs.dispose();
 
     _localUserDataReloadTimer?.cancel();
     _localUserDataReloadTimer = null;

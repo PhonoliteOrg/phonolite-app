@@ -253,8 +253,7 @@ class _DownloadJobRow extends StatelessWidget {
     return authHeaders(activeController);
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildRow(BuildContext context) {
     final title = _jobTitle;
     final coverUrl = _coverUrl;
     final headers = _headers;
@@ -304,6 +303,25 @@ class _DownloadJobRow extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final error = job.error?.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildRow(context),
+        if (error != null && error.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Text(
+              error,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _DownloadJobActions extends StatelessWidget {
@@ -314,15 +332,26 @@ class _DownloadJobActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canResume = job.status == OfflineDownloadStatus.paused;
+    final canRetry = job.profile != 'original' && job.status == OfflineDownloadStatus.failed;
+    final canResume = job.status == OfflineDownloadStatus.paused || canRetry;
+    final String tooltip;
+    final IconData? icon;
+    if (canRetry) {
+      tooltip = 'Retry download job';
+      icon = null;
+    } else {
+      tooltip = canResume ? 'Resume download job' : 'Pause download job';
+      icon = canResume ? PhonoliteIcons.play : PhonoliteIcons.pause;
+    }
 
     return Wrap(
       spacing: 4,
       runSpacing: 4,
       children: [
         _ActionButton(
-          tooltip: canResume ? 'Resume download job' : 'Pause download job',
-          icon: canResume ? PhonoliteIcons.play : PhonoliteIcons.pause,
+          tooltip: tooltip,
+          icon: icon,
+          iconWidget: canRetry ? const ReloadIcon() : null,
           onPressed: controller == null || (!canResume && !DownloadManagerController.canPauseDownloadStatus(job.status))
               ? null
               : () => unawaited(

@@ -21,6 +21,10 @@ class DownloadCanceled implements Exception {
   const DownloadCanceled();
 }
 
+class DownloadRenditionExpired implements Exception {
+  const DownloadRenditionExpired();
+}
+
 class DownloadCorrupt implements Exception {
   final String message;
 

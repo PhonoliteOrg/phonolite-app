@@ -351,6 +351,10 @@ class _DownloadCoordinator {
       return;
     }
 
+    final preparedId = _host._gaplessCoordinator.preparedId;
+    _host._gaplessCoordinator.invalidate();
+    if (preparedId != null) await _host._audio?.releasePreparedNext(preparationId: preparedId);
+
     final shouldStopPlayback = uniqueDownloads.any(_downloadMatchesCurrentLocalPlayback);
 
     if (shouldStopPlayback) {
@@ -361,6 +365,7 @@ class _DownloadCoordinator {
 
     if (!shouldStopPlayback) {
       _pruneRemovedDownloadsFromOfflineQueue(uniqueDownloads);
+      _host._gaplessCoordinator.prepare();
     }
 
     final trimmedLabel = label.trim().isEmpty ? 'track' : label.trim();
@@ -384,6 +389,8 @@ class _DownloadCoordinator {
     if (nextQueue.length == _host._playQueue.length) {
       return;
     }
+
+    _host._gaplessCoordinator.invalidate(prepareAgain: true);
 
     _host._playQueue = nextQueue;
 

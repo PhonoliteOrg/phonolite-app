@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 use std::ffi::{CStr, CString};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::os::raw::{c_char, c_int, c_longlong};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -11,11 +11,16 @@ use bytes::Bytes;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 mod security;
+mod source;
+mod owner;
+use owner::OwnerLease;
+pub use source::SourceHandle;
 
 const ALPN_QUIC: &[&[u8]] = &[b"phonolite-quic"];
 const MAX_UDP_SIZE: usize = 65535;
 const MAX_QUIC_DATAGRAM: usize = 1350;
 const MAX_DELIVERY_BYTES: usize = 512 * 1024;
+const MAX_SOURCE_DELIVERY_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CONTROL_EVENTS: usize = 32;
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 
@@ -31,6 +36,8 @@ fn test_handle(generation: u64) -> (QuicHandle, mpsc::Receiver<ControlCommand>) 
                 delivery: Arc::new(Mutex::new(delivery)),
                 events: Arc::new(Mutex::new(VecDeque::new())),
                 generation: AtomicU64::new(generation),
+                cancelled: Arc::new(AtomicBool::new(false)),
+                owner: Arc::new(OwnerLease::new()),
                 last_error: Arc::new(Mutex::new(None)),
                 last_stats: Arc::new(Mutex::new(None)),
                 last_rtt_ms: Arc::new(Mutex::new(None)),
@@ -268,11 +275,106 @@ pub struct QuicHandle {
     inner: Arc<ClientHandle>,
 }
 
+#[cfg(test)]
+mod close_tests {
+    use super::*;
+
+    struct Identity(std::path::PathBuf);
+
+    impl Identity {
+        fn pipe() -> (Self, quiche::testing::Pipe) {
+            let path = std::env::temp_dir().join(format!("phonolite-client-close-{}", rand::random::<u64>()));
+            std::fs::create_dir(&path).unwrap();
+            let pair = rcgen::generate_simple_self_signed(vec!["quic.tech".into()]).unwrap();
+            std::fs::write(path.join("cert.pem"), pair.cert.pem()).unwrap();
+            std::fs::write(path.join("key.pem"), pair.key_pair.serialize_pem()).unwrap();
+            let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
+            config.load_cert_chain_from_pem_file(path.join("cert.pem").to_str().unwrap()).unwrap();
+            config.load_priv_key_from_pem_file(path.join("key.pem").to_str().unwrap()).unwrap();
+            config.set_application_protos(ALPN_QUIC).unwrap();
+            config.set_initial_max_data(1024 * 1024);
+            config.set_initial_max_stream_data_bidi_remote(64 * 1024);
+            config.set_initial_max_stream_data_bidi_local(64 * 1024);
+            config.set_initial_max_streams_bidi(16);
+            config.verify_peer(false);
+            let mut pipe = quiche::testing::Pipe::with_config(&mut config).unwrap();
+            pipe.handshake().unwrap();
+            (Self(path), pipe)
+        }
+    }
+
+    impl Drop for Identity {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0.join("cert.pem"));
+            let _ = std::fs::remove_file(self.0.join("key.pem"));
+            let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+
+    #[test]
+    fn closing_notifies_the_peer_without_waiting_for_ack_or_flushing_queued_credentials() {
+        let (_identity, mut pipe) = Identity::pipe();
+        let mut state = ClientState::new();
+        enqueue_control(&mut state, ClientMessage::Auth { token: "must-remain-queued-before-pin-verification" });
+        let mut packets = Vec::new();
+        send_connection_close(&mut pipe.client, &mut [0; MAX_UDP_SIZE], |packet, info| {
+            packets.push((packet.to_vec(), info));
+            Ok(packet.len())
+        });
+        assert!(!packets.is_empty());
+        assert!(packets.len() <= 3);
+        assert_eq!(state.pending_control.len(), 1);
+        quiche::testing::process_flight(&mut pipe.server, packets).unwrap();
+        assert!(pipe.server.is_draining());
+        assert_eq!(pipe.server.peer_error().unwrap().error_code, 0);
+        assert!(!pipe.server.stream_readable(0));
+    }
+
+    #[test]
+    fn a_blocked_close_datagram_is_best_effort_and_does_not_spin() {
+        let (_identity, mut pipe) = Identity::pipe();
+        let mut attempts = 0;
+        send_connection_close(&mut pipe.client, &mut [0; MAX_UDP_SIZE], |_, _| {
+            attempts += 1;
+            Err(std::io::Error::from(std::io::ErrorKind::WouldBlock))
+        });
+        assert_eq!(attempts, 1);
+        assert!(pipe.client.local_error().is_some());
+    }
+
+    #[test]
+    fn closing_an_opus_handle_cancels_before_its_command_is_processed() {
+        let (handle, commands) = test_handle(1);
+        let cancelled = Arc::clone(&handle.inner.cancelled);
+        phonolite_quic_close(Box::into_raw(Box::new(handle)));
+        assert!(cancelled.load(Ordering::Acquire));
+        assert!(matches!(commands.recv().unwrap(), ControlCommand::Close));
+    }
+
+    #[test]
+    fn address_wait_is_cancellable_without_a_resolver_or_socket() {
+        let owner = Arc::new(OwnerLease::new());
+        let (sender, receiver) = mpsc::channel();
+        let cancelling = Arc::clone(&owner);
+        let cancel = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            cancelling.cancelled.store(true, Ordering::Release);
+        });
+        let started = Instant::now();
+        assert!(wait_for_address(receiver, &owner, true).unwrap_err().contains("closed"));
+        assert!(started.elapsed() < Duration::from_millis(250));
+        cancel.join().unwrap();
+        drop(sender);
+    }
+}
+
 struct ClientHandle {
     tx: mpsc::Sender<ControlCommand>,
     delivery: Arc<Mutex<AudioDelivery>>,
     events: Arc<Mutex<VecDeque<String>>>,
     generation: AtomicU64,
+    cancelled: Arc<AtomicBool>,
+    owner: Arc<OwnerLease>,
     last_error: Arc<Mutex<Option<String>>>,
     last_stats: Arc<Mutex<Option<String>>>,
     last_rtt_ms: Arc<Mutex<Option<i64>>>,
@@ -331,6 +433,7 @@ struct AudioDelivery {
     bytes: usize,
     closed: bool,
     suspended: bool,
+    limit: usize,
 }
 
 impl AudioDelivery {
@@ -354,7 +457,8 @@ impl AudioDelivery {
         if self.generation != generation || self.suspended || self.closed {
             0
         } else {
-            MAX_DELIVERY_BYTES.saturating_sub(self.bytes)
+            let limit = if self.limit == 0 { MAX_DELIVERY_BYTES } else { self.limit };
+            limit.saturating_sub(self.bytes)
         }
     }
 
@@ -395,6 +499,19 @@ impl AudioDelivery {
 }
 
 enum ControlCommand {
+    SourceOpen {
+        generation: u64,
+        track_id: String,
+        offset: u64,
+        source_version: Option<String>,
+    },
+    SourceRange {
+        generation: u64,
+        track_id: String,
+        offset: u64,
+        length: u32,
+        source_version: Option<String>,
+    },
     Open {
         generation: u64,
         track_id: String,
@@ -428,6 +545,21 @@ enum ControlCommand {
 #[derive(Serialize)]
 #[serde(tag = "type")]
 enum ClientMessage<'a> {
+    #[serde(rename = "source_open")]
+    SourceOpen {
+        request_id: u64,
+        track_id: &'a str,
+        offset: u64,
+        source_version: Option<&'a str>,
+    },
+    #[serde(rename = "source_range")]
+    SourceRange {
+        request_id: u64,
+        track_id: &'a str,
+        offset: u64,
+        length: u32,
+        source_version: Option<&'a str>,
+    },
     #[serde(rename = "auth")]
     Auth { token: &'a str },
     #[serde(rename = "open")]
@@ -468,6 +600,16 @@ enum ClientMessage<'a> {
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 enum ServerMessage {
+    #[serde(rename = "source")]
+    Source {
+        request_id: u64,
+        track_id: String,
+        stream_id: u64,
+        offset: u64,
+        length: u64,
+        total_length: u64,
+        source_version: String,
+    },
     #[serde(rename = "auth_ok")]
     AuthOk,
     #[serde(rename = "error")]
@@ -502,6 +644,7 @@ struct ClientState {
     control_buf: Vec<u8>,
     active_track: Option<String>,
     active_stream: Option<u64>,
+    source_stream: bool,
     retired_streams: HashSet<u64>,
 }
 
@@ -522,6 +665,7 @@ impl ClientState {
             control_buf: Vec::new(),
             active_track: None,
             active_stream: None,
+            source_stream: false,
             retired_streams: HashSet::new(),
         }
     }
@@ -534,16 +678,50 @@ pub extern "C" fn phonolite_quic_connect(
     token: *const c_char,
     expected_pin: *const c_char,
 ) -> *mut QuicHandle {
+    connect_opus(host, port, token, expected_pin, false)
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_connect_owned(
+    host: *const c_char, port: u16, token: *const c_char, expected_pin: *const c_char,
+) -> *mut QuicHandle {
+    connect_opus(host, port, token, expected_pin, true)
+}
+
+fn connect_opus(
+    host: *const c_char, port: u16, token: *const c_char, expected_pin: *const c_char,
+    leased: bool,
+) -> *mut QuicHandle {
     let host = unsafe { cstr_to_string(host) };
     let token = unsafe { cstr_to_string(token) };
     let expected_pin = unsafe { cstr_to_string(expected_pin) };
-    if host.is_empty() || token.is_empty() || expected_pin.len() != 64 {
+    let owner = leased.then(|| Arc::new(OwnerLease::new()));
+    let Ok((inner, _worker)) = connect_client(host, port, token, expected_pin, false, owner) else {
         return std::ptr::null_mut();
+    };
+    Box::into_raw(Box::new(QuicHandle { inner }))
+}
+
+fn connect_client(
+    host: String,
+    port: u16,
+    token: String,
+    expected_pin: String,
+    bounded_resolution: bool,
+    owner: Option<Arc<OwnerLease>>,
+) -> Result<(Arc<ClientHandle>, thread::JoinHandle<()>), String> {
+    if host.is_empty() || port == 0 || token.is_empty() || expected_pin.len() != 64 {
+        return Err("invalid QUIC connection configuration".into());
     }
     let addr = if host.contains(':') { format!("[{}]:{}", host, port) } else { format!("{}:{}", host, port) };
 
+    let enforce_owner_lease = owner.is_some();
+    let owner = owner.unwrap_or_else(|| Arc::new(OwnerLease::new()));
+    if !owner.alive(enforce_owner_lease) { return Err("QUIC owner is closed".into()); }
     let (tx_cmd, rx_cmd) = mpsc::channel::<ControlCommand>();
-    let delivery = Arc::new(Mutex::new(AudioDelivery::default()));
+    let mut audio_delivery = AudioDelivery::default();
+    if bounded_resolution { audio_delivery.limit = MAX_SOURCE_DELIVERY_BYTES; }
+    let delivery = Arc::new(Mutex::new(audio_delivery));
     let events = Arc::new(Mutex::new(VecDeque::new()));
     let tx_bytes = AudioSender {
         delivery: Arc::clone(&delivery),
@@ -558,13 +736,15 @@ pub extern "C" fn phonolite_quic_connect(
         delivery,
         events,
         generation: AtomicU64::new(0),
+        cancelled: Arc::clone(&owner.cancelled),
+        owner: Arc::clone(&owner),
         last_error: Arc::clone(&last_error),
         last_stats: Arc::clone(&last_stats),
         last_rtt_ms: Arc::clone(&last_rtt_ms),
     });
 
     let thread_handle = handle.clone();
-    thread::spawn(move || {
+    let worker = thread::Builder::new().name("phonolite-quic".into()).spawn(move || {
         if let Err(err) = run_client(
             addr,
             token,
@@ -574,6 +754,9 @@ pub extern "C" fn phonolite_quic_connect(
             last_error,
             last_stats,
             last_rtt_ms,
+            owner,
+            enforce_owner_lease,
+            bounded_resolution,
         ) {
             if let Ok(mut guard) = thread_handle.last_error.lock() {
                 *guard = Some(err.clone());
@@ -589,10 +772,8 @@ pub extern "C" fn phonolite_quic_connect(
                     .push_back(serde_json::json!({ "type": "error", "message": err }).to_string());
             }
         }
-    });
-
-    let boxed = Box::new(QuicHandle { inner: handle });
-    Box::into_raw(boxed)
+    }).map_err(|error| format!("QUIC worker could not start: {error}"))?;
+    Ok((handle, worker))
 }
 
 #[no_mangle]
@@ -881,8 +1062,14 @@ pub extern "C" fn phonolite_quic_close(handle: *mut QuicHandle) {
     }
     unsafe {
         let boxed = Box::from_raw(handle);
+        boxed.inner.cancelled.store(true, Ordering::Release);
         let _ = boxed.inner.tx.send(ControlCommand::Close);
     }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_heartbeat(handle: *mut QuicHandle) {
+    if let Some(handle) = unsafe { handle.as_ref() } { handle.inner.owner.touch(); }
 }
 
 unsafe fn cstr_to_string(ptr: *const c_char) -> String {
@@ -913,11 +1100,12 @@ fn run_client(
     last_error: Arc<Mutex<Option<String>>>,
     last_stats: Arc<Mutex<Option<String>>>,
     last_rtt_ms: Arc<Mutex<Option<i64>>>,
+    owner: Arc<OwnerLease>,
+    enforce_owner_lease: bool,
+    bounded_resolution: bool,
 ) -> Result<(), String> {
-    let addrs = addr
-        .to_socket_addrs()
-        .map_err(|err| format!("invalid server addr: {}", err))?
-        .collect::<Vec<_>>();
+    let addrs = resolve_source_address(&addr, &owner, enforce_owner_lease)?;
+    if !owner.alive(enforce_owner_lease) { return Ok(()); }
     let server_addr = addrs
         .iter()
         .find(|addr| addr.is_ipv4())
@@ -950,12 +1138,13 @@ fn run_client(
     config.set_max_idle_timeout(30_000);
     config.set_max_recv_udp_payload_size(MAX_QUIC_DATAGRAM);
     config.set_max_send_udp_payload_size(MAX_QUIC_DATAGRAM);
-    config.set_initial_max_data(2 * MAX_DELIVERY_BYTES as u64);
+    let delivery_limit = if bounded_resolution { MAX_SOURCE_DELIVERY_BYTES } else { MAX_DELIVERY_BYTES };
+    config.set_initial_max_data(2 * delivery_limit as u64);
     config.set_initial_max_stream_data_bidi_local(64 * 1024);
     config.set_initial_max_stream_data_bidi_remote(64 * 1024);
-    config.set_initial_max_stream_data_uni(MAX_DELIVERY_BYTES as u64);
-    config.set_max_connection_window(2 * MAX_DELIVERY_BYTES as u64);
-    config.set_max_stream_window(MAX_DELIVERY_BYTES as u64);
+    config.set_initial_max_stream_data_uni(delivery_limit as u64);
+    config.set_max_connection_window(2 * delivery_limit as u64);
+    config.set_max_stream_window(delivery_limit as u64);
     config.set_initial_max_streams_bidi(16);
     config.set_initial_max_streams_uni(32);
     config.set_disable_active_migration(true);
@@ -978,8 +1167,35 @@ fn run_client(
     let mut pending_datagrams = VecDeque::new();
 
     loop {
+        if !owner.alive(enforce_owner_lease) {
+            send_connection_close(&mut conn, &mut send_buf, |packet, _| socket.send(packet));
+            tx_bytes.send(Vec::new());
+            return Ok(());
+        }
         while let Ok(cmd) = rx_cmd.try_recv() {
             match cmd {
+                ControlCommand::SourceOpen { generation, track_id, offset, source_version } => {
+                    tx_bytes.generation = generation;
+                    state.active_track = Some(track_id.clone());
+                    retire_active_stream(&mut state, &mut conn);
+                    state.source_stream = true;
+                    enqueue_control(&mut state, ClientMessage::SourceOpen {
+                        request_id: generation, track_id: &track_id, offset,
+                        source_version: source_version.as_deref(),
+                    });
+                }
+                ControlCommand::SourceRange {
+                    generation, track_id, offset, length, source_version,
+                } => {
+                    tx_bytes.generation = generation;
+                    state.active_track = Some(track_id.clone());
+                    retire_active_stream(&mut state, &mut conn);
+                    state.source_stream = true;
+                    enqueue_control(&mut state, ClientMessage::SourceRange {
+                        request_id: generation, track_id: &track_id, offset, length,
+                        source_version: source_version.as_deref(),
+                    });
+                }
                 ControlCommand::Open {
                     generation,
                     track_id,
@@ -990,6 +1206,7 @@ fn run_client(
                     start_ms,
                 } => {
                     tx_bytes.generation = generation;
+                    state.source_stream = false;
                     state.active_track = Some(track_id.clone());
                     retire_active_stream(&mut state, &mut conn);
                     let queue_opt = if queue.is_empty() {
@@ -1031,6 +1248,7 @@ fn run_client(
                     seek_id,
                 } => {
                     tx_bytes.generation = generation;
+                    state.source_stream = false;
                     state.active_track = Some(track_id.clone());
                     retire_active_stream(&mut state, &mut conn);
                     enqueue_control(
@@ -1067,6 +1285,7 @@ fn run_client(
                     retire_active_stream(&mut state, &mut conn);
                 }
                 ControlCommand::Close => {
+                    send_connection_close(&mut conn, &mut send_buf, |packet, _| socket.send(packet));
                     let _ = tx_bytes.send(Vec::new());
                     return Ok(());
                 }
@@ -1092,6 +1311,11 @@ fn run_client(
         );
 
         loop {
+            if !owner.alive(enforce_owner_lease) {
+                send_connection_close(&mut conn, &mut send_buf, |packet, _| socket.send(packet));
+                tx_bytes.send(Vec::new());
+                return Ok(());
+            }
             match socket.recv_from(&mut recv_buf) {
                 Ok((len, from)) => {
                     receive_datagram(
@@ -1162,6 +1386,38 @@ fn run_client(
     }
 }
 
+fn resolve_source_address(addr: &str, owner: &OwnerLease, enforce_owner_lease: bool) -> Result<Vec<std::net::SocketAddr>, String> {
+    // Numeric addresses require no resolver worker. A hostname lookup may not
+    // be cancellable in the operating system, so it never owns the connection,
+    // credentials or UDP socket. Closing the source can always join its worker.
+    if let Ok(address) = addr.parse() { return Ok(vec![address]); }
+    let address = addr.to_owned();
+    let (tx, rx) = mpsc::sync_channel(1);
+    thread::Builder::new().name("phonolite-source-dns".into()).spawn(move || {
+        let result = address.to_socket_addrs().map(|values| values.collect::<Vec<_>>())
+            .map_err(|error| format!("invalid server addr: {error}"));
+        let _ = tx.send(result);
+    }).map_err(|error| format!("QUIC address resolver could not start: {error}"))?;
+    wait_for_address(rx, owner, enforce_owner_lease)
+}
+
+fn wait_for_address(
+    rx: mpsc::Receiver<Result<Vec<std::net::SocketAddr>, String>>,
+    owner: &OwnerLease,
+    enforce_owner_lease: bool,
+) -> Result<Vec<std::net::SocketAddr>, String> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if !owner.alive(enforce_owner_lease) { return Err("QUIC owner closed during address lookup".into()); }
+        match rx.recv_timeout(Duration::from_millis(5)) {
+            Ok(result) => return result,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Err("QUIC address lookup failed".into()),
+            Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => return Err("QUIC address lookup timed out".into()),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
 fn enqueue_control(state: &mut ClientState, message: ClientMessage<'_>) {
     let kind = match &message {
         ClientMessage::Buffer { .. } => ControlKind::Buffer,
@@ -1220,6 +1476,27 @@ struct PendingDatagram {
     bytes: Vec<u8>,
     at: Instant,
     address: std::net::SocketAddr,
+}
+
+fn send_connection_close(
+    conn: &mut quiche::Connection,
+    output: &mut [u8],
+    mut send: impl FnMut(&[u8], quiche::SendInfo) -> std::io::Result<usize>,
+) {
+    // Close precedes any queued application datagrams and never calls
+    // flush_control. Even a cancelled, unverified handshake cannot send the
+    // queued bearer token. UDP is nonblocking; do not wait for a peer ACK.
+    if conn.close(true, 0, b"client closed").is_err() {
+        return;
+    }
+    for _ in 0..3 {
+        match conn.send(output) {
+            Ok((length, info)) => {
+                if send(&output[..length], info).is_err() { break; }
+            }
+            Err(_) => break,
+        }
+    }
 }
 
 fn flush_conn(
@@ -1341,6 +1618,12 @@ fn handle_readable(
                         tx_bytes.send(buf[..len].to_vec());
                     }
                     if fin {
+                        if state.source_stream {
+                            tx_bytes.event(serde_json::json!({
+                                "type": "source_fin", "request_id": tx_bytes.generation,
+                            }));
+                            tx_bytes.send(Vec::new());
+                        }
                         state.active_stream = None;
                         break;
                     }
@@ -1382,6 +1665,13 @@ fn handle_control_bytes(
     last_error: &Arc<Mutex<Option<String>>>,
     last_rtt_ms: &Arc<Mutex<Option<i64>>>,
 ) {
+    if state.control_buf.len().saturating_add(data.len()) > 64 * 1024 {
+        let message = "QUIC control response exceeded its bounded message size";
+        set_last_error(last_error, message.into());
+        tx.event(serde_json::json!({ "type": "error", "message": message, "request_id": tx.generation }));
+        tx.send(Vec::new());
+        return;
+    }
     state.control_buf.extend_from_slice(data);
     loop {
         let pos = match state.control_buf.iter().position(|b| *b == b'\n') {
@@ -1398,6 +1688,26 @@ fn handle_control_bytes(
         };
         if let Ok(msg) = serde_json::from_str::<ServerMessage>(text) {
             match msg {
+                ServerMessage::Source {
+                    request_id, track_id, stream_id, offset, length,
+                    total_length, source_version,
+                } => {
+                    if request_id != tx.generation || !tx.current()
+                        || !state.source_stream
+                        || state.active_track.as_deref() != Some(track_id.as_str())
+                    {
+                        state.retired_streams.insert(stream_id);
+                        continue;
+                    }
+                    if let Some(previous) = state.active_stream.replace(stream_id) {
+                        if previous != stream_id { state.retired_streams.insert(previous); }
+                    }
+                    tx.event(serde_json::json!({
+                        "type": "source", "request_id": request_id, "track_id": track_id,
+                        "stream_id": stream_id, "offset": offset, "length": length,
+                        "total_length": total_length, "source_version": source_version,
+                    }));
+                }
                 ServerMessage::Stream {
                     request_id,
                     track_id,
@@ -1410,7 +1720,7 @@ fn handle_control_bytes(
                     range_end_ms,
                     end_of_track,
                 } => {
-                    if request_id != Some(tx.generation)
+                    if state.source_stream || request_id != Some(tx.generation)
                         || !tx.current()
                         || role != "active"
                         || state.active_track.as_deref() != Some(track_id.as_str())

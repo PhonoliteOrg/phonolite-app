@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
@@ -11,12 +12,14 @@ import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
 import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
+import 'package:phonolite_app/pages/settings/download_quality_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/settings/sections/desktop_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/display_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/general_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/local_storage_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/misc_settings_section.dart';
+import 'package:phonolite_app/ui/features/settings/sections/playback_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/user_settings_section.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
@@ -28,8 +31,9 @@ export 'package:phonolite_app/ui/features/settings/widgets/offline_storage_secti
 
 class SettingsPage extends BaseStatelessPage {
   final DisplaySettingsController? displaySettings;
+  final DownloadSettingsController? downloadSettings;
 
-  const SettingsPage({super.key, this.displaySettings});
+  const SettingsPage({super.key, this.displaySettings, this.downloadSettings});
 
   Widget _settingsContent(
     BuildContext context,
@@ -60,6 +64,8 @@ class SettingsPage extends BaseStatelessPage {
                   onCustomShuffle: () => Navigator.of(context).push(CustomShuffleSettingsPage.route()),
                 ),
                 const SizedBox(height: 24),
+                PlaybackSettingsSection(controller: controller),
+                const SizedBox(height: 24),
                 UserSettingsSection(
                   controller: controller,
                   authState: authState,
@@ -82,7 +88,12 @@ class SettingsPage extends BaseStatelessPage {
                   ),
                   const SizedBox(height: 24),
                 ],
-                LocalStorageSettingsSection(controller: controller),
+                LocalStorageSettingsSection(
+                  controller: controller,
+                  downloadSettings: downloadSettings,
+                  onDownloadQuality: () =>
+                      Navigator.of(context).push(DownloadQualityPage.route(controller: downloadSettings)),
+                ),
                 const SizedBox(height: 24),
                 FutureBuilder<String>(
                   future: SettingsController.instance.loadAppVersion(),

@@ -81,7 +81,7 @@ class OfflineLibraryStorage
   static const String _indexFileName = 'offline_library.json';
   static const String _databaseFileName = 'phonolite_offline.sqlite';
   static const String _partialExtension = 'part';
-  static const int _schemaVersion = 12;
+  static const int _schemaVersion = 13;
   static const Object _storageUnset = Object();
 
   final bool keepDatabaseOpen;

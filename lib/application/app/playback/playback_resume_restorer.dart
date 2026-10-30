@@ -179,6 +179,7 @@ class _PlaybackResumeRestorer {
 
       final current = _host._playbackState.track!;
       if (members == null) {
+        _host._gaplessCoordinator.invalidate(prepareAgain: true);
         _owner._source = PlaybackSourceContext(kind: 'standalone');
         _host._playQueue = _localAvailable().containsKey(_localId(current)) ? [current] : [];
         _host._playIndex = 0;
@@ -195,7 +196,9 @@ class _PlaybackResumeRestorer {
             .take(max(0, oldIndex))
             .where((track) => !eligible.contains(_localId(track)))
             .length;
-        _host._playQueue = oldQueue.where((track) => eligible.contains(_localId(track))).toList();
+        final nextQueue = oldQueue.where((track) => eligible.contains(_localId(track))).toList();
+        if (nextQueue.length != oldQueue.length) _host._gaplessCoordinator.invalidate(prepareAgain: true);
+        _host._playQueue = nextQueue;
         final currentIndex = _host._playQueue.indexWhere((track) => _localId(track) == _localId(current));
         _host._playIndex = currentIndex >= 0 ? currentIndex : max(-1, oldIndex - removedBefore - 1);
       }

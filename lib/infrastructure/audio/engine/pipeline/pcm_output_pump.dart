@@ -21,6 +21,7 @@ class _PcmOutputPump {
         if (!_host._startedPlayback) {
           if (buffer.length == 0 && _host._streamEnded) {
             _host._markSeekReady();
+            if (player is _GaplessSourceOutput) await player.finish();
 
             return;
           }
@@ -134,6 +135,7 @@ class _PcmOutputPump {
   }
 
   Future<void> _drainPlayer(AudioPcmOutput player) async {
+    if (player is _GaplessSourceOutput) await player.finish();
     final epoch = _host._outputEpoch;
 
     while (_host._isActive) {

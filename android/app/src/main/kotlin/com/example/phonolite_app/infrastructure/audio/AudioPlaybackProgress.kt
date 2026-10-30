@@ -4,43 +4,50 @@ import java.util.concurrent.atomic.AtomicLong
 
 // The session monitor serializes observations and resets. The writer only
 // changes the atomic ledgers while holding the session's write lock.
+@Suppress("UNUSED_PARAMETER")
 internal class AudioPlaybackProgress(
   private val playbackProbe: AudioPlaybackProbe,
-  private val sampleRateHz: Int,
+  sampleRateHz: Int,
   private val bytesPerFrame: Int,
   private val bytesPerSample: Int = 2,
-  private val monotonicTimeNs: () -> Long = System::nanoTime
+  monotonicTimeNs: () -> Long = System::nanoTime
 ) {
   private companion object {
     const val PLAYBACK_HEAD_MASK = 0xFFFFFFFFL
-    const val NANOSECONDS_PER_SECOND = 1_000_000_000L
+    const val PLAYBACK_HEAD_HALF_RANGE = 0x80000000L
   }
 
   private val pendingFrames = AtomicLong(0)
   private val totalWrittenFrames = AtomicLong(0)
   private var lastRawPlaybackHead = 0L
-  private var playbackHeadWraps = 0L
+  private var playbackHeadOffset = 0L
+  private var timestampOffset = 0L
+  private var timestampsSynchronized = true
+  private var clockReset = false
   private var lastReportedPlaybackHead = 0L
-  private var estimatedPlaybackHead = 0L
-  private var lastEstimateTimeNs = 0L
   private var uncollectedFrames = 0L
 
-  fun markPlaying() {
-    lastEstimateTimeNs = monotonicTimeNs()
-  }
+  // Only renderer observations can complete audio. In particular, elapsed
+  // playing time during an underrun must not advance track markers/listening.
+  fun markPlaying() = Unit
 
-  fun markPaused() {
-    lastEstimateTimeNs = 0L
+  fun markPaused() = Unit
+
+  fun consumeClockReset(): Boolean {
+    val reset = clockReset
+    clockReset = false
+    return reset
   }
 
   fun resetForFlush() {
     pendingFrames.set(0L)
     totalWrittenFrames.set(0L)
     lastRawPlaybackHead = 0L
-    playbackHeadWraps = 0L
+    playbackHeadOffset = 0L
+    timestampOffset = 0L
+    timestampsSynchronized = true
+    clockReset = false
     lastReportedPlaybackHead = 0L
-    estimatedPlaybackHead = 0L
-    lastEstimateTimeNs = 0L
   }
 
   fun pendingFrameCount(): Long = pendingFrames.get()
@@ -74,24 +81,32 @@ internal class AudioPlaybackProgress(
     val raw = playbackProbe.playbackHeadPosition() and PLAYBACK_HEAD_MASK
 
     if (raw < lastRawPlaybackHead) {
-      playbackHeadWraps += 1L shl 32
+      if (lastRawPlaybackHead - raw > PLAYBACK_HEAD_HALF_RANGE) {
+        playbackHeadOffset += 1L shl 32
+      } else {
+        // A reset is not a 2^32-frame wrap. Rebase conservatively at the
+        // previous confirmed position, and ignore stale pre-reset timestamps.
+        playbackHeadOffset = lastReportedPlaybackHead - raw
+        timestampOffset = playbackHeadOffset
+        timestampsSynchronized = false
+        clockReset = true
+      }
     }
 
     lastRawPlaybackHead = raw
-    var absoluteReportedHead = playbackHeadWraps + raw
+    var absoluteReportedHead = playbackHeadOffset + raw
     val timestampHead = playbackProbe.timestampFramePosition()
 
-    if (timestampHead != null && timestampHead > absoluteReportedHead) {
-      absoluteReportedHead = timestampHead
+    if (!timestampsSynchronized && timestampHead != null && timestampHead <= raw) {
+      timestampsSynchronized = true
+    }
+    if (timestampsSynchronized && timestampHead != null) {
+      absoluteReportedHead = maxOf(absoluteReportedHead, timestampOffset + timestampHead)
     }
 
-    if (absoluteReportedHead > estimatedPlaybackHead) {
-      estimatedPlaybackHead = absoluteReportedHead
-    }
-
-    val estimatedHead = estimatePlaybackHead()
     val writtenFrames = totalWrittenFrames.get()
-    val absoluteHead = maxOf(absoluteReportedHead, estimatedHead).coerceAtMost(writtenFrames)
+    val absoluteHead =
+      absoluteReportedHead.coerceIn(lastReportedPlaybackHead, maxOf(writtenFrames, lastReportedPlaybackHead))
     val deltaFrames = (absoluteHead - lastReportedPlaybackHead).coerceAtLeast(0L)
 
     if (deltaFrames > 0L) {
@@ -107,42 +122,5 @@ internal class AudioPlaybackProgress(
     }
 
     return deltaFrames
-  }
-
-  private fun estimatePlaybackHead(): Long {
-    if (sampleRateHz <= 0) {
-      return estimatedPlaybackHead
-    }
-
-    if (!playbackProbe.isPlaying()) {
-      lastEstimateTimeNs = 0L
-
-      return estimatedPlaybackHead
-    }
-
-    val nowNs = monotonicTimeNs()
-
-    if (lastEstimateTimeNs == 0L) {
-      lastEstimateTimeNs = nowNs
-
-      return estimatedPlaybackHead
-    }
-
-    val elapsedNs = nowNs - lastEstimateTimeNs
-
-    if (elapsedNs <= 0L) {
-      return estimatedPlaybackHead
-    }
-
-    val advancedFrames = elapsedNs * sampleRateHz / NANOSECONDS_PER_SECOND
-
-    if (advancedFrames <= 0L) {
-      return estimatedPlaybackHead
-    }
-
-    estimatedPlaybackHead = (estimatedPlaybackHead + advancedFrames).coerceAtMost(totalWrittenFrames.get())
-    lastEstimateTimeNs = nowNs
-
-    return estimatedPlaybackHead
   }
 }

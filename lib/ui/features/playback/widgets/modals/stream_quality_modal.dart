@@ -20,7 +20,7 @@ Future<void> playbackShowStreamModal(
     context: context,
     builder: (dialogContext) {
       final items = const [
-        (mode: StreamMode.original, label: 'Original (source bitrate)'),
+        (mode: StreamMode.original, label: 'Original (source-preserving · QUIC)'),
         (mode: StreamMode.high, label: 'High quality (160 kbps)'),
         (mode: StreamMode.medium, label: 'Medium quality (96 kbps)'),
         (mode: StreamMode.low, label: 'Low quality (48 kbps)'),

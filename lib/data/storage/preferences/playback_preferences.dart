@@ -10,6 +10,7 @@ class PlaybackPreferencesStorage {
   static const String _volumeKey = 'volume';
   static const String _collectionListModeKey = 'collection_list_mode';
   static const String _repeatModeKey = 'repeat_mode';
+  static const String _gaplessResamplingKey = 'gapless_resampling';
 
   final SettingsFiles _files;
 
@@ -72,6 +73,13 @@ class PlaybackPreferencesStorage {
   }
 
   Future<void> writeRepeatMode(PlaybackRepeatMode mode) => _writePreference(_repeatModeKey, mode.name);
+
+  Future<bool?> readGaplessResampling() async {
+    final value = (await _readPreferences())?[_gaplessResamplingKey];
+    return value is bool ? value : null;
+  }
+
+  Future<void> writeGaplessResampling(bool value) => _writePreference(_gaplessResamplingKey, value);
 
   Future<Map<String, dynamic>?> _readPreferences() async {
     if (kIsWeb) {

@@ -7,6 +7,82 @@ import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 import '../support/offline_library_test_helpers.dart';
 
 void main() {
+  test('two reservations commit in order and bound the future cursor window', () async {
+    final deck = ServerShuffleDeck(_page(0, 15), load: (offset) async => _page(offset, 15));
+    await deck.initialize(play: true);
+    final first = (await deck.reserveNext())!;
+    final second = (await deck.reserveNext(after: first))!;
+    expect(first.track.id, 'track-1');
+    expect(second.track.id, 'track-2');
+    expect(deck.position, 0);
+    expect(await deck.reserveNext(after: second), isNull);
+    expect(deck.commitReservation(second), isFalse);
+    expect(deck.commitReservation(first), isTrue);
+    expect(deck.position, 1);
+    expect(deck.commitReservation(second), isTrue);
+    expect(deck.position, 2);
+  });
+
+  test('cancelling a head reservation invalidates its descendants without changing history', () async {
+    final deck = ServerShuffleDeck(_page(0, 15), load: (offset) async => _page(offset, 15));
+    await deck.initialize(play: true);
+    final first = (await deck.reserveNext())!;
+    final second = (await deck.reserveNext(after: first))!;
+    deck.cancelReservation(first);
+    expect(deck.position, 0);
+    expect(deck.commitReservation(first), isFalse);
+    expect(deck.commitReservation(second), isFalse);
+    expect(await deck.reserveNext(after: first), isNull);
+    expect((await deck.reserveNext())?.track.id, 'track-1');
+  });
+
+  test('a second reservation can finish loading after its predecessor commits', () async {
+    final gate = Completer<ShuffleSessionPage>();
+    final deck = ServerShuffleDeck(_page(0, 15), load: (_) => gate.future);
+    await deck.restorePosition(8);
+    final first = (await deck.reserveNext())!;
+    final second = deck.reserveNext(after: first);
+    expect(deck.commitReservation(first), isTrue);
+    expect(deck.position, 9);
+    gate.complete(_page(10, 15));
+    final ready = (await second)!;
+    expect(ready.track.id, 'track-10');
+    expect(deck.commitReservation(ready), isTrue);
+    expect(deck.position, 10);
+  });
+
+  test('reservations cross deleted pages without moving history and commit exactly once', () async {
+    final deleted = {for (var i = 1; i < 31; i++) i};
+    final deck = ServerShuffleDeck(
+      _page(0, 35, deleted: deleted),
+      load: (offset) async => _page(offset, 35, deleted: deleted),
+    );
+    await deck.initialize(play: true);
+    final reserved = await deck.reserveNext();
+    expect(deck.position, 0);
+    expect(reserved?.track.id, 'track-31');
+    await deck.prefetch();
+    expect(deck.position, 0);
+    expect(deck.commitReservation(reserved!), isTrue);
+    expect(deck.position, 31);
+    expect(deck.commitReservation(reserved), isFalse);
+    expect(deck.tracks.length, lessThanOrEqualTo(30));
+  });
+
+  test('a delayed reservation cannot override a newer navigation or closed deck', () async {
+    final gate = Completer<ShuffleSessionPage>();
+    final deck = ServerShuffleDeck(_page(0, 11), load: (_) => gate.future);
+    await deck.restorePosition(9);
+    final pending = deck.reserveNext();
+    await deck.move(-1);
+    gate.complete(_page(10, 11));
+    expect(await pending, isNull);
+    expect(deck.position, 8);
+    final reservation = await deck.reserveNext();
+    deck.close();
+    expect(deck.commitReservation(reservation!), isFalse);
+  });
+
   test('one complete pass has no repeats, bounded metadata and reloadable Previous history', () async {
     final requested = <int>[];
     final deck = ServerShuffleDeck(

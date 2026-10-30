@@ -44,6 +44,8 @@ class _ListeningStatsCoordinator {
       return;
     }
 
+    _host._gaplessCoordinator.invalidate();
+
     // Disable the worker immediately, before any disk or network operation.
     if (!value) {
       _audio?.configureListening(null);
@@ -75,6 +77,7 @@ class _ListeningStatsCoordinator {
       }
 
       await _refreshLocalStats();
+      _host._gaplessCoordinator.prepare();
     } catch (error) {
       _audio?.configureListening(null);
       _host._pushMessage('Could not save the listening statistics setting: $error', level: LogLevel.warning);
@@ -155,6 +158,8 @@ class _ListeningStatsCoordinator {
         return;
       }
 
+      _host._gaplessCoordinator.listeningChanged();
+
       _statsCollectionController.add(_host.statsCollectionEnabled);
       _scheduleStatsRefresh();
     }
@@ -212,11 +217,14 @@ class _ListeningStatsCoordinator {
     if (track != null &&
         (_listeningSessionContext?['account_scope'] != _host._listeningStats.accountScope ||
             _listeningSessionContext?['history_generation'] != _host._listeningStats.historyGeneration)) {
+      _host._gaplessCoordinator.invalidate();
       _prepareListeningSession(track, newSession: true, updateActive: true);
+      _host._gaplessCoordinator.prepare();
     }
   }
 
   Future<void> _detachListeningAccount({int? expectedSessionRevision}) async {
+    _host._gaplessCoordinator.invalidate();
     _statsServerId = _statsUserId = null;
     _listeningSessionContext = null;
     _audio?.configureListening(null, discardPending: false);
@@ -240,6 +248,7 @@ class _ListeningStatsCoordinator {
 
     if (playback.isLocalPlayback && playback.track != null) {
       _prepareListeningSession(playback.track!, newSession: true, updateActive: true);
+      _host._gaplessCoordinator.prepare();
     }
 
     await _refreshLocalStats();
@@ -294,6 +303,7 @@ class _ListeningStatsCoordinator {
     _suspendedListeningForReset = resetActiveSession;
 
     if (resetActiveSession) {
+      _host._gaplessCoordinator.invalidate();
       _listeningSessionContext = null;
       _audio?.configureListening(null);
     }
@@ -309,6 +319,7 @@ class _ListeningStatsCoordinator {
 
         if (track != null && (resetActiveSession || (localOnly && _host._listeningStats.accountScope == 'local'))) {
           _prepareListeningSession(track, newSession: true, updateActive: true);
+          _host._gaplessCoordinator.prepare();
         }
 
         await _refreshLocalStats();
@@ -361,6 +372,22 @@ class _ListeningStatsCoordinator {
       return;
     }
 
+    _listeningSessionContext = _newListeningContext(track);
+    _host._pushMessage(
+      'Listening genre snapshot: track_id=$identity '
+      'artist=${jsonEncode(track.artist)} '
+      'track_tags=${jsonEncode(track.genres)} '
+      'listening_genres=${jsonEncode(_listeningSessionContext?['genres'])}',
+      level: LogLevel.debug,
+    );
+    _audio?.configureListening(_listeningSessionContext, updateActive: updateActive);
+  }
+
+  /// Builds a fresh occurrence context without touching the active recorder.
+  Map<String, dynamic>? _newListeningContext(Track track) {
+    if (_suspendedListeningForReset || !_host.statsCollectionEnabled || _host._listeningStats.storageError != null) {
+      return null;
+    }
     final now = _host._playbackClock().toUtc().millisecondsSinceEpoch;
     final canUseServerMetadata = track.serverBaseUrl == null || track.serverBaseUrl == _host.connection.baseUrl;
     final template = ListeningEvent.fromTrack(
@@ -375,20 +402,12 @@ class _ListeningStatsCoordinator {
       cachedArtists: canUseServerMetadata ? _host._artists : const [],
     );
 
-    _listeningSessionContext = {
+    return {
       ...template.toJson(),
       'account_scope': _host._listeningStats.accountScope,
       'history_generation': _host._listeningStats.historyGeneration,
       'collection_revision': _host._listeningStats.preferenceRevision,
     };
-    _host._pushMessage(
-      'Listening genre snapshot: track_id=$identity '
-      'artist=${jsonEncode(track.artist)} '
-      'track_tags=${jsonEncode(track.genres)} '
-      'listening_genres=${jsonEncode(template.genres)}',
-      level: LogLevel.debug,
-    );
-    _audio?.configureListening(_listeningSessionContext, updateActive: updateActive);
   }
 
   Future<void> _repairListeningGenreMetadata() {

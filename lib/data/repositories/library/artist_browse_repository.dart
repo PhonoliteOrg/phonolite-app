@@ -23,6 +23,7 @@ class ArtistBrowseRepository {
   final _pending = <int, Completer<void>>{};
   final _queue = Queue<({int page, Completer<void> result, int generation})>();
   final _active = <Future<void>>{};
+  Future<ArtistSummaryPage?>? _refreshing;
   final _metadataMutations = ByteLruCache<String, int>(
     maxBytes: 128 * 1024,
     maxEntries: 512,
@@ -65,7 +66,46 @@ class ArtistBrowseRepository {
     _closed = true;
     reset();
     await Future.wait(_active.toList());
+    await _refreshing;
     await _changes.close();
+  }
+
+  /// Replaces the retained window only after a complete, consistent refresh.
+  /// Failed reads leave the previous catalogue visible; a session reset still
+  /// clears it immediately and fences every staged response.
+  Future<ArtistSummaryPage?> refresh() {
+    _syncSession();
+
+    if (_closed) {
+      return Future.value();
+    }
+
+    final existing = _refreshing;
+
+    if (existing != null) {
+      return existing;
+    }
+
+    final generation = ++_generation;
+    final retainedPages = _pages.keys.toList();
+
+    for (final work in _queue) {
+      work.result.complete();
+    }
+
+    _queue.clear();
+    _pending.clear();
+    late final Future<ArtistSummaryPage?> operation;
+    operation = _refresh(generation, retainedPages).whenComplete(() {
+      if (identical(_refreshing, operation)) {
+        _refreshing = null;
+      }
+
+      _drain();
+    });
+    _refreshing = operation;
+
+    return operation;
   }
 
   Future<void> loadIndex(int index, {bool refresh = false}) {
@@ -87,7 +127,7 @@ class ArtistBrowseRepository {
       return existing.future;
     }
 
-    if (_active.length >= concurrency && _queue.length >= maxQueued) {
+    if ((_refreshing != null || _active.length >= concurrency) && _queue.length >= maxQueued) {
       if (_queue.isEmpty) {
         return Future.error(StateError('Artist browse capacity reached'));
       }
@@ -194,7 +234,7 @@ class ArtistBrowseRepository {
   }
 
   void _drain() {
-    while (!_closed && _active.length < concurrency && _queue.isNotEmpty) {
+    while (!_closed && _refreshing == null && _active.length < concurrency && _queue.isNotEmpty) {
       final work = _queue.removeFirst();
       late final Future<void> operation;
       operation = _read(work).whenComplete(() {
@@ -203,6 +243,98 @@ class ArtistBrowseRepository {
       });
       _active.add(operation);
     }
+  }
+
+  Future<ArtistSummaryPage?> _refresh(int generation, List<int> retainedPages) async {
+    // Existing fills own their transport until they finish, even after their
+    // publication was fenced. Do not exceed the repository's read admission.
+    await Future.wait(_active.toList());
+
+    for (var attempt = 0; attempt < 4; attempt++) {
+      if (!_refreshIsCurrent(generation)) {
+        return null;
+      }
+
+      final epoch = _metadataEpoch;
+      final staged = ByteLruCache<int, ArtistSummaryPage>(
+        maxBytes: _pages.maxBytes,
+        maxEntries: _pages.maxEntries,
+        sizeOf: _pages.sizeOf,
+      );
+
+      try {
+        final first = await fetch(limit: pageSize, offset: 0);
+
+        if (!_refreshIsCurrent(generation)) {
+          return null;
+        }
+
+        staged.put(0, first);
+        final offsets = retainedPages.where((page) => page > 0 && page * pageSize < first.total).toList();
+        var next = 0;
+        var inconsistent = false;
+
+        Future<void> fillWindow() async {
+          while (next < offsets.length && !inconsistent && _refreshIsCurrent(generation)) {
+            final index = offsets[next++];
+            final page = await fetch(limit: pageSize, offset: index * pageSize, revision: first.browseRevision);
+
+            if (page.browseRevision != first.browseRevision || page.total != first.total) {
+              inconsistent = true;
+              return;
+            }
+
+            staged.put(index, page);
+          }
+        }
+
+        await Future.wait([for (var index = 0; index < concurrency && index < offsets.length; index++) fillWindow()]);
+
+        if (!_refreshIsCurrent(generation)) {
+          return null;
+        }
+
+        if (inconsistent ||
+            _changedSince(first, epoch) ||
+            staged.keys.any((index) => _changedSince(staged.get(index)!, epoch))) {
+          continue;
+        }
+
+        _pages.clear();
+
+        for (final index in staged.keys) {
+          _pages.put(index, staged.get(index)!);
+        }
+
+        _revision = first.browseRevision;
+        _total = first.total;
+        _publish();
+
+        return first;
+      } on ApiException catch (error) {
+        if (!_refreshIsCurrent(generation)) {
+          return null;
+        }
+
+        if (error.statusCode != 409) {
+          rethrow;
+        }
+      } catch (_) {
+        if (!_refreshIsCurrent(generation)) {
+          return null;
+        }
+
+        rethrow;
+      }
+    }
+
+    throw StateError('Artist catalogue changed repeatedly during refresh');
+  }
+
+  bool _refreshIsCurrent(int generation) {
+    _syncSession();
+
+    return !_closed && generation == _generation;
   }
 
   Future<void> _read(({int page, Completer<void> result, int generation}) work) async {

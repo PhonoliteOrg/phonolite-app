@@ -14,6 +14,7 @@ class ObsidianHoverRow extends StatelessWidget {
   final Color borderColor;
   final bool isActive;
   final bool enabled;
+  final bool canRequestFocus;
   final double borderWidth;
   final Duration duration;
   final Curve curve;
@@ -27,6 +28,7 @@ class ObsidianHoverRow extends StatelessWidget {
     this.borderColor = ObsidianPalette.gold,
     this.isActive = false,
     this.enabled = true,
+    this.canRequestFocus = true,
     this.borderWidth = 2,
     this.duration = const Duration(milliseconds: 180),
     this.curve = Curves.easeOut,
@@ -59,6 +61,7 @@ class ObsidianHoverRow extends StatelessWidget {
         return Material(
           color: Colors.transparent,
           child: InkWell(
+            canRequestFocus: canRequestFocus,
             onTap: withButtonHaptic(enabled ? onTap : null),
             onLongPress: enabled ? onLongPress : null,
             child: AnimatedContainer(

@@ -5,6 +5,24 @@ class _OfflineDownloadStore {
 
   _OfflineDownloadStore(this._host);
 
+  Future<void> saveDownloadProfileIntent(SourceTrackRef source, String profile) => _host._withDatabase((db) {
+    db.execute(
+      '''INSERT INTO download_profile_intents (server_base_url, server_track_id, profile) VALUES (?, ?, ?)
+      ON CONFLICT(server_base_url, server_track_id) DO UPDATE SET profile = excluded.profile
+      WHERE NOT EXISTS (SELECT 1 FROM download_demands d WHERE
+        d.server_base_url = excluded.server_base_url AND d.server_track_id = excluded.server_track_id)''',
+      [source.serverBaseUrl, source.serverTrackId, profile],
+    );
+  });
+
+  Future<String> readDownloadProfileIntent(SourceTrackRef source) => _host._withDatabase((db) {
+    final rows = db.select(
+      'SELECT profile FROM download_profile_intents WHERE server_base_url = ? AND server_track_id = ?',
+      [source.serverBaseUrl, source.serverTrackId],
+    );
+    return rows.isEmpty ? 'original' : rows.first['profile'] as String;
+  });
+
   Future<List<OfflineTrackDownload>> readDownloads() async {
     if (kIsWeb) {
       return const [];
@@ -234,8 +252,10 @@ class _OfflineDownloadStore {
         content_type,
         error,
         retry_count,
-        priority
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        priority,
+        profile,
+        rendition_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(server_base_url, server_track_id) DO UPDATE SET
         local_track_id = excluded.local_track_id,
         batch_id = excluded.batch_id,
@@ -251,7 +271,9 @@ class _OfflineDownloadStore {
         content_type = excluded.content_type,
         error = excluded.error,
         retry_count = excluded.retry_count,
-        priority = excluded.priority
+        priority = excluded.priority,
+        profile = excluded.profile,
+        rendition_id = excluded.rendition_id
     ''',
       [
         normalized.serverBaseUrl,
@@ -272,6 +294,8 @@ class _OfflineDownloadStore {
         normalized.error,
         normalized.retryCount,
         normalized.priority,
+        normalized.profile,
+        normalized.renditionId,
       ],
     );
 
@@ -294,8 +318,10 @@ class _OfflineDownloadStore {
         content_type,
         error,
         retry_count,
-        priority
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        priority,
+        profile,
+        rendition_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(server_base_url, server_track_id) DO UPDATE SET
         batch_id = excluded.batch_id,
         local_track_id = excluded.local_track_id,
@@ -310,7 +336,9 @@ class _OfflineDownloadStore {
         content_type = excluded.content_type,
         error = excluded.error,
         retry_count = excluded.retry_count,
-        priority = excluded.priority
+        priority = excluded.priority,
+        profile = excluded.profile,
+        rendition_id = excluded.rendition_id
     ''',
       [
         normalized.serverBaseUrl,
@@ -330,6 +358,8 @@ class _OfflineDownloadStore {
         normalized.error,
         normalized.retryCount,
         normalized.priority,
+        normalized.profile,
+        normalized.renditionId,
       ],
     );
 
@@ -352,6 +382,11 @@ class _OfflineDownloadStore {
 // Forwarding preserves the existing library entry point and virtual dispatch.
 mixin _OfflineDownloadStoreFacade {
   _OfflineDownloadStore get _ownerDownloads;
+
+  Future<void> saveDownloadProfileIntent(SourceTrackRef source, String profile) =>
+      _ownerDownloads.saveDownloadProfileIntent(source, profile);
+
+  Future<String> readDownloadProfileIntent(SourceTrackRef source) => _ownerDownloads.readDownloadProfileIntent(source);
 
   Future<List<OfflineTrackDownload>> readDownloads() => _ownerDownloads.readDownloads();
 

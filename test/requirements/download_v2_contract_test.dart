@@ -57,7 +57,7 @@ void main() {
     final source = readProjectModule('lib/data/storage/offline/library/offline_library.dart');
 
     expectContainsAll(source, [
-      'static const int _schemaVersion = 12',
+      'static const int _schemaVersion = 13',
       'CREATE TABLE IF NOT EXISTS pending_playlist_tracks',
       'CREATE TABLE IF NOT EXISTS download_demands',
       'CREATE TABLE IF NOT EXISTS local_track_server_matches',

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
 import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
+import 'package:phonolite_app/pages/settings/download_quality_page.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_option.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
@@ -15,22 +18,73 @@ import '../../support/ui_harness.dart';
 
 final settingsJourneys = [
   UiJourney(
+    id: 'settings.download_quality',
+    feature: 'settings',
+    description: 'Open download quality, choose each device preference, and restore the original choice',
+    interactions: [
+      'settings.download_quality_open',
+      'settings.download_quality_select',
+      'settings.download_quality_back',
+    ],
+    run: (ui) async {
+      final preferences = DownloadSettingsController.instance;
+      await preferences.initialize();
+      final initial = preferences.settings.quality;
+      await ui.tab('Settings');
+      await ui.reveal(find.byKey(const ValueKey('download-quality-setting')));
+      await ui.tap(find.byKey(const ValueKey('download-quality-setting')));
+      expect(find.byType(DownloadQualityPage), findsOneWidget);
+
+      try {
+        for (final quality in DownloadQuality.values) {
+          final row = find.byKey(ValueKey('download-quality-${quality.wireValue}'));
+          await ui.reveal(row);
+          await ui.tap(row);
+          await preferences.flush();
+          expect(preferences.settings.quality, quality);
+          expect(preferences.error, isNull);
+        }
+      } finally {
+        await preferences.setQuality(initial);
+        await preferences.flush();
+        if (find.byType(DownloadQualityPage).evaluate().isNotEmpty) await ui.back('Back to settings');
+      }
+      expect(preferences.settings.quality, initial);
+    },
+  ),
+  UiJourney(
+    id: 'settings.gapless_format_policy',
+    feature: 'settings',
+    description: 'Toggle the mixed-format output policy and restore the device preference',
+    interactions: ['settings.gapless_format_policy'],
+    run: (ui) async {
+      await ui.tab('Settings');
+      final initial = ui.controller.gaplessResampling;
+      final toggle = find.byKey(const ValueKey('gapless-resampling'));
+      try {
+        await ui.reveal(toggle);
+        await ui.tap(toggle);
+        await ui.waitUntil(
+          () => ui.controller.gaplessResampling != initial,
+          description: 'mixed-format output policy applied',
+        );
+      } finally {
+        if (ui.controller.gaplessResampling != initial) ui.controller.setGaplessResampling(initial);
+      }
+    },
+  ),
+  UiJourney(
     id: 'settings.server_menu',
     feature: 'settings',
-    description:
-        'Inspect connected server actions and leave Change server without submitting',
+    description: 'Inspect connected server actions and leave Change server without submitting',
     interactions: ['settings.server_actions', 'settings.change_server'],
     run: (ui) async {
       await ui.tab('Settings');
       if (!ui.controller.authState.hasSession) {
-        throw const MissingPrerequisite(
-          'Server actions menu requires a saved session',
-        );
+        throw const MissingPrerequisite('Server actions menu requires a saved session');
       }
       if (tooltipControl('Server actions').evaluate().isEmpty) {
-        throw const MissingPrerequisite(
-          'Compact server actions menu is absent in this layout',
-        );
+        throw const MissingPrerequisite('Compact server actions menu is absent in this layout');
       }
       final originalRevision = ui.controller.connection.sessionRevision;
       final originalStatus = ui.controller.authState.status;
@@ -51,26 +105,18 @@ final settingsJourneys = [
     run: (ui) async {
       await ui.tab('Settings');
       if (!ui.controller.authState.isAuthorized) {
-        throw const MissingPrerequisite(
-          'Password form requires an authenticated account',
-        );
+        throw const MissingPrerequisite('Password form requires an authenticated account');
       }
       final revision = ui.controller.connection.sessionRevision;
       await ui.tap(find.byKey(const ValueKey('reset-user-password')));
       expect(find.byType(ResetUserPasswordPage), findsOneWidget);
       expect(find.byType(TextField), findsNWidgets(3));
-      for (final field in ui.tester.widgetList<TextField>(
-        find.byType(TextField),
-      )) {
+      for (final field in ui.tester.widgetList<TextField>(find.byType(TextField))) {
         expect(field.obscureText, isTrue);
         expect(field.controller!.text, isEmpty);
       }
       // Empty validation cannot send a password-change request.
-      await ui.tap(
-        find.byWidgetPredicate(
-          (w) => w is ModalActionButton && w.label == 'Reset password',
-        ),
-      );
+      await ui.tap(find.byWidgetPredicate((w) => w is ModalActionButton && w.label == 'Reset password'));
       expect(find.text('Enter your current password.'), findsOneWidget);
       await ui.back('Back to settings');
       expect(ui.controller.connection.sessionRevision, revision);
@@ -80,13 +126,8 @@ final settingsJourneys = [
   UiJourney(
     id: 'settings.statistics_controls',
     feature: 'settings',
-    description:
-        'Toggle statistics collection, cancel reset, and restore the setting',
-    interactions: [
-      'settings.statistics_toggle',
-      'settings.statistics_reset_open',
-      'settings.statistics_reset_cancel',
-    ],
+    description: 'Toggle statistics collection, cancel reset, and restore the setting',
+    interactions: ['settings.statistics_toggle', 'settings.statistics_reset_open', 'settings.statistics_reset_cancel'],
     run: (ui) async {
       await ui.tab('Settings');
       final initial = ui.controller.statsCollectionEnabled;
@@ -116,8 +157,7 @@ final settingsJourneys = [
   UiJourney(
     id: 'settings.reset_cancel',
     feature: 'settings',
-    description:
-        'Open full local reset confirmation and cancel without deleting data',
+    description: 'Open full local reset confirmation and cancel without deleting data',
     interactions: ['settings.reset_open', 'settings.reset_cancel'],
     run: (ui) async {
       await ui.tab('Settings');
@@ -132,8 +172,7 @@ final settingsJourneys = [
   UiJourney(
     id: 'settings.custom_shuffle_scopes',
     feature: 'settings',
-    description:
-        'Switch Server/Local and Artists/Genres without changing saved filters',
+    description: 'Switch Server/Local and Artists/Genres without changing saved filters',
     interactions: ['settings.custom_shuffle', 'custom_shuffle.target'],
     run: (ui) async {
       await ui.tab('Settings');
@@ -141,19 +180,12 @@ final settingsJourneys = [
       await ui.text('Custom Shuffle');
       for (final target in ['LOCAL', 'SERVER']) {
         for (final label in [target, 'GENRES', 'ARTISTS']) {
-          final option = find.byWidgetPredicate(
-            (w) => w is ObsidianToggleOption && w.label.toUpperCase() == label,
-          );
+          final option = find.byWidgetPredicate((w) => w is ObsidianToggleOption && w.label.toUpperCase() == label);
           if (option.evaluate().isEmpty) {
-            throw const MissingPrerequisite(
-              'Compact shuffle view tabs are absent in this layout',
-            );
+            throw const MissingPrerequisite('Compact shuffle view tabs are absent in this layout');
           }
           await ui.tap(option);
-          expect(
-            ui.tester.widget<ObsidianToggleOption>(option).isActive,
-            isTrue,
-          );
+          expect(ui.tester.widget<ObsidianToggleOption>(option).isActive, isTrue);
         }
       }
       await ui.back('Back to settings');
@@ -163,8 +195,7 @@ final settingsJourneys = [
   UiJourney(
     id: 'settings.scroll',
     feature: 'settings',
-    description:
-        'Scroll through General, User, Local Storage, and Miscellaneous',
+    description: 'Scroll through General, User, Local Storage, and Miscellaneous',
     interactions: ['settings.scroll'],
     run: (ui) async {
       await ui.tab('Settings');
@@ -174,8 +205,7 @@ final settingsJourneys = [
   UiJourney(
     id: 'settings.custom_shuffle_browse',
     feature: 'settings',
-    description:
-        'Browse artist/genre shuffle filters without changing selections',
+    description: 'Browse artist/genre shuffle filters without changing selections',
     interactions: [
       'settings.custom_shuffle',
       'custom_shuffle.artists_view',
@@ -193,9 +223,7 @@ final settingsJourneys = [
       // Do not claim compact tab coverage on layouts that show both panels.
       final genres = find.text('GENRES').hitTestable();
       if (genres.evaluate().isEmpty) {
-        throw const MissingPrerequisite(
-          'Compact Artists/Genres tabs are absent in this layout',
-        );
+        throw const MissingPrerequisite('Compact Artists/Genres tabs are absent in this layout');
       }
       await ui.tap(genres);
       debugPrint('[ui] custom shuffle: edit genre query');
@@ -218,9 +246,7 @@ final settingsJourneys = [
           timeout: const Duration(seconds: 60),
         );
       }
-      debugPrint(
-        '[ui] custom shuffle: ${ui.controller.artists.length} artists',
-      );
+      debugPrint('[ui] custom shuffle: ${ui.controller.artists.length} artists');
       for (var repeat = 0; repeat < UiHarness.repeats; repeat++) {
         debugPrint('[ui] custom shuffle: view cycle ${repeat + 1}');
         await ui.tap(artists);
@@ -252,9 +278,7 @@ final settingsJourneys = [
       await ui.text('Logs');
       expect(find.byType(LogsPage), findsOneWidget);
       for (final category in LogCategory.values) {
-        final option = find.byWidgetPredicate(
-          (w) => w is ObsidianToggleOption && w.label == category.label,
-        );
+        final option = find.byWidgetPredicate((w) => w is ObsidianToggleOption && w.label == category.label);
         await ui.tap(option);
         expect(ui.tester.widget<ObsidianToggleOption>(option).isActive, isTrue);
       }

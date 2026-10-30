@@ -123,7 +123,7 @@ class _LibraryCoordinator {
 
   Future<void> loadAllArtists() => _artistCatalog.loadAll();
 
-  Future<void> loadArtistReleases(String artistId) async {
+  Future<void> loadArtistReleases(String artistId, {bool refresh = false}) async {
     if (!_host._requireServer('loading artist releases')) {
       return;
     }
@@ -131,13 +131,16 @@ class _LibraryCoordinator {
     final epoch = _artistReleasesRequests.advance();
     final sessionRevision = _host.connection.sessionRevision;
 
+    final retainContent = refresh && _artistReleasesArtistId == artistId;
     _lastArtistId = artistId;
     _artistReleasesArtistId = artistId;
-    _artistReleases = const ArtistReleases();
-    _albums = [];
-    _artistReleasesController.add(_artistReleases);
-    _albumsController.add(const []);
-    _setAlbumsLoading(true);
+    if (!retainContent) {
+      _artistReleases = const ArtistReleases();
+      _albums = [];
+      _artistReleasesController.add(_artistReleases);
+      _albumsController.add(const []);
+      _setAlbumsLoading(true);
+    }
 
     try {
       final fetched = await _host.connection.fetchArtistReleases(artistId);
@@ -210,7 +213,7 @@ class _LibraryCoordinator {
     }
   }
 
-  Future<void> loadAlbums(String artistId) async {
+  Future<void> loadAlbums(String artistId, {bool refresh = false}) async {
     if (!_host._requireServer('loading albums')) {
       return;
     }
@@ -219,12 +222,15 @@ class _LibraryCoordinator {
     final request = _albumRequests.advance();
     bool isCurrent() =>
         _host._sessionCoordinator._isServerSessionCurrent(revision) && _albumRequests.isCurrent(request);
-    _setAlbumsLoading(true);
+    final retainContent = refresh && _lastArtistId == artistId;
+    if (!retainContent) _setAlbumsLoading(true);
 
     try {
       _lastArtistId = artistId;
-      _albums = <Album>[];
-      _albumsController.add(List.unmodifiable(_albums));
+      if (!retainContent) {
+        _albums = <Album>[];
+        _albumsController.add(List.unmodifiable(_albums));
+      }
 
       final albums = await _host.connection.fetchAlbums(artistId);
       if (!isCurrent()) return;
@@ -248,7 +254,7 @@ class _LibraryCoordinator {
     }
   }
 
-  Future<void> loadTracks(String albumId) async {
+  Future<void> loadTracks(String albumId, {bool refresh = false}) async {
     if (!_host._requireServer('loading tracks')) {
       return;
     }
@@ -257,12 +263,15 @@ class _LibraryCoordinator {
     final request = _trackRequests.advance();
     bool isCurrent() =>
         _host._sessionCoordinator._isServerSessionCurrent(revision) && _trackRequests.isCurrent(request);
-    _setTracksLoading(true);
+    final retainContent = refresh && _lastAlbumId == albumId;
+    if (!retainContent) _setTracksLoading(true);
 
     try {
       _lastAlbumId = albumId;
-      _tracks = <Track>[];
-      _tracksController.add(List.unmodifiable(_tracks));
+      if (!retainContent) {
+        _tracks = <Track>[];
+        _tracksController.add(List.unmodifiable(_tracks));
+      }
 
       final tracks = await _host.connection.fetchTracks(albumId);
       if (!isCurrent()) return;
@@ -286,8 +295,9 @@ class _LibraryCoordinator {
     }
   }
 
-  Future<void> search(String query, {String filter = 'all'}) async {
+  Future<void> search(String query, {String filter = 'all', bool refresh = false}) async {
     final trimmed = query.trim();
+    final retainContent = refresh && _lastSearchQuery == trimmed && _lastSearchFilter == filter;
     _lastSearchQuery = trimmed;
     _lastSearchFilter = filter;
     final requestId = _searchRequests.advance();
@@ -311,7 +321,7 @@ class _LibraryCoordinator {
       return;
     }
 
-    _setSearchLoading(true);
+    if (!retainContent) _setSearchLoading(true);
 
     try {
       final results = await _host.connection.search(trimmed, filter: filter);
@@ -474,20 +484,10 @@ class _LibraryCoordinator {
     _trackRequests.advance();
     _searchRequests.advance();
     _artistCatalog.details.reset();
-    _artistCatalog.browse.reconcile();
     final artistId = _lastArtistId;
     final albumId = _lastAlbumId;
     final query = _lastSearchQuery;
     final filter = _lastSearchFilter;
-    _albums = const [];
-    _tracks = const [];
-    _search = const [];
-    _artistReleases = const ArtistReleases();
-    _albumsController.add(const []);
-    _tracksController.add(const []);
-    _searchController.add(const []);
-    _artistReleasesController.add(_artistReleases);
-
     await _host.loadArtists(refresh: true);
 
     if (!_host._sessionCoordinator._isServerSessionCurrent(session)) {
@@ -496,18 +496,18 @@ class _LibraryCoordinator {
 
     if (artistId != null && _lastArtistId == artistId) {
       if (_artistReleasesArtistId == artistId) {
-        await _host.loadArtistReleases(artistId);
+        await loadArtistReleases(artistId, refresh: true);
       } else {
-        await _host.loadAlbums(artistId);
+        await loadAlbums(artistId, refresh: true);
       }
     }
 
     if (albumId != null && _lastAlbumId == albumId && _host._sessionCoordinator._isServerSessionCurrent(session)) {
-      await _host.loadTracks(albumId);
+      await loadTracks(albumId, refresh: true);
     }
 
     if (query.isNotEmpty && query == _lastSearchQuery && _host._sessionCoordinator._isServerSessionCurrent(session)) {
-      await _host.search(query, filter: filter);
+      await search(query, filter: filter, refresh: true);
     }
 
     _host._collectionCoordinator.refresh();
@@ -551,7 +551,7 @@ class _LibraryCoordinator {
       }
 
       if (_artistReleasesArtistId == artistId) {
-        await _host.loadArtistReleases(artistId);
+        await loadArtistReleases(artistId, refresh: true);
       }
     } catch (error) {
       AppLogger.debug('Failed to refresh artist metadata for $artistId (${error.runtimeType})');
@@ -653,9 +653,9 @@ class _LibraryCoordinator {
           artistId != null &&
           artistId.trim().isNotEmpty) {
         if (_artistReleasesArtistId == artistId) {
-          await _host.loadArtistReleases(artistId);
+          await loadArtistReleases(artistId, refresh: true);
         } else {
-          await _host.loadAlbums(artistId);
+          await loadAlbums(artistId, refresh: true);
         }
       }
     } catch (err) {

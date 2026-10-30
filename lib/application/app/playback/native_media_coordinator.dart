@@ -9,6 +9,8 @@ class _NativeMediaCoordinator {
   int _lastNowPlayingEpochSent = -1;
   bool _nowPlayingReady = false;
   int _nowPlayingEpoch = 0;
+  bool _audioInterrupted = false;
+  Future<void>? _audioResetInFlight;
 
   _NativeMediaCoordinator(this._host);
 
@@ -57,6 +59,23 @@ class _NativeMediaCoordinator {
           }
 
           break;
+        case NativeRemoteAction.audioInterruptionBegan:
+          if (!_audioInterrupted) {
+            _audioInterrupted = true;
+            _host._audioEngine.pause();
+            _host._updatePlayback(isPlaying: false, isLoading: false);
+            await _pushNowPlayingUpdate(force: true);
+          }
+          break;
+        case NativeRemoteAction.audioInterruptionEnded:
+        case NativeRemoteAction.audioInterruptionEndedPaused:
+          if (!_audioInterrupted) break;
+          _audioInterrupted = false;
+          await _host.pause(command.action == NativeRemoteAction.audioInterruptionEndedPaused || !_host._wantsPlayback);
+          break;
+        case NativeRemoteAction.audioServicesReset:
+          await _resetAudioServices();
+          break;
         case NativeRemoteAction.unknown:
           break;
       }
@@ -64,6 +83,38 @@ class _NativeMediaCoordinator {
 
     _host._nowPlayingPlatform.setRemoteCommandHandler(handleRemoteCommand);
     _pushNowPlayingUpdate(force: true);
+  }
+
+  Future<void> _resetAudioServices() =>
+      _audioResetInFlight ??= _rebuildAudioServices().whenComplete(() => _audioResetInFlight = null);
+
+  void _reportAudioResetFailure(Object error) {
+    if (_host._disposed) return;
+    _host._wantsPlayback = false;
+    _host._updatePlayback(isPlaying: false, isLoading: false);
+    _host._pushMessage('Audio output reset failed; press Play to retry: $error', level: LogLevel.warning);
+  }
+
+  Future<void> _rebuildAudioServices() async {
+    _audioInterrupted = false;
+    final track = _host._playbackState.track;
+    final position = Duration(milliseconds: max(_host._actualPositionMs, _host._displayPositionMs));
+    final starts = _host._playbackCoordinator._playbackStarts;
+    final generation = starts.current;
+    // Apple requires fresh audio objects after a media-services reset. Rebuild
+    // paused; resumption after this event requires an explicit Play action.
+    _host._wantsPlayback = false;
+    _host._audioEngine.pause();
+    _host._updatePlayback(isPlaying: false, isLoading: false);
+    _host._gaplessCoordinator.invalidate();
+    await _host._audioEngine.resetOutput();
+    if (!_host._disposed &&
+        track != null &&
+        starts.isCurrent(generation) &&
+        _host._playbackState.track?.id == track.id) {
+      _host._startPlayback(track, startOffset: position, quickStart: false);
+    }
+    await _pushNowPlayingUpdate(force: true);
   }
 
   Future<void> _clearNowPlaying() async {
@@ -189,6 +240,9 @@ class _NativeMediaCoordinator {
 // Forwarding preserves the existing library entry point and virtual dispatch.
 mixin _NativeMediaFacade {
   _NativeMediaCoordinator get _nativeCoordinator;
+
+  bool get _audioSessionSuspended =>
+      _nativeCoordinator._audioInterrupted || _nativeCoordinator._audioResetInFlight != null;
 
   void _configureNowPlaying() => _nativeCoordinator._configureNowPlaying();
 

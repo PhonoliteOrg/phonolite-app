@@ -1562,7 +1562,7 @@ void main() {
     testWidgets('empty state widgets render title and message', (tester) async {
       await tester.pumpWidget(
         wrapInTestApp(
-          const EmptyState(
+          const EmptyStateText(
             title: 'No tracks',
             message: 'Pick another album to see tracks.',
           ),

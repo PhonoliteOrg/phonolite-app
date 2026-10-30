@@ -17,6 +17,7 @@ class ObsidianListRow extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool isActive;
   final bool enabled;
+  final bool canRequestFocus;
   final bool showHover;
   final double? leadingGap;
   final double trailingGap;
@@ -32,6 +33,7 @@ class ObsidianListRow extends StatelessWidget {
     this.trailing,
     this.isActive = false,
     this.enabled = true,
+    this.canRequestFocus = true,
     this.showHover = true,
     this.leadingGap,
     this.trailingGap = 0,
@@ -51,6 +53,7 @@ class ObsidianListRow extends StatelessWidget {
       onLongPress: onLongPress,
       isActive: isActive,
       enabled: enabled,
+      canRequestFocus: canRequestFocus,
       padding: compact
           ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
           : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

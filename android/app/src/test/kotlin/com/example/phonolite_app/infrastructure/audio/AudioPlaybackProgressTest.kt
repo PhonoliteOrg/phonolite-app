@@ -6,14 +6,16 @@ object AudioPlaybackProgressTest {
   fun main(args: Array<String>) {
     completedFramesAreCollectedExactlyOnce()
     timestampProgressDoesNotRegress()
-    estimatedProgressCannotExceedWrittenAudio()
+    stalledRendererDoesNotAdvanceDuringPlayingTime()
     pausedTimeDoesNotAdvanceProgress()
     flushPreservesUncollectedCompletions()
     unsignedPlaybackHeadWrapsWithoutLosingFrames()
+    resetDoesNotMasqueradeAsUnsignedWrap()
+    fullTimestampDoesNotDoubleCountHeadWrap()
     rejectedWriteAccountingCannotBecomeNegative()
     originalPcm32CountsSamplesIndependentlyOfPrecision()
 
-    println("AudioPlaybackProgress: 8 headless JVM checks passed")
+    println("AudioPlaybackProgress: 10 headless JVM checks passed")
   }
 
   private fun completedFramesAreCollectedExactlyOnce() {
@@ -43,18 +45,21 @@ object AudioPlaybackProgressTest {
     check(fixture.progress.pendingFrameCount() == 100L)
   }
 
-  private fun estimatedProgressCannotExceedWrittenAudio() {
+  private fun stalledRendererDoesNotAdvanceDuringPlayingTime() {
     val fixture = Fixture()
     fixture.addFrames(480)
     fixture.probe.playing = true
     fixture.progress.markPlaying()
     fixture.timeNs += 20_000_000L
 
-    check(fixture.progress.collectDoneSamples() == 960)
-    check(fixture.progress.pendingFrameCount() == 0L)
+    check(fixture.progress.collectDoneSamples() == 0)
+    check(fixture.progress.pendingFrameCount() == 480L)
 
     fixture.timeNs += 20_000_000L
     check(fixture.progress.collectDoneSamples() == 0)
+    fixture.probe.rawHead = 240
+    check(fixture.progress.collectDoneSamples() == 480)
+    check(fixture.progress.pendingFrameCount() == 240L)
   }
 
   private fun pausedTimeDoesNotAdvanceProgress() {
@@ -67,6 +72,7 @@ object AudioPlaybackProgressTest {
     fixture.probe.playing = true
     fixture.progress.markPlaying()
     fixture.timeNs += 5_000_000L
+    fixture.probe.rawHead = 240
     check(fixture.progress.collectDoneSamples() == 480)
 
     fixture.probe.playing = false
@@ -105,6 +111,41 @@ object AudioPlaybackProgressTest {
     fixture.probe.rawHead = 16L
     check(fixture.progress.pollCompletedFrames() == 32L)
     check(fixture.progress.pendingFrameCount() == 5_000_000_000L - (1L shl 32) - 16L)
+  }
+
+  private fun resetDoesNotMasqueradeAsUnsignedWrap() {
+    val fixture = Fixture()
+    fixture.addFrames(1000)
+    fixture.probe.rawHead = 100
+    fixture.probe.timestampHead = 110
+    check(fixture.progress.collectDoneSamples() == 220)
+
+    fixture.probe.rawHead = 5
+    // The old route's timestamp must not claim any new audio after a reset.
+    check(fixture.progress.collectDoneSamples() == 0)
+    check(fixture.progress.consumeClockReset())
+    check(!fixture.progress.consumeClockReset())
+    check(fixture.progress.pendingFrameCount() == 890L)
+
+    fixture.probe.timestampHead = 5
+    check(fixture.progress.collectDoneSamples() == 0)
+    fixture.probe.rawHead = 15
+    fixture.probe.timestampHead = 15
+    check(fixture.progress.collectDoneSamples() == 20)
+    check(fixture.progress.pendingFrameCount() == 880L)
+  }
+
+  private fun fullTimestampDoesNotDoubleCountHeadWrap() {
+    val fixture = Fixture()
+    repeat(10) {
+      fixture.progress.addPendingFrames(500_000_000L)
+      fixture.progress.recordWrittenBytes(2_000_000_000)
+    }
+    fixture.probe.rawHead = -16
+    fixture.progress.pollCompletedFrames()
+    fixture.probe.rawHead = 16
+    fixture.probe.timestampHead = (1L shl 32) + 20
+    check(fixture.progress.pollCompletedFrames() == 36L)
   }
 
   private fun rejectedWriteAccountingCannotBecomeNegative() {

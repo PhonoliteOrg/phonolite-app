@@ -9,6 +9,8 @@ const Object _offlineUnset = Object();
 
 @immutable
 class OfflineTrackDownload {
+  final String profile;
+  final String? renditionId;
   final String serverBaseUrl;
   final String? batchId;
   final String? localTrackId;
@@ -30,6 +32,8 @@ class OfflineTrackDownload {
   final int priority;
 
   const OfflineTrackDownload({
+    this.profile = 'original',
+    this.renditionId,
     required this.serverBaseUrl,
     required this.track,
     required this.status,
@@ -63,6 +67,8 @@ class OfflineTrackDownload {
     final rawMetadata = json['offlineMetadata'] ?? json['offline_metadata'];
 
     return OfflineTrackDownload(
+      profile: json['profile']?.toString() ?? 'original',
+      renditionId: JsonValues.nonEmptyString(json['renditionId']),
       serverBaseUrl: serverBaseUrl,
       batchId: JsonValues.nonEmptyString(json['batchId']),
       localTrackId: JsonValues.nonEmptyString(json['localTrackId']),
@@ -102,6 +108,8 @@ class OfflineTrackDownload {
   }
 
   OfflineTrackDownload copyWith({
+    String? profile,
+    Object? renditionId = _offlineUnset,
     OfflineDownloadStatus? status,
     DateTime? updatedAt,
     Object? batchId = _offlineUnset,
@@ -121,6 +129,8 @@ class OfflineTrackDownload {
     Track? track,
   }) {
     return OfflineTrackDownload(
+      profile: profile ?? this.profile,
+      renditionId: identical(renditionId, _offlineUnset) ? this.renditionId : renditionId as String?,
       serverBaseUrl: serverBaseUrl,
       batchId: identical(batchId, _offlineUnset) ? this.batchId : batchId as String?,
       localTrackId: identical(localTrackId, _offlineUnset) ? this.localTrackId : localTrackId as String?,
@@ -146,6 +156,8 @@ class OfflineTrackDownload {
   }
 
   Map<String, dynamic> toJson() => {
+    'profile': profile,
+    'renditionId': renditionId,
     'serverBaseUrl': serverBaseUrl,
     'batchId': batchId,
     'localTrackId': localTrackId,

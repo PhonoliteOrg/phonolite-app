@@ -39,13 +39,18 @@ class DownloadsApi extends JsonApiEndpoint {
     required String clientId,
     required String clientRequestId,
     required DownloadJobScopeV2 scope,
+    String profile = 'original',
   }) async {
     return postValue('/download/jobs', {
       'client_id': clientId,
       'client_request_id': clientRequestId,
       'scope': scope.toJson(),
+      'profile': profile,
     }, DownloadJobV2.fromJson);
   }
+
+  Future<DownloadJobV2> fetchDownloadJob(String jobId) =>
+      getValue('/download/jobs/${ApiTransport.encodePathSegment(jobId)}', DownloadJobV2.fromJson);
 
   Future<List<DownloadJobV2>> fetchDownloadJobs({String? clientId, String? scopeKind, String? scopeId}) async {
     final query = <String, String>{

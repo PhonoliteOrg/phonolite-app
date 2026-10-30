@@ -21,6 +21,8 @@ class _AdaptiveAudioBufferPolicy {
   _AdaptiveAudioBufferPolicy(this._host);
 
   int get _encodedReadAheadTargetMs {
+    final prepared = _host._gaplessSource;
+    if (prepared != null && prepared._isPrepared && !prepared._announced) return 2000;
     if (_host._userPaused) {
       return 2000;
     }
@@ -123,6 +125,18 @@ class _AdaptiveAudioBufferPolicy {
   }
 
   void _ensureBufferCapacity() {
+    final maximum = _host.settings.isOriginal && !_host._isLocalFile
+        ? _FileAudioSource._maximumRemotePcmBytes ~/ (_host._pcmBitsPerSample ~/ 8)
+        : null;
+
+    if (maximum != null) {
+      // An extreme source rate must not make its refill gate larger than the
+      // bounded precise-PCM buffer. Sample values and rate remain unchanged.
+      _prebufferTargetSamples = math.min(_prebufferTargetSamples, maximum ~/ 2);
+      _rebufferMinSamples = math.min(_rebufferMinSamples, maximum ~/ 4);
+      _rebufferTargetSamples = math.min(_rebufferTargetSamples, maximum ~/ 2);
+    }
+
     // Profiles can change during playback and after the short seek-start gate.
     // The refill target must fit, even while output is paused for buffering.
     final minimumSamples = math.max(
@@ -130,7 +144,7 @@ class _AdaptiveAudioBufferPolicy {
       _pumpChunkSamples * 4,
     );
 
-    _host._buffer?.ensureCapacity(minimumSamples);
+    _host._buffer?.ensureCapacity(maximum == null ? minimumSamples : math.min(minimumSamples, maximum));
   }
 
   int _serverBufferTargetMs() {

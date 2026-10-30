@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import MediaPlayer
 import UIKit
@@ -21,6 +22,39 @@ final class RunnerTests: XCTestCase {
     coordinator = nil
 
     super.tearDown()
+  }
+
+  func testAudioSessionNotificationsKeepTemporaryInterruptionsSeparateFromUserPause() {
+    var commands = [NativeRemoteCommand]()
+    let service = AudioSessionService(isPlaying: { true }, sendRemoteCommand: { commands.append($0) })
+    service.configureObservers()
+    let session = AVAudioSession.sharedInstance()
+
+    NotificationCenter.default.post(
+      name: AVAudioSession.interruptionNotification,
+      object: session,
+      userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue]
+    )
+    NotificationCenter.default.post(
+      name: AVAudioSession.interruptionNotification,
+      object: session,
+      userInfo: [
+        AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+        AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue
+      ]
+    )
+    NotificationCenter.default.post(
+      name: AVAudioSession.interruptionNotification,
+      object: session,
+      userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
+    )
+    NotificationCenter.default.post(name: AVAudioSession.mediaServicesWereResetNotification, object: session)
+
+    withExtendedLifetime(service) {
+      XCTAssertEqual(commands, [
+        .audioInterruptionBegan, .audioInterruptionEnded, .audioInterruptionEndedPaused, .audioServicesReset
+      ])
+    }
   }
 
   func testArtworkSurvivesPositionUpdatesWithoutBeingRecreated() {

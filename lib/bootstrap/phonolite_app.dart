@@ -6,6 +6,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
@@ -66,6 +67,12 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
 
   Future<void> _initializeController() async {
     try {
+      await DownloadSettingsController.instance.initialize();
+    } catch (error) {
+      AppLogger.warning('Download preferences are unavailable; open Download quality in Settings to retry: $error');
+    }
+
+    try {
       await Future.wait([_controller.initialize(), DisplaySettingsController.instance.initialize()]);
 
       if (!mounted) {
@@ -91,7 +98,12 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   Future<void> _closeApplication() async {
     final controllerClosed = _controller.close();
     _shuffleArtworkPreloader.dispose();
-    await Future.wait([controllerClosed, _artworkLoader.close(), DisplaySettingsController.instance.flush()]);
+    await Future.wait([
+      controllerClosed,
+      _artworkLoader.close(),
+      DisplaySettingsController.instance.flush(),
+      DownloadSettingsController.instance.flush(),
+    ]);
     _controller.connection.close();
     await AppLogger.instance.flush();
   }

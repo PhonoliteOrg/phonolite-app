@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 double statsScaled(BuildContext context, double value) => value * ObsidianScale.of(context);
 
@@ -34,8 +33,8 @@ class StatsEmptyText extends StatelessWidget {
   const StatsEmptyText(this.text, {super.key});
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) => EmptyStateText(
+    title: text,
     padding: EdgeInsets.symmetric(vertical: statsScaled(context, 12)),
-    child: Text(text, style: GoogleFonts.poppins(color: ObsidianPalette.textMuted)),
   );
 }

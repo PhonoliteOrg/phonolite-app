@@ -15,6 +15,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_list_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
@@ -195,14 +196,14 @@ class _CustomShuffleSettingsPageState extends BasePageState<CustomShuffleSetting
         )
       else if (!app.shufflePresetsAvailable)
         SliverToBoxAdapter(
-          child: Text(
-            app.authState.isAuthorized
+          child: EmptyStateText(
+            title: app.authState.isAuthorized
                 ? 'This server needs an update to support saved custom shuffles.'
                 : 'Connect to your account to use saved custom shuffles.',
           ),
         )
       else if (presets.isEmpty)
-        const SliverToBoxAdapter(child: Text('No saved custom shuffles. Use + to create one.'))
+        const SliverToBoxAdapter(child: EmptyStateText(title: 'No saved custom shuffles. Use + to create one.'))
       else
         SliverList.builder(itemCount: presets.length, itemBuilder: (_, index) => _presetRow(presets[index])),
     ];

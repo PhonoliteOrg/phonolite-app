@@ -27,6 +27,7 @@ class RawOpusHeader {
     required this.bitrateBps,
     required this.durationMs,
     required this.preSkip,
+    this.playableFrames,
   });
 
   final int sampleRate;
@@ -35,6 +36,10 @@ class RawOpusHeader {
   final int bitrateBps;
   final int durationMs;
   final int preSkip;
+
+  /// Exact audible frames in this range, excluding pre-skip and final padding.
+  /// Null for legacy servers. Frame counts are per channel.
+  final int? playableFrames;
 
   static RawOpusHeader parse(Uint8List data) {
     if (data.length < 12) {
@@ -90,6 +95,17 @@ class RawOpusHeader {
     if (idx + totalLen > headerLen) {
       throw OpusException('invalid opus raw header lengths');
     }
+    int? playableFrames;
+    if ((data[9] & 1) != 0) {
+      final extension = idx + totalLen;
+      if (extension + 8 != headerLen)
+        throw OpusException('invalid exact frame extension');
+      playableFrames = ByteData.sublistView(
+        data,
+      ).getUint64(extension, Endian.little);
+      if (playableFrames < 0 || playableFrames > 0x1fffffffffffff)
+        throw OpusException('invalid exact frame count');
+    }
 
     return RawOpusHeader(
       sampleRate: sampleRate,
@@ -98,6 +114,7 @@ class RawOpusHeader {
       bitrateBps: bitrateBps,
       durationMs: durationMs,
       preSkip: preSkip,
+      playableFrames: playableFrames,
     );
   }
 }

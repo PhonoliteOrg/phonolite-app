@@ -447,6 +447,7 @@ class _PlaybackQueue {
     bool preserveServerShuffle = false,
     PlaybackSourceContext? sourceContext,
   }) {
+    _host._gaplessCoordinator.invalidate();
     if (!preserveServerShuffle) _host._shuffleCoordinator._clearServerShuffleSession();
     _isServerShuffleWindow = preserveServerShuffle;
     _playQueue = tracks;
@@ -569,6 +570,9 @@ class _PlaybackQueue {
       return;
     }
 
+    _host._gaplessCoordinator.invalidate();
+
+    _host._accountServices.stopPlaybackPresence();
     _autoAdvanceInFlight = true;
     _host._listeningSessionContext = null;
 
@@ -590,7 +594,7 @@ class _PlaybackQueue {
             _playQueue[_playIndex].id != track.id) {
           _host._updatePlayback(
             track: track,
-            isPlaying: true,
+            isPlaying: !_host._audioSessionSuspended,
             position: Duration.zero,
             duration: Duration(milliseconds: track.durationMs),
             bufferRatio: 0.0,

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 import 'package:phonolite_app/ui/structures/collections/collection_sliver.dart';
@@ -44,17 +44,7 @@ class PlaylistSection extends BaseSliverSection {
   @override
   Widget sectionSliver(BuildContext context) {
     return playlists.isEmpty
-        ? SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                emptyText,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(color: ObsidianPalette.textMuted, letterSpacing: 0.6),
-              ),
-            ),
-          )
+        ? SliverToBoxAdapter(child: EmptyStateText(title: emptyText))
         : CollectionSliver<Playlist>(
             items: playlists,
             isListView: showListView,

@@ -155,6 +155,10 @@ class ServerConnection {
 
   Future<void> logout({Duration timeout = ApiTransport.defaultRequestTimeout}) => _authApi.logout(timeout: timeout);
 
+  Future<void> Function(String, int, bool) createPlaybackPresenceSender({
+    Duration timeout = const Duration(seconds: 3),
+  }) => _accountPlaybackApi.presenceSender(timeout: timeout);
+
   /// Changes only the authenticated user's password over the pinned HTTPS
   /// connection. This mutation is never retried or redirected. The controller
   /// keeps the originating session signed in; other account sessions are revoked.
@@ -305,7 +309,15 @@ class ServerConnection {
     required String clientId,
     required String clientRequestId,
     required DownloadJobScopeV2 scope,
-  }) => _downloadsApi.createDownloadJob(clientId: clientId, clientRequestId: clientRequestId, scope: scope);
+    String profile = 'original',
+  }) => _downloadsApi.createDownloadJob(
+    clientId: clientId,
+    clientRequestId: clientRequestId,
+    scope: scope,
+    profile: profile,
+  );
+
+  Future<DownloadJobV2> fetchDownloadJob(String jobId) => _downloadsApi.fetchDownloadJob(jobId);
 
   Future<List<DownloadJobV2>> fetchDownloadJobs({String? clientId, String? scopeKind, String? scopeId}) =>
       _downloadsApi.fetchDownloadJobs(clientId: clientId, scopeKind: scopeKind, scopeId: scopeId);

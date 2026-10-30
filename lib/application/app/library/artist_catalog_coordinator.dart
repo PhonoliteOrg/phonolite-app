@@ -7,6 +7,7 @@ class _ArtistCatalogCoordinator {
   List<Artist> artists = [];
   int offset = 0;
   bool hasMore = true;
+  bool _hasLoaded = false;
   final requests = RequestGeneration();
   Completer<void>? _pageCompleter;
   final _rosterIndices = <String, int>{};
@@ -53,6 +54,8 @@ class _ArtistCatalogCoordinator {
     _rosterRevision = null;
     offset = 0;
     hasMore = true;
+    _hasLoaded = false;
+    _library._setArtistsLoading(false);
   }
 
   Future<void> load({bool refresh = false}) async {
@@ -63,9 +66,8 @@ class _ArtistCatalogCoordinator {
     _listen();
 
     if (refresh) {
-      await _pageCompleter?.future;
-      reset();
-      _publishRoster();
+      await loadMore(refresh: true);
+      return;
     }
 
     if (artists.isEmpty && hasMore) {
@@ -92,15 +94,27 @@ class _ArtistCatalogCoordinator {
     }
   }
 
-  Future<void> loadMore() async {
-    if (!_host._requireServer('loading artists') || !hasMore) {
+  Future<void> loadMore({bool refresh = false}) async {
+    if (!_host._requireServer('loading artists') || (!refresh && !hasMore)) {
       return;
     }
 
+    final session = _host.connection.sessionRevision;
+    if (!_hasLoaded) {
+      _library._setArtistsLoading(true);
+    }
     final existing = _pageCompleter;
 
     if (existing != null) {
       await existing.future;
+
+      if (!_host._sessionCoordinator._isServerSessionCurrent(session)) {
+        return;
+      }
+
+      if (refresh || (!_hasLoaded && artists.isEmpty && hasMore)) {
+        return loadMore(refresh: refresh);
+      }
 
       return;
     }
@@ -108,36 +122,57 @@ class _ArtistCatalogCoordinator {
     _listen();
     final completer = Completer<void>();
     final generation = requests.current;
-    final session = _host.connection.sessionRevision;
     _pageCompleter = completer;
-    _library._setArtistsLoading(true);
+    if (!refresh || !_hasLoaded) {
+      _library._setArtistsLoading(true);
+    }
 
     try {
       // Full-roster consumers still page sequentially, retaining only compact values.
-      var requestedOffset = offset;
+      var requestedOffset = refresh ? 0 : offset;
       ArtistSummaryPage page;
 
-      try {
-        page = await _host.connection.fetchArtistSummariesPage(
-          limit: ServerConnection.artistsPageSize,
-          offset: requestedOffset,
-          revision: _rosterRevision,
-        );
-      } on ApiException catch (error) {
-        if (error.statusCode != 409) {
-          rethrow;
+      if (refresh) {
+        final replacement = await browse.refresh();
+        if (replacement == null) {
+          return;
         }
 
-        requestedOffset = 0;
-        page = await _host.connection.fetchArtistSummariesPage(limit: ServerConnection.artistsPageSize);
+        page = replacement;
+      } else {
+        try {
+          page = await _host.connection.fetchArtistSummariesPage(
+            limit: ServerConnection.artistsPageSize,
+            offset: requestedOffset,
+            revision: _rosterRevision,
+          );
+        } on ApiException catch (error) {
+          if (error.statusCode != 409) {
+            rethrow;
+          }
+
+          requestedOffset = 0;
+          page = await _host.connection.fetchArtistSummariesPage(limit: ServerConnection.artistsPageSize);
+        }
       }
 
       if (_host._disposed || session != _host.connection.sessionRevision || !requests.isCurrent(generation)) {
         return;
       }
 
+      if (refresh) {
+        artists = [];
+        _rosterIndices.clear();
+        _rosterRevision = null;
+        details.reset();
+        offlineRepairs.reset();
+      }
+
       _acceptPage(page);
-      browse.retainPage(requestedOffset, page);
+      if (!refresh) {
+        browse.retainPage(requestedOffset, page);
+      }
+      _hasLoaded = true;
       offset = page.nextOffset ?? page.total;
       hasMore = page.nextOffset != null;
     } on ApiException catch (error) {
@@ -156,7 +191,9 @@ class _ArtistCatalogCoordinator {
       }
 
       completer.complete();
-      _library._setArtistsLoading(false);
+      if (session == _host.connection.sessionRevision && requests.isCurrent(generation)) {
+        _library._setArtistsLoading(false);
+      }
     }
   }
 

@@ -35,12 +35,12 @@ void main() {
     await tester.tap(find.text('HQ'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Original (source bitrate)'), findsOneWidget);
+    expect(find.text('Original (source-preserving · QUIC)'), findsOneWidget);
     expect(find.text('High quality (160 kbps)'), findsOneWidget);
     expect(find.text('Medium quality (96 kbps)'), findsOneWidget);
     expect(find.text('Low quality (48 kbps)'), findsOneWidget);
 
-    await tester.tap(find.text('Original (source bitrate)'));
+    await tester.tap(find.text('Original (source-preserving · QUIC)'));
     await tester.pumpAndSettle();
 
     expect(current, StreamMode.original);
@@ -49,7 +49,7 @@ void main() {
 
     await tester.tap(find.text('OG'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Original (source bitrate)'));
+    await tester.tap(find.text('Original (source-preserving · QUIC)'));
     await tester.pumpAndSettle();
 
     expect(selections, 1);

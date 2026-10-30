@@ -34,10 +34,16 @@ class EncodedAudioSegment {
 
   int get frameSamples => header.sampleRate * header.frameMs ~/ 1000;
 
-  int get availableEndMs => math.min(
-    rangeEndMs,
-    startMs + math.max(0, packets.length * frameSamples - header.preSkip) * 1000 ~/ header.sampleRate,
-  );
+  int get playableFrames => header.playableFrames ?? (rangeEndMs - startMs) * header.sampleRate ~/ 1000;
+
+  bool get hasAllFrames => complete && packets.length * frameSamples - header.preSkip >= playableFrames;
+
+  int get availableEndMs => hasAllFrames
+      ? rangeEndMs
+      : math.min(
+          rangeEndMs,
+          startMs + math.max(0, packets.length * frameSamples - header.preSkip) * 1000 ~/ header.sampleRate,
+        );
 
   bool covers(int positionMs) => positionMs >= startMs && positionMs < availableEndMs;
 

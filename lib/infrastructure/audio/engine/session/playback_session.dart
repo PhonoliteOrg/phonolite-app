@@ -54,11 +54,13 @@ class _PlaybackSession
   final Duration startOffset;
   final List<String> queueTrackIds;
   final bool quickStart;
+  final Duration transportProgressTimeout;
   final String? localFilePath;
   final void Function(QuicClient)? _releaseConnection;
   final OpusDecoder Function(int sampleRate, int channels)? _decoderFactory;
   final AudioFileDecoder Function(Uri url, Duration startOffset)? _fileDecoderFactory;
   final AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? _outputFactory;
+  final _GaplessSourceOutput? _gaplessSource;
   double _volume;
   int _outputDeviceId;
   int _outputEpoch = 0;
@@ -88,6 +90,7 @@ class _PlaybackSession
     required this.startOffset,
     required this.queueTrackIds,
     required this.quickStart,
+    this.transportProgressTimeout = const Duration(seconds: 15),
     required bool initialPaused,
     required double volume,
     required int outputDeviceId,
@@ -97,6 +100,7 @@ class _PlaybackSession
     OpusDecoder Function(int sampleRate, int channels)? decoderFactory,
     AudioFileDecoder Function(Uri url, Duration startOffset)? fileDecoderFactory,
     AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? outputFactory,
+    _GaplessSourceOutput? gaplessSource,
   }) : _send = send,
        _playbackId = playbackId,
        _getPlaybackId = getPlaybackId,
@@ -106,6 +110,7 @@ class _PlaybackSession
        _decoderFactory = decoderFactory,
        _fileDecoderFactory = fileDecoderFactory,
        _outputFactory = outputFactory,
+       _gaplessSource = gaplessSource,
        _quic = reusableConnection,
        _releaseConnection = releaseConnection {
     // Create state owners in the same zone as the parent and before UI subscriptions.
@@ -141,6 +146,8 @@ class _PlaybackSession
     required int outputDeviceId,
     Map<String, dynamic>? listeningContext,
     AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? outputFactory,
+    AudioFileDecoder Function(Uri url, Duration startOffset)? fileDecoderFactory,
+    _GaplessSourceOutput? gaplessSource,
   }) : _send = send,
        _playbackId = playbackId,
        _getPlaybackId = getPlaybackId,
@@ -154,9 +161,11 @@ class _PlaybackSession
        _volume = volume,
        _outputDeviceId = outputDeviceId,
        localFilePath = filePath,
+       transportProgressTimeout = const Duration(seconds: 15),
        _decoderFactory = null,
-       _fileDecoderFactory = null,
+       _fileDecoderFactory = fileDecoderFactory,
        _outputFactory = outputFactory,
+       _gaplessSource = gaplessSource,
        _releaseConnection = null {
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _ownerPump = _PcmOutputPump(this);
@@ -219,7 +228,9 @@ class _PlaybackSession
       } catch (_) {}
 
       _listening.flush();
-      _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': true});
+      if (_userPaused && _paused && _isActive && identical(player, _player)) {
+        _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': true});
+      }
     }
   }
 
@@ -260,6 +271,13 @@ class _PlaybackSession
     } catch (err) {
       _log('Playback failed: $err');
 
+      final source = _gaplessSource;
+      if (source != null && (!source._isPrepared || source._announced)) {
+        // A failed audible source cannot authorize its successor to render
+        // while decoder/file cleanup or UI recovery is still pending.
+        await source.abort();
+      }
+
       final rejected = err is AudioSourceRejected;
 
       // Invalidate every producer/pump before releasing native resources. File
@@ -279,6 +297,7 @@ class _PlaybackSession
       } finally {
         _listening.flush(endReason: completed ? 'finished' : 'interrupted');
         _stopStats();
+        _encodedCache.clear();
 
         try {
           _decoder?.dispose();
@@ -401,8 +420,8 @@ class _PlaybackSession
     }
 
     if (settings.isOriginal) {
-      // Original is an authenticated source-file stream, independent of Opus.
-      // Retire a reusable Opus connection before opening its HTTP range source.
+      // The source decoder owns a seekable QUIC byte reader. It shares the PCM
+      // buffer, seek coordinator and output timeline with other sources.
       _quic?.close();
       _quic = null;
       await _runOriginalFilePlayback();

@@ -30,12 +30,28 @@ extern int32_t phonolite_quic_seek(
     uint32_t position_ms,
     uint32_t seek_id);
 extern int32_t phonolite_quic_advance(void *handle);
-extern int32_t phonolite_quic_read(void *handle, uint8_t *buffer, uint64_t buffer_len);
+extern int32_t phonolite_quic_read(void *handle, uint8_t *buffer, size_t buffer_len);
 extern char *phonolite_quic_last_error(void *handle);
 extern char *phonolite_quic_poll_stats(void *handle);
 extern long long phonolite_quic_poll_rtt_ms(void *handle);
 extern void phonolite_quic_free_string(char *ptr);
 extern void phonolite_quic_close(void *handle);
+extern void *phonolite_quic_connect_owned(const char *, uint16_t, const char *, const char *);
+extern void phonolite_quic_heartbeat(void *);
+extern uint64_t phonolite_quic_owner_create(void);
+extern void phonolite_quic_owner_heartbeat(uint64_t);
+extern void phonolite_quic_owner_cancel(uint64_t);
+extern int32_t phonolite_quic_owner_alive(uint64_t);
+extern uint64_t phonolite_quic_owner_interrupt(uint64_t);
+extern int32_t phonolite_quic_owner_begin_operation(uint64_t, uint64_t);
+extern void phonolite_quic_owner_release(void *);
+extern void phonolite_quic_owner_release_finalizer(void *);
+extern void *phonolite_quic_source_connect_owned(const char *, uint16_t, const char *, const char *, const char *, uint64_t);
+extern void *phonolite_quic_source_connect(const char *, uint16_t, const char *, const char *, const char *);
+extern int64_t phonolite_quic_source_read_range(void *, uint64_t, uint8_t *, size_t, uint32_t, uint64_t *);
+extern int32_t phonolite_quic_source_error_code(const void *);
+extern size_t phonolite_quic_source_error(const void *, uint8_t *, size_t);
+extern void phonolite_quic_source_close(void *);
 
 __attribute__((used)) static void *phonolite_quic_keep_symbols[] = {
   (void *)phonolite_security_login,
@@ -57,4 +73,20 @@ __attribute__((used)) static void *phonolite_quic_keep_symbols[] = {
   (void *)phonolite_quic_poll_rtt_ms,
   (void *)phonolite_quic_free_string,
   (void *)phonolite_quic_close,
+  (void *)phonolite_quic_connect_owned,
+  (void *)phonolite_quic_heartbeat,
+  (void *)phonolite_quic_owner_create,
+  (void *)phonolite_quic_owner_heartbeat,
+  (void *)phonolite_quic_owner_cancel,
+  (void *)phonolite_quic_owner_alive,
+  (void *)phonolite_quic_owner_interrupt,
+  (void *)phonolite_quic_owner_begin_operation,
+  (void *)phonolite_quic_owner_release,
+  (void *)phonolite_quic_owner_release_finalizer,
+  (void *)phonolite_quic_source_connect_owned,
+  (void *)phonolite_quic_source_connect,
+  (void *)phonolite_quic_source_read_range,
+  (void *)phonolite_quic_source_error_code,
+  (void *)phonolite_quic_source_error,
+  (void *)phonolite_quic_source_close,
 };

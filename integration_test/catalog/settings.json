@@ -2,16 +2,21 @@
   "feature": "settings",
   "sources": [
     "lib/pages/settings/settings_page.dart",
+    "lib/pages/settings/download_quality_page.dart",
     "lib/pages/playback/custom_shuffle_settings_page.dart",
     "lib/pages/logs/logs_page.dart",
     "lib/ui/features/logs/widgets/message_log.dart",
     "lib/ui/features/settings/sections/general_settings_section.dart",
+    "lib/ui/features/settings/sections/playback_settings_section.dart",
     "lib/ui/features/settings/sections/display_settings_section.dart",
     "lib/ui/features/settings/sections/local_storage_settings_section.dart",
     "lib/ui/features/settings/sections/misc_settings_section.dart",
     "lib/ui/features/settings/sections/user_settings_section.dart",
     "lib/ui/features/settings/widgets/listening_statistics_setting.dart",
     "lib/ui/features/settings/widgets/offline_storage_section.dart",
+    "lib/ui/features/settings/widgets/download_quality_setting.dart",
+    "lib/ui/features/settings/widgets/download_quality_selection.dart",
+    "lib/ui/shared/design_system/controls/obsidian_radio_row.dart",
     "lib/ui/features/settings/widgets/server_connection_setting.dart",
     "lib/ui/features/settings/widgets/settings_row.dart",
     "lib/ui/features/settings/widgets/settings_toggle.dart",
@@ -26,9 +31,43 @@
   ],
   "interactions": [
     {
+      "id": "settings.download_quality_open",
+      "action": "Open Download quality from Local Storage",
+      "expected": "Open the shared-style download quality page with the current device choice selected",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": ["settings.download_quality"]
+    },
+    {
+      "id": "settings.download_quality_select",
+      "action": "Select a download quality",
+      "expected": "Persist one of five quality profiles on this device for future download jobs",
+      "availability": "all",
+      "risk": "preference",
+      "journeys": ["settings.download_quality"]
+    },
+    {
+      "id": "settings.download_quality_back",
+      "action": "Return from Download quality to Settings",
+      "expected": "Keep the saved selection and update the settings tile subtitle",
+      "availability": "all",
+      "risk": "browse",
+      "journeys": ["settings.download_quality"]
+    },
+    {
+      "id": "settings.gapless_format_policy",
+      "action": "Toggle Seamless mixed-format playback",
+      "expected": "Persist the device output conversion preference and preserve playback pause intent",
+      "availability": "all",
+      "risk": "preference",
+      "journeys": [
+        "settings.gapless_format_policy"
+      ]
+    },
+    {
       "id": "settings.scroll",
       "action": "Scroll settings groups",
-      "expected": "Reach all available General/User/Display/Local Storage/Miscellaneous controls",
+      "expected": "Reach all available General/Playback/User/Display/Local Storage/Miscellaneous controls",
       "availability": "all",
       "risk": "browse",
       "journeys": [

@@ -24,6 +24,11 @@ class LibraryController extends FeatureController {
   late final _selection = ControllerSelection<String>(update);
   bool _refreshingLibrary = false;
   final _artworkDiagnostics = ArtistArtworkDiagnostics();
+  List<Track>? _localSearchTracks;
+  List<OfflineArtistGroup>? _localSearchArtists;
+  int? _localSearchRevision;
+  String? _localSearchQuery;
+  List<SearchResult>? _localSearchResults;
   late final _visibleArtists = VisibleArtistLoader(
     fetch: (id) => app.fetchArtistMetadata(id),
     watch: (id) => app.watchArtist(id),
@@ -52,6 +57,7 @@ class LibraryController extends FeatureController {
   @override
   void dispose() {
     _searchDebounce.cancel();
+    _clearLocalSearchCache();
     _visibleArtists.dispose();
     super.dispose();
   }
@@ -60,6 +66,7 @@ class LibraryController extends FeatureController {
     final revision = app.connection.sessionRevision;
     if (_artistSessionRevision != revision || !app.authState.isAuthorized) {
       _artistSessionRevision = revision;
+      _clearLocalSearchCache();
       _visibleArtists.clear();
     }
   }
@@ -119,8 +126,45 @@ class LibraryController extends FeatureController {
     app.search('', filter: 'all');
   }
 
-  List<SearchResult> localResults(List<Track> tracks, List<OfflineArtistGroup> artists) =>
-      searchLocalLibrary(query: _query.trim(), tracks: tracks, artists: artists);
+  /// Published offline snapshots contain immutable lists. Supplying their
+  /// revision allows repeated widget builds to reuse one bounded result page.
+  /// Callers with mutable lists can omit it and always receive a fresh search.
+  List<SearchResult> localResults(List<Track> tracks, List<OfflineArtistGroup> artists, {int? revision}) {
+    final query = normalizeLibrarySearch(_query);
+    final cached = _localSearchResults;
+
+    if (revision != null &&
+        revision == _localSearchRevision &&
+        query == _localSearchQuery &&
+        identical(tracks, _localSearchTracks) &&
+        identical(artists, _localSearchArtists) &&
+        cached != null) {
+      // Preserve the caller-owned, fixed-length result-list contract without
+      // allowing a caller to modify the cached page.
+      return List<SearchResult>.of(cached, growable: false);
+    }
+
+    final results = searchLocalLibrary(query: _query.trim(), tracks: tracks, artists: artists);
+
+    _clearLocalSearchCache();
+    if (revision != null && query.isNotEmpty && !isDisposed) {
+      _localSearchTracks = tracks;
+      _localSearchArtists = artists;
+      _localSearchRevision = revision;
+      _localSearchQuery = query;
+      _localSearchResults = List<SearchResult>.of(results, growable: false);
+    }
+
+    return results;
+  }
+
+  void _clearLocalSearchCache() {
+    _localSearchTracks = null;
+    _localSearchArtists = null;
+    _localSearchRevision = null;
+    _localSearchQuery = null;
+    _localSearchResults = null;
+  }
 
   List<Track> tracksForArtists(List<OfflineArtistGroup> groups) {
     final ids = groups.map(artistSelectionKey).toSet();

@@ -227,6 +227,13 @@ class _DelayedStorage extends _MemoryStorage {
 
 class _AppController extends Fake implements AppController {
   @override
+  bool get gaplessResampling => false;
+  @override
+  Stream<bool> get gaplessResamplingStream => const Stream.empty();
+  @override
+  void setGaplessResampling(bool enabled) {}
+
+  @override
   final connection = ServerConnection(
     baseUrl: 'https://display.test/api',
     client: MockClient((_) async => throw StateError('Display settings must not make server requests')),

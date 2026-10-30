@@ -287,16 +287,20 @@
       "playback_journeys": [
         "audio.quality_low",
         "audio.quality_medium",
-        "audio.quality_high"
+        "audio.quality_high",
+        "audio.quality_original"
       ]
     },
     {
       "id": "quality.original",
-      "action": "Select Original (source bitrate)",
-      "expected": "Stream the unchanged original file with source rate and precision",
+      "action": "Select Original (source-preserving · QUIC)",
+      "expected": "Stream unchanged source bytes over QUIC",
       "availability": "Quality dialog",
       "risk": "preference",
-      "journeys": []
+      "journeys": [],
+      "playback_journeys": [
+        "audio.quality_original"
+      ]
     },
     {
       "id": "quality.high",

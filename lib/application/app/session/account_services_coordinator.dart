@@ -37,6 +37,10 @@ class _AccountServicesCoordinator {
   int _trackSequence = 0;
   int _selection = 0;
   int? _reportedSelection;
+  PlaybackPresenceReporter? _playbackPresence;
+  final String _presenceClientId =
+      'playback-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
+  int _presenceSequence = 0;
 
   _AccountServicesCoordinator(this._host);
 
@@ -77,6 +81,14 @@ class _AccountServicesCoordinator {
     _trackReportRetry.cancel();
     _eventsEnabled = capabilities.accountEventsV2;
     _host._resumeCoordinator.start(capabilities);
+    if (capabilities.playbackPresence) {
+      _playbackPresence = PlaybackPresenceReporter(
+        clientId: _presenceClientId,
+        send: _host.connection.createPlaybackPresenceSender(),
+        nextSequence: () => ++_presenceSequence,
+      );
+      reportPlaybackPresence();
+    }
 
     if (_eventsEnabled) {
       _sync.start(baseUrl: _host.connection.baseUrl, token: _host.connection.token!);
@@ -93,7 +105,30 @@ class _AccountServicesCoordinator {
     }
   }
 
-  Future<void> stop() {
+  void reportPlaybackPresence() {
+    final state = _host._playbackState;
+    final audio = _host._audio;
+    _playbackPresence?.update(
+      !_host._disposed &&
+          _host._shutdown == null &&
+          _host._authState.isAuthorized &&
+          _session == _host.connection.sessionRevision &&
+          state.track != null &&
+          state.isPlaying &&
+          !state.isLoading &&
+          !state.isLocalPlayback &&
+          _host._audioOutputStarted &&
+          audio?.hasActivePlayer == true &&
+          audio?.isPaused == false,
+    );
+  }
+
+  void stopPlaybackPresence() => _playbackPresence?.update(false);
+
+  Future<void> stop() async {
+    final presence = _playbackPresence;
+    _playbackPresence = null;
+    final presenceStopped = presence?.close() ?? Future<void>.value();
     _host._resumeCoordinator.detachAccount();
     _requests.advance();
     _session = null;
@@ -111,7 +146,7 @@ class _AccountServicesCoordinator {
     _trackReportRetry.cancel();
     _presets.add(const []);
 
-    return _sync.stop();
+    await Future.wait([_sync.stop(), presenceStopped]);
   }
 
   Future<void> close() async {

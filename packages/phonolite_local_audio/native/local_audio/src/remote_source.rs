@@ -16,12 +16,44 @@ const MAX_HEADER_BYTES: usize = 16 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const OPEN_TIMEOUT: Duration = Duration::from_secs(15);
 
+pub(crate) trait RangeConnector: Send + Sync {
+    type Stream: Read + Write + Send + Sync;
+
+    fn connect(&self, host: &str, port: u16, deadline: Instant) -> io::Result<Self::Stream>;
+    fn prepare(&self, stream: &mut Self::Stream, deadline: Instant) -> io::Result<()>;
+    fn can_reuse(&self, _stream: &mut Self::Stream) -> bool {
+        true
+    }
+}
+
+impl RangeConnector for PinnedTls {
+    type Stream = rustls::StreamOwned<rustls::ClientConnection, crate::pinned_tls::DeadlineSocket>;
+
+    fn connect(&self, host: &str, port: u16, deadline: Instant) -> io::Result<Self::Stream> {
+        PinnedTls::connect(self, host, port, deadline)
+    }
+
+    fn prepare(&self, stream: &mut Self::Stream, deadline: Instant) -> io::Result<()> {
+        stream.sock.set_deadline(deadline);
+        // The authenticated session proves key possession. Recheck its peer
+        // certificate before every request, including after a long pause.
+        self.verify_peer(&stream.conn)
+    }
+
+    fn can_reuse(&self, stream: &mut Self::Stream) -> bool {
+        // Check only already-decrypted bytes/close-notify, never wait for the
+        // network just to decide whether a completed range can retain TLS.
+        self.reusable_peer(&mut stream.conn)
+    }
+}
+
 /// A seekable source with one bounded byte window; seeking never downloads the
 /// whole file. Every window is pinned to the same file representation by ETag.
-pub struct RemoteSource {
+pub(crate) struct RemoteSource<C: RangeConnector = PinnedTls> {
     url: Url,
     token: String,
-    tls: PinnedTls,
+    connector: C,
+    connection: Option<BufReader<C::Stream>>,
     size: Option<u64>,
     etag: Option<String>,
     position: u64,
@@ -31,7 +63,7 @@ pub struct RemoteSource {
     opened_at: Instant,
 }
 
-impl RemoteSource {
+impl RemoteSource<PinnedTls> {
     pub fn open(
         url: &str,
         token: &str,
@@ -39,18 +71,8 @@ impl RemoteSource {
         opening: Arc<AtomicBool>,
     ) -> Result<Self, String> {
         let url = validate_request(url, token).inspect_err(|_| set_failure_code(-100))?;
-        let mut source = Self {
-            url,
-            token: token.to_owned(),
-            tls: PinnedTls::new(server_pin).inspect_err(|_| set_failure_code(-100))?,
-            size: None,
-            etag: None,
-            position: 0,
-            cache_start: 0,
-            cache: Vec::new(),
-            opening,
-            opened_at: Instant::now(),
-        };
+        let tls = PinnedTls::new(server_pin).inspect_err(|_| set_failure_code(-100))?;
+        let mut source = Self::new(url, token.to_owned(), tls, opening);
         source.fetch_window().map_err(|error| {
             mark_transport_failure();
             error.to_string()
@@ -58,13 +80,88 @@ impl RemoteSource {
 
         Ok(source)
     }
+}
+
+impl<C: RangeConnector> RemoteSource<C> {
+    fn new(url: Url, token: String, connector: C, opening: Arc<AtomicBool>) -> Self {
+        Self {
+            url,
+            token,
+            connector,
+            connection: None,
+            size: None,
+            etag: None,
+            position: 0,
+            cache_start: 0,
+            cache: Vec::new(),
+            opening,
+            opened_at: Instant::now(),
+        }
+    }
 
     fn fetch_window(&mut self) -> io::Result<()> {
-        let deadline = if self.opening.load(Ordering::Acquire) {
+        let deadline = self.request_deadline();
+        let mut retained = self.connection.take();
+        let mut retry_stale = retained.is_some();
+        loop {
+            if deadline <= Instant::now() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Original audio request timed out",
+                ));
+            }
+            let mut connection = match retained.take() {
+                Some(connection) => connection,
+                None => BufReader::new(
+                    self.connector
+                        .connect(
+                            self.url.host_str().unwrap().trim_matches(['[', ']']),
+                            self.url.port_or_known_default().unwrap(),
+                            deadline,
+                        )
+                        .inspect_err(mark_security_failure)?,
+                ),
+            };
+            match self.request_window(&mut connection, deadline) {
+                Ok((window, bytes, reusable)) => {
+                    self.size = Some(window.total);
+                    self.etag = Some(window.etag);
+                    self.cache_start = self.position;
+                    self.cache = bytes;
+                    if reusable {
+                        self.connection = Some(connection);
+                    }
+                    return Ok(());
+                }
+                Err(failure) if retry_stale && failure.before_response => {
+                    // A range GET is idempotent. Retry a stale retained socket
+                    // once, sharing this request's original absolute deadline.
+                    // A fresh socket, partial response or invalid source never
+                    // enters this path. Dropping the reader also drops TLS/TCP.
+                    retry_stale = false;
+                }
+                Err(failure) => return Err(failure.error),
+            }
+        }
+    }
+
+    fn request_deadline(&self) -> Instant {
+        if self.opening.load(Ordering::Acquire) {
             (Instant::now() + REQUEST_TIMEOUT).min(self.opened_at + OPEN_TIMEOUT)
         } else {
             Instant::now() + REQUEST_TIMEOUT
-        };
+        }
+    }
+
+    fn request_window(
+        &self,
+        connection: &mut BufReader<C::Stream>,
+        deadline: Instant,
+    ) -> Result<(ResponseWindow, Vec<u8>, bool), WindowFailure> {
+        self.connector
+            .prepare(connection.get_mut(), deadline)
+            .inspect_err(mark_security_failure)
+            .map_err(WindowFailure::final_response)?;
         let host = self.url.host_str().unwrap().trim_matches(['[', ']']);
         let port = self.url.port_or_known_default().unwrap();
         let authority = if host.contains(':') {
@@ -79,46 +176,56 @@ impl RemoteSource {
         }
 
         let end = self.position.saturating_add(CACHE_BYTES as u64 - 1);
-        let mut connection = self
-            .tls
-            .connect(host, port, deadline)
-            .inspect_err(|error| {
-                if error.kind() == io::ErrorKind::InvalidData {
-                    set_failure_code(-100);
-                }
-            })?;
-        write!(
-            connection,
-            "GET {target} HTTP/1.1\r\nHost: {authority}\r\nAuthorization: Bearer {}\r\nRange: bytes={}-{end}\r\nAccept-Encoding: identity\r\nConnection: close\r\n",
-            self.token, self.position,
-        )?;
-        if let Some(etag) = &self.etag {
-            write!(connection, "If-Range: {etag}\r\n")?;
-        }
-        write!(connection, "\r\n")?;
-        connection.flush()?;
+        let mut send = || -> io::Result<()> {
+            let stream = connection.get_mut();
+            write!(
+                stream,
+                "GET {target} HTTP/1.1\r\nHost: {authority}\r\nAuthorization: Bearer {}\r\nRange: bytes={}-{end}\r\nAccept-Encoding: identity\r\nConnection: keep-alive\r\n",
+                self.token, self.position,
+            )?;
+            if let Some(etag) = &self.etag {
+                write!(stream, "If-Range: {etag}\r\n")?;
+            }
+            write!(stream, "\r\n")?;
+            stream.flush()
+        };
+        send().map_err(WindowFailure::before_response)?;
 
-        let mut connection = BufReader::new(connection);
-        let response = read_response_headers(&mut connection)?;
+        // Distinguish an idle close from a partially received header. The
+        // existing parser intentionally rejects either as a transport error,
+        // but only a close before any HTTP bytes may trigger reconnect here.
+        if connection
+            .fill_buf()
+            .map_err(WindowFailure::before_response)?
+            .is_empty()
+        {
+            return Err(WindowFailure::before_response(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "Original audio connection closed before its response headers",
+            )));
+        }
+        let response = read_response_headers(connection).map_err(WindowFailure::final_response)?;
         let window = validate_response(
             &response,
             self.position,
             end,
             self.size,
             self.etag.as_deref(),
-        )?;
-        let bytes = read_window_bytes(&mut connection, window.length)?;
-
-        self.size = Some(window.total);
-        self.etag = Some(window.etag);
-        self.cache_start = self.position;
-        self.cache = bytes;
-
-        Ok(())
+        )
+        .map_err(WindowFailure::final_response)?;
+        let bytes =
+            read_window_bytes(connection, window.length).map_err(WindowFailure::final_response)?;
+        // No request is pipelined, so buffered bytes beyond the exact body are
+        // unsolicited. Keep the validated window, as before, but discard that
+        // connection rather than treat those bytes as a subsequent response.
+        let reusable = response.keep_alive
+            && connection.buffer().is_empty()
+            && self.connector.can_reuse(connection.get_mut());
+        Ok((window, bytes, reusable))
     }
 }
 
-impl Read for RemoteSource {
+impl<C: RangeConnector> Read for RemoteSource<C> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         if buffer.is_empty() || self.size.is_some_and(|size| self.position >= size) {
             return Ok(0);
@@ -139,7 +246,7 @@ impl Read for RemoteSource {
     }
 }
 
-impl Seek for RemoteSource {
+impl<C: RangeConnector> Seek for RemoteSource<C> {
     fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
         self.position = match position {
             SeekFrom::Start(position) => position,
@@ -151,7 +258,7 @@ impl Seek for RemoteSource {
     }
 }
 
-impl MediaSource for RemoteSource {
+impl<C: RangeConnector> MediaSource for RemoteSource<C> {
     fn is_seekable(&self) -> bool {
         true
     }
@@ -188,6 +295,43 @@ fn checked_offset(position: u64, offset: i64) -> io::Result<u64> {
 struct ResponseHeaders {
     status: u16,
     fields: HashMap<String, String>,
+    keep_alive: bool,
+}
+
+struct WindowFailure {
+    error: io::Error,
+    before_response: bool,
+}
+
+impl WindowFailure {
+    fn before_response(error: io::Error) -> Self {
+        let stale = matches!(
+            error.kind(),
+            io::ErrorKind::ConnectionReset
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::BrokenPipe
+                | io::ErrorKind::NotConnected
+                | io::ErrorKind::UnexpectedEof
+                | io::ErrorKind::WriteZero
+        );
+        Self {
+            error,
+            before_response: stale,
+        }
+    }
+
+    fn final_response(error: io::Error) -> Self {
+        Self {
+            error,
+            before_response: false,
+        }
+    }
+}
+
+fn mark_security_failure(error: &io::Error) {
+    if error.kind() == io::ErrorKind::InvalidData {
+        set_failure_code(-100);
+    }
 }
 
 struct ResponseWindow {
@@ -217,12 +361,14 @@ fn read_response_headers(reader: &mut impl BufRead) -> io::Result<ResponseHeader
     let mut fields = HashMap::new();
     let mut consumed = 0;
     read_header_line(reader, &mut bytes, &mut consumed)?;
-    let status = std::str::from_utf8(&bytes)
+    let (status, http11) = std::str::from_utf8(&bytes)
         .ok()
         .and_then(|line| {
             let mut parts = line.split_whitespace();
             match parts.next()? {
-                "HTTP/1.0" | "HTTP/1.1" => parts.next()?.parse().ok(),
+                version @ ("HTTP/1.0" | "HTTP/1.1") => {
+                    Some((parts.next()?.parse().ok()?, version == "HTTP/1.1"))
+                }
                 _ => None,
             }
         })
@@ -261,7 +407,17 @@ fn read_response_headers(reader: &mut impl BufRead) -> io::Result<ResponseHeader
         }
     }
 
-    Ok(ResponseHeaders { status, fields })
+    let keep_alive = http11
+        && !fields.get("connection").is_some_and(|value| {
+            value
+                .split(',')
+                .any(|token| token.trim().eq_ignore_ascii_case("close"))
+        });
+    Ok(ResponseHeaders {
+        status,
+        fields,
+        keep_alive,
+    })
 }
 
 fn read_header_line(
@@ -390,6 +546,9 @@ fn mark_transport_failure() {
         set_failure_code(-200);
     }
 }
+
+#[cfg(test)]
+mod connection_tests;
 
 #[cfg(test)]
 mod tests {

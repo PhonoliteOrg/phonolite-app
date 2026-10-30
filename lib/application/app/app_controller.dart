@@ -11,11 +11,13 @@ import 'package:phonolite_app/application/collections/account_collection_sync.da
 import 'package:phonolite_app/application/controllers/auth/server_failure_messages.dart';
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
+import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/application/library/metadata_event_listener.dart';
 import 'package:phonolite_app/application/library/offline_artist_metadata_repair_queue.dart';
 import 'package:phonolite_app/application/library/track_source_resolver.dart';
 import 'package:phonolite_app/application/listening_stats/listening_stats_sync.dart';
 import 'package:phonolite_app/application/playback/now_playing_artwork.dart';
+import 'package:phonolite_app/application/playback/playback_presence_reporter.dart';
 import 'package:phonolite_app/application/playback/server_shuffle_deck.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/application/workflows/request_generation.dart';
@@ -99,6 +101,7 @@ part 'library/vehicle_library_coordinator.dart';
 part 'listening_stats/listening_stats_coordinator.dart';
 part 'local_data/local_data_coordinator.dart';
 part 'playback/native_media_coordinator.dart';
+part 'playback/gapless_coordinator.dart';
 part 'playback/playback_coordinator.dart';
 part 'playback/playback_queue.dart';
 part 'playback/playback_resume_coordinator.dart';
@@ -197,6 +200,7 @@ class AppController
   late final _StreamRecoveryCoordinator _recoveryCoordinator;
   @override
   late final _PlaybackCoordinator _playbackCoordinator;
+  late final _GaplessCoordinator _gaplessCoordinator;
   @override
   late final _SeekCoordinator _seekCoordinator;
   @override
@@ -257,7 +261,16 @@ class AppController
            listeningStatsService ?? ListeningStatsService(inMemory: Platform.environment.containsKey('FLUTTER_TEST')),
        _offlineStorage = offlineStorage,
        _offlineDownloadManager =
-           offlineDownloadManager ?? OfflineDownloadManager(connection: connection, storage: offlineStorage),
+           offlineDownloadManager ??
+           OfflineDownloadManager(
+             connection: connection,
+             storage: offlineStorage,
+             qualityProvider: () async {
+               final settings = DownloadSettingsController.instance;
+               await settings.initialize();
+               return settings.settings.quality;
+             },
+           ),
        _authStorage = authStorage,
        _customShuffleStorage = customShuffleStorage,
        _playbackPreferencesStorage = playbackPreferencesStorage,
@@ -287,6 +300,7 @@ class AppController
     _availabilityCoordinator = _ServerAvailabilityCoordinator(this);
     _recoveryCoordinator = _StreamRecoveryCoordinator(this);
     _playbackCoordinator = _PlaybackCoordinator(this);
+    _gaplessCoordinator = _GaplessCoordinator(this);
     _seekCoordinator = _SeekCoordinator(this);
     _nativeCoordinator = _NativeMediaCoordinator(this);
     _permissionsCoordinator = _LocalNetworkPermissionCoordinator(this);
@@ -466,6 +480,7 @@ class AppController
     }
 
     if (state == AppLifecycleState.detached) {
+      _accountServices.stopPlaybackPresence();
       _audioEngine.stop();
       _closeStreamControl();
     }
@@ -515,6 +530,9 @@ class AppController
         onState: _handleAudioEngineState,
       );
       _audio!.onListeningSegment = _recordListeningSegment;
+      _audio!.onGaplessTransition = _gaplessCoordinator.transitioned;
+      _audio!.onGaplessPreparationFailed = _gaplessCoordinator.preparationFailed;
+      _audio!.onGaplessBuffering = _gaplessCoordinator.buffering;
       await _audio!.initialize();
 
       _configureLocalNetworkPermissions();
@@ -561,6 +579,7 @@ class AppController
 
     if (!_audioOutputStarted && _playbackState.isPlaying && !_audioEngine.isPaused) {
       _audioOutputStarted = true;
+      _queueCoordinator._ignoreCompleteUntil = null;
       _accountServices.reportStartedTrack();
       _updatePlayback(isLoading: false, nowPlaying: false);
     }
@@ -597,6 +616,7 @@ class AppController
     );
     _maybeAutoAdvance(clamped, bufferedAhead);
     _resumeCoordinator.progress();
+    _gaplessCoordinator.prepare();
   }
 
   void _handleAudioStarted() {
@@ -606,13 +626,17 @@ class AppController
 
     if (!_audioOutputStarted) {
       _audioOutputStarted = true;
+      _queueCoordinator._ignoreCompleteUntil = null;
       _accountServices.reportStartedTrack();
       _updatePlayback(isLoading: false);
       _pushNowPlayingUpdate(force: true);
     }
+    _gaplessCoordinator.prepare();
   }
 
   Future<void> _close() async {
+    _gaplessCoordinator.invalidate();
+    _accountServices.stopPlaybackPresence();
     await _resumeCoordinator.close();
     _disposed = true;
     _shuffleCoordinator._clearServerShuffleSession();

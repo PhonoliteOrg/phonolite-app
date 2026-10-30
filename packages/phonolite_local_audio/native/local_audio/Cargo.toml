@@ -8,7 +8,7 @@ name = "phonolite_local_audio"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-symphonia = { version = "0.5.4", default-features = false, features = ["mp3", "flac", "pcm"] }
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3", "flac", "pcm", "ogg", "aac", "alac", "isomp4", "vorbis", "wav", "aiff"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 sha2 = "0.10"
 url = "2.5"
@@ -17,5 +17,10 @@ x509-parser = "0.18"
 [dev-dependencies]
 rcgen = "0.13"
 
+[build-dependencies]
+cmake = "0.1"
+
 [patch.crates-io]
+symphonia-format-isomp4 = { path = "vendor/symphonia-format-isomp4" }
 symphonia-bundle-flac = { path = "vendor/symphonia-bundle-flac" }
+symphonia-format-ogg = { path = "vendor/symphonia-format-ogg" }

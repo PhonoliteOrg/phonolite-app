@@ -67,7 +67,7 @@ class _OpusDecodePipeline {
         final segment = cursor.segment;
 
         if (cursor.packetIndex >= segment.packets.length) {
-          final atEnd = segment.complete && segment.availableEndMs >= segment.rangeEndMs;
+          final atEnd = segment.hasAllFrames;
 
           if (atEnd && segment.endOfTrack) {
             _host._streamEnded = true;
@@ -149,7 +149,7 @@ class _OpusDecodePipeline {
           samples = samples.sublist(skip);
         }
 
-        final endSamples = (segment.rangeEndMs - segment.startMs) * _host._sampleRate ~/ 1000;
+        final endSamples = segment.playableFrames;
         final packetEndSamples = cursor.packetIndex * segment.frameSamples - segment.header.preSkip;
         final excessSamples = math.max(0, packetEndSamples - endSamples) * _host._channels;
 

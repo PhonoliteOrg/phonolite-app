@@ -6,6 +6,14 @@ file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS
   "${RUST_ROOT}/src/*.rs"
   "${RUST_ROOT}/vendor/*.rs"
   "${RUST_ROOT}/vendor/Cargo.toml"
+  "${RUST_ROOT}/opus/CMakeLists.txt"
+  "${RUST_ROOT}/build.rs"
+)
+file(GLOB_RECURSE OPUS_SOURCES CONFIGURE_DEPENDS
+  "${RUST_ROOT}/../../../phonolite_opus/third_party/opus/*.c"
+  "${RUST_ROOT}/../../../phonolite_opus/third_party/opus/*.h"
+  "${RUST_ROOT}/../../../phonolite_opus/third_party/opus/*.cmake"
+  "${RUST_ROOT}/../../../phonolite_opus/cmake/*.cmake"
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -21,7 +29,7 @@ set(OUTPUT_DLL "${CMAKE_CURRENT_BINARY_DIR}/phonolite_local_audio.dll")
 
 add_custom_command(
   OUTPUT "${OUTPUT_DLL}"
-  DEPENDS ${RUST_SOURCES} "${RUST_ROOT}/Cargo.toml" "${RUST_ROOT}/Cargo.lock"
+  DEPENDS ${RUST_SOURCES} ${OPUS_SOURCES} "${RUST_ROOT}/Cargo.toml" "${RUST_ROOT}/Cargo.lock"
   COMMAND cargo build ${CARGO_RELEASE_FLAG} --target-dir "${CARGO_TARGET_DIR}"
   WORKING_DIRECTORY "${RUST_ROOT}"
   COMMAND ${CMAKE_COMMAND} -E copy

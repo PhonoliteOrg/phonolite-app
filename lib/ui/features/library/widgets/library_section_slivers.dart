@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
 
 /// A library section heading uses the same gutter and title presentation.
@@ -29,9 +29,6 @@ class LibraryStatusSliver extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PageSliverBox(
     top: 24,
-    child: Text(
-      message,
-      style: GoogleFonts.rajdhani(color: Colors.white54, fontSize: 14, letterSpacing: 1.2, fontWeight: FontWeight.w600),
-    ),
+    child: EmptyStateText(title: message, padding: EdgeInsets.zero),
   );
 }

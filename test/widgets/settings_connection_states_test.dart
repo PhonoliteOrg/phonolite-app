@@ -141,6 +141,13 @@ Future<void> _pump(WidgetTester tester, _Controller controller, double width) as
 }
 
 class _Controller extends Fake implements AppController {
+  @override
+  bool get gaplessResampling => false;
+  @override
+  Stream<bool> get gaplessResamplingStream => const Stream.empty();
+  @override
+  void setGaplessResampling(bool enabled) {}
+
   late final CatalogController _catalog = CatalogController(connection);
   @override
   CatalogController get catalog => _catalog;

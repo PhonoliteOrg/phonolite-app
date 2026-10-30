@@ -155,7 +155,10 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
 
       connection.setToken(message.token);
 
-      final result = await _handleOfflineActorCommand(core, message);
+      final result = await runZoned(
+        () => _handleOfflineActorCommand(core, message),
+        zoneValues: {#downloadQueueProfile: message.profile},
+      );
 
       if (_offlineActorCommandNeedsDownloadState(message.name)) {
         sendDownloadStateNow();

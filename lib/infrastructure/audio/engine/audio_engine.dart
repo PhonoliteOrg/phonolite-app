@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -18,6 +19,7 @@ import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/data/rules/listening_stats/listening_recorder.dart';
 import 'package:phonolite_app/data/structures/audio/encoded_audio_cache.dart';
 import 'package:phonolite_app/data/structures/audio/pcm_ring_buffer.dart';
+import 'package:phonolite_app/data/structures/audio/pcm_stream_converter.dart';
 import 'package:phonolite_app/infrastructure/audio/decoding/audio_file_decoder.dart';
 import 'package:phonolite_app/infrastructure/audio/output/audio_output_factory.dart';
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
@@ -30,8 +32,10 @@ export 'package:phonolite_app/data/models/audio/stream_settings.dart';
 export 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
 
 part 'buffering/adaptive_buffer_policy.dart';
+part 'pipeline/audio_progress_deadline.dart';
 part 'pipeline/opus_decode_pipeline.dart';
 part 'pipeline/pcm_output_pump.dart';
+part 'pipeline/gapless_output_timeline.dart';
 part 'seeking/audio_seek_coordinator.dart';
 part 'session/audio_listening_session.dart';
 part 'session/audio_output_configuration.dart';
@@ -40,6 +44,7 @@ part 'sources/file_audio_source.dart';
 part 'sources/remote_audio_source.dart';
 part 'telemetry/audio_telemetry.dart';
 part 'testing/audio_playback_harness.dart';
+part 'testing/gapless_playback_harness.dart';
 part 'worker/audio_worker.dart';
 part 'worker/audio_worker_engine.dart';
 
@@ -89,6 +94,12 @@ class AudioEngine {
   int _playbackId = 0;
   Map<String, dynamic>? _listeningContext;
   void Function(Map<String, dynamic>)? onListeningSegment;
+  void Function(int preparationId)? onGaplessTransition;
+  void Function(int preparationId)? onGaplessPreparationFailed;
+  void Function(bool waiting)? onGaplessBuffering;
+  final Map<int, Completer<void>> _preparedReleases = {};
+  int _preparedReleaseId = 0;
+  bool _gaplessResampling = false;
   Completer<void>? _listeningFlush;
   int _listeningFlushRequestId = 0;
   Future<void>? _stopInFlight;
@@ -174,6 +185,30 @@ class AudioEngine {
     }
 
     return stopping.whenComplete(finishStop);
+  }
+
+  /// Releases output orphaned by an operating system audio-services reset.
+  /// An unresponsive worker is forcibly retired so later playback can replace it.
+  /// File deletion must still use [stop] with `waitForRelease: true`, which
+  /// reports a failed release instead of accepting forced retirement.
+  Future<void> resetOutput() async {
+    final generation = _workerGeneration;
+
+    try {
+      final previousStop = _stopInFlight;
+
+      if (previousStop != null && !_stopWaitsForRelease) {
+        // A normal stop can suppress its flush timeout. Its completion cannot
+        // establish release for this reset, so request a fresh acknowledgment.
+        await previousStop;
+      }
+
+      await stop(waitForRelease: true);
+    } catch (error) {
+      if (generation == _workerGeneration) {
+        _failWorker('Audio output reset forced worker retirement: $error');
+      }
+    }
   }
 
   Future<void> dispose() => _shutdown ??= _close();
@@ -285,6 +320,71 @@ class AudioEngine {
       'quick_start': quickStart,
       'initial_paused': initialPaused,
     });
+  }
+
+  /// Prepares a distinct successor occurrence without changing audible state.
+  Future<void> prepareNext({
+    required int preparationId,
+    int? afterPreparationId,
+    required Track track,
+    required ServerConnection connection,
+    required StreamSettings settings,
+    String? filePath,
+    int? quicPort,
+    Map<String, dynamic>? listeningContext,
+  }) async {
+    if (!_active || _disposed || _initialization == null || _workerFailed) return;
+    _sendCmd({
+      'cmd': 'prepare_next',
+      'playback_id': _playbackId,
+      'preparation_id': preparationId,
+      'after_preparation_id': afterPreparationId,
+      'track_id': track.id,
+      'track_title': track.title,
+      'file_path': filePath,
+      'base_url': connection.baseUrl,
+      'token': connection.token ?? '',
+      'server_pin': connection.trust?.spki ?? '',
+      'quic_port': quicPort,
+      'mode': settings.mode,
+      'quality': settings.quality,
+      'frame_ms': settings.frameMs,
+      'listening_context': listeningContext,
+    });
+  }
+
+  void cancelPreparedNext({int? preparationId}) {
+    if (_initialization != null) {
+      _sendCmd({'cmd': 'cancel_prepared', 'playback_id': _playbackId, 'preparation_id': preparationId});
+    }
+  }
+
+  void acknowledgeGaplessTransition(int preparationId) {
+    _sendCmd({'cmd': 'commit_gapless', 'playback_id': _playbackId, 'preparation_id': preparationId});
+  }
+
+  void setGaplessResampling(bool enabled) {
+    _gaplessResampling = enabled;
+    if (_initialization != null) _sendCmd({'cmd': 'gapless_resampling', 'enabled': enabled});
+  }
+
+  /// Acknowledges decoder/file release before a prepared download is deleted.
+  Future<void> releasePreparedNext({int? preparationId}) async {
+    if (_initialization == null || _disposed) return;
+    final id = ++_preparedReleaseId;
+    final completion = Completer<void>();
+    _preparedReleases[id] = completion;
+    _sendCmd({
+      'cmd': 'cancel_prepared',
+      'playback_id': _playbackId,
+      'preparation_id': preparationId,
+      'release_request_id': id,
+    });
+    try {
+      await completion.future.timeout(const Duration(seconds: 6));
+    } finally {
+      _preparedReleases.remove(id);
+    }
   }
 
   Future<bool> seekTo(Duration position) async {
@@ -517,6 +617,7 @@ class AudioEngine {
       // Configuration precedes playback queued while this worker was starting.
       message.send({'cmd': 'volume', 'value': _volume});
       message.send({'cmd': 'device', 'device_id': _outputDeviceId});
+      message.send({'cmd': 'gapless_resampling', 'enabled': _gaplessResampling});
       message.send({'cmd': 'listening_context', 'context': _listeningContext});
 
       if (!_ready.isCompleted) {
@@ -554,6 +655,12 @@ class AudioEngine {
 
     final messagePlaybackId = (message['playback_id'] as num?)?.toInt();
 
+    if (message['type'] == 'prepared_released') {
+      final request = _preparedReleases.remove(message['release_request_id']);
+      if (request != null && !request.isCompleted) request.complete();
+      return;
+    }
+
     if (messagePlaybackId != null && messagePlaybackId != _playbackId) {
       return;
     }
@@ -561,6 +668,17 @@ class AudioEngine {
     final type = message['type'];
 
     switch (type) {
+      case 'gapless_transition':
+        final id = (message['preparation_id'] as num?)?.toInt();
+        if (id != null) onGaplessTransition?.call(id);
+        break;
+      case 'gapless_preparation_failed':
+        final id = (message['preparation_id'] as num?)?.toInt();
+        if (id != null) onGaplessPreparationFailed?.call(id);
+        break;
+      case 'gapless_buffering':
+        onGaplessBuffering?.call(message['waiting'] == true);
+        break;
       case 'seek_ready':
       case 'seek_failed':
         final requestId = (message['request_id'] as num?)?.toInt();
@@ -601,6 +719,8 @@ class AudioEngine {
 
         break;
       case 'complete':
+        _active = false;
+        _paused = false;
         final handler = _onComplete;
 
         if (handler != null) {
@@ -681,7 +801,10 @@ class AudioEngine {
       // The handshake sends current configuration before queued playback.
       final command = message['cmd'];
 
-      if (command == 'volume' || command == 'device' || command == 'listening_context') {
+      if (command == 'volume' ||
+          command == 'device' ||
+          command == 'listening_context' ||
+          command == 'gapless_resampling') {
         return;
       }
 

@@ -120,6 +120,7 @@ class _RollingDownloadJobs {
   }
 
   Future<OfflineDownloadJob?> _reuseOrClearRollingJob({
+    String? profile,
     required String jobId,
     required String kind,
     required String serverBaseUrl,
@@ -133,6 +134,7 @@ class _RollingDownloadJobs {
               job.jobId == jobId ||
               _jobMatchesRollingCollection(
                 job,
+                profile: profile,
                 kind: kind,
                 serverBaseUrl: serverBaseUrl,
                 label: label,
@@ -201,11 +203,21 @@ class _RollingDownloadJobs {
             error: null,
           );
         } else if (download.batchId != job.jobId) {
+          final sharingPendingSource =
+              job.profile != 'original' &&
+              !_host._downloadAvailable(download) &&
+              (_host._downloadQueuedOrAvailable(download) || download.status == OfflineDownloadStatus.paused);
+          final OfflineDownloadStatus sharedStatus;
+          if (_host._downloadAvailable(download)) {
+            sharedStatus = OfflineDownloadStatus.downloaded;
+          } else if (sharingPendingSource) {
+            sharedStatus = OfflineDownloadStatus.queued;
+          } else {
+            sharedStatus = OfflineDownloadStatus.canceled;
+          }
           updated = item.copyWith(
-            status: _host._downloadAvailable(download)
-                ? OfflineDownloadStatus.downloaded
-                : OfflineDownloadStatus.canceled,
-            materialized: true,
+            status: sharedStatus,
+            materialized: !sharingPendingSource,
             updatedAt: DateTime.now(),
             track: download.track,
             error: _host._downloadAvailable(download) ? null : 'download owned by another job',
@@ -280,8 +292,12 @@ class _RollingDownloadJobs {
               .toList(growable: false)
         : const <OfflineTrackDownload>[];
 
+    final previous = _jobById(trimmed);
     _forgetRollingJob(trimmed);
 
+    if (removePendingDownloads && previous?.profile != 'original' && previous != null) {
+      await _host._compressedJobs.applyAction(previous, 'cancel');
+    }
     await _host._storage.deleteDownloadJob(trimmed);
 
     if (removePendingDownloads && removableDownloads.isNotEmpty) {
@@ -405,6 +421,11 @@ class _RollingDownloadJobs {
       }
 
       job = latestJob;
+
+      if (job.profile != 'original') {
+        await _host._compressedJobs.topUp(job);
+        return;
+      }
 
       final activeWindow = _host._downloads
           .where((download) => download.batchId == job.jobId && _windowOccupyingStatus(download.status))
@@ -633,13 +654,14 @@ class _RollingDownloadJobs {
 
   bool _jobMatchesRollingCollection(
     OfflineDownloadJob job, {
+    String? profile,
     required String kind,
     required String serverBaseUrl,
     required String? label,
     Iterable<String> trackIds = const <String>[],
     Iterable<String> sourceIds = const <String>[],
   }) {
-    if (job.kind != kind || job.serverBaseUrl != serverBaseUrl) {
+    if (job.kind != kind || job.serverBaseUrl != serverBaseUrl || job.profile != (profile ?? _host._queueProfile)) {
       return false;
     }
 
@@ -674,7 +696,7 @@ class _RollingDownloadJobs {
     );
 
     if (sourceSignature.isNotEmpty) {
-      return '${job.serverBaseUrl}\n${job.kind}\nsources:$sourceSignature';
+      return '${job.serverBaseUrl}\n${job.kind}\n${job.profile}\nsources:$sourceSignature';
     }
 
     final trackSignature = _idSignature(
@@ -682,7 +704,7 @@ class _RollingDownloadJobs {
     );
 
     if (trackSignature.isNotEmpty) {
-      return '${job.serverBaseUrl}\n${job.kind}\ntracks:$trackSignature';
+      return '${job.serverBaseUrl}\n${job.kind}\n${job.profile}\ntracks:$trackSignature';
     }
 
     final label = _normalizedJobLabel(job.label);
@@ -691,7 +713,7 @@ class _RollingDownloadJobs {
       return null;
     }
 
-    return '${job.serverBaseUrl}\n${job.kind}\nlabel:$label';
+    return '${job.serverBaseUrl}\n${job.kind}\n${job.profile}\nlabel:$label';
   }
 
   String _stableJobId(String kind, String signature) {
@@ -708,23 +730,25 @@ class _RollingDownloadJobs {
   }
 
   String _rollingJobSignature({
+    String profile = 'original',
     String? label,
     Iterable<String> trackIds = const <String>[],
     Iterable<String> sourceIds = const <String>[],
   }) {
     final sourceSignature = _idSignature(sourceIds);
+    final prefix = profile == 'original' ? '' : '$profile:';
 
     if (sourceSignature.isNotEmpty) {
-      return 'sources:$sourceSignature';
+      return '${prefix}sources:$sourceSignature';
     }
 
     final trackSignature = _idSignature(trackIds);
 
     if (trackSignature.isNotEmpty) {
-      return 'tracks:$trackSignature';
+      return '${prefix}tracks:$trackSignature';
     }
 
-    return 'label:${_normalizedJobLabel(label)}';
+    return '${prefix}label:${_normalizedJobLabel(label)}';
   }
 
   String _idSignature(Iterable<String> ids) {
@@ -800,6 +824,7 @@ mixin _RollingDownloadJobsFacade {
   }) => _ownerRolling._insertRollingJob(job, items: items, sources: sources);
 
   Future<OfflineDownloadJob?> _reuseOrClearRollingJob({
+    String? profile,
     required String jobId,
     required String kind,
     required String serverBaseUrl,
@@ -807,6 +832,7 @@ mixin _RollingDownloadJobsFacade {
     Iterable<String> trackIds = const <String>[],
     Iterable<String> sourceIds = const <String>[],
   }) => _ownerRolling._reuseOrClearRollingJob(
+    profile: profile,
     jobId: jobId,
     kind: kind,
     serverBaseUrl: serverBaseUrl,
@@ -843,10 +869,11 @@ mixin _RollingDownloadJobsFacade {
   String _queueAttemptRequestId(String stableJobId) => _ownerRolling._queueAttemptRequestId(stableJobId);
 
   String _rollingJobSignature({
+    String profile = 'original',
     String? label,
     Iterable<String> trackIds = const <String>[],
     Iterable<String> sourceIds = const <String>[],
-  }) => _ownerRolling._rollingJobSignature(label: label, trackIds: trackIds, sourceIds: sourceIds);
+  }) => _ownerRolling._rollingJobSignature(profile: profile, label: label, trackIds: trackIds, sourceIds: sourceIds);
 
   String _normalizedJobLabel(String? label) => _ownerRolling._normalizedJobLabel(label);
 

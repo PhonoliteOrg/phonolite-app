@@ -53,6 +53,13 @@ final class AudioSessionService: NSObject {
       name: AVAudioSession.routeChangeNotification,
       object: session
     )
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleMediaServicesReset(_:)),
+      name: AVAudioSession.mediaServicesWereResetNotification,
+      object: session
+    )
   }
 
   @objc private func handleInterruption(_ notification: Notification) {
@@ -68,14 +75,20 @@ final class AudioSessionService: NSObject {
 
     switch type {
     case .began:
-      if isPlaying() {
-        sendRemoteCommand(.pause)
-      }
+      sendRemoteCommand(.audioInterruptionBegan)
     case .ended:
-      break
+      let optionsValue = (information[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
+      let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+      sendRemoteCommand(options.contains(.shouldResume) ? .audioInterruptionEnded : .audioInterruptionEndedPaused)
     @unknown default:
       break
     }
+  }
+
+  @objc private func handleMediaServicesReset(_ notification: Notification) {
+    // Dart retires orphaned outputs and retains the track paused. Explicit
+    // user playback then creates fresh queues and reactivates the session.
+    sendRemoteCommand(.audioServicesReset)
   }
 
   @objc private func handleRouteChange(_ notification: Notification) {

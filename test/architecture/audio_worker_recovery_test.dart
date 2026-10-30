@@ -133,6 +133,101 @@ void main() {
     expect(replacement.commands[playIndex]['initial_paused'], isTrue);
   });
 
+  test('output reset retires an unresponsive isolate and paused playback replaces it', () async {
+    final workers = <_MemoryIsolateWorker>[];
+    final messages = <String>[];
+    final engine = AudioEngine(
+      workerSpawner: (port, _) async {
+        final worker = await _MemoryIsolateWorker.spawn(port, acknowledgeStops: workers.isNotEmpty);
+        workers.add(worker);
+        return worker;
+      },
+      onMessage: messages.add,
+    );
+    addTearDown(() async {
+      await engine.dispose();
+      for (final worker in workers) {
+        worker.kill();
+      }
+    });
+
+    await _play(engine, 'orphaned-output');
+    await waitUntil(() => workers.isNotEmpty && workers.first.commands.any((command) => command['cmd'] == 'play'));
+    final original = workers.single;
+    var resetFinished = false;
+    final elapsed = Stopwatch()..start();
+    final resetting = engine.resetOutput().then((_) => resetFinished = true);
+
+    await waitUntil(() => original.commands.any((command) => command['cmd'] == 'stop'));
+    expect(resetFinished, isFalse);
+    expect(original.killed, isFalse);
+    await resetting.timeout(const Duration(seconds: 3));
+    expect(elapsed.elapsed, greaterThanOrEqualTo(const Duration(milliseconds: 1900)));
+    expect(original.killed, isTrue);
+    await original.exited.timeout(const Duration(seconds: 1));
+    expect(engine.hasActivePlayer, isFalse);
+    expect(messages.any((message) => message.contains('forced worker retirement')), isTrue);
+
+    await _play(engine, 'replacement', paused: true);
+    await waitUntil(() => workers.length == 2 && workers.last.commands.any((command) => command['cmd'] == 'play'));
+    final replacement = workers.last;
+    expect(replacement.killed, isFalse);
+    expect(replacement.commands.singleWhere((command) => command['cmd'] == 'play')['initial_paused'], isTrue);
+
+    original.messages.send({'type': 'state', 'active': false, 'paused': false, 'source_rejected': true});
+    original.messages.send({'type': 'complete'});
+    original.messages.send(null);
+    replacement.messages.send({'type': 'message', 'text': 'replacement still alive'});
+    await waitUntil(() => messages.contains('replacement still alive'));
+    expect(engine.hasActivePlayer, isTrue);
+    expect(engine.isPaused, isTrue);
+    expect(engine.sourceRejected, isFalse);
+    expect(replacement.killed, isFalse);
+  });
+
+  test('output reset requires a fresh release after a weaker stop times out', () async {
+    final workers = <_MemoryIsolateWorker>[];
+    final engine = AudioEngine(
+      workerSpawner: (port, _) async {
+        final worker = await _MemoryIsolateWorker.spawn(port, acknowledgeStops: workers.isNotEmpty);
+        workers.add(worker);
+        return worker;
+      },
+    )..configureListening({'session_id': 'orphaned-output'});
+    addTearDown(() async {
+      await engine.dispose();
+      for (final worker in workers) {
+        worker.kill();
+      }
+    });
+
+    await _play(engine, 'orphaned-output');
+    await waitUntil(() => workers.isNotEmpty && workers.first.commands.any((command) => command['cmd'] == 'play'));
+    final original = workers.single;
+    final stopping = engine.stop();
+
+    await waitUntil(() => original.commands.any((command) => command['cmd'] == 'stop'));
+    var resetFinished = false;
+    final resetting = engine.resetOutput().then((_) => resetFinished = true);
+
+    await stopping.timeout(const Duration(seconds: 3));
+    await waitUntil(() => original.commands.where((command) => command['cmd'] == 'stop').length == 2);
+    expect(resetFinished, isFalse);
+    expect(original.killed, isFalse);
+
+    final stops = original.commands.where((command) => command['cmd'] == 'stop').toList();
+    expect(stops.last['flush_request_id'], greaterThan(stops.first['flush_request_id'] as int));
+    await resetting.timeout(const Duration(seconds: 3));
+    expect(original.killed, isTrue);
+    await original.exited.timeout(const Duration(seconds: 1));
+
+    await _play(engine, 'replacement', paused: true);
+    await waitUntil(() => workers.length == 2 && workers.last.commands.any((command) => command['cmd'] == 'play'));
+    expect(engine.hasActivePlayer, isTrue);
+    expect(engine.isPaused, isTrue);
+    expect(workers.last.killed, isFalse);
+  });
+
   test('failed startup is retried only by a new remote or local play', () async {
     final factory = _Workers()..failNext = true;
     final states = <(bool, bool)>[];
@@ -420,5 +515,65 @@ class _Worker implements AudioWorkerHandle {
   void kill() {
     killed = true;
     commandsPort.close();
+  }
+}
+
+/// Exercises actual isolate retirement without opening an audio device.
+class _MemoryIsolateWorker implements AudioWorkerHandle {
+  final Isolate isolate;
+  final ReceivePort observations;
+  final SendPort messages;
+  final List<Map<String, dynamic>> commands;
+  final Future<void> exited;
+  bool killed = false;
+
+  _MemoryIsolateWorker(this.isolate, this.observations, this.messages, this.commands, this.exited);
+
+  static Future<_MemoryIsolateWorker> spawn(SendPort messages, {required bool acknowledgeStops}) async {
+    final observations = ReceivePort();
+    final exits = ReceivePort();
+    final exited = Completer<void>();
+    final commands = <Map<String, dynamic>>[];
+
+    observations.listen((command) => commands.add(Map<String, dynamic>.from(command as Map)));
+    exits.listen((_) {
+      exited.complete();
+      exits.close();
+    });
+
+    final isolate = await Isolate.spawn(_memoryWorkerMain, (
+      messages,
+      observations.sendPort,
+      acknowledgeStops,
+    ), onExit: exits.sendPort);
+
+    return _MemoryIsolateWorker(isolate, observations, messages, commands, exited.future);
+  }
+
+  @override
+  void kill() {
+    killed = true;
+    isolate.kill(priority: Isolate.immediate);
+    observations.close();
+  }
+}
+
+void _memoryWorkerMain((SendPort, SendPort, bool) initialization) async {
+  final (messages, observations, acknowledgeStops) = initialization;
+  final commands = ReceivePort();
+
+  messages.send(commands.sendPort);
+
+  await for (final item in commands) {
+    final command = item as Map;
+
+    observations.send(command);
+
+    if (acknowledgeStops && command['cmd'] == 'stop') {
+      messages.send({'type': 'listening_flushed', 'flush_request_id': command['flush_request_id']});
+    } else if (command['cmd'] == 'dispose') {
+      messages.send({'type': 'disposed'});
+      commands.close();
+    }
   }
 }

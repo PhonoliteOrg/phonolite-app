@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name = 'phonolite_local_audio'
   s.version = '0.1.0'
-  s.summary = 'Local MP3/FLAC decoder FFI bindings for Phonolite.'
+  s.summary = 'Local MP3/FLAC and Ogg Opus decoder FFI bindings for Phonolite.'
   s.description = 'Rust/Symphonia local audio decoder used by the Phonolite Flutter app.'
   s.homepage = 'https://example.invalid'
   s.license = { :type => 'MIT' }

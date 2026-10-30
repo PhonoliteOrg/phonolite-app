@@ -37,6 +37,19 @@ def androidTargets = ['armeabi-v7a', 'arm64-v8a', 'x86_64']
 
 tasks.register('cargoBuild') {
     doLast {
+        def executableSuffix = System.getProperty('os.name').toLowerCase().contains('windows') ? '.exe' : ''
+        def cmakeHomes = new File(android.sdkDirectory, 'cmake').listFiles()?.findAll {
+            new File(it, "bin/cmake${executableSuffix}").isFile() &&
+                    new File(it, "bin/ninja${executableSuffix}").isFile()
+        } ?: []
+        def cmakeHome = cmakeHomes.max {
+            it.name.tokenize('.').collect { component -> component.padLeft(8, '0') }.join('.')
+        }
+        if (cmakeHome == null) {
+            throw new GradleException('Install CMake through the Android SDK Manager to build local Opus decoding.')
+        }
+        def cmakeBin = new File(cmakeHome, 'bin')
+
         delete cargoTargetDir
         delete jniLibsDir
         jniLibsDir.mkdirs()
@@ -45,6 +58,10 @@ tasks.register('cargoBuild') {
             project.exec {
                 workingDir rustRoot
                 environment 'CARGO_TARGET_DIR', cargoTargetDir.absolutePath
+                environment 'ANDROID_NDK_HOME', android.ndkDirectory.absolutePath
+                environment 'CMAKE', new File(cmakeBin, "cmake${executableSuffix}").absolutePath
+                environment 'CMAKE_GENERATOR', 'Ninja'
+                environment 'PATH', cmakeBin.absolutePath + File.pathSeparator + System.getenv('PATH')
                 commandLine 'cargo', 'ndk',
                         '-t', abi,
                         '-o', jniLibsDir.absolutePath,

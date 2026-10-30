@@ -93,10 +93,18 @@ class DownloadWorkerComplete {
 }
 
 class DownloadWorkerFailure {
+  final int? statusCode;
   final DownloadWorkerFailureKind kind;
   final String message;
 
-  const DownloadWorkerFailure({required this.kind, required this.message});
+  const DownloadWorkerFailure({required this.kind, required this.message, this.statusCode});
+}
+
+class DownloadWorkerHttpError implements Exception {
+  final int statusCode;
+  final String message;
+
+  const DownloadWorkerHttpError(this.statusCode, this.message);
 }
 
 class DownloadWorkerCanceled implements Exception {

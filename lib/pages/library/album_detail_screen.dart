@@ -145,7 +145,7 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
             const PageSliverBox(
               top: 24,
               bottom: 0,
-              child: EmptyState(title: 'No tracks', message: 'Pick another album to see tracks.'),
+              child: EmptyStateText(title: 'No tracks', message: 'Pick another album to see tracks.'),
             ),
           if (!isLoading && tracks.isNotEmpty)
             PageSliverPadding(

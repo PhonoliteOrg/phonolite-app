@@ -130,7 +130,7 @@ class _LocalAlbumDetailScreenState extends BasePageState<LocalAlbumDetailScreen>
             const PageSliverBox(
               top: 24,
               bottom: 0,
-              child: EmptyState(
+              child: EmptyStateText(
                 title: 'No downloaded tracks',
                 message: 'Downloaded tracks for this album appear here.',
               ),

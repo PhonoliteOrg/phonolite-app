@@ -104,4 +104,62 @@ void main() {
     expect(state.playlists.single.id, playlist.id);
     expect(state.revision, greaterThan(0));
   });
+
+  test('unfinished download updates keep the completed library and refresh lookups', () async {
+    final file = await File('${root.path}/completed.mp3').writeAsBytes([1, 2, 3]);
+    final prepared = await storage.prepareDownloads([
+      offlineTestDownload(
+        serverBaseUrl: base,
+        track: offlineTestTrack(id: 'completed'),
+        filePath: file.path,
+      ),
+      offlineTestDownload(
+        serverBaseUrl: base,
+        track: offlineTestTrack(id: 'pending', title: 'Pending Song'),
+        status: OfflineDownloadStatus.queued,
+      ).copyWith(bytesDownloaded: 400, bytesTotal: 1000),
+    ]);
+    await storage.upsertDownloads(prepared);
+    final loaded = manager.librarySnapshotStream.firstWhere((snapshot) => snapshot.tracks.length == 1);
+    await manager.load();
+    await loaded.timeout(const Duration(seconds: 1));
+
+    final completedTrack = manager.localDownloadedTracks().single;
+    final libraryRevision = manager.librarySnapshot.revision;
+    final pending = manager.findForCurrentServer('pending')!;
+    final paused = manager.downloadSnapshotStream.firstWhere(
+      (snapshot) => snapshot.downloads.any(
+        (download) => download.track.id == 'pending' && download.status == OfflineDownloadStatus.paused,
+      ),
+    );
+
+    await manager.pauseDownload(pending);
+    final pauseState = await paused.timeout(const Duration(seconds: 1));
+    final pausedDownload = manager.findForCurrentServer('pending')!;
+    expect(pausedDownload.status, OfflineDownloadStatus.paused);
+    expect(pausedDownload.updatedAt.isAfter(pending.updatedAt), isTrue);
+    expect(pausedDownload.bytesDownloaded, 400);
+    expect(pausedDownload.bytesTotal, 1000);
+    expect(manager.findLocal(pausedDownload.localTrackId!), same(pausedDownload));
+    expect(pauseState.downloads.singleWhere((download) => download.track.id == 'pending'), same(pausedDownload));
+    // A new completed Track object would reveal a redundant full projection
+    // rebuild even if snapshot equality suppressed the library notification.
+    expect(manager.localDownloadedTracks().single, same(completedTrack));
+    expect(manager.librarySnapshot.revision, libraryRevision);
+    expect(() => manager.localDownloadedTracks().clear(), throwsUnsupportedError);
+
+    await manager.resumeDownload(pausedDownload);
+    expect(manager.findForCurrentServer('pending')!.status, OfflineDownloadStatus.queued);
+    expect(manager.localDownloadedTracks().single, same(completedTrack));
+
+    await manager.setLocalLike(completedTrack, true);
+    expect(manager.localDownloadedTracks().single.liked, isTrue);
+    final playlist = await manager.createLocalPlaylist('Saved');
+    await manager.addLocalTrackToPlaylist(playlist, completedTrack);
+    expect(manager.localDownloadedTracks().single.inPlaylists, isTrue);
+
+    await manager.removeDownload(manager.findForCurrentServer('completed')!);
+    expect(manager.localDownloadedTracks(), isEmpty);
+    expect(manager.findForCurrentServer('pending')!.status, OfflineDownloadStatus.queued);
+  });
 }

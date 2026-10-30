@@ -288,6 +288,10 @@ class _DownloadCommands {
     await _host._storage.upsertDownloadJob(updated);
     _host._emitJobs();
 
+    if (updated.profile != 'original') {
+      await _host._compressedJobs.applyAction(updated, 'pause');
+    }
+
     final activeDownloads = _host._downloads
         .where(
           (download) =>
@@ -304,7 +308,9 @@ class _DownloadCommands {
   Future<void> resumeDownloadJob(OfflineDownloadJob job) async {
     final current = _host._jobById(job.jobId);
 
-    if (current == null || current.status != OfflineDownloadStatus.paused) {
+    if (current == null ||
+        (current.status != OfflineDownloadStatus.paused &&
+            !(current.profile != 'original' && current.status == OfflineDownloadStatus.failed))) {
       return;
     }
 
@@ -337,6 +343,9 @@ class _DownloadCommands {
     await _host._storage.upsertDownloadJob(updated);
     _host._emitJobs();
 
+    if (updated.profile != 'original') {
+      await _host._compressedJobs.applyAction(updated, 'resume');
+    }
     _host._schedule();
   }
 

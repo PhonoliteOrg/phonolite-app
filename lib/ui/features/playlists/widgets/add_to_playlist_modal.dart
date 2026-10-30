@@ -10,6 +10,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_list_row.dart';
@@ -276,12 +277,9 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
                       ),
                     ],
                   )
-                : Padding(
+                : EmptyStateText(
+                    title: 'No $scopeLabel playlists available.',
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'No $scopeLabel playlists available.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
-                    ),
                   ),
           ),
         ],

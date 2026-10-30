@@ -4,6 +4,7 @@
 #include <CoreAudio/CoreAudio.h>
 
 #include <pthread.h>
+#include "../../../../../native/audio/audio_queue_progress.h"
 #include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -14,13 +15,18 @@ struct PhonoliteAudioBuffer {
   AudioQueueBufferRef buffer;
   int32_t sample_count;
   uint64_t generation;
+  PhonoliteAudioProgressSpan progress;
   struct PhonoliteAudioBuffer *next;
 };
 
 struct PhonoliteAudioPlayer {
   AudioQueueRef queue;
   atomic_int in_flight;
-  atomic_llong completed_samples;
+  int64_t pending_done_samples;
+  AudioQueueTimelineRef timeline;
+  double scheduled_end_frame;
+  bool has_schedule;
+  bool clock_observed;
   int32_t sample_rate;
   int32_t channels;
   int32_t bits_per_sample;
@@ -35,33 +41,75 @@ struct PhonoliteAudioPlayer {
 static const int max_in_flight = 5;
 static const int queue_full = -3;
 
-static void audio_queue_player_release_buffer(PhonoliteAudioPlayer *player, AudioQueueRef queue,
-                                              AudioQueueBufferRef buffer, bool completed) {
-  pthread_mutex_lock(&player->buffer_lock);
-
-  struct PhonoliteAudioBuffer **link = &player->buffers;
-  while (*link != NULL && (*link)->buffer != buffer) {
-    link = &(*link)->next;
+static bool audio_queue_player_current_frame(PhonoliteAudioPlayer *player, double *frame) {
+  AudioTimeStamp time = {0};
+  Boolean discontinuity = false;
+  OSStatus status = AudioQueueGetCurrentTime(player->queue, player->timeline, &time, &discontinuity);
+  if (status != noErr || !(time.mFlags & kAudioTimeStampSampleTimeValid) || !isfinite(time.mSampleTime)) {
+    // A queue may have no hardware clock until its first start, or while paused.
+    if (player->started && player->clock_observed) player->output_error = status != noErr ? status : kAudioQueueErr_InvalidRunState;
+    return false;
   }
+  if (discontinuity && player->clock_observed) {
+    player->output_error = kAudioQueueErr_InvalidRunState;
+    return false;
+  }
+  if (player->started) player->clock_observed = true;
+  *frame = time.mSampleTime;
+  return true;
+}
 
-  struct PhonoliteAudioBuffer *entry = *link;
-  if (entry != NULL) {
-    *link = entry->next;
-
-    // A completion from a reset must not change the next generation's counters.
-    if (entry->generation == player->generation) {
-      if (completed) {
-        atomic_fetch_add(&player->completed_samples, entry->sample_count);
-      }
-
-      atomic_fetch_sub(&player->in_flight, 1);
+static int32_t audio_queue_player_poll_progress(PhonoliteAudioPlayer *player) {
+  if (player->output_error != noErr) return -1;
+  double frame = 0;
+  const bool valid = audio_queue_player_current_frame(player, &frame);
+  if (player->output_error != noErr) return -1;
+  pthread_mutex_lock(&player->buffer_lock);
+  struct PhonoliteAudioBuffer **link = &player->buffers;
+  while (*link != NULL) {
+    struct PhonoliteAudioBuffer *entry = *link;
+    player->pending_done_samples += phonolite_progress_collect(&entry->progress, player->generation, valid, frame);
+    if (entry->buffer == NULL && !phonolite_progress_pending(&entry->progress, player->generation)) {
+      *link = entry->next;
+      free(entry);
+    } else {
+      link = &entry->next;
     }
   }
   pthread_mutex_unlock(&player->buffer_lock);
+  return 0;
+}
 
+static int32_t audio_queue_player_pending_spans(PhonoliteAudioPlayer *player) {
+  int32_t count = 0;
+  pthread_mutex_lock(&player->buffer_lock);
+  for (struct PhonoliteAudioBuffer *entry = player->buffers; entry != NULL; entry = entry->next) {
+    if (phonolite_progress_pending(&entry->progress, player->generation)) count++;
+  }
+  pthread_mutex_unlock(&player->buffer_lock);
+  return count;
+}
+
+static void audio_queue_player_release_buffer(PhonoliteAudioPlayer *player, AudioQueueRef queue,
+                                  AudioQueueBufferRef buffer, bool completed) {
+  pthread_mutex_lock(&player->buffer_lock);
+  struct PhonoliteAudioBuffer **link = &player->buffers;
+  while (*link != NULL && (*link)->buffer != buffer) link = &(*link)->next;
+  struct PhonoliteAudioBuffer *entry = *link;
+  bool remove = false;
   if (entry != NULL) {
-    free(entry);
+    entry->buffer = NULL;
+    if (entry->generation == player->generation) atomic_fetch_sub(&player->in_flight, 1);
+    // A returned buffer is reusable before its audio is rendered. Retain its
+    // clock span; failed enqueues and cancelled generations have no PCM to play.
+    remove = !completed || entry->generation != player->generation ||
+             (entry->progress.scheduled && !phonolite_progress_pending(&entry->progress, player->generation));
+    if (remove) *link = entry->next;
+  }
+  pthread_mutex_unlock(&player->buffer_lock);
+  if (entry != NULL) {
     AudioQueueFreeBuffer(queue, buffer);
+    if (remove) free(entry);
   }
 }
 
@@ -73,7 +121,8 @@ static void audio_queue_player_output_callback(void *user_data, AudioQueueRef qu
 }
 
 static OSStatus audio_queue_player_start_if_ready(PhonoliteAudioPlayer *player) {
-  if (player->paused || player->started || atomic_load(&player->in_flight) == 0) {
+  if (player->paused || player->started ||
+      (atomic_load(&player->in_flight) == 0 && audio_queue_player_pending_spans(player) == 0)) {
     return noErr;
   }
 
@@ -104,7 +153,6 @@ PhonoliteAudioPlayer *audio_queue_player_open_format(int32_t sample_rate, int32_
   }
 
   atomic_init(&player->in_flight, 0);
-  atomic_init(&player->completed_samples, 0);
   pthread_mutex_init(&player->buffer_lock, NULL);
   player->sample_rate = sample_rate;
   player->channels = channels;
@@ -124,6 +172,14 @@ PhonoliteAudioPlayer *audio_queue_player_open_format(int32_t sample_rate, int32_
   OSStatus status =
       AudioQueueNewOutput(&asbd, audio_queue_player_output_callback, player, NULL, NULL, 0, &player->queue);
   if (status != noErr || player->queue == NULL) {
+    pthread_mutex_destroy(&player->buffer_lock);
+    free(player);
+    return NULL;
+  }
+
+  status = AudioQueueCreateTimeline(player->queue, &player->timeline);
+  if (status != noErr) {
+    AudioQueueDispose(player->queue, true);
     pthread_mutex_destroy(&player->buffer_lock);
     free(player);
     return NULL;
@@ -151,6 +207,7 @@ void audio_queue_player_close(PhonoliteAudioPlayer *player) {
     pthread_mutex_unlock(&player->buffer_lock);
 
     AudioQueueStop(player->queue, true);
+    if (player->timeline != NULL) AudioQueueDisposeTimeline(player->queue, player->timeline);
     AudioQueueDispose(player->queue, true);
   }
 
@@ -180,7 +237,8 @@ static int32_t audio_queue_player_write_pcm(PhonoliteAudioPlayer *player, const 
     return (int32_t)player->output_error;
   }
 
-  if (atomic_load(&player->in_flight) >= max_in_flight) {
+  if (audio_queue_player_poll_progress(player) != 0) return -2;
+  if (atomic_load(&player->in_flight) >= max_in_flight || audio_queue_player_pending_spans(player) >= max_in_flight) {
     return queue_full;
   }
 
@@ -204,17 +262,31 @@ static int32_t audio_queue_player_write_pcm(PhonoliteAudioPlayer *player, const 
 
   pthread_mutex_lock(&player->buffer_lock);
   entry->generation = player->generation;
+  entry->progress.generation = player->generation;
   entry->next = player->buffers;
   player->buffers = entry;
   atomic_fetch_add(&player->in_flight, 1);
   pthread_mutex_unlock(&player->buffer_lock);
 
-  status = AudioQueueEnqueueBuffer(player->queue, buffer, 0, NULL);
+  double start_frame = player->has_schedule ? player->scheduled_end_frame : 0;
+  double now = 0;
+  if (audio_queue_player_current_frame(player, &now) && now > start_frame) start_frame = now;
+  AudioTimeStamp actual_start = {0};
+  status = AudioQueueEnqueueBufferWithParameters(player->queue, buffer, 0, NULL, 0, 0, 0, NULL,
+                                                NULL, &actual_start);
   if (status != noErr) {
     audio_queue_player_release_buffer(player, player->queue, buffer, false);
     return (int32_t)status;
   }
 
+  if ((actual_start.mFlags & kAudioTimeStampSampleTimeValid) && isfinite(actual_start.mSampleTime)) {
+    start_frame = actual_start.mSampleTime;
+  }
+  pthread_mutex_lock(&player->buffer_lock);
+  entry->progress = (PhonoliteAudioProgressSpan){player->generation, sample_count, player->channels, 0, start_frame, true};
+  player->scheduled_end_frame = start_frame + (double)(sample_count / player->channels);
+  player->has_schedule = true;
+  pthread_mutex_unlock(&player->buffer_lock);
   return (int32_t)audio_queue_player_start_if_ready(player);
 }
 
@@ -234,7 +306,9 @@ int32_t audio_queue_player_flush(PhonoliteAudioPlayer *player) {
   pthread_mutex_lock(&player->buffer_lock);
   player->generation++;
   atomic_store(&player->in_flight, 0);
-  atomic_store(&player->completed_samples, 0);
+  player->pending_done_samples = 0;
+  player->has_schedule = false;
+  player->clock_observed = false;
   pthread_mutex_unlock(&player->buffer_lock);
 
   // Keep the route and paused state while invalidating old buffer accounting.
@@ -244,6 +318,11 @@ int32_t audio_queue_player_flush(PhonoliteAudioPlayer *player) {
 
   player->started = false;
   OSStatus status = AudioQueueReset(player->queue);
+  if (status == noErr) {
+    if (player->timeline != NULL) AudioQueueDisposeTimeline(player->queue, player->timeline);
+    player->timeline = NULL;
+    status = AudioQueueCreateTimeline(player->queue, &player->timeline);
+  }
   player->output_error = status;
 
   return (int32_t)status;
@@ -294,7 +373,10 @@ int64_t audio_queue_player_collect_done_samples(PhonoliteAudioPlayer *player) {
     return 0;
   }
 
-  return (int64_t)atomic_exchange(&player->completed_samples, 0);
+  if (audio_queue_player_poll_progress(player) != 0) return -1;
+  const int64_t done = player->pending_done_samples;
+  player->pending_done_samples = 0;
+  return done;
 }
 
 int32_t audio_queue_player_is_idle(PhonoliteAudioPlayer *player) {
@@ -302,5 +384,6 @@ int32_t audio_queue_player_is_idle(PhonoliteAudioPlayer *player) {
     return 1;
   }
 
-  return atomic_load(&player->in_flight) == 0 ? 1 : 0;
+  if (audio_queue_player_poll_progress(player) != 0) return -1;
+  return audio_queue_player_pending_spans(player) == 0 ? 1 : 0;
 }

@@ -56,6 +56,7 @@ void main() {
           .map((widget) => widget.title);
       expect(sections, [
         'General',
+        'Playback',
         'User',
         if (status == SessionStatus.authenticated) 'Display',
         'Local Storage',
@@ -332,6 +333,13 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
 }
 
 class _Controller extends Fake implements AppController {
+  @override
+  bool get gaplessResampling => false;
+  @override
+  Stream<bool> get gaplessResamplingStream => const Stream.empty();
+  @override
+  void setGaplessResampling(bool enabled) {}
+
   late final CatalogController _catalog = CatalogController(connection);
   @override
   CatalogController get catalog => _catalog;

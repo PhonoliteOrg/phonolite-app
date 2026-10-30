@@ -143,6 +143,10 @@ internal class AudioOutputSession(
     }
 
     progress.pollCompletedFrames()
+    retireResetClock()
+    if (writeFailure.get() != 0) {
+      return writeFailure.get()
+    }
 
     synchronized(writeLock) {
       if (progress.pendingFrameCount() + frames > maxBufferedFrames) {
@@ -168,6 +172,7 @@ internal class AudioOutputSession(
   @Synchronized
   fun pause() {
     progress.pollCompletedFrames()
+    retireResetClock()
 
     synchronized(writeLock) {
       audioTrack.pause()
@@ -214,13 +219,36 @@ internal class AudioOutputSession(
   }
 
   @Synchronized
-  fun collectDoneSamples(): Int = progress.collectDoneSamples()
+  fun collectDoneSamples(): Int {
+    val completed = progress.collectDoneSamples()
+    retireResetClock()
+    check(writeFailure.get() == 0) { "Audio output was interrupted; reopen the output device" }
+
+    return completed
+  }
 
   @Synchronized
   fun isIdle(): Boolean {
     progress.pollCompletedFrames()
+    retireResetClock()
+    check(writeFailure.get() == 0) { "Audio output was interrupted; reopen the output device" }
 
     return progress.pendingFrameCount() <= 0L && writeQueue.isEmpty()
+  }
+
+  private fun retireResetClock() {
+    if (!progress.consumeClockReset()) {
+      return
+    }
+
+    // AudioTrack may reset its renderer head when a route disappears. Samples
+    // lost with that route must never be counted as heard or drained forever.
+    // Expose the same recoverable device-loss result as a failed native write.
+    synchronized(writeLock) {
+      writeFailure.compareAndSet(0, AudioTrack.ERROR_DEAD_OBJECT)
+      writeGeneration.incrementAndGet()
+      writeQueue.clear()
+    }
   }
 
   private fun processWriteQueue() {

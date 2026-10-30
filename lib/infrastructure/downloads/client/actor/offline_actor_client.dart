@@ -18,7 +18,7 @@ class _OfflineActorClient {
   ) {
     final core = _host._inlineCore;
     if (core != null) {
-      return inline(core);
+      return _host._withQueueQuality(() => inline(core));
     }
 
     return _host._send<void>(name, payload);

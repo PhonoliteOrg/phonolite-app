@@ -15,6 +15,8 @@ class _StreamRecoveryCoordinator {
       return;
     }
 
+    _host._accountServices.reportPlaybackPresence();
+
     if (active || paused) {
       return;
     }
@@ -36,7 +38,35 @@ class _StreamRecoveryCoordinator {
       return;
     }
 
+    if (_host._playbackState.isLocalPlayback) {
+      _recoverInterruptedLocalPlayback();
+      return;
+    }
+
     _recoverInterruptedRemoteStream();
+  }
+
+  void _recoverInterruptedLocalPlayback() {
+    final track = _host._playbackState.track;
+    final positionMs = _host._seeking ? _host._seekTargetMs : max(_host._actualPositionMs, _host._displayPositionMs);
+    _retireInterruptedSeek(positionMs);
+    if (track == null || !_host._wantsPlayback || _host._audioSessionSuspended || _host._isScrubbing) {
+      _host._updatePlayback(isPlaying: false, isLoading: false);
+      return;
+    }
+    if (_recentlyRetriedInterruptedStream(track, positionMs)) {
+      _host._wantsPlayback = false;
+      _host._audioOutputStarted = false;
+      _host._updatePlayback(isPlaying: false, isLoading: false);
+      _host._pushMessage('Audio output failed again; press Play to retry.', level: LogLevel.warning);
+      return;
+    }
+    _lastInterruptedStreamRestartAt = _host._playbackClock();
+    _lastInterruptedStreamRestartTrackId = track.id;
+    _lastInterruptedStreamRestartPositionMs = positionMs;
+    _host._audioOutputStarted = false;
+    _host._updatePlayback(isLoading: true);
+    _host._startPlayback(track, startOffset: Duration(milliseconds: positionMs), quickStart: false);
   }
 
   void _recoverInterruptedRemoteStream() {
@@ -53,17 +83,9 @@ class _StreamRecoveryCoordinator {
         ? _host._seekTargetMs
         : max(_host._actualPositionMs, _host._displayPositionMs);
 
-    if (interruptedSeek) {
-      _host._seekRequests.advance();
-      _host._pendingSeekGeneration = null;
-      _host._seeking = false;
-      _host._lastSeekTrackId = null;
-      _host._seekDirection = SeekDirection.none;
-      _host._seekOriginMs = restartPositionMs;
-      _host._audioOutputStarted = false;
-    }
+    _retireInterruptedSeek(restartPositionMs);
 
-    if (!_host._wantsPlayback || _host._isScrubbing) {
+    if (!_host._wantsPlayback || _host._isScrubbing || _host._audioSessionSuspended) {
       _host._updatePlayback(isLoading: false, streamConnected: false, streamRttMs: null);
 
       return;
@@ -111,10 +133,22 @@ class _StreamRecoveryCoordinator {
     _host._startPlayback(track, startOffset: Duration(milliseconds: restartPositionMs), quickStart: false);
   }
 
+  void _retireInterruptedSeek(int positionMs) {
+    if (!_host._seeking) return;
+    _host._seekRequests.advance();
+    _host._pendingSeekGeneration = null;
+    _host._seeking = false;
+    _host._lastSeekTrackId = null;
+    _host._seekDirection = SeekDirection.none;
+    _host._seekOriginMs = positionMs;
+    _host._audioOutputStarted = false;
+  }
+
   void _retryPlaybackAfterServerReconnect() {
     if (_host._disposed ||
         !_awaitingStreamReconnect ||
         !_host._wantsPlayback ||
+        _host._audioSessionSuspended ||
         _host._isScrubbing ||
         !_host._canAttemptRemotePlayback ||
         _host._audioEngine.hasActivePlayer) {

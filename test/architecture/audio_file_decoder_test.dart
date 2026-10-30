@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/models/audio/audio_file_format.dart';
 import 'package:phonolite_app/data/models/audio/audio_source_rejected.dart';
 import 'package:phonolite_app/infrastructure/audio/decoding/audio_file_decoder.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
@@ -28,11 +30,77 @@ class _PrecisePcmOutput extends MemoryPcmOutput {
   }
 }
 
+class _BlockedPcmOutput extends _PrecisePcmOutput {
+  final gate = Completer<void>();
+
+  @override
+  Future<void> writePcm32(Int32List samples) async {
+    await gate.future;
+    await super.writePcm32(samples);
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (!gate.isCompleted) gate.complete();
+    await super.dispose();
+  }
+}
+
 void main() {
+  test('Original fills the shared eight-second horizon while output is blocked and stops reading', () async {
+    final decoder = _MemorySourceDecoder(Int32List(48000 * 20), sampleRate: 48000);
+    final output = _BlockedPcmOutput();
+    final session = AudioPlaybackHarness.original(
+      decoderFactory: (_, __) => decoder,
+      outputFactory: (_, __, ___) => output,
+    );
+    addTearDown(session.close);
+    session.start();
+    await waitUntil(() => decoder.readSamples >= 48000 * 8);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final decoded = decoder.readSamples;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(decoded, inInclusiveRange(48000 * 8, 48000 * 9));
+    expect(decoder.readSamples, decoded, reason: 'A full read-ahead buffer must stop requesting source bytes.');
+    expect(output.samples, isEmpty);
+  });
+
+  for (final (baseUrl, quicPort, expectedUri) in [
+    ('https://source.test/api', null, 'quic://source.test:444/track'),
+    ('https://source.test/api', 7443, 'quic://source.test:7443/track'),
+    ('http://localhost:3000/api', null, 'quic://127.0.0.1:3001/track'),
+  ]) {
+    test('Original selects $expectedUri and preserves PCM32 without an Opus stage', () async {
+      final samples = Int32List.fromList([1, -1, 2147483647, -2147483648, 0x12345678, -0x12345678]);
+      final output = _PrecisePcmOutput();
+      Uri? requested;
+      final session = AudioPlaybackHarness.original(
+        baseUrl: baseUrl,
+        quicPort: quicPort,
+        decoderFactory: (uri, offset) {
+          requested = uri;
+
+          return _MemorySourceDecoder(samples);
+        },
+        outputFactory: (_, __, ___) => output,
+      );
+      addTearDown(session.close);
+      session.start();
+      await waitUntil(() => session.messages.any((event) => event['type'] == 'complete'));
+
+      expect(requested.toString(), expectedUri);
+      expect(output.samples, orderedEquals(samples));
+      expect(output.int16Writes, 0);
+      expect(session.cachedBytes, 0);
+    });
+  }
+
   final nativeLibrary = Platform.environment['PHONOLITE_LOCAL_AUDIO_LIBRARY'];
   final nativeSkip = nativeLibrary == null || nativeLibrary.isEmpty
       ? 'Set PHONOLITE_LOCAL_AUDIO_LIBRARY to the rebuilt native decoder library.'
       : false;
+  final downloadFixtures = Platform.environment['PHONOLITE_DOWNLOAD_FIXTURES'];
 
   group('native file decoder isolate', () {
     late Directory fixtures;
@@ -47,6 +115,32 @@ void main() {
       await source.writeAsBytes(_verbatimFlac(sampleRate: 192000, bitDepth: bitDepth, samples: samples));
 
       return source;
+    }
+
+    for (final bitrate in [64000, 96000, 128000, 192000]) {
+      test(
+        'server-generated $bitrate bps Opus downloads retain exact timing across the isolate',
+        () async {
+          final decoder = AudioFileDecoder.local(filePath: '$downloadFixtures/tone_$bitrate.opus');
+          addTearDown(decoder.close);
+          await decoder.initialize().timeout(_deadline);
+
+          expect(decoder.format.sampleRate, 48000);
+          expect(decoder.format.channels, 2);
+          expect(decoder.format.bitDepth, 32);
+          expect(decoder.format.playableFrames, 19200);
+          expect(decoder.format.duration, const Duration(milliseconds: 400));
+
+          final samples = await _readAllPcm32(decoder);
+          expect(samples, hasLength(38400));
+          expect(samples.any((sample) => sample.abs() > 1000000), isTrue);
+          await decoder.seek(const Duration(milliseconds: 100)).timeout(_deadline);
+          expect(await _readAllPcm32(decoder), orderedEquals(samples.skip(9600)));
+        },
+        skip: downloadFixtures == null || downloadFixtures.isEmpty
+            ? 'Set PHONOLITE_DOWNLOAD_FIXTURES to server-generated Opus fixtures.'
+            : false,
+      );
     }
 
     for (final bitDepth in [24, 32]) {
@@ -116,7 +210,7 @@ void main() {
             'paused stats',
           );
 
-          expect(requestedUri.toString(), 'https://source.test/api/stream/track/original');
+          expect(requestedUri.toString(), 'quic://source.test:444/track');
           expect(requestedOffset, Duration.zero);
           expect(outputFormats, [(192000, 1, -1)]);
           expect(session.paused, isTrue);
@@ -262,11 +356,69 @@ void main() {
   });
 }
 
+class _MemorySourceDecoder implements AudioFileDecoder {
+  final Int32List samples;
+  final int sampleRate;
+  int _position = 0;
+  int readSamples = 0;
+
+  _MemorySourceDecoder(this.samples, {this.sampleRate = 192000});
+
+  @override
+  AudioFileFormat get format => AudioFileFormat(
+    sampleRate: sampleRate,
+    channels: 1,
+    bitDepth: 32,
+    duration: Duration(microseconds: samples.length * 1000000 ~/ sampleRate),
+    playableFrames: samples.length,
+  );
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  void interruptRead() {}
+
+  @override
+  Future<Int32List> read32(int maxSamples) async {
+    final end = (_position + maxSamples).clamp(0, samples.length);
+    final chunk = Int32List.fromList(samples.sublist(_position, end));
+    _position = end;
+    readSamples += chunk.length;
+
+    return chunk;
+  }
+
+  @override
+  Future<Duration> seek(Duration position) async {
+    _position = (position.inMicroseconds * sampleRate ~/ 1000000).clamp(0, samples.length);
+
+    return position;
+  }
+
+  @override
+  Future<void> close() async {}
+}
+
 Future<void> _waitForSession(AudioPlaybackHarness session, bool Function() predicate, String description) async {
   try {
     await waitUntil(predicate);
   } catch (error) {
     fail('Timed out waiting for $description: $error\nSession events:\n${session.messages.join('\n')}');
+  }
+}
+
+Future<List<int>> _readAllPcm32(AudioFileDecoder decoder) async {
+  final output = <int>[];
+
+  while (true) {
+    final chunk = await decoder.read32(4096).timeout(_deadline);
+
+    if (chunk.isEmpty) {
+      return output;
+    }
+
+    output.addAll(chunk);
   }
 }
 

@@ -588,7 +588,7 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     final offlineTracks = offlineSnapshot.tracks;
     final offlineGroups = offlineSnapshot.artistGroups;
 
-    final localResults = _feature.localResults(offlineTracks, offlineGroups);
+    final localResults = _feature.localResults(offlineTracks, offlineGroups, revision: offlineSnapshot.revision);
     final selectedGroups = _feature.selectedOfflineArtists(offlineGroups);
 
     final localSlivers = query.isEmpty
@@ -667,7 +667,7 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     final tracks = offlineSnapshot.tracks;
     final groups = offlineSnapshot.artistGroups;
 
-    final localResults = _feature.localResults(tracks, groups);
+    final localResults = _feature.localResults(tracks, groups, revision: offlineSnapshot.revision);
     final selectedGroups = _feature.selectedOfflineArtists(groups);
 
     return assemble(

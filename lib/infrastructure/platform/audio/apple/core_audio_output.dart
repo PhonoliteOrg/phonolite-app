@@ -124,7 +124,12 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
       return 0;
     }
 
-    return _bindings.collectDoneSamples(handle);
+    final samples = _bindings.collectDoneSamples(handle);
+    if (samples < 0) {
+      throw StateError('CoreAudio playback clock failed.');
+    }
+
+    return samples;
   }
 
   @override
@@ -135,7 +140,12 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
       return true;
     }
 
-    return _bindings.isIdle(handle) != 0;
+    final idle = _bindings.isIdle(handle);
+    if (idle < 0) {
+      throw StateError('CoreAudio playback clock failed.');
+    }
+
+    return idle != 0;
   }
 
   Future<void> _writePcm(TypedData samples, int bitsPerSample) async {

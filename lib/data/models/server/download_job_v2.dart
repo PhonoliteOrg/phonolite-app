@@ -17,6 +17,7 @@ class DownloadJobScopeV2 {
 
 class DownloadJobV2 {
   final String jobId;
+  final String profile;
   final String clientId;
   final String clientRequestId;
   final DownloadJobScopeV2 scope;
@@ -32,6 +33,7 @@ class DownloadJobV2 {
 
   DownloadJobV2({
     required this.jobId,
+    this.profile = 'original',
     required this.clientId,
     required this.clientRequestId,
     required this.scope,
@@ -52,6 +54,7 @@ class DownloadJobV2 {
 
     return DownloadJobV2(
       jobId: json['job_id']?.toString() ?? '',
+      profile: json['profile']?.toString() ?? 'original',
       clientId: json['client_id']?.toString() ?? '',
       clientRequestId: json['client_request_id']?.toString() ?? '',
       scope: DownloadJobScopeV2(
@@ -80,6 +83,8 @@ class DownloadJobV2 {
 }
 
 class DownloadJobItemV2 {
+  final String profile;
+  final String? renditionId;
   final int position;
   final String trackId;
   final String status;
@@ -92,6 +97,8 @@ class DownloadJobItemV2 {
   final String? error;
 
   DownloadJobItemV2({
+    this.profile = 'original',
+    this.renditionId,
     required this.position,
     required this.trackId,
     required this.status,
@@ -108,6 +115,8 @@ class DownloadJobItemV2 {
     final rawMetadata = json['offline_metadata'];
 
     return DownloadJobItemV2(
+      profile: json['profile']?.toString() ?? 'original',
+      renditionId: JsonValues.nonEmptyString(json['rendition_id']),
       position: _parseV2Int(json['position']),
       trackId: json['track_id']?.toString() ?? '',
       status: json['status']?.toString() ?? 'queued',

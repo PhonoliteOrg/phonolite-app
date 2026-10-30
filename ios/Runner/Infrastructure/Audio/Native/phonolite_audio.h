@@ -19,7 +19,9 @@ void phonolite_audio_set_volume(PhonoliteAudioPlayer *player, float volume);
 void phonolite_audio_pause(PhonoliteAudioPlayer *player);
 void phonolite_audio_resume(PhonoliteAudioPlayer *player);
 int32_t phonolite_audio_flush(PhonoliteAudioPlayer *player);
+// Rendered interleaved samples, or -1 if the playback clock needs recovery.
 int64_t phonolite_audio_collect_done_samples(PhonoliteAudioPlayer *player);
+// 1 after queued PCM is rendered, 0 while pending, or -1 on clock failure.
 int32_t phonolite_audio_is_idle(PhonoliteAudioPlayer *player);
 
 int32_t phonolite_audio_get_output_device_count(void);

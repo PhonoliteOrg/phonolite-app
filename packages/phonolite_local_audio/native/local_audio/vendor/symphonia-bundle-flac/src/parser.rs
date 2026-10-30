@@ -296,6 +296,11 @@ pub struct PacketParser {
 }
 
 impl PacketParser {
+    /// A seek is a discontinuity even when resync lands on an exact frame header.
+    pub fn reset_after_seek(&mut self) {
+        self.soft_reset();
+    }
+
     /// Perform a soft reset of the parser. Call this after a discontinuity in the stream.
     fn soft_reset(&mut self) {
         self.builder.reset();

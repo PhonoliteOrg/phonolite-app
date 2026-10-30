@@ -209,9 +209,18 @@ class _DownloadJobMaterializer {
       return;
     }
 
-    final prepared = await _host._storage.prepareDownloads(downloads);
+    final resolved = await _host._storage.prepareDownloads(downloads);
+    final prepared = resolved
+        .where((download) {
+          final current = _host.find(download.serverBaseUrl, _host._serverTrackId(download));
+          return current == null ||
+              (!_host._downloadQueuedOrAvailable(current) &&
+                  !_host._active.containsKey(_host._downloadKey(current)) &&
+                  (current.batchId == jobId || current.status != OfflineDownloadStatus.paused));
+        })
+        .toList(growable: false);
 
-    if (!_canMaterializeJob(jobId)) {
+    if (!_canMaterializeJob(jobId) || prepared.isEmpty) {
       return;
     }
 

@@ -1,5 +1,5 @@
 name: phonolite_local_audio
-description: Source-preserving local and authenticated remote MP3/FLAC decoding for Phonolite.
+description: Source-preserving MP3/FLAC and Ogg Opus file decoding for Phonolite.
 version: 0.1.0
 publish_to: 'none'
 
@@ -7,7 +7,9 @@ environment:
   sdk: ^3.9.2
 
 dependencies:
-  ffi: ^2.1.0
+  ffi: ^2.2.0
+  phonolite_opus:
+    path: ../phonolite_opus
 
 flutter:
   plugin:

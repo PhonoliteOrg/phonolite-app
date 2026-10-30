@@ -1,4 +1,17 @@
-enum NativeRemoteAction { play, pause, next, previous, toggleLike, startLibraryShuffle, seek, unknown }
+enum NativeRemoteAction {
+  play,
+  pause,
+  next,
+  previous,
+  toggleLike,
+  startLibraryShuffle,
+  seek,
+  audioInterruptionBegan,
+  audioInterruptionEnded,
+  audioInterruptionEndedPaused,
+  audioServicesReset,
+  unknown,
+}
 
 class NativeRemoteCommand {
   final NativeRemoteAction action;

@@ -8,6 +8,8 @@ const Object _offlineUnset = Object();
 
 @immutable
 class OfflineDownloadJob {
+  final String profile;
+  final String? serverJobId;
   final String jobId;
   final String kind;
   final String serverBaseUrl;
@@ -25,6 +27,8 @@ class OfflineDownloadJob {
   final String? error;
 
   const OfflineDownloadJob({
+    this.profile = 'original',
+    this.serverJobId,
     required this.jobId,
     required this.kind,
     required this.serverBaseUrl,
@@ -43,6 +47,8 @@ class OfflineDownloadJob {
   });
 
   OfflineDownloadJob copyWith({
+    String? profile,
+    Object? serverJobId = _offlineUnset,
     OfflineDownloadStatus? status,
     DateTime? updatedAt,
     int? totalCount,
@@ -56,6 +62,8 @@ class OfflineDownloadJob {
     Object? error = _offlineUnset,
   }) {
     return OfflineDownloadJob(
+      profile: profile ?? this.profile,
+      serverJobId: identical(serverJobId, _offlineUnset) ? this.serverJobId : serverJobId as String?,
       jobId: jobId,
       kind: kind,
       serverBaseUrl: serverBaseUrl,

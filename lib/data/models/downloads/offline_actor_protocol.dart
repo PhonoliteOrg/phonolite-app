@@ -40,6 +40,7 @@ class OfflineActorReady {
 }
 
 class OfflineActorCommand {
+  final String profile;
   final int id;
   final String name;
   final String baseUrl;
@@ -48,6 +49,7 @@ class OfflineActorCommand {
   final Object? payload;
 
   const OfflineActorCommand({
+    this.profile = 'original',
     required this.id,
     required this.name,
     required this.baseUrl,

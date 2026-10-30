@@ -24,8 +24,12 @@ List<SearchResult> searchLocalLibrary({
   final results = <SearchResult>[];
 
   void collect(List<({String key, SearchResult result})> candidates) {
+    // Nonmatches never participate in ranking or its catalogue-order ties.
+    // Remove them before sorting the candidate list, which can be much larger
+    // than the few results returned for a query.
+    candidates.removeWhere((candidate) => candidate.result.score! <= 0);
     candidates.sort((a, b) => _compareSearchText(a.key, b.key));
-    results.addAll(candidates.map((candidate) => candidate.result).where((result) => result.score! > 0));
+    results.addAll(candidates.map((candidate) => candidate.result));
   }
 
   collect([

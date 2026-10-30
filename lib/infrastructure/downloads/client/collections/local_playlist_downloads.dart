@@ -46,6 +46,7 @@ class _LocalPlaylistDownloads {
 
     final revision = _host._localDataRevision;
 
+    await _host._storage.saveDownloadProfileIntent(source, _host._queueProfile);
     final saved = await _host._storage.addSourceToLocalPlaylist(playlistId, track, source);
 
     if (!_host._localDataCurrent(revision)) {
@@ -187,6 +188,7 @@ class _LocalPlaylistDownloads {
             serverBaseUrl: source.serverBaseUrl,
             serverTrackId: source.serverTrackId,
           ),
+          profile: await _host._storage.readDownloadProfileIntent(source),
           playlistOwned: true,
           isCurrent: isCurrent,
         );

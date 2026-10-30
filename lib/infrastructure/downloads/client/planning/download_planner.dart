@@ -6,7 +6,13 @@ class _DownloadPlanner {
 
   _DownloadPlanner(this._host);
 
-  Future<int> downloadTrack(Track track, {bool playlistOwned = false, bool Function()? isCurrent}) async {
+  Future<int> downloadTrack(
+    Track track, {
+    String? profile,
+    bool playlistOwned = false,
+    bool Function()? isCurrent,
+  }) async {
+    final requestedProfile = profile ?? _host._queueProfile;
     final dataRevision = _localDataRevision;
 
     await _host._ensureLoaded();
@@ -51,6 +57,10 @@ class _DownloadPlanner {
 
     if (_host._downloadQueuedOrAvailable(existing)) {
       return 0;
+    }
+
+    if (requestedProfile != 'original') {
+      return queueTracks([track], label: track.title, profile: requestedProfile, registerDemand: !playlistOwned);
     }
 
     if (_host.connection.token != null && _host.connection.token!.isNotEmpty) {
@@ -179,7 +189,15 @@ class _DownloadPlanner {
     throw Exception('server session required to fetch offline metadata for ${track.title}');
   }
 
-  Future<int> queueTracks(Iterable<Track> tracks, {String? label, String kind = 'tracks', String? sourceId}) async {
+  Future<int> queueTracks(
+    Iterable<Track> tracks, {
+    String? label,
+    String kind = 'tracks',
+    String? sourceId,
+    String? profile,
+    bool registerDemand = true,
+  }) async {
+    final requestedProfile = profile ?? _host._queueProfile;
     final dataRevision = _localDataRevision;
 
     await _host._ensureLoaded();
@@ -211,11 +229,13 @@ class _DownloadPlanner {
         throw StateError('The download source does not belong to the connected server.');
       }
 
-      await _host._ownerPlaylistDownloads.registerDemand(
-        SourceTrackRef(serverBaseUrl: baseUrl, serverTrackId: id),
-        ownerKind: 'collection',
-        ownerId: '$kind:${sourceId ?? label ?? 'tracks'}',
-      );
+      if (registerDemand) {
+        await _host._ownerPlaylistDownloads.registerDemand(
+          SourceTrackRef(serverBaseUrl: baseUrl, serverTrackId: id),
+          ownerKind: 'collection',
+          ownerId: '$kind:${sourceId ?? label ?? 'tracks'}',
+        );
+      }
 
       if (!sessionCurrent()) {
         return 0;
@@ -247,8 +267,53 @@ class _DownloadPlanner {
 
     final jobId = _host._stableJobId(
       kind,
-      _host._rollingJobSignature(label: label, trackIds: pending.map((track) => track.id)),
+      _host._rollingJobSignature(label: label, trackIds: pending.map((track) => track.id), profile: requestedProfile),
     );
+    if (requestedProfile != 'original') {
+      final existingJob = await _host._reuseOrClearRollingJob(
+        jobId: jobId,
+        kind: kind,
+        serverBaseUrl: baseUrl,
+        label: label,
+        trackIds: pending.map((track) => track.id),
+        profile: requestedProfile,
+      );
+      if (existingJob != null) {
+        _host._scheduleTopUp();
+        return 0;
+      }
+      final attemptId = _host._queueAttemptRequestId(jobId);
+      final job = OfflineDownloadJob(
+        profile: requestedProfile,
+        jobId: attemptId,
+        kind: kind,
+        serverBaseUrl: baseUrl,
+        status: OfflineDownloadStatus.queued,
+        createdAt: now,
+        updatedAt: now,
+        totalCount: pending.length,
+        discoveredCount: pending.length,
+        label: label,
+        sourceId: sourceId,
+      );
+      final items = [
+        for (var index = 0; index < pending.length; index++)
+          OfflineDownloadJobItem(
+            jobId: attemptId,
+            position: index,
+            serverTrackId: pending[index].id,
+            status: OfflineDownloadStatus.queued,
+            materialized: false,
+            createdAt: now,
+            updatedAt: now,
+            track: pending[index],
+          ),
+      ];
+      await _host._insertRollingJob(job, items: items);
+      _host._scheduleTopUp();
+      return pending.length;
+    }
+
     final v2Queued = await _host._tryQueueV2DownloadJob(
       scope: DownloadJobScopeV2(
         kind: pending.length == 1 ? 'track' : 'track_set',
@@ -488,6 +553,7 @@ class _DownloadPlanner {
   }
 
   Future<int> queueArtist(Artist artist, List<Album> albums) async {
+    final requestedProfile = _host._queueProfile;
     final dataRevision = _localDataRevision;
 
     await _host._ensureLoaded();
@@ -506,7 +572,11 @@ class _DownloadPlanner {
     final baseUrl = _host.connection.baseUrl;
     final collectionId = _host._stableJobId(
       'artist',
-      _host._rollingJobSignature(label: artist.name, sourceIds: sources.map((album) => album.id)),
+      _host._rollingJobSignature(
+        label: artist.name,
+        sourceIds: sources.map((album) => album.id),
+        profile: requestedProfile,
+      ),
     );
     final existingJob = await _host._reuseOrClearRollingJob(
       jobId: collectionId,
@@ -532,6 +602,7 @@ class _DownloadPlanner {
     final job = OfflineDownloadJob(
       jobId: jobId,
       kind: 'artist',
+      profile: requestedProfile,
       serverBaseUrl: baseUrl,
       status: OfflineDownloadStatus.queued,
       createdAt: now,
@@ -557,6 +628,14 @@ class _DownloadPlanner {
 
     if (!_host._localDataCurrent(dataRevision)) {
       return 0;
+    }
+
+    if (requestedProfile != 'original') {
+      await _host._storage.upsertDownloadJob(job);
+      _host._jobs = [for (final existing in _host._jobs) existing.jobId == job.jobId ? job : existing];
+      _host._emitJobs();
+      _host._scheduleTopUp();
+      return job.totalCount > 0 ? job.totalCount : sources.length;
     }
 
     // Persist the artist and every requested album before a network call can

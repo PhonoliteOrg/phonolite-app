@@ -1,5 +1,6 @@
 class ServerCapabilities {
   final bool downloadJobsV2;
+  final List<String> downloadProfiles;
   final bool metadataSnapshotsV2;
   final bool eventReplayV2;
   final bool trackFileContractV2;
@@ -11,11 +12,13 @@ class ServerCapabilities {
   final bool shufflePresets;
   final bool lastTrack;
   final bool playbackResume;
+  final bool playbackPresence;
   final bool sessionManagement;
   final bool catalogueEvents;
 
   ServerCapabilities({
     required this.downloadJobsV2,
+    this.downloadProfiles = const ['original'],
     required this.metadataSnapshotsV2,
     required this.eventReplayV2,
     required this.trackFileContractV2,
@@ -27,6 +30,7 @@ class ServerCapabilities {
     this.shufflePresets = false,
     this.lastTrack = false,
     this.playbackResume = false,
+    this.playbackPresence = false,
     this.sessionManagement = false,
     this.catalogueEvents = false,
   });
@@ -34,6 +38,9 @@ class ServerCapabilities {
   factory ServerCapabilities.fromJson(Map<String, dynamic> json) {
     return ServerCapabilities(
       downloadJobsV2: _capabilityEnabled(json['download_jobs_v2']),
+      downloadProfiles: json['download_profiles'] is List
+          ? List<String>.unmodifiable((json['download_profiles'] as List).whereType<String>())
+          : const ['original'],
       metadataSnapshotsV2: _capabilityEnabled(json['metadata_snapshots_v2']),
       eventReplayV2: _capabilityEnabled(json['event_replay_v2']),
       trackFileContractV2: _capabilityEnabled(json['track_file_contract_v2']),
@@ -45,6 +52,7 @@ class ServerCapabilities {
       shufflePresets: _capabilityEnabled(json['shuffle_presets']),
       lastTrack: _capabilityEnabled(json['last_track']),
       playbackResume: _capabilityEnabled(json['playback_resume']),
+      playbackPresence: _capabilityEnabled(json['playback_presence']),
       sessionManagement: _capabilityEnabled(json['session_management']),
       catalogueEvents: _capabilityEnabled(json['catalogue_events']),
     );

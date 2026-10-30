@@ -226,6 +226,7 @@ impl FormatReader for FlacReader {
         // If the reader supports seeking, coarsely seek to the nearest packet with a timestamp
         // lower than the desired timestamp using a binary search.
         if self.reader.is_seekable() {
+            self.parser.reset_after_seek();
             // The range formed by start_byte_offset..end_byte_offset defines an area where the
             // binary search for the packet containing the desired timestamp will be performed. The
             // lower bound is set to the byte offset of the first frame, while the upper bound is

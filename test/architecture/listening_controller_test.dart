@@ -596,6 +596,32 @@ class _History extends ListeningStatsService {
 
 class _Audio extends Fake implements AudioEngine {
   @override
+  void Function(int)? onGaplessTransition;
+  @override
+  void Function(bool)? onGaplessBuffering;
+  @override
+  void acknowledgeGaplessTransition(int preparationId) {}
+  @override
+  void setGaplessResampling(bool enabled) {}
+  @override
+  void Function(int)? onGaplessPreparationFailed;
+  @override
+  Future<void> prepareNext({
+    required int preparationId,
+    int? afterPreparationId,
+    required Track track,
+    required ServerConnection connection,
+    required StreamSettings settings,
+    String? filePath,
+    int? quicPort,
+    Map<String, dynamic>? listeningContext,
+  }) async {}
+  @override
+  void cancelPreparedNext({int? preparationId}) {}
+  @override
+  Future<void> releasePreparedNext({int? preparationId}) async {}
+
+  @override
   Future<void> initialize() async {}
 
   @override
@@ -829,6 +855,10 @@ class _Shuffle extends CustomShuffleSettingsStorage {
 }
 
 class _Preferences extends PlaybackPreferencesStorage {
+  @override
+  Future<bool?> readGaplessResampling() async => null;
+  @override
+  Future<void> writeGaplessResampling(bool enabled) async {}
   @override
   Future<PlaybackRepeatMode?> readRepeatMode() async => null;
 

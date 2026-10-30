@@ -1,6 +1,8 @@
 part of '../audio_engine.dart';
 
 class _FileAudioSource {
+  static const int _maximumRemotePcmBytes = 16 * 1024 * 1024;
+
   final _PlaybackSession _host;
   bool _pumpRunning = false;
   bool _streamEnded = false;
@@ -12,21 +14,25 @@ class _FileAudioSource {
   Future<void> _runLocalFilePlayback(String filePath) async {
     _host._log('Opening local audio file: $filePath');
 
-    await _runFilePlayback(AudioFileDecoder.local(filePath: filePath, startOffset: _host.startOffset));
+    await _runFilePlayback(
+      _host._fileDecoderFactory?.call(Uri.file(filePath), _host.startOffset) ??
+          AudioFileDecoder.local(filePath: filePath, startOffset: _host.startOffset),
+    );
   }
 
   Future<void> _runOriginalFilePlayback() async {
     final base = Uri.parse(_host.baseUrl);
-    final endpoint = base.replace(
-      pathSegments: [...base.pathSegments.where((segment) => segment.isNotEmpty), 'stream', _host.trackId, 'original'],
-      query: null,
-      fragment: null,
-    );
+    final httpPort = base.hasPort ? base.port : (base.scheme == 'https' ? 443 : 80);
+    final port = _host.quicPort != null && _host.quicPort! > 0 ? _host.quicPort! : httpPort + 1;
+    final host = base.host == 'localhost' ? '127.0.0.1' : base.host;
+    final endpoint = Uri(scheme: 'quic', host: host, port: port, pathSegments: [_host.trackId]);
 
     final decoder =
         _host._fileDecoderFactory?.call(endpoint, _host.startOffset) ??
-        AudioFileDecoder.remote(
-          url: endpoint,
+        AudioFileDecoder.quic(
+          host: host,
+          port: port,
+          trackId: _host.trackId,
           token: _host.token,
           serverPin: _host.serverPin,
           startOffset: _host.startOffset,
@@ -118,6 +124,16 @@ class _FileAudioSource {
       final buffer = _host._buffer;
 
       if (buffer != null && !_streamEnded) {
+        if (!_host._isLocalFile) {
+          final readAhead = _remoteReadAheadSamples();
+          buffer.ensureCapacity(readAhead);
+
+          if (buffer.length >= readAhead) {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+            continue;
+          }
+        }
+
         final minFree = _host._pumpChunkSamples > 0 ? _host._pumpChunkSamples : _channels;
 
         if (buffer.free < minFree) {
@@ -127,7 +143,13 @@ class _FileAudioSource {
       }
 
       final generation = _host._seekRequestGeneration;
-      final samples = await decoder.read32(readBufferSize);
+      final Int32List samples;
+      try {
+        samples = await decoder.read32(readBufferSize);
+      } catch (_) {
+        if (!_host._isActive || generation != _host._seekRequestGeneration) continue;
+        rethrow;
+      }
 
       if (!_host._isActive || generation != _host._seekRequestGeneration) {
         continue;
@@ -176,7 +198,13 @@ class _FileAudioSource {
     _host._pendingSeekId = null;
     _host._activeSeekId = seekId;
 
-    final actual = await decoder.seek(Duration(milliseconds: targetMs));
+    final Duration actual;
+    try {
+      actual = await decoder.seek(Duration(milliseconds: targetMs));
+    } catch (_) {
+      if (!_host._isActive || requestGeneration != _host._seekRequestGeneration) return;
+      rethrow;
+    }
 
     if (!_host._isActive || requestGeneration != _host._seekRequestGeneration) {
       return;
@@ -232,6 +260,11 @@ class _FileAudioSource {
       finalCapacity = minPumpCapacity;
     }
 
+    if (!_host._isLocalFile) {
+      final maximumSamples = _maximumRemotePcmBytes ~/ (_host._pcmBitsPerSample ~/ 8);
+      finalCapacity = math.min(maximumSamples, math.max(finalCapacity, _remoteReadAheadSamples()));
+    }
+
     _host._buffer = PcmRingBuffer(finalCapacity, bitsPerSample: _host._pcmBitsPerSample);
 
     try {
@@ -246,6 +279,15 @@ class _FileAudioSource {
 
       rethrow;
     }
+  }
+
+  int _remoteReadAheadSamples() {
+    // Source containers have no Opus packet cache. Keep the shared media-time
+    // horizon as precise PCM, bounded independently of rate and source size.
+    final target = _host._encodedReadAheadTargetMs * _host._sampleRate * _channels ~/ 1000;
+    final maximumSamples = _maximumRemotePcmBytes ~/ (_host._pcmBitsPerSample ~/ 8);
+
+    return math.max(_host._rebufferTargetSamples * 2, math.min(target, maximumSamples));
   }
 }
 

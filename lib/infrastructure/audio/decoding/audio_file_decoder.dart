@@ -3,19 +3,27 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:phonolite_local_audio/phonolite_local_audio.dart';
+import 'package:phonolite_quic/phonolite_quic.dart';
 
 import 'package:phonolite_app/data/models/audio/audio_file_format.dart';
 import 'package:phonolite_app/data/models/audio/audio_source_rejected.dart';
 
+typedef AudioFileDecoderWorkerSpawner =
+    Future<Isolate> Function(Map<String, dynamic> configuration, SendPort errors, SendPort exit);
+
 /// Owns a native file decoder on a separate isolate, including its bounded
 /// network reads. Playback controls and device release never wait on synchronous
-/// HTTP work in the audio engine's isolate.
+/// transport work in the audio engine's isolate.
 class AudioFileDecoder {
   final String? _filePath;
   final String? _url;
+  final String? _quicHost;
+  final int? _quicPort;
+  final String? _quicTrackId;
   final String _token;
   final String _serverPin;
   final Duration _startOffset;
+  final AudioFileDecoderWorkerSpawner? _workerSpawner;
   final Map<int, Completer<Map<String, dynamic>>> _requests = {};
   final Completer<void> _ready = Completer<void>();
   final Completer<void> _exited = Completer<void>();
@@ -28,13 +36,18 @@ class AudioFileDecoder {
   Future<void>? _initialization;
   Future<void>? _shutdown;
   Timer? _heartbeat;
+  QuicOwnerLease? _quicOwner;
   int _nextRequest = 0;
 
   AudioFileDecoder.local({required String filePath, Duration startOffset = Duration.zero})
     : _filePath = filePath,
       _url = null,
+      _quicHost = null,
+      _quicPort = null,
+      _quicTrackId = null,
       _token = '',
       _serverPin = '',
+      _workerSpawner = null,
       _startOffset = startOffset;
 
   AudioFileDecoder.remote({
@@ -44,8 +57,30 @@ class AudioFileDecoder {
     Duration startOffset = Duration.zero,
   }) : _filePath = null,
        _url = url.toString(),
+       _quicHost = null,
+       _quicPort = null,
+       _quicTrackId = null,
        _token = token,
        _serverPin = serverPin,
+       _workerSpawner = null,
+       _startOffset = startOffset;
+
+  AudioFileDecoder.quic({
+    required String host,
+    required int port,
+    required String trackId,
+    required String token,
+    required String serverPin,
+    Duration startOffset = Duration.zero,
+    AudioFileDecoderWorkerSpawner? workerSpawner,
+  }) : _filePath = null,
+       _url = null,
+       _quicHost = host,
+       _quicPort = port,
+       _quicTrackId = trackId,
+       _token = token,
+       _serverPin = serverPin,
+       _workerSpawner = workerSpawner,
        _startOffset = startOffset;
 
   AudioFileFormat get format => _format ?? (throw StateError('Audio decoder is not initialized.'));
@@ -54,6 +89,10 @@ class AudioFileDecoder {
 
   /// Waits for the native decoder to close before retiring its isolate.
   Future<void> close() => _shutdown ??= _close();
+
+  /// Interrupts the borrowed source operation without freeing its handle.
+  /// A following seek resets parser state on the same owned connection.
+  void interruptRead() => _quicOwner?.interrupt();
 
   Future<Int32List> read32(int maxSamples) async {
     final response = await _request('read', {'max_samples': maxSamples});
@@ -79,21 +118,22 @@ class AudioFileDecoder {
     _ready.future.ignore();
 
     try {
-      _isolate = await Isolate.spawn(
-        _decodeFileWorker,
-        <String, dynamic>{
-          'reply': _messages!.sendPort,
-          'file_path': _filePath,
-          'url': _url,
-          'token': _token,
-          'server_pin': _serverPin,
-          'start_ms': _startOffset.inMilliseconds,
-        },
-        debugName: 'phonolite_file_decoder',
-        onError: _errors!.sendPort,
-        onExit: _exit!.sendPort,
-        errorsAreFatal: true,
-      );
+      if (_quicHost != null) {
+        _quicOwner = QuicOwnerLease();
+      }
+      final configuration = <String, dynamic>{
+        'reply': _messages!.sendPort,
+        'file_path': _filePath,
+        'url': _url,
+        'quic_host': _quicHost,
+        'quic_port': _quicPort,
+        'quic_track_id': _quicTrackId,
+        'quic_owner_id': _quicOwner?.id,
+        'token': _token,
+        'server_pin': _serverPin,
+        'start_ms': _startOffset.inMilliseconds,
+      };
+      _isolate = await (_workerSpawner ?? _spawnWorker)(configuration, _errors!.sendPort, _exit!.sendPort);
     } catch (error, stack) {
       _fail(error, stack);
       _exited.complete();
@@ -103,6 +143,9 @@ class AudioFileDecoder {
   }
 
   Future<void> _close() async {
+    // This parent-owned token is independent of the decoder's borrowed source
+    // pointer. Cancellation can interrupt FFI before a queued close is handled.
+    _quicOwner?.cancel();
     try {
       final initialization = _initialization;
 
@@ -129,6 +172,8 @@ class AudioFileDecoder {
       _errors?.close();
       _exit?.close();
       _heartbeat?.cancel();
+      _quicOwner?.close();
+      _quicOwner = null;
 
       final commands = _commands;
 
@@ -153,9 +198,20 @@ class AudioFileDecoder {
     final result = Completer<Map<String, dynamic>>();
 
     _requests[requestId] = result;
-    port.send({'id': requestId, 'command': command, ...payload});
+    port.send({'id': requestId, 'command': command, 'operation_epoch': _quicOwner?.operationEpoch, ...payload});
 
-    return result.future;
+    if (_quicHost == null || command == 'close') {
+      return result.future;
+    }
+
+    return result.future.timeout(
+      const Duration(seconds: 7),
+      onTimeout: () {
+        _requests.remove(requestId);
+        _quicOwner?.cancel();
+        throw TimeoutException('Original decoder $command did not finish.');
+      },
+    );
   }
 
   void _handleMessage(dynamic raw) {
@@ -168,7 +224,10 @@ class AudioFileDecoder {
       // The child closes even if the audio engine must forcibly retire this
       // worker. A heartbeat lease also covers a race while registering exit.
       Isolate.current.addOnExitListener(commands, response: 'owner_exit');
-      _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) => commands.send('heartbeat'));
+      _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
+        _quicOwner?.heartbeat();
+        commands.send('heartbeat');
+      });
       commands.send({'command': 'open'});
 
       return;
@@ -206,11 +265,13 @@ class AudioFileDecoder {
 
   void _handleExit(dynamic _) {
     _heartbeat?.cancel();
+    _quicOwner?.close();
+    _quicOwner = null;
     if (!_exited.isCompleted) {
       _exited.complete();
     }
 
-    if (_shutdown == null) {
+    if (_shutdown == null || !_ready.isCompleted) {
       _fail(StateError('Audio decoder exited unexpectedly.'));
     }
   }
@@ -228,6 +289,15 @@ class AudioFileDecoder {
     _requests.clear();
   }
 }
+
+Future<Isolate> _spawnWorker(Map<String, dynamic> configuration, SendPort errors, SendPort exit) => Isolate.spawn(
+  _decodeFileWorker,
+  configuration,
+  debugName: 'phonolite_file_decoder',
+  onError: errors,
+  onExit: exit,
+  errorsAreFatal: true,
+);
 
 Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
   final reply = configuration['reply'] as SendPort;
@@ -249,14 +319,44 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
     final filePath = configuration['file_path'] as String?;
     final startOffset = Duration(milliseconds: configuration['start_ms'] as int);
 
-    decoder = filePath != null
-        ? LocalAudioDecoder.open(filePath, startOffset: startOffset)
-        : LocalAudioDecoder.openRemote(
-            configuration['url'] as String,
-            token: configuration['token'] as String,
-            serverPin: configuration['server_pin'] as String,
-            startOffset: startOffset,
-          );
+    final quicHost = configuration['quic_host'] as String?;
+
+    if (filePath != null) {
+      decoder = LocalAudioDecoder.open(filePath, startOffset: startOffset);
+    } else if (quicHost != null) {
+      final ownerId = configuration['quic_owner_id'] as int?;
+      if (ownerId != null && !QuicOwnerLease.beginOperation(ownerId, 0)) {
+        throw StateError('Original decoder open was superseded.');
+      }
+      final source = QuicSourceTransport.connect(
+        host: quicHost,
+        port: configuration['quic_port'] as int,
+        trackId: configuration['quic_track_id'] as String,
+        token: configuration['token'] as String,
+        serverPin: configuration['server_pin'] as String,
+        ownerId: configuration['quic_owner_id'] as int?,
+      );
+
+      try {
+        decoder = LocalAudioDecoder.openRemoteQuic(
+          sourceHandle: source.takeHandle(),
+          readRangeAddress: source.readRangeAddress,
+          errorCodeAddress: source.errorCodeAddress,
+          errorAddress: source.errorAddress,
+          closeAddress: source.closeAddress,
+          startOffset: startOffset,
+        );
+      } finally {
+        source.close();
+      }
+    } else {
+      decoder = LocalAudioDecoder.openRemote(
+        configuration['url'] as String,
+        token: configuration['token'] as String,
+        serverPin: configuration['server_pin'] as String,
+        startOffset: startOffset,
+      );
+    }
 
     reply.send({
       'type': 'ready',
@@ -265,6 +365,7 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
         channels: decoder.channels,
         bitDepth: decoder.bitDepth,
         duration: decoder.duration,
+        playableFrames: decoder.playableFrames,
       ),
     });
 
@@ -287,6 +388,13 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
 
         if (activeDecoder == null) {
           throw StateError('Audio decoder is closed.');
+        }
+
+        final ownerId = configuration['quic_owner_id'] as int?;
+        if (ownerId != null &&
+            (message['command'] == 'read' || message['command'] == 'seek') &&
+            !QuicOwnerLease.beginOperation(ownerId, message['operation_epoch'] as int)) {
+          throw StateError('Original decoder operation was superseded.');
         }
 
         switch (message['command']) {

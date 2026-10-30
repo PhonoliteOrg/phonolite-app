@@ -39,6 +39,8 @@ class _OfflineRowMapper {
     );
 
     return OfflineTrackDownload(
+      profile: OfflineLibraryStorage._tryReadNullableString(row, 'profile') ?? 'original',
+      renditionId: OfflineLibraryStorage._tryReadNullableString(row, 'rendition_id'),
       serverBaseUrl: serverBaseUrl,
       batchId: OfflineLibraryStorage._readNullableString(row, 'batch_id'),
       localTrackId: localTrackId,
@@ -63,6 +65,8 @@ class _OfflineRowMapper {
 
   OfflineDownloadJob _downloadJobFromRow(Row row) {
     return OfflineDownloadJob(
+      profile: OfflineLibraryStorage._tryReadNullableString(row, 'profile') ?? 'original',
+      serverJobId: OfflineLibraryStorage._tryReadNullableString(row, 'server_job_id'),
       jobId: OfflineLibraryStorage._readString(row, 'job_id'),
       kind: OfflineLibraryStorage._readString(row, 'kind'),
       serverBaseUrl: OfflineLibraryStorage._readString(row, 'server_base_url'),

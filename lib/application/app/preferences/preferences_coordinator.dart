@@ -24,6 +24,10 @@ class _PreferencesCoordinator {
   final _customShuffleSettingsController = StreamController<CustomShuffleSettings>.broadcast();
   final _collectionListModeController = StreamController<bool>.broadcast();
   bool _collectionListMode = false;
+  bool _gaplessResampling = false;
+  bool _gaplessResamplingTouched = false;
+  final _gaplessResamplingController = StreamController<bool>.broadcast();
+  Future<void> _gaplessResamplingSaveChain = Future.value();
 
   _PreferencesCoordinator(this._host);
 
@@ -41,8 +45,32 @@ class _PreferencesCoordinator {
 
   bool get collectionListMode => _collectionListMode;
 
+  bool get gaplessResampling => _gaplessResampling;
+
+  Stream<bool> get gaplessResamplingStream => _gaplessResamplingController.stream;
+
+  void setGaplessResampling(bool enabled, {bool persist = true}) {
+    if (_host._disposed) return;
+    if (persist) _gaplessResamplingTouched = true;
+    if (_gaplessResampling == enabled) return;
+    _host._gaplessCoordinator.invalidate();
+    _gaplessResampling = enabled;
+    _host._audio?.setGaplessResampling(enabled);
+    _gaplessResamplingController.add(enabled);
+    if (persist) {
+      _gaplessResamplingSaveChain = _gaplessResamplingSaveChain.then(
+        (_) => _host._playbackPreferencesStorage.writeGaplessResampling(enabled),
+      );
+    }
+    final track = _host._playbackState.track;
+    if (track != null && (_host._audio?.hasActivePlayer == true || _host._wantsPlayback)) {
+      _host._startPlayback(track, startOffset: _host._playbackState.position);
+    }
+  }
+
   Future<void> close() async {
-    await Future.wait([_customShuffleSaveChain, _repeatModeSaveChain]);
+    await _gaplessResamplingController.close();
+    await Future.wait([_customShuffleSaveChain, _repeatModeSaveChain, _gaplessResamplingSaveChain]);
   }
 
   Future<void> loadCustomShuffleSettings() async {
@@ -63,6 +91,11 @@ class _PreferencesCoordinator {
     final accountGeneration = _shuffleAccountGeneration;
     final changesServerFilters = artistIds != null || genres != null;
     final changesLocalFilters = localArtistIds != null || localGenres != null;
+    final active = _host._playbackState;
+    if (active.shuffleMode == ShuffleMode.custom &&
+        (active.shuffleScope == ActionScope.local ? changesLocalFilters : changesServerFilters)) {
+      _host._gaplessCoordinator.invalidate();
+    }
     final next = CustomShuffleSettings(
       artistIds: _normalizeCustomList(artistIds ?? _customShuffleSettings.artistIds),
       genres: _normalizeCustomList(genres ?? _customShuffleSettings.genres, lowerCase: true),
@@ -112,6 +145,7 @@ class _PreferencesCoordinator {
         state.shuffleMode == ShuffleMode.custom &&
         changedActiveFilters) {
       _host._resumeCoordinator.changed();
+      _host._gaplessCoordinator.prepare();
     }
   }
 
@@ -202,6 +236,7 @@ class _PreferencesCoordinator {
   Future<void> _loadPlaybackPreferences() async {
     await _loadLocalRepeatMode();
 
+    final gaplessRead = _host._playbackPreferencesStorage.readGaplessResampling();
     final storedCollectionListMode = await _host._playbackPreferencesStorage.readCollectionListMode();
 
     if (_host._disposed) {
@@ -218,15 +253,14 @@ class _PreferencesCoordinator {
       return;
     }
 
-    if (storedVolume == null) {
-      return;
+    if (storedVolume != null && !_volumeTouched) {
+      _host._applyVolume(storedVolume, persist: false);
     }
-
-    if (_volumeTouched) {
-      return;
+    final storedGaplessResampling = await gaplessRead;
+    if (_host._disposed) return;
+    if (!_gaplessResamplingTouched && storedGaplessResampling != null) {
+      setGaplessResampling(storedGaplessResampling, persist: false);
     }
-
-    _host._applyVolume(storedVolume, persist: false);
   }
 
   Future<void> _ensureCustomShuffleSettingsLoaded({bool force = false}) async {
@@ -384,6 +418,12 @@ mixin _PreferencesFacade {
   List<String> get localCustomShuffleGenres => _preferencesCoordinator.localCustomShuffleGenres;
 
   bool get collectionListMode => _preferencesCoordinator.collectionListMode;
+
+  bool get gaplessResampling => _preferencesCoordinator.gaplessResampling;
+
+  Stream<bool> get gaplessResamplingStream => _preferencesCoordinator.gaplessResamplingStream;
+
+  void setGaplessResampling(bool enabled) => _preferencesCoordinator.setGaplessResampling(enabled);
 
   Future<void> loadCustomShuffleSettings() => _preferencesCoordinator.loadCustomShuffleSettings();
 

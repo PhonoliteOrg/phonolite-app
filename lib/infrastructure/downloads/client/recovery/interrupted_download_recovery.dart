@@ -64,7 +64,7 @@ class _InterruptedDownloadRecovery {
 
     final repairedFile = await _host._storage.findExistingTrackFile(
       serverBaseUrl: download.serverBaseUrl,
-      trackId: _host._serverTrackId(download),
+      trackId: _host._downloadFileId(download),
       extensions: _trackFileExtensionCandidates(download),
     );
     if (repairedFile != null) {

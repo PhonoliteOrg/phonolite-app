@@ -239,6 +239,8 @@ class _FavoritesCoordinator {
       return;
     }
 
+    _host._gaplessCoordinator.invalidate(prepareAgain: true);
+
     _host._playQueue = nextQueue;
 
     if (_host._playQueue.isEmpty) {

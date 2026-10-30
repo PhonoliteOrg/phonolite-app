@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/data/models/downloads/offline_download_snapshot.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
@@ -31,7 +32,8 @@ class OfflineDownloadManager {
   OfflineDownloadManager({
     required ServerConnection connection,
     OfflineLibraryStorage storage = const OfflineLibraryStorage(),
-  }) : _client = OfflineDownloadClient(connection: connection, storage: storage);
+    Future<DownloadQuality> Function()? qualityProvider,
+  }) : _client = OfflineDownloadClient(connection: connection, storage: storage, qualityProvider: qualityProvider);
 
   ServerConnection get connection => _client.connection;
 

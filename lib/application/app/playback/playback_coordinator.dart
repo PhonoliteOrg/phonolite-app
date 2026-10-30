@@ -5,9 +5,6 @@ class _PlaybackCoordinator {
   final _playbackStarts = RequestGeneration();
   bool _wantsPlayback = false;
   bool _audioOutputStarted = false;
-  DateTime? _lastStartPlaybackAt;
-  String? _lastStartPlaybackTrackId;
-  int? _lastStartPlaybackOffsetMs;
   final _playbackController = StreamController<PlaybackState>.broadcast();
   late PlaybackState _playbackState;
   List<OutputDevice> _outputDevices = <OutputDevice>[];
@@ -37,6 +34,7 @@ class _PlaybackCoordinator {
   Future<void> stop() => _stop();
 
   Future<void> nextTrack({bool fromAutoAdvance = false}) async {
+    _host._gaplessCoordinator.invalidate();
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
@@ -109,6 +107,7 @@ class _PlaybackCoordinator {
   }
 
   Future<void> prevTrack({bool fromAutoAdvance = false}) async {
+    _host._gaplessCoordinator.invalidate();
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
@@ -170,6 +169,22 @@ class _PlaybackCoordinator {
       _host._streamRecoveryTimer?.cancel();
       _host._streamRecoveryTimer = null;
 
+      final audioReset = _host._nativeCoordinator._audioResetInFlight;
+      if (!paused && audioReset != null) {
+        final generation = _playbackStarts.current;
+        _updatePlayback(isPlaying: false, isLoading: false);
+        try {
+          await audioReset;
+        } catch (error) {
+          if (_playbackStarts.isCurrent(generation)) _host._nativeCoordinator._reportAudioResetFailure(error);
+          return;
+        }
+        if (!_host._disposed && _wantsPlayback && _playbackStarts.isCurrent(generation)) {
+          await pause(false);
+        }
+        return;
+      }
+
       if (!paused) {
         if (_playbackState.track == null) {
           final shuffleEnabled = _playbackState.shuffleMode != ShuffleMode.off;
@@ -191,9 +206,13 @@ class _PlaybackCoordinator {
         }
       }
 
-      _updatePlayback(isPlaying: !paused, isLoading: paused ? false : null);
+      final suspended = _host._audioSessionSuspended;
+      _updatePlayback(
+        isPlaying: !paused && !suspended,
+        isLoading: paused ? false : (_host._gaplessCoordinator.waitingForSuccessor ? true : null),
+      );
 
-      if (paused) {
+      if (paused || suspended) {
         _host._audioEngine.pause();
       } else if (_playbackState.track != null) {
         if (!_host._audioEngine.hasActivePlayer) {
@@ -204,6 +223,7 @@ class _PlaybackCoordinator {
         }
       }
 
+      _host._accountServices.reportPlaybackPresence();
       await _host._pushNowPlayingUpdate(force: true);
       _host._resumeCoordinator.changed();
     } on ApiException catch (err) {
@@ -214,6 +234,7 @@ class _PlaybackCoordinator {
   }
 
   void updateShuffleMode(ShuffleMode mode, {ActionScope? scope}) {
+    _host._gaplessCoordinator.invalidate();
     _host._shuffleCoordinator._clearServerShuffleSession();
     final nextScope = scope ?? _playbackState.shuffleScope;
 
@@ -228,21 +249,26 @@ class _PlaybackCoordinator {
       _host._queueShufflePlaylistId = null;
     }
     _host._resumeCoordinator.modeChanged();
+    _host._gaplessCoordinator.prepare();
   }
 
   void toggleRepeatMode() {
+    _host._gaplessCoordinator.invalidate();
     final next = _playbackState.repeatMode == PlaybackRepeatMode.off ? PlaybackRepeatMode.one : PlaybackRepeatMode.off;
 
     _updatePlayback(repeatMode: next);
     _host._pushMessage('Repeat: ${next.name}');
 
     unawaited(_host._persistPlaybackSettings(next));
+    _host._gaplessCoordinator.prepare();
   }
 
   void updateStreamMode(StreamMode mode) {
     if (mode == _playbackState.streamMode) {
       return;
     }
+
+    _host._gaplessCoordinator.invalidate();
 
     _updatePlayback(streamMode: mode);
     _host._pushMessage('Stream: ${mode.name}');
@@ -255,7 +281,6 @@ class _PlaybackCoordinator {
       // A paused output must also adopt the selected encoder settings. The
       // restart preserves _wantsPlayback, so prebuffering does not resume it.
       // Settings changes are distinct requests even at the same track/offset.
-      _lastStartPlaybackAt = null;
       _startPlayback(track, startOffset: _playbackState.position);
     }
   }
@@ -292,6 +317,8 @@ class _PlaybackCoordinator {
       return;
     }
 
+    _host._gaplessCoordinator.invalidate();
+
     final wasPlaying = _playbackState.isPlaying;
 
     _outputDeviceId = device.id;
@@ -305,12 +332,12 @@ class _PlaybackCoordinator {
     }
 
     if (_host._audioEngine.hasActivePlayer || wasPlaying) {
-      _lastStartPlaybackAt = null;
       _startPlayback(track, startOffset: _playbackState.position);
     }
   }
 
   Future<void> _stop({bool requireFileRelease = false}) async {
+    _host._gaplessCoordinator.invalidate();
     _host._resumeCoordinator.preserveBeforeStop();
     _host._accountServices.retireTrackStart();
     _host._shuffleCoordinator._clearServerShuffleSession();
@@ -420,7 +447,7 @@ class _PlaybackCoordinator {
     _wantsPlayback = true;
     _updatePlayback(
       track: track,
-      isPlaying: true,
+      isPlaying: !_host._audioSessionSuspended,
       position: Duration.zero,
       duration: Duration(milliseconds: track.durationMs),
       bufferRatio: 0.0,
@@ -527,6 +554,7 @@ class _PlaybackCoordinator {
       isLocalPlayback: isLocalPlayback,
     );
     _playbackController.add(_playbackState);
+    _host._accountServices.reportPlaybackPresence();
 
     if (nowPlaying) {
       _host._pushNowPlayingUpdate();
@@ -534,27 +562,14 @@ class _PlaybackCoordinator {
   }
 
   void _startPlayback(Track track, {Duration startOffset = Duration.zero, bool quickStart = true}) {
+    _host._gaplessCoordinator.invalidate();
+    _host._audioEngine.setGaplessResampling(_host.gaplessResampling);
     final settings = _streamSettings(_playbackState.streamMode);
     final queueIds = _host._buildQueueIds(track.id, 3);
     final offlineDownload = _host.availableOfflineDownloadForTrack(track.id);
     final shouldUseLocal =
         _playbackState.queueSource == PlaybackQueueSource.offline || !_host._canAttemptRemotePlayback;
-    final now = _host._playbackClock();
-    final offsetMs = startOffset.inMilliseconds;
 
-    if (_host._audioEngine.hasActivePlayer &&
-        _lastStartPlaybackTrackId == track.id &&
-        _lastStartPlaybackOffsetMs == offsetMs &&
-        _lastStartPlaybackAt != null &&
-        now.difference(_lastStartPlaybackAt!) < const Duration(milliseconds: 800)) {
-      _host._pushMessage('Playback already active; skipping duplicate start for ${track.title}.');
-
-      return;
-    }
-
-    _lastStartPlaybackAt = now;
-    _lastStartPlaybackTrackId = track.id;
-    _lastStartPlaybackOffsetMs = offsetMs;
     _host._awaitingStreamReconnect = false;
     _host._streamRecoveryTimer?.cancel();
     _host._streamRecoveryTimer = null;
@@ -564,12 +579,23 @@ class _PlaybackCoordinator {
     _host._prepareListeningSession(track, newSession: startOffset == Duration.zero);
     _host._seekRequests.advance();
 
-    final initialPaused = !_wantsPlayback;
-
     _host._resetPlaybackPositionTracking(position: startOffset);
     _host._resetBufferedEndHighWater(position: startOffset);
 
     Future<void> startSelectedSource() async {
+      final audioReset = _host._nativeCoordinator._audioResetInFlight;
+      if (audioReset != null) {
+        try {
+          await audioReset;
+        } catch (error) {
+          if (_playbackStarts.isCurrent(startGeneration)) _host._nativeCoordinator._reportAudioResetFailure(error);
+          return;
+        }
+        if (_host._disposed || !_playbackStarts.isCurrent(startGeneration) || _playbackState.track?.id != track.id) {
+          return;
+        }
+      }
+      final initialPaused = !_wantsPlayback || _host._audioSessionSuspended;
       if (shouldUseLocal) {
         if (offlineDownload == null) {
           _host._pushMessage('No downloaded file available for ${track.title}.', level: LogLevel.warning);
@@ -621,6 +647,7 @@ class _PlaybackCoordinator {
           quickStart: quickStart,
           initialPaused: initialPaused,
         );
+        if (_playbackStarts.isCurrent(startGeneration)) _host._gaplessCoordinator.prepare();
       } catch (err) {
         if (_host._disposed || !_playbackStarts.isCurrent(startGeneration)) {
           return;
@@ -635,7 +662,7 @@ class _PlaybackCoordinator {
             track,
             offlineDownload,
             startOffset: startOffset,
-            initialPaused: !_wantsPlayback,
+            initialPaused: !_wantsPlayback || _host._audioSessionSuspended,
             startGeneration: startGeneration,
           );
 
@@ -687,6 +714,7 @@ class _PlaybackCoordinator {
         startOffset: startOffset,
         initialPaused: initialPaused,
       );
+      if (_playbackStarts.isCurrent(startGeneration)) _host._gaplessCoordinator.prepare();
     } catch (err) {
       if (_host._disposed || !_playbackStarts.isCurrent(startGeneration)) {
         return;
@@ -733,7 +761,7 @@ class _PlaybackCoordinator {
       case StreamMode.low:
         return const StreamSettings(mode: 'fixed', quality: 'low', frameMs: 20);
       case StreamMode.original:
-        return const StreamSettings(mode: 'original', quality: 'source');
+        return const StreamSettings.original();
     }
   }
 }
@@ -751,12 +779,6 @@ mixin _PlaybackFacade {
   bool get _audioOutputStarted => _playbackCoordinator._audioOutputStarted;
 
   set _audioOutputStarted(bool value) => _playbackCoordinator._audioOutputStarted = value;
-
-  set _lastStartPlaybackAt(DateTime? value) => _playbackCoordinator._lastStartPlaybackAt = value;
-
-  set _lastStartPlaybackTrackId(String? value) => _playbackCoordinator._lastStartPlaybackTrackId = value;
-
-  set _lastStartPlaybackOffsetMs(int? value) => _playbackCoordinator._lastStartPlaybackOffsetMs = value;
 
   StreamController<PlaybackState> get _playbackController => _playbackCoordinator._playbackController;
 

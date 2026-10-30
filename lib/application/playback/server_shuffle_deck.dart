@@ -3,6 +3,21 @@ import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 
 typedef ShufflePageLoader = Future<ShuffleSessionPage> Function(int offset);
 
+/// A future occurrence in a deck. Reserving it never advances audible history.
+class ServerShuffleReservation {
+  final String sessionId;
+  final int origin;
+  final int position;
+  final Track track;
+
+  const ServerShuffleReservation({
+    required this.sessionId,
+    required this.origin,
+    required this.position,
+    required this.track,
+  });
+}
+
 /// Keeps the previous, current and upcoming ten-ID pages in memory. Absolute
 /// offsets let Previous reload history without downloading the full deck.
 class ServerShuffleDeck {
@@ -14,6 +29,9 @@ class ServerShuffleDeck {
   final _loading = <int, Future<ShuffleSessionPage?>>{};
   bool _closed = false;
   int _position = -1;
+  final _reservations = <int, ServerShuffleReservation>{};
+  ServerShuffleReservation? _lastCommittedReservation;
+  int _navigationRevision = 0;
 
   ServerShuffleDeck(ShuffleSessionPage first, {required ShufflePageLoader load})
     : sessionId = first.sessionId,
@@ -50,6 +68,9 @@ class ServerShuffleDeck {
 
   /// Keeps a playing track outside the deck while Next selects this candidate.
   void retainExternalCurrent() {
+    _navigationRevision++;
+    _reservations.clear();
+    _lastCommittedReservation = null;
     if (_position >= 0) {
       _position--;
     }
@@ -70,6 +91,9 @@ class ServerShuffleDeck {
   }
 
   Future<bool> move(int direction) async {
+    _navigationRevision++;
+    _reservations.clear();
+    _lastCommittedReservation = null;
     if (_closed || total == 0) return false;
     var candidate = _position + direction;
     var wrapped = false;
@@ -97,6 +121,80 @@ class ServerShuffleDeck {
     return false;
   }
 
+  /// Loads a successor, including across pages containing deleted IDs, while
+  /// leaving the current cursor untouched. A concurrent navigation invalidates
+  /// the reservation instead of letting a slow page response select old audio.
+  Future<ServerShuffleReservation?> reserveNext({ServerShuffleReservation? after}) async {
+    if (after != null &&
+        (after.sessionId != sessionId ||
+            (!identical(_reservations[after.position], after) &&
+                !(after.position == _position && identical(_lastCommittedReservation, after))))) {
+      return null;
+    }
+    final origin = after?.position ?? _position;
+    final revision = _navigationRevision;
+    bool isCurrent() =>
+        !_closed &&
+        _navigationRevision == revision &&
+        (after == null
+            ? _position == origin
+            : _position <= origin &&
+                  (identical(_reservations[origin], after) ||
+                      (_position == origin && identical(_lastCommittedReservation, after))));
+    final existing = _reservations.values.where((item) => item.origin == origin).firstOrNull;
+    if (existing != null) return existing;
+    // Two reserved occurrences are sufficient for the bounded short-track
+    // lookahead. Callers cannot pin arbitrarily many pages by peeking ahead.
+    if (_reservations.length >= 2) return null;
+    var candidate = origin + 1;
+    while (isCurrent() && candidate < total) {
+      final offset = (candidate ~/ pageSize) * pageSize;
+      final page = await _page(offset);
+      if (!isCurrent() || page == null) return null;
+      final index = page.itemOffsets.indexWhere((value) => value >= candidate);
+      if (index >= 0) {
+        final reservation = ServerShuffleReservation(
+          sessionId: sessionId,
+          origin: origin,
+          position: page.itemOffsets[index],
+          track: page.items[index],
+        );
+        _reservations[reservation.position] = reservation;
+        _trim((_position.clamp(0, total) ~/ pageSize) * pageSize);
+        return reservation;
+      }
+      if (offset != (_position ~/ pageSize) * pageSize &&
+          !_reservations.keys.any((position) => position ~/ pageSize == offset ~/ pageSize)) {
+        _pages.remove(offset);
+      }
+      candidate = page.nextOffset;
+    }
+    return null;
+  }
+
+  bool commitReservation(ServerShuffleReservation reservation) {
+    if (_closed ||
+        reservation.sessionId != sessionId ||
+        reservation.origin != _position ||
+        !identical(_reservations[reservation.position], reservation)) {
+      return false;
+    }
+    final page = _pages[(reservation.position ~/ pageSize) * pageSize];
+    final index = page?.itemOffsets.indexOf(reservation.position) ?? -1;
+    if (page == null || index < 0 || page.items[index].id != reservation.track.id) return false;
+    _position = reservation.position;
+    _lastCommittedReservation = reservation;
+    _reservations.remove(reservation.position);
+    _trim((_position ~/ pageSize) * pageSize);
+    return true;
+  }
+
+  void cancelReservation(ServerShuffleReservation reservation) {
+    if (!identical(_reservations[reservation.position], reservation)) return;
+    _reservations.removeWhere((position, _) => position >= reservation.position);
+    _trim((_position.clamp(0, total) ~/ pageSize) * pageSize);
+  }
+
   Future<void> prefetch() async {
     if (_closed || _position < 0) return;
     final offset = (_position ~/ pageSize) * pageSize;
@@ -108,6 +206,9 @@ class ServerShuffleDeck {
 
   void close() {
     _closed = true;
+    _navigationRevision++;
+    _reservations.clear();
+    _lastCommittedReservation = null;
     _pages.clear();
     _loading.clear();
   }
@@ -129,7 +230,10 @@ class ServerShuffleDeck {
     });
   }
 
-  void _trim(int around) => _pages.removeWhere((offset, _) => (offset - around).abs() > pageSize);
+  void _trim(int around) {
+    final reservedPages = _reservations.keys.map((position) => (position ~/ pageSize) * pageSize).toSet();
+    _pages.removeWhere((offset, _) => !reservedPages.contains(offset) && (offset - around).abs() > pageSize);
+  }
 
   void _validate(ShuffleSessionPage page, int expectedOffset) {
     if (page.sessionId != sessionId ||

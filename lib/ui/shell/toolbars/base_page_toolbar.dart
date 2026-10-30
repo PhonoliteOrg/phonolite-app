@@ -45,7 +45,8 @@ abstract class BasePageToolbar extends StatelessWidget implements PreferredSizeW
       final row = Row(
         crossAxisAlignment: contentAlignment(context, constraints),
         children: [
-          if (leading != null) leading,
+          if (leading != null)
+            if (title == null && actions == null) Flexible(child: leading) else leading,
           if (title != null) ...[if (leading != null) SizedBox(width: spacing), Expanded(child: title)],
           if (actions != null) ...[
             if (leading != null || title != null) SizedBox(width: spacing),

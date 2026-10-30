@@ -95,6 +95,214 @@ void main() {
     expect(repository.current.at(0)!.id, '0');
   });
 
+  test('background refresh preserves a deep window until every replacement page is ready', () async {
+    final first = Completer<ArtistSummaryPage>();
+    final deep = Completer<ArtistSummaryPage>();
+    final requests = <({int offset, String? revision})>[];
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) {
+        requests.add((offset: offset, revision: revision));
+
+        return offset == 0 ? first.future : deep.future;
+      },
+      sessionRevision: () => 1,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(0, _page(0, revision: 'old', logo: 'old.png'));
+    repository.retainPage(1200, _page(1200, revision: 'old', logo: 'old.png'));
+    final snapshots = <String?>[];
+    final subscription = repository.changes.listen((snapshot) => snapshots.add(snapshot.at(1200)?.logoRef));
+    addTearDown(subscription.cancel);
+
+    final refresh = repository.refresh();
+    expect(repository.refresh(), same(refresh));
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.current.at(1200)!.logoRef, 'old.png');
+    first.complete(_page(0, revision: 'new', logo: 'new.png'));
+    await Future<void>.delayed(Duration.zero);
+    expect(requests, [(offset: 0, revision: null), (offset: 1200, revision: 'new')]);
+    expect(repository.current.revision, 'old');
+    expect(repository.current.at(0)!.logoRef, 'old.png');
+    expect(repository.current.at(1200)!.logoRef, 'old.png');
+
+    deep.complete(_page(1200, revision: 'new', logo: 'new.png'));
+    expect((await refresh)!.browseRevision, 'new');
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.current.revision, 'new');
+    expect(repository.current.at(0)!.logoRef, 'new.png');
+    expect(repository.current.at(1200)!.logoRef, 'new.png');
+    expect(snapshots, ['new.png']);
+  });
+
+  test('a failed window refresh retains every old page and allows a later retry', () async {
+    var fail = true;
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) async {
+        if (fail && offset == 1200) {
+          throw StateError('Temporary fetch failure');
+        }
+
+        return _page(offset, revision: 'new', logo: 'new.png');
+      },
+      sessionRevision: () => 1,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(0, _page(0, revision: 'old', logo: 'old.png'));
+    repository.retainPage(1200, _page(1200, revision: 'old', logo: 'old.png'));
+
+    await expectLater(repository.refresh(), throwsStateError);
+    expect(repository.current.revision, 'old');
+    expect(repository.current.total, 5000);
+    expect(repository.current.at(0)!.logoRef, 'old.png');
+    expect(repository.current.at(1200)!.logoRef, 'old.png');
+
+    fail = false;
+    await repository.refresh();
+    expect(repository.current.at(1200)!.logoRef, 'new.png');
+  });
+
+  test('a successful empty refresh replaces stale artists', () async {
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) async =>
+          ArtistSummaryPage(items: const [], total: 0, browseRevision: 'empty'),
+      sessionRevision: () => 1,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(1200, _page(1200, revision: 'old'));
+
+    final page = await repository.refresh();
+    expect(page!.items, isEmpty);
+    expect(repository.current.total, 0);
+    expect(repository.current.revision, 'empty');
+    expect(repository.current.at(1200), isNull);
+  });
+
+  test('a new session fences a staged background refresh and clears the previous account', () async {
+    var session = 1;
+    final response = Completer<ArtistSummaryPage>();
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) => response.future,
+      sessionRevision: () => session,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(0, _page(0, revision: 'old'));
+    final refresh = repository.refresh();
+    await Future<void>.delayed(Duration.zero);
+    session++;
+    repository.reset();
+    expect(repository.current.total, 0);
+
+    response.complete(_page(0, revision: 'new'));
+    expect(await refresh, isNull);
+    expect(repository.current.total, 0);
+    expect(repository.current.pages, isEmpty);
+  });
+
+  test('window refresh retries revision conflicts without publishing a mixed catalogue', () async {
+    var firstReads = 0;
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) async {
+        if (offset == 0) {
+          firstReads++;
+
+          return _page(offset, revision: firstReads == 1 ? 'superseded' : 'new');
+        }
+
+        if (revision == 'superseded') {
+          throw ApiException(409, 'catalogue changed');
+        }
+
+        return _page(offset, revision: 'new');
+      },
+      sessionRevision: () => 1,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(1200, _page(1200, revision: 'old'));
+
+    final refreshed = await repository.refresh();
+    expect(firstReads, 2);
+    expect(refreshed!.browseRevision, 'new');
+    expect(repository.current.at(1200)!.id, '1200');
+    expect(repository.current.pages.values.map((page) => page.browseRevision), everyElement('new'));
+  });
+
+  test('staged refreshes stay within read admission and retain the bounded window', () async {
+    var active = 0;
+    var peak = 0;
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) async {
+        active++;
+        if (active > peak) peak = active;
+        await Future<void>.delayed(Duration.zero);
+        active--;
+
+        return _page(offset, revision: 'new');
+      },
+      sessionRevision: () => 1,
+      maxPages: 3,
+      concurrency: 2,
+    );
+    addTearDown(repository.close);
+    for (final offset in [600, 1200, 1800]) {
+      repository.retainPage(offset, _page(offset, revision: 'old'));
+    }
+
+    await repository.refresh();
+    expect(peak, lessThanOrEqualTo(2));
+    expect(repository.current.pages.length, 3);
+    expect(repository.current.at(1800)!.id, '1800');
+    expect(repository.current.retainedBytes, lessThanOrEqualTo(4 * 1024 * 1024));
+  });
+
+  test('missing visible pages wait for the staged revision and share their queued work', () async {
+    final first = Completer<ArtistSummaryPage>();
+    final requests = <({int offset, String? revision})>[];
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) {
+        requests.add((offset: offset, revision: revision));
+
+        return offset == 0 ? first.future : Future.value(_page(offset, revision: 'new'));
+      },
+      sessionRevision: () => 1,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(0, _page(0, revision: 'old'));
+    final refresh = repository.refresh();
+    await Future<void>.delayed(Duration.zero);
+    final visible = repository.loadIndex(60);
+    expect(repository.loadIndex(61), same(visible));
+    expect(requests, [(offset: 0, revision: null)]);
+    expect(repository.current.revision, 'old');
+
+    first.complete(_page(0, revision: 'new'));
+    await refresh;
+    await visible;
+    expect(requests, [(offset: 0, revision: null), (offset: 60, revision: 'new')]);
+    expect(repository.current.at(60)!.id, '60');
+  });
+
+  test('metadata committed while staging cannot be replaced by an older response', () async {
+    final response = Completer<ArtistSummaryPage>();
+    var reads = 0;
+    final repository = ArtistBrowseRepository(
+      fetch: ({required limit, required offset, revision}) {
+        reads++;
+
+        return reads == 1 ? response.future : Future.value(_page(offset, logo: 'new.png'));
+      },
+      sessionRevision: () => 1,
+    );
+    addTearDown(repository.close);
+    repository.retainPage(0, _page(0, logo: 'old.png'));
+    final refresh = repository.refresh();
+    await Future<void>.delayed(Duration.zero);
+    repository.invalidateArtist('0');
+    response.complete(_page(0, logo: 'old.png'));
+    await refresh;
+    expect(reads, 2);
+    expect(repository.current.at(0)!.logoRef, 'new.png');
+  });
+
   test('new visible pages replace obsolete queued work instead of waiting behind it', () async {
     final responses = <int, Completer<ArtistSummaryPage>>{};
     final repository = ArtistBrowseRepository(

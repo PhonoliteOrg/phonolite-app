@@ -54,7 +54,7 @@ class _RemoteAudioSource {
       if (event['type'] == 'error') {
         final message = 'Audio range request failed: ${event['message']}';
 
-        if (event['origin'] == 'server') {
+        if (event['origin'] == 'server' && event['retryable'] != true && !_retryableServerFailure(event['message'])) {
           throw AudioSourceRejected(message);
         }
 
@@ -80,13 +80,32 @@ class _RemoteAudioSource {
     }
   }
 
+  bool _retryableServerFailure(Object? message) {
+    // Older servers expose only a message. Keep their explicit admission and
+    // shutdown failures recoverable; unknown source/auth failures stay rejected.
+    final text = message?.toString().toLowerCase() ?? '';
+    return text.contains('capacity exhausted') ||
+        text.contains('stream capacity unavailable') ||
+        text.contains('streamlimit') ||
+        text.contains('server shutting down') ||
+        text.contains('worker stopped');
+  }
+
   Future<void> _receiveRemoteAudio(QuicClient quic) async {
     final data = Uint8List(64 * 1024);
+    final progress = _AudioProgressDeadline(_host.transportProgressTimeout);
+    var progressRequestId = _transportRequestId;
 
     while (_host._isActive && !_host._remotePlaybackComplete) {
       _pollTransportEvents(quic);
 
+      if (progressRequestId != _transportRequestId) {
+        progressRequestId = _transportRequestId;
+        progress.reset();
+      }
+
       if (_host._streamEnded && !_waitingForHeader) {
+        progress.reset();
         await Future<void>.delayed(const Duration(milliseconds: 5));
         continue;
       }
@@ -113,6 +132,7 @@ class _RemoteAudioSource {
       final horizon = _host._encodedReadAheadTargetMs;
 
       if (!_waitingForHeader && ahead >= horizon + 1000) {
+        progress.reset();
         _host._reportBuffer();
         await Future<void>.delayed(const Duration(milliseconds: 10));
         continue;
@@ -122,7 +142,16 @@ class _RemoteAudioSource {
 
       _pollTransportEvents(quic);
 
+      if (progressRequestId != _transportRequestId) {
+        progressRequestId = _transportRequestId;
+        progress.reset();
+      }
+
       if (read == -5) {
+        progress.check(
+          waiting: !_host._userPaused && (_waitingForHeader || ahead < horizon),
+          operation: 'QUIC audio delivery',
+        );
         await Future<void>.delayed(const Duration(milliseconds: 10));
         continue;
       }
@@ -132,6 +161,7 @@ class _RemoteAudioSource {
       }
 
       _host._bytesReceived += read;
+      progress.reset();
 
       for (final event in _host._rawReader.add(Uint8List.sublistView(data, 0, read))) {
         if (event is RawOpusSeekMarker) {

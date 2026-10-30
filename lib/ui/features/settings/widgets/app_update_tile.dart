@@ -40,7 +40,7 @@ class AppUpdateTile extends StatelessWidget {
     listenable: controller,
     builder: (context, _) {
       final enabled = controller.canCheckForUpdates;
-      final color = enabled ? ObsidianPalette.gold : ObsidianPalette.textMuted;
+      final color = controller.latestRelease != null ? ObsidianPalette.gold : ObsidianPalette.textMuted;
 
       return Semantics(
         button: true,
@@ -53,7 +53,6 @@ class AppUpdateTile extends StatelessWidget {
             title: 'App updates',
             subtitle: _subtitle,
             titleColor: enabled ? null : color,
-            trailing: const Icon(PhonoliteIcons.chevronRight),
             onTap: enabled
                 ? controller.canInstall
                       ? controller.installLatestUpdate

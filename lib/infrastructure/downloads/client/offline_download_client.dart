@@ -12,6 +12,7 @@ import 'package:phonolite_app/data/files/download_integrity.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/download_outcomes.dart';
+import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/data/models/downloads/download_worker_protocol.dart';
 import 'package:phonolite_app/data/models/downloads/offline_actor_protocol.dart';
 import 'package:phonolite_app/data/models/downloads/offline_download_snapshot.dart';
@@ -47,6 +48,7 @@ part 'deletion/reset_local_download_data.dart';
 part 'download_runtime.dart';
 part 'metadata/offline_metadata_repair.dart';
 part 'planning/artist_job_discovery.dart';
+part 'planning/compressed_download_jobs.dart';
 part 'planning/download_job_materializer.dart';
 part 'planning/download_planner.dart';
 part 'planning/rolling_download_jobs.dart';
@@ -67,14 +69,21 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
   late final _OfflineActorClient _ownerActor;
   @override
   late final _OfflineSnapshotPublisher _ownerSnapshots;
+  final Future<DownloadQuality> Function()? _qualityProvider;
   final ServerConnection connection;
   final OfflineStorageConfig _storageConfig;
   final _OfflineDownloadActorCore? _inlineCore;
   int _nextCommandId = 1;
 
-  OfflineDownloadClient({required this.connection, OfflineLibraryStorage storage = const OfflineLibraryStorage()})
-    : _storageConfig = OfflineStorageConfig.fromStorage(storage),
-      _inlineCore = _canUseActor(storage) ? null : _OfflineDownloadActorCore(connection: connection, storage: storage) {
+  OfflineDownloadClient({
+    required this.connection,
+    OfflineLibraryStorage storage = const OfflineLibraryStorage(),
+    Future<DownloadQuality> Function()? qualityProvider,
+  }) : _qualityProvider = qualityProvider,
+       _storageConfig = OfflineStorageConfig.fromStorage(storage),
+       _inlineCore = _canUseActor(storage)
+           ? null
+           : _OfflineDownloadActorCore(connection: connection, storage: storage) {
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _ownerActor = _OfflineActorClient(this);
     _ownerSnapshots = _OfflineSnapshotPublisher(this);
@@ -268,7 +277,9 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
     return List.unmodifiable(_librarySnapshot.tracks);
   }
 
-  Future<int> downloadTrack(Track track) {
+  Future<int> downloadTrack(Track track) => _withQueueQuality(() => _downloadTrack(track));
+
+  Future<int> _downloadTrack(Track track) {
     final core = _inlineCore;
     if (core != null) {
       return core.downloadTrack(track);
@@ -277,7 +288,10 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
     return _send<int>('downloadTrack', track);
   }
 
-  Future<int> queueTracks(Iterable<Track> tracks, {String? label, String kind = 'tracks', String? sourceId}) {
+  Future<int> queueTracks(Iterable<Track> tracks, {String? label, String kind = 'tracks', String? sourceId}) =>
+      _withQueueQuality(() => _queueTracks(tracks, label: label, kind: kind, sourceId: sourceId));
+
+  Future<int> _queueTracks(Iterable<Track> tracks, {String? label, String kind = 'tracks', String? sourceId}) {
     final core = _inlineCore;
     if (core != null) {
       return core.queueTracks(tracks, label: label, kind: kind, sourceId: sourceId);
@@ -295,7 +309,9 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
     return _send<int>('queueBatch', OfflineQueueBatchRequest(manifest, label));
   }
 
-  Future<int> queueArtist(Artist artist, List<Album> albums) {
+  Future<int> queueArtist(Artist artist, List<Album> albums) => _withQueueQuality(() => _queueArtist(artist, albums));
+
+  Future<int> _queueArtist(Artist artist, List<Album> albums) {
     final core = _inlineCore;
     if (core != null) {
       return core.queueArtist(artist, albums);
@@ -425,7 +441,7 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
     );
     final core = _inlineCore;
     if (core != null) {
-      return core.downloadPlaylist(request);
+      return _withQueueQuality(() => core.downloadPlaylist(request));
     }
 
     return _send<Playlist>('downloadPlaylist', request);
@@ -479,11 +495,21 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
         storage.downloadsDirectory == null;
   }
 
+  Future<T> _withQueueQuality<T>(Future<T> Function() operation) async {
+    final inherited = Zone.current[#downloadQueueProfile] as String?;
+    final profile = inherited ?? (await _qualityProvider?.call() ?? DownloadQuality.original).wireValue;
+
+    return runZoned(operation, zoneValues: {#downloadQueueProfile: profile});
+  }
+
   Future<T> _send<T>(String name, [Object? payload]) async {
     if (_disposed && name != 'dispose') {
       throw StateError('Offline download manager disposed');
     }
 
+    final profile =
+        Zone.current[#downloadQueueProfile] as String? ??
+        (await _qualityProvider?.call() ?? DownloadQuality.original).wireValue;
     await _ensureActor();
 
     final port = _actorPort;
@@ -498,6 +524,7 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
     port.send(
       OfflineActorCommand(
         id: id,
+        profile: profile,
         name: name,
         payload: payload,
         baseUrl: connection.baseUrl,

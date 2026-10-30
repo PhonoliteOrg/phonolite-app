@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
@@ -142,8 +143,252 @@ class ServerIdentityChangedException extends QuicException {
       );
 }
 
-class QuicClient {
-  QuicClient._(this._bindings, this._handle);
+/// Keeps source cancellation independent of the decoder's exclusively owned pointer.
+class QuicOwnerLease implements ffi.Finalizable {
+  static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
+    _loadLibrary().lookup('phonolite_quic_owner_release_finalizer'),
+  );
+  final void Function(int) _heartbeat;
+  final void Function(int) _cancel;
+  final int Function(int) _alive;
+  final int Function(int) _interrupt;
+  final void Function(ffi.Pointer<ffi.Void>) _release;
+  int _id;
+  int _operationEpoch = 0;
+
+  QuicOwnerLease._(
+    this._id,
+    this._heartbeat,
+    this._cancel,
+    this._alive,
+    this._interrupt,
+    this._release,
+    ffi.NativeFinalizer finalizer,
+  ) {
+    finalizer.attach(this, ffi.Pointer.fromAddress(_id), detach: this);
+  }
+
+  factory QuicOwnerLease() {
+    final library = _loadLibrary();
+    final finalizer = _finalizer;
+    final create = library
+        .lookupFunction<ffi.Uint64 Function(), int Function()>(
+          'phonolite_quic_owner_create',
+        );
+    final heartbeat = library
+        .lookupFunction<ffi.Void Function(ffi.Uint64), void Function(int)>(
+          'phonolite_quic_owner_heartbeat',
+        );
+    final cancel = library
+        .lookupFunction<ffi.Void Function(ffi.Uint64), void Function(int)>(
+          'phonolite_quic_owner_cancel',
+        );
+    final release = library
+        .lookupFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Void>),
+          void Function(ffi.Pointer<ffi.Void>)
+        >('phonolite_quic_owner_release');
+    final alive = library
+        .lookupFunction<ffi.Int32 Function(ffi.Uint64), int Function(int)>(
+          'phonolite_quic_owner_alive',
+        );
+    final interrupt = library
+        .lookupFunction<ffi.Uint64 Function(ffi.Uint64), int Function(int)>(
+          'phonolite_quic_owner_interrupt',
+        );
+    final id = create();
+    if (id == 0) throw QuicException('Could not create QUIC owner.');
+    return QuicOwnerLease._(
+      id,
+      heartbeat,
+      cancel,
+      alive,
+      interrupt,
+      release,
+      finalizer,
+    );
+  }
+
+  int get id => _id;
+  bool get isAlive => _id != 0 && _alive(_id) != 0;
+  int get operationEpoch => _operationEpoch;
+  void interrupt() {
+    if (_id != 0) _operationEpoch = _interrupt(_id);
+  }
+
+  static final _beginOperation = _loadLibrary()
+      .lookupFunction<
+        ffi.Int32 Function(ffi.Uint64, ffi.Uint64),
+        int Function(int, int)
+      >('phonolite_quic_owner_begin_operation');
+  static bool beginOperation(int ownerId, int epoch) =>
+      _beginOperation(ownerId, epoch) != 0;
+  void heartbeat() {
+    if (_id != 0) _heartbeat(_id);
+  }
+
+  void cancel() {
+    if (_id != 0) _cancel(_id);
+  }
+
+  void close() {
+    final id = _id;
+    _id = 0;
+    if (id != 0) {
+      _finalizer.detach(this);
+      _release(ffi.Pointer.fromAddress(id));
+    }
+  }
+}
+
+/// Transfers a native, version-pinned source connection to the file decoder.
+/// Function pointers stay native across decoder reads; Dart is never called back.
+class QuicSourceTransport implements ffi.Finalizable {
+  static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
+    _loadLibrary().lookup('phonolite_quic_source_close'),
+  );
+  final int readRangeAddress;
+  final int errorCodeAddress;
+  final int errorAddress;
+  final int closeAddress;
+  final void Function(ffi.Pointer<ffi.Void>) _close;
+  int _handle;
+
+  QuicSourceTransport._(
+    this._handle,
+    this.readRangeAddress,
+    this.errorCodeAddress,
+    this.errorAddress,
+    this.closeAddress,
+    this._close,
+  ) {
+    _finalizer.attach(this, ffi.Pointer.fromAddress(_handle), detach: this);
+  }
+
+  factory QuicSourceTransport.connect({
+    required String host,
+    required int port,
+    required String trackId,
+    required String token,
+    required String serverPin,
+    int? ownerId,
+  }) {
+    if (port <= 0 || port > 65535)
+      throw ArgumentError.value(port, 'port', 'Invalid QUIC port.');
+    final library = _loadLibrary();
+    final connect = library
+        .lookupFunction<
+          ffi.Pointer<ffi.Void> Function(
+            ffi.Pointer<Utf8>,
+            ffi.Uint16,
+            ffi.Pointer<Utf8>,
+            ffi.Pointer<Utf8>,
+            ffi.Pointer<Utf8>,
+            ffi.Uint64,
+          ),
+          ffi.Pointer<ffi.Void> Function(
+            ffi.Pointer<Utf8>,
+            int,
+            ffi.Pointer<Utf8>,
+            ffi.Pointer<Utf8>,
+            ffi.Pointer<Utf8>,
+            int,
+          )
+        >('phonolite_quic_source_connect_owned');
+    // Resolve the complete table before creating a connection, so a stale
+    // native library cannot strand an unowned handle partway through lookup.
+    final read = library
+        .lookup<ffi.Void>('phonolite_quic_source_read_range')
+        .address;
+    final errorCode = library
+        .lookup<ffi.Void>('phonolite_quic_source_error_code')
+        .address;
+    final error = library
+        .lookup<ffi.Void>('phonolite_quic_source_error')
+        .address;
+    final closePointer = library
+        .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+          'phonolite_quic_source_close',
+        );
+    final hostPointer = host.toNativeUtf8();
+    final trackPointer = trackId.toNativeUtf8();
+    final tokenPointer = token.toNativeUtf8();
+    final pinPointer = serverPin.toNativeUtf8();
+    try {
+      final handle = connect(
+        hostPointer,
+        port,
+        trackPointer,
+        tokenPointer,
+        pinPointer,
+        ownerId ?? 0,
+      );
+      if (handle == ffi.nullptr)
+        throw QuicException('Could not open Original audio over QUIC.');
+      return QuicSourceTransport._(
+        handle.address,
+        read,
+        errorCode,
+        error,
+        closePointer.address,
+        closePointer.asFunction(),
+      );
+    } finally {
+      tokenPointer
+          .cast<ffi.Uint8>()
+          .asTypedList(utf8.encode(token).length)
+          .fillRange(0, utf8.encode(token).length, 0);
+      calloc.free(hostPointer);
+      calloc.free(trackPointer);
+      calloc.free(tokenPointer);
+      calloc.free(pinPointer);
+    }
+  }
+
+  int get handle => _handle;
+
+  /// The native decoder must consume the returned handle even if open fails.
+  int takeHandle() {
+    if (_handle == 0)
+      throw StateError('QUIC source ownership was already transferred.');
+    final value = _handle;
+    _finalizer.detach(this);
+    _handle = 0;
+    return value;
+  }
+
+  void close() {
+    final handle = _handle;
+    _handle = 0;
+    if (handle != 0) {
+      _finalizer.detach(this);
+      _close(ffi.Pointer<ffi.Void>.fromAddress(handle));
+    }
+  }
+}
+
+class QuicClient implements ffi.Finalizable {
+  static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
+    _loadLibrary().lookup('phonolite_quic_close'),
+  );
+  static final ffi.NativeFinalizer _bufferFinalizer = ffi.NativeFinalizer(
+    calloc.nativeFree,
+  );
+  final Object _bufferDetach = Object();
+  Timer? _heartbeat;
+
+  QuicClient._(this._bindings, this._handle) {
+    _finalizer.attach(this, _handle.cast(), detach: this);
+    final owner = WeakReference(this);
+    _heartbeat = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final client = owner.target;
+      if (client == null || client._closed) {
+        timer.cancel();
+      } else {
+        client._bindings.heartbeat(client._handle);
+      }
+    });
+  }
 
   static QuicClient connect({
     required String host,
@@ -225,8 +470,17 @@ class QuicClient {
     _ensureActive();
     if (buffer.isEmpty) return 0;
     if (buffer.length > _readCapacity) {
-      if (_readBuffer != ffi.nullptr) calloc.free(_readBuffer);
+      if (_readBuffer != ffi.nullptr) {
+        _bufferFinalizer.detach(_bufferDetach);
+        calloc.free(_readBuffer);
+      }
       _readBuffer = calloc<ffi.Uint8>(buffer.length);
+      _bufferFinalizer.attach(
+        this,
+        _readBuffer.cast(),
+        detach: _bufferDetach,
+        externalSize: buffer.length,
+      );
       _readCapacity = buffer.length;
     }
     final read = _bindings.read(_handle, _readBuffer, buffer.length);
@@ -363,7 +617,12 @@ class QuicClient {
       return;
     }
     _bindings.close(_handle);
-    if (_readBuffer != ffi.nullptr) calloc.free(_readBuffer);
+    _finalizer.detach(this);
+    _heartbeat?.cancel();
+    if (_readBuffer != ffi.nullptr) {
+      _bufferFinalizer.detach(_bufferDetach);
+      calloc.free(_readBuffer);
+    }
     _readBuffer = ffi.nullptr;
     _readCapacity = 0;
     _handle = ffi.nullptr;
@@ -378,6 +637,9 @@ class QuicClient {
 }
 
 ffi.DynamicLibrary _loadLibrary() {
+  final override = Platform.environment['PHONOLITE_QUIC_LIBRARY'];
+  if (override != null && override.isNotEmpty)
+    return ffi.DynamicLibrary.open(override);
   if (Platform.isIOS || Platform.isMacOS) {
     final exec = File(Platform.resolvedExecutable);
     final frameworkPath = Platform.isMacOS
@@ -461,7 +723,7 @@ typedef _ReadNative =
     ffi.Int32 Function(
       ffi.Pointer<_QuicHandle>,
       ffi.Pointer<ffi.Uint8>,
-      ffi.Uint64,
+      ffi.Size,
     );
 typedef _ReadDart =
     int Function(ffi.Pointer<_QuicHandle>, ffi.Pointer<ffi.Uint8>, int);
@@ -514,7 +776,9 @@ typedef _CloseDart = void Function(ffi.Pointer<_QuicHandle>);
 class _Bindings {
   _Bindings(ffi.DynamicLibrary library)
     : connect = library
-          .lookup<ffi.NativeFunction<_ConnectNative>>('phonolite_quic_connect')
+          .lookup<ffi.NativeFunction<_ConnectNative>>(
+            'phonolite_quic_connect_owned',
+          )
           .asFunction(),
       openTrack = library
           .lookup<ffi.NativeFunction<_OpenTrackNative>>(
@@ -577,7 +841,10 @@ class _Bindings {
           .asFunction(),
       close = library
           .lookup<ffi.NativeFunction<_CloseNative>>('phonolite_quic_close')
-          .asFunction();
+          .asFunction(),
+      heartbeat = library.lookupFunction<_CloseNative, _CloseDart>(
+        'phonolite_quic_heartbeat',
+      );
 
   final _ConnectDart connect;
   final _OpenTrackDart openTrack;
@@ -594,4 +861,5 @@ class _Bindings {
   final _PollRttDart pollRttMs;
   final _FreeStringDart freeString;
   final _CloseDart close;
+  final _CloseDart heartbeat;
 }

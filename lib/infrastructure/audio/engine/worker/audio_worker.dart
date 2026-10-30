@@ -15,6 +15,7 @@ void _audioWorkerMain(AudioWorkerInit init) {
   init.sendPort.send(receivePort.sendPort);
 
   final engine = _AudioWorkerEngine(send: init.sendPort.send);
+  const defaultSettings = StreamSettings.original();
 
   Future<void> handleCommand(Object? message) async {
     if (message is! Map) {
@@ -24,6 +25,25 @@ void _audioWorkerMain(AudioWorkerInit init) {
     final cmd = message['cmd'];
 
     switch (cmd) {
+      case 'commit_gapless':
+        if (message['playback_id'] == engine._playbackId) {
+          engine.acknowledge((message['preparation_id'] as num?)?.toInt() ?? 0);
+        }
+        break;
+      case 'gapless_resampling':
+        engine.gaplessResampling = message['enabled'] == true;
+        break;
+      case 'prepare_next':
+        await engine.prepareNext(message);
+        break;
+      case 'cancel_prepared':
+        if (message['playback_id'] == engine._playbackId || message['playback_id'] == engine._requestedPlaybackId) {
+          await engine.cancelPreparedNext(preparationId: (message['preparation_id'] as num?)?.toInt());
+        }
+        if (message['release_request_id'] != null) {
+          init.sendPort.send({'type': 'prepared_released', 'release_request_id': message['release_request_id']});
+        }
+        break;
       case 'listening_context':
         final context = message['context'];
 
@@ -52,9 +72,9 @@ void _audioWorkerMain(AudioWorkerInit init) {
           serverPin: message['server_pin']?.toString() ?? '',
           quicPort: (message['quic_port'] as num?)?.toInt(),
           settings: StreamSettings(
-            mode: message['mode']?.toString() ?? 'auto',
-            quality: message['quality']?.toString() ?? 'high',
-            frameMs: (message['frame_ms'] as num?)?.toInt() ?? 60,
+            mode: message['mode']?.toString() ?? defaultSettings.mode,
+            quality: message['quality']?.toString() ?? defaultSettings.quality,
+            frameMs: (message['frame_ms'] as num?)?.toInt() ?? defaultSettings.frameMs,
           ),
           startOffset: Duration(milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0),
           queueTrackIds: queue,

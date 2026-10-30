@@ -78,7 +78,7 @@ class _SearchPageState extends BasePageState<SearchPage> {
                   final results = snapshot.data ?? [];
 
                   if (results.isEmpty) {
-                    return const EmptyState(title: 'No results', message: 'Try another search term.');
+                    return const EmptyStateText(title: 'No results', message: 'Try another search term.');
                   }
 
                   return GlassPanel(

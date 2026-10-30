@@ -39,8 +39,7 @@ Future<Map<String, Object?>> inspectQualityWire(
   return _inspectConfig(config);
 }
 
-Future<Map<String, Object?>> _inspectConfig(Map<String, Object?> config) =>
-    Isolate.run(() => _readQuality(config));
+Future<Map<String, Object?>> _inspectConfig(Map<String, Object?> config) => Isolate.run(() => _readQuality(config));
 
 Future<Map<String, Object?>> _readQuality(Map<String, Object?> config) async {
   final client = QuicClient.connect(
@@ -74,20 +73,14 @@ Future<Map<String, Object?>> _readQuality(Map<String, Object?> config) async {
     client.sendBufferStats(bufferMs: 0, targetMs: 10000, force: true);
     while (mediaMs < targetMs) {
       if (clock.elapsedMilliseconds > (config['timeout_ms'] as int)) {
-        failure = header == null
-            ? 'timeout_before_header'
-            : 'timeout_after_partial_media';
+        failure = header == null ? 'timeout_before_header' : 'timeout_after_partial_media';
         break;
       }
       if (clock.elapsedMilliseconds - lastBufferReport >= 500) {
         client.sendBufferStats(bufferMs: 0, targetMs: 10000, force: true);
         lastBufferReport = clock.elapsedMilliseconds;
         if (config['send_playback'] == true) {
-          client.sendPlayback(
-            trackId: config['track_id'] as String,
-            positionMs: 10000,
-            playing: true,
-          );
+          client.sendPlayback(trackId: config['track_id'] as String, positionMs: 10000, playing: true);
         }
       }
       while (true) {
@@ -99,13 +92,7 @@ Future<Map<String, Object?>> _readQuality(Map<String, Object?> config) async {
         if (event['type'] == 'stream') {
           rangeEnd = (event['range_end_ms'] as num?)?.toInt();
           announcements.add({
-            for (final key in [
-              'position_ms',
-              'range_end_ms',
-              'end_of_track',
-              'frame_ms',
-            ])
-              key: event[key],
+            for (final key in ['position_ms', 'range_end_ms', 'end_of_track', 'frame_ms']) key: event[key],
           });
         }
       }

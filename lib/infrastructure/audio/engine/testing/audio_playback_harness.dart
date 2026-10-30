@@ -17,6 +17,7 @@ class AudioPlaybackHarness {
     bool initialPaused = false,
     Duration startOffset = Duration.zero,
     Map<String, dynamic>? listeningContext,
+    Duration transportProgressTimeout = const Duration(seconds: 15),
   }) {
     _session = _PlaybackSession.remote(
       reusableConnection: transport,
@@ -33,6 +34,7 @@ class AudioPlaybackHarness {
       startOffset: startOffset,
       queueTrackIds: const [],
       quickStart: true,
+      transportProgressTimeout: transportProgressTimeout,
       initialPaused: initialPaused,
       volume: 1,
       outputDeviceId: -1,
@@ -66,12 +68,14 @@ class AudioPlaybackHarness {
   }
 
   /// Exercises Original's source selection and session behavior with an injected
-  /// decoder and memory output, without an HTTP listener or audio device.
+  /// decoder and memory output, without a network listener or audio device.
   AudioPlaybackHarness.original({
     required AudioFileDecoder Function(Uri url, Duration startOffset) decoderFactory,
     required AudioPcmOutput Function(int sampleRate, int channels, int deviceId) outputFactory,
     bool initialPaused = false,
     Duration startOffset = Duration.zero,
+    String baseUrl = 'https://source.test/api',
+    int? quicPort,
   }) {
     _session = _PlaybackSession.remote(
       releaseConnection: (_) {},
@@ -80,9 +84,9 @@ class AudioPlaybackHarness {
       getPlaybackId: () => 1,
       trackId: 'track',
       trackTitle: 'Original test',
-      baseUrl: 'https://source.test/api',
+      baseUrl: baseUrl,
       token: '',
-      quicPort: null,
+      quicPort: quicPort,
       settings: const StreamSettings(mode: 'original', quality: 'source'),
       startOffset: startOffset,
       queueTrackIds: const [],

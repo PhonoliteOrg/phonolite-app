@@ -44,6 +44,8 @@ class _SeekCoordinator {
       return;
     }
 
+    _host._gaplessCoordinator.invalidate();
+
     final requestGeneration = _seekRequests.advance();
 
     _pendingSeekGeneration = requestGeneration;
@@ -65,7 +67,11 @@ class _SeekCoordinator {
     _host._bumpNowPlayingEpoch();
     _resetPlaybackPositionTracking(position: clamped);
     _resetBufferedEndHighWater(position: clamped);
-    _host._updatePlayback(position: clamped, isPlaying: _host._wantsPlayback, bufferRatio: 0.0);
+    _host._updatePlayback(
+      position: clamped,
+      isPlaying: _host._wantsPlayback && !_host._audioSessionSuspended,
+      bufferRatio: 0.0,
+    );
     await _commitSeek(clamped, requestGeneration);
     if (_seekRequests.isCurrent(requestGeneration)) {
       _host._resumeCoordinator.progress(force: true);
@@ -99,6 +105,7 @@ class _SeekCoordinator {
     }
 
     _clearSeekHold(target);
+    _host._gaplessCoordinator.prepare();
 
     if (inlineSeek) {
       _host._pushMessage(
@@ -114,6 +121,8 @@ class _SeekCoordinator {
     if (_isScrubbing) {
       return;
     }
+
+    _host._gaplessCoordinator.invalidate();
 
     _isScrubbing = true;
     _seekRequests.advance();
@@ -172,7 +181,6 @@ class _SeekCoordinator {
       'Seek commit: restarting stream at ${target.inMilliseconds}ms '
       '(reason=$reason, playing=${_host._wantsPlayback ? 'yes' : 'no'})',
     );
-    _host._lastStartPlaybackAt = null;
     _host._startPlayback(track, startOffset: target);
   }
 

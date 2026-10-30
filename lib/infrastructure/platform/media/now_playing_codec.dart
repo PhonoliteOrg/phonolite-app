@@ -18,6 +18,10 @@ class NowPlayingCodec {
       'toggleLike' => NativeRemoteAction.toggleLike,
       'startLibraryShuffle' => NativeRemoteAction.startLibraryShuffle,
       'seek' => NativeRemoteAction.seek,
+      'audioInterruptionBegan' => NativeRemoteAction.audioInterruptionBegan,
+      'audioInterruptionEnded' => NativeRemoteAction.audioInterruptionEnded,
+      'audioInterruptionEndedPaused' => NativeRemoteAction.audioInterruptionEndedPaused,
+      'audioServicesReset' => NativeRemoteAction.audioServicesReset,
       _ => NativeRemoteAction.unknown,
     };
     Duration? position;

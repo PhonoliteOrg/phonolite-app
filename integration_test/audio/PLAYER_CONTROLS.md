@@ -39,13 +39,14 @@ switching and disabled/enabled shuffle options at compact and wide sizes.
 
 ## Encoded qualities
 
-The chooser also offers **Original (source bitrate)**, abbreviated **OG**. This
-streams the unchanged source file through the native PCM32 decode/output path;
-it has no fixed target bitrate. See [Original audio playback](../../docs/original-audio-playback.md)
-for precision, platform constraints and the separate headless verification.
-The HQ/MQ/LQ measurements below continue to cover the compressed profiles.
+The chooser offers **Original (source-preserving · QUIC)**, abbreviated **OG**,
+alongside HQ/MQ/LQ. Original reads unchanged source-file bytes from a continuous
+authenticated QUIC stream, then decodes them at their native sample rate
+and precision. All modes share PCM buffering, seek coordination and gapless
+output. Original has no fixed codec bitrate and never falls back to HTTP or Opus.
+Offline Original downloads retain their existing source-file behavior.
 
-The server defines fixed HQ/MQ/LQ targets as 160000 / 96000 / 48000 bits/s.
+The server defines fixed HQ/MQ/LQ Opus targets as 160000 / 96000 / 48000 bits/s.
 After playback stops, independent requests use the production QUIC library and
 the same track's ten-second offset. Each parses a real Opus header and two seconds
 of encoded packets. The header's target, 48000 Hz sample rate, 20 ms frames and
@@ -59,6 +60,15 @@ independently verify the exact settings handed to the real engine and native
 output continuity. This combination checks request routing, server profiles and
 playability without adding instrumentation to the shipping audio pipeline.
 Auto exists internally but is not offered in the visible quality chooser.
+
+The continuous-source wire and fine-grained decoding/output pipeline are documented
+in [the server protocol](../../../phonolite-server/docs/original-audio-streaming.md).
+Memory tests cover sequential reads sharing one stream, bounded rolling buffers,
+source-byte identity, EOF/FIN, cancellation, exact 24/32-bit source samples,
+forward/backward and paused seeking, shared read-ahead and gapless transitions without
+starting network listeners or audio devices. The independent wire bitrate probe
+applies to Opus qualities; Original is verified by source bytes and decoded
+samples rather than an invented target bitrate.
 
 Changing quality while paused now restarts the active stream with the new
 settings while keeping its paused state. A quality change also bypasses the

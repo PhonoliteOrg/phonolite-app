@@ -32,7 +32,7 @@ class _DownloadStateStore {
     return _downloadIndex.findLocal(localTrackId);
   }
 
-  List<Track> localDownloadedTracks() => List.unmodifiable(_localDownloadedTracksCache);
+  List<Track> localDownloadedTracks() => _localDownloadedTracksCache;
 
   Future<bool> _replace(OfflineTrackDownload download, {required bool persist}) async {
     final dataRevision = _host._localDataRevision;
@@ -66,6 +66,7 @@ class _DownloadStateStore {
     }
 
     var replaced = false;
+    var libraryChanged = _downloadPresentInLibrary(prepared);
     final next = <OfflineTrackDownload>[];
 
     for (final existing in _downloads) {
@@ -76,6 +77,7 @@ class _DownloadStateStore {
       if (sameTrack) {
         next.add(prepared);
         replaced = true;
+        libraryChanged = libraryChanged || _downloadPresentInLibrary(existing);
       } else {
         next.add(existing);
       }
@@ -86,7 +88,7 @@ class _DownloadStateStore {
     }
 
     _downloads = next;
-    _rebuildDownloadIndexes();
+    _rebuildDownloadIndexes(rebuildLibrary: libraryChanged);
     _emit();
 
     if (persist) {
@@ -363,9 +365,13 @@ class _DownloadStateStore {
     _jobsEmitTimer = Timer(_OfflineDownloadActorCore._stateEmitCoalesceDelay, publishJobs);
   }
 
-  void _rebuildDownloadIndexes() {
+  void _rebuildDownloadIndexes({bool rebuildLibrary = true}) {
     _downloadIndex = OfflineDownloadIndex(_downloads);
-    _localDownloadedTracksCache = _computeLocalDownloadedTracks();
+    // Transfer progress still needs fresh lookup records, but cannot change the
+    // completed library. Reuse that projection until a visible record changes.
+    if (rebuildLibrary) {
+      _localDownloadedTracksCache = _computeLocalDownloadedTracks();
+    }
   }
 
   List<Track> _computeLocalDownloadedTracks() {
@@ -540,7 +546,11 @@ class _DownloadStateStore {
       final a = left[i];
       final b = right[i];
 
-      if (a.status != b.status || a.filePath != b.filePath || a.error != b.error) {
+      if (a.status != b.status ||
+          a.filePath != b.filePath ||
+          a.error != b.error ||
+          a.profile != b.profile ||
+          a.renditionId != b.renditionId) {
         return false;
       }
     }
@@ -557,7 +567,9 @@ class _DownloadStateStore {
       final a = left[i];
       final b = right[i];
 
-      if (a.jobId != b.jobId ||
+      if (a.profile != b.profile ||
+          a.serverJobId != b.serverJobId ||
+          a.jobId != b.jobId ||
           a.status != b.status ||
           a.completedCount != b.completedCount ||
           a.failedCount != b.failedCount ||
@@ -643,7 +655,8 @@ mixin _DownloadStateStoreFacade {
 
   void _emitJobs() => _ownerState._emitJobs();
 
-  void _rebuildDownloadIndexes() => _ownerState._rebuildDownloadIndexes();
+  void _rebuildDownloadIndexes({bool rebuildLibrary = true}) =>
+      _ownerState._rebuildDownloadIndexes(rebuildLibrary: rebuildLibrary);
 
   String? _localTrackId(Track track) => _ownerState._localTrackId(track);
 

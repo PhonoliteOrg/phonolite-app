@@ -56,6 +56,7 @@ class _SessionCoordinator {
     required String password,
     bool rememberMe = false,
   }) async {
+    _host._gaplessCoordinator.invalidate();
     final origin = ServerTrust.origin(Uri.parse(baseUrl));
     if (_host._disposed || _disconnectingServerOrigins.contains(origin)) {
       return;
@@ -146,6 +147,7 @@ class _SessionCoordinator {
   }
 
   void loginWithToken({required String baseUrl, required String token}) {
+    _host._gaplessCoordinator.invalidate();
     if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(baseUrl)))) return;
     _passwordLogins.advance();
     _sessionRestores.advance();
@@ -256,6 +258,7 @@ class _SessionCoordinator {
     final preserveLocalPlayback = _host._playbackState.isLocalPlayback && _host._playbackState.track != null;
 
     _host._stopMetadataEventListener();
+    _host._accountServices.stopPlaybackPresence();
     _beginBestEffortServerLogout();
     _pauseDownloadsForDisconnectedServer(serverBaseUrl);
 
@@ -461,6 +464,7 @@ class _SessionCoordinator {
   }
 
   void _clearPlaybackForServerDisconnect() {
+    _host._gaplessCoordinator.invalidate();
     _host._shuffleCoordinator._clearServerShuffleSession();
     _host._resetTrackTransitionState();
     _host._audioEngine.stop();
@@ -474,9 +478,6 @@ class _SessionCoordinator {
     _host._queueShufflePlaylistId = null;
     _host._offlineQueueSource = OfflineQueueSource.none;
 
-    _host._lastStartPlaybackAt = null;
-    _host._lastStartPlaybackTrackId = null;
-    _host._lastStartPlaybackOffsetMs = null;
     _host._audioOutputStarted = false;
 
     _host._updatePlayback(

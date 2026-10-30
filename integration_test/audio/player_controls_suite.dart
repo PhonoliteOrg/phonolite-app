@@ -30,6 +30,7 @@ const playerControlIds = [
   'audio.quality_low',
   'audio.quality_medium',
   'audio.quality_high',
+  'audio.quality_original',
   'audio.quality_while_paused',
   'audio.quality_resume',
   'audio.repeat_button',
@@ -207,14 +208,14 @@ class PlayerControlsSuite {
       StreamMode.original: 'OG',
     };
     const modalLabels = {
-      StreamMode.original: 'Original (source bitrate)',
+      StreamMode.original: 'Original (source-preserving · QUIC)',
       StreamMode.high: 'High quality (160 kbps)',
       StreamMode.medium: 'Medium quality (96 kbps)',
       StreamMode.low: 'Low quality (48 kbps)',
     };
     await ui.tap(within(sheet, find.text(labels[controller.playbackState.streamMode]!)));
     await ui.waitFor(find.text('Stream Quality'));
-    expect(find.text('Original (source bitrate)'), findsOneWidget);
+    expect(find.text('Original (source-preserving · QUIC)'), findsOneWidget);
     expect(find.text('High quality (160 kbps)'), findsOneWidget);
     expect(find.text('Medium quality (96 kbps)'), findsOneWidget);
     expect(find.text('Low quality (48 kbps)'), findsOneWidget);
@@ -314,21 +315,23 @@ class PlayerControlsSuite {
         requestedPosition: () => requested,
       );
     }
-    for (final quality in [StreamMode.low, StreamMode.medium, StreamMode.high]) {
+    for (final quality in [StreamMode.low, StreamMode.medium, StreamMode.high, StreamMode.original]) {
+      final profile = quality.name;
+      final source = quality == StreamMode.original;
       await capture(
-        'audio.quality_${quality.name}',
-        'Select ${quality.name} quality while playing and verify engine request/output',
+        'audio.quality_$profile',
+        'Select $profile quality while playing and verify engine request/output',
         () async {
           await chooseQuality(quality);
           await ui.waitUntil(
-            () => probe.commands.any((c) => c['command'] == 'play' && c['quality'] == quality.name),
-            description: '${quality.name} engine request',
+            () => probe.commands.any((c) => c['command'] == 'play' && c['quality'] == (source ? 'source' : profile)),
+            description: '$profile engine request',
           );
           final request = probe.commands.lastWhere((c) => c['command'] == 'play');
-          expect(request['mode'], 'fixed');
+          expect(request['mode'], source ? 'original' : 'fixed');
           expect(request['frame_ms'], 20);
           expect(controller.playbackState.track!.id, track.id);
-          checked('fixed_quality_request', request);
+          checked('stream_quality_request', request);
         },
         audio: true,
       );

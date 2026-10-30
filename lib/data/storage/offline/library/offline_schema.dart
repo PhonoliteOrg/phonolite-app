@@ -204,6 +204,18 @@ class _OfflineSchema {
       )
     ''');
     _ensureColumn(db, 'download_jobs', 'source_id', 'TEXT');
+    _ensureColumn(db, 'download_jobs', 'profile', "TEXT NOT NULL DEFAULT 'original'");
+    _ensureColumn(db, 'download_jobs', 'server_job_id', 'TEXT');
+    for (final table in ['source_tracks', 'download_items']) {
+      _ensureColumn(db, table, 'profile', "TEXT NOT NULL DEFAULT 'original'");
+      _ensureColumn(db, table, 'rendition_id', 'TEXT');
+    }
+    db.execute('''CREATE TABLE IF NOT EXISTS download_profile_intents (
+      server_base_url TEXT NOT NULL,
+      server_track_id TEXT NOT NULL,
+      profile TEXT NOT NULL DEFAULT 'original',
+      PRIMARY KEY (server_base_url, server_track_id)
+    )''');
     db.execute('CREATE INDEX IF NOT EXISTS idx_download_jobs_server ON download_jobs(server_base_url, status)');
 
     db.execute('''

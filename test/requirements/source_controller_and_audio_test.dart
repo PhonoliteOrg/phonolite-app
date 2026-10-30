@@ -263,7 +263,7 @@ void main() {
         '_refreshCustomShuffleQueueIfNeeded()',
         'Future<List<OutputDevice>> listOutputDevices({bool refresh = false}) async {',
         'Future<void> selectOutputDevice(OutputDevice device) async {',
-        '_lastStartPlaybackAt = null;',
+        '_host._gaplessCoordinator.invalidate();',
         '_startPlayback(track, startOffset: _playbackState.position);',
         'Future<void> seekTo(Duration position) async {',
       ]);

@@ -34,15 +34,19 @@ class _AudioOutputConfiguration {
       final sampleRate = _host._sampleRate;
       final channels = _host._channels;
       final deviceId = _host._outputDeviceId;
-      final player = outputFactory != null
-          ? outputFactory(sampleRate, channels, deviceId)
-          : createAudioPcmOutput(
-              sampleRate: sampleRate,
-              channels: channels,
-              deviceId: deviceId,
-              bitsPerSample: _host._pcmBitsPerSample,
-              validBitsPerSample: _host._sourceBitDepth,
-            );
+      final gapless = _host._gaplessSource;
+      gapless?.configure(sampleRate, channels, deviceId, _host._pcmBitsPerSample, _host._sourceBitDepth);
+      final player =
+          gapless ??
+          (outputFactory != null
+              ? outputFactory(sampleRate, channels, deviceId)
+              : createAudioPcmOutput(
+                  sampleRate: sampleRate,
+                  channels: channels,
+                  deviceId: deviceId,
+                  bitsPerSample: _host._pcmBitsPerSample,
+                  validBitsPerSample: _host._sourceBitDepth,
+                ));
 
       // Startup is owned immediately: stop must be able to await a device whose
       // native open is still pending, before the worker acknowledges release.
