@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/source_test_helpers.dart';
 
-const _root = 'android/app/src/main/kotlin/com/example/phonolite_app/';
+const _root = 'android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/';
 
 void main() {
   test('Android native source packages match physical responsibility owners', () {
@@ -17,7 +17,7 @@ void main() {
       final relative = path.substring(_root.length);
       final source = file.readAsStringSync();
       final segments = relative.split('/');
-      final package = 'com.example.phonolite_app.${segments.take(segments.length - 1).join('.')}';
+      final package = 'com.phonoliteorg.phonolite_app.${segments.take(segments.length - 1).join('.')}';
 
       expect(areas, contains(segments.first), reason: path);
       expect(source, startsWith('package $package'), reason: path);
@@ -33,11 +33,11 @@ void main() {
       }
 
       if (!relative.startsWith('bootstrap/')) {
-        expect(source, isNot(contains('import com.example.phonolite_app.bootstrap.')), reason: path);
+        expect(source, isNot(contains('import com.phonoliteorg.phonolite_app.bootstrap.')), reason: path);
       }
 
       if (relative.startsWith('infrastructure/')) {
-        expect(source, isNot(contains('import com.example.phonolite_app.ui.')), reason: path);
+        expect(source, isNot(contains('import com.phonoliteorg.phonolite_app.ui.')), reason: path);
       }
 
       if (relative.startsWith('infrastructure/audio/')) {

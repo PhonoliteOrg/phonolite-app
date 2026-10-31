@@ -92,6 +92,33 @@ void main() {
     expect(events.where((event) => event == 'quit'), hasLength(1));
   });
 
+  test('update preparation propagates cleanup failure and keeps the application running', () async {
+    await controller.initialize(beforeQuit: () async => throw StateError('Flush failed'));
+    await expectLater(controller.prepareForUpdate(), throwsStateError);
+    await expectLater(controller.quitForUpdate(), throwsStateError);
+    expect(events, isNot(contains('quit')));
+    expect(events, isNot(contains('hide')));
+  });
+
+  test('update preparation drains writes and acknowledges cleanup before quitting', () async {
+    final cleanup = Completer<void>();
+    var cleanups = 0;
+    await controller.initialize(
+      beforeQuit: () {
+        cleanups++;
+        return cleanup.future;
+      },
+    );
+    final preparation = controller.prepareForUpdate();
+    await Future<void>.delayed(Duration.zero);
+    expect(events, isNot(contains('quit')));
+    cleanup.complete();
+    await preparation;
+    await controller.quitForUpdate();
+    expect(cleanups, 1);
+    expect(events.last, 'quit');
+  });
+
   test('a failed startup registration does not stop background mode', () async {
     platform.failStartup = true;
     await initialize();

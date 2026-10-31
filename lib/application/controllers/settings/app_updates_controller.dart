@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:phonolite_app/data/models/updates/app_update_configuration.dart';
+import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 import 'package:phonolite_app/data/models/updates/app_update_release.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
+import 'package:phonolite_app/infrastructure/platform/app/app_update_backend.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_platform.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
 
@@ -25,25 +27,37 @@ class AppUpdatesController extends ChangeNotifier {
   bool _openingUpdater = false;
   int _generation = 0;
   String? _error;
+  String? _disabledReason;
 
-  AppUpdatesController({AppUpdatePlatform? platform, AppUpdateFeed? feed, bool Function()? isSupported})
-    : _platform = platform ?? WindowsAppUpdatePlatform(),
-      _feed = feed ?? HttpAppUpdateFeed(),
-      _isSupported = isSupported;
+  factory AppUpdatesController({AppUpdatePlatform? platform, AppUpdateFeed? feed, bool Function()? isSupported}) {
+    final backend = platform == null || feed == null ? AppUpdateBackend.current() : null;
+    return AppUpdatesController._(platform ?? backend!.platform, feed ?? backend!.feed, isSupported);
+  }
 
-  bool get showInSettings => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+  AppUpdatesController._(this._platform, this._feed, this._isSupported) {
+    if (_platform case final AppUpdateProgressSource source) source.progress.addListener(_notifyProgress);
+  }
+
+  bool get showInSettings =>
+      !kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux);
+
+  AppUpdateProgress? get progress =>
+      _platform is AppUpdateProgressSource ? (_platform as AppUpdateProgressSource).progress.value : null;
+
+  bool get canCancelDownload => progress?.cancellable ?? false;
 
   bool get supported => _isSupported?.call() ?? (showInSettings && !kDebugMode);
 
   String? get disabledReason => showInSettings && !supported && kDebugMode
       ? 'Update checks are disabled in debug builds. Use a release build to check for updates.'
-      : null;
+      : _disabledReason;
 
   bool get ready => _ready;
 
   AppUpdateRelease? get latestRelease => _latestRelease;
 
-  bool get canCheckForUpdates => _ready && !_busy && _installation == null;
+  bool get canCheckForUpdates =>
+      _ready && !_busy && _installation == null && progress?.phase != AppUpdatePhase.restartRequired;
 
   bool get canInstall => canCheckForUpdates && _latestRelease != null;
 
@@ -53,7 +67,12 @@ class AppUpdatesController extends ChangeNotifier {
 
   String? get error => _error;
 
-  Future<void> initialize({required Future<void> Function() onInstall}) => _initialization ??= _initialize(onInstall);
+  Future<void> initialize({required Future<void> Function() onInstall, Future<void> Function()? onPrepare}) {
+    if (_platform case final AppUpdatePreparationPlatform platform) {
+      if (onPrepare != null) platform.setPreparationCallback(onPrepare);
+    }
+    return _initialization ??= _initialize(onInstall);
+  }
 
   Future<void> shutdown() async {
     ++_generation;
@@ -77,6 +96,16 @@ class AppUpdatesController extends ChangeNotifier {
     _configuration = null;
     _installation = null;
     _initialization = null;
+  }
+
+  @override
+  void dispose() {
+    if (_platform case final AppUpdateProgressSource source) source.progress.removeListener(_notifyProgress);
+    super.dispose();
+  }
+
+  void cancelDownload() {
+    if (_platform case final AppUpdateProgressSource source) source.cancelDownload();
   }
 
   Future<void> installLatestUpdate() async {
@@ -118,17 +147,25 @@ class AppUpdatesController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final configuration = await _platform.initialize(onInstall: () => _installation ??= Future<void>.sync(onInstall));
+      final configuration = await _platform.initialize(
+        onInstall: () {
+          if (generation != _generation) throw StateError('The updater was closed before shutdown preparation.');
+          return _installation ??= Future<void>.sync(onInstall);
+        },
+      );
 
       if (generation != _generation) {
         return;
       }
 
       _ready = configuration.available;
+      _disabledReason = configuration.disabledReason;
 
       if (_ready) {
         _configuration = configuration;
-        _checkTimer = Timer.periodic(checkInterval, (_) => unawaited(checkForUpdates()));
+        _checkTimer = Timer.periodic(checkInterval, (_) {
+          if (progress?.phase != AppUpdatePhase.recoveryRequired) unawaited(checkForUpdates());
+        });
       } else {
         _error = 'Update checks are unavailable in this build.';
       }
@@ -145,7 +182,7 @@ class AppUpdatesController extends ChangeNotifier {
       }
     }
 
-    if (generation == _generation && _ready) {
+    if (generation == _generation && _ready && progress?.phase != AppUpdatePhase.recoveryRequired) {
       await checkForUpdates();
     }
   }
@@ -181,6 +218,8 @@ class AppUpdatesController extends ChangeNotifier {
       }
     }
   }
+
+  void _notifyProgress() => notifyListeners();
 
   void _report(String message, Object error) {
     _error = '$message. $error';

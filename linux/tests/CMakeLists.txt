@@ -21,6 +21,15 @@ add_executable(directory_open_result_test "directory_open_result_test.cc")
 configure_check(directory_open_result_test)
 add_test(NAME directory_open_result COMMAND directory_open_result_test)
 
+# Optional audio ABI fixture, compiled against public PulseAudio headers. It
+# implements a fake server entirely in memory; tests never open an audio device.
+find_path(PULSE_TEST_INCLUDE_DIR pulse/pulseaudio.h)
+if(PULSE_TEST_INCLUDE_DIR)
+  add_library(fake_pulse_audio SHARED "support/fake_pulse_audio.cc")
+  configure_check(fake_pulse_audio)
+  target_include_directories(fake_pulse_audio PRIVATE "${PULSE_TEST_INCLUDE_DIR}")
+endif()
+
 set(PLATFORM_CHECKS_DEFAULT OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(PLATFORM_CHECKS_DEFAULT ON)
@@ -63,11 +72,12 @@ file(GLOB PLUGIN_INCLUDE_DIRS "${FLUTTER_EPHEMERAL_DIR}/.plugin_symlinks/*/linux
 add_library(linux_runner_compile OBJECT ${RUNNER_COMPILE_SOURCES})
 configure_check(linux_runner_compile)
 target_include_directories(linux_runner_compile PRIVATE "${FLUTTER_INCLUDE_DIR}" ${PLUGIN_INCLUDE_DIRS})
-target_compile_definitions(linux_runner_compile PRIVATE APPLICATION_ID="com.example.phonolite_app")
+target_compile_definitions(linux_runner_compile PRIVATE APPLICATION_ID="com.phonoliteorg.phonolite_app")
 target_link_libraries(linux_runner_compile PRIVATE PkgConfig::GTK PkgConfig::GIO)
 
 add_library(directory_platform_sources OBJECT
   "${LINUX_SOURCE_DIR}/runner/infrastructure/flutter/directories_channel_adapter.cc"
+  "${LINUX_SOURCE_DIR}/runner/infrastructure/flutter/method_response_sender.cc"
   "${LINUX_SOURCE_DIR}/runner/infrastructure/shell/directory_launcher.cc"
 )
 configure_check(directory_platform_sources)

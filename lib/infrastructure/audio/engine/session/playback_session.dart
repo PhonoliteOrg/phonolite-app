@@ -396,7 +396,7 @@ class _PlaybackSession
   }
 
   Future<void> _runPlayback() async {
-    if (!(Platform.isWindows || Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isIOS || Platform.isAndroid || Platform.isLinux)) {
       throw Exception('Audio output is unavailable on this platform.');
     }
 

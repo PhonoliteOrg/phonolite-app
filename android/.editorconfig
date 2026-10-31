@@ -9,5 +9,5 @@ insert_final_newline = true
 ktlint_code_style = android_studio
 
 # Preserve the established app package; new responsibility segments remain lowercase words.
-[app/src/**/kotlin/com/example/phonolite_app/**/*.kt]
+[app/src/**/kotlin/com/phonoliteorg/phonolite_app/**/*.kt]
 ktlint_standard_package-name = disabled

@@ -1,13 +1,68 @@
 # Phonolite app
 
 Run commands from the `phonolite-app` directory. Install the Flutter SDK and Rust
-(`rustup` and `cargo`), then resolve the app's dependencies:
+(`rustup` and `cargo`), then fetch the bundled Opus source and resolve the app's
+dependencies:
 
 ```sh
+git submodule update --init --recursive
 flutter pub get
 ```
 
 ## Run locally
+
+### Linux
+
+Requires Flutter 3.47 / Dart 3.13 or later, Rust (`rustup` and `cargo`), CMake 3.16 or later, and
+the initialized Opus submodule from the setup commands above. On Ubuntu, install
+the native build tools and plugin development dependencies:
+
+```sh
+sudo apt update
+sudo apt install build-essential clang cmake ninja-build pkg-config \
+  libgtk-3-dev libsecret-1-dev libjsoncpp-dev libx11-dev libxi-dev libpulse0
+```
+
+See [Flutter's Linux setup guide](https://docs.flutter.dev/platform-integration/linux/setup).
+The first build also needs access to Cargo dependencies and the SQLite source
+download. A desktop Secret Service, normally GNOME Keyring, is required for
+secure storage at runtime. GNOME needs AppIndicator support to display the tray.
+The tray uses StatusNotifierItem directly and no longer links the deprecated
+libayatana-appindicator library. Playback needs a running desktop PulseAudio
+service or PipeWire with its PulseAudio compatibility service (`pipewire-pulse`).
+
+Compile without launching:
+
+```sh
+flutter build linux --debug
+flutter build linux --release
+```
+
+The executable is `build/linux/<architecture>/<mode>/bundle/phonolite_app`,
+where architecture is `x64` or `arm64`. Keep its complete `data` and `lib`
+directories together. To launch a debug build with hot reload, run
+`flutter run -d linux --debug`.
+
+Register a debug bundle as **Phonolite (Development)** in the application menu and dock:
+
+```sh
+python3 distribution_tools/linux/install_desktop_entry.py build/linux/x64/debug/bundle
+```
+
+This writes the current user's desktop launcher and an icon with a small transparent
+inset so the logo fits comfortably in the dock. The launcher uses absolute executable
+and icon paths and a separate development application ID. Run it again after moving
+the debug bundle. Release packages install their launcher system-wide. If an older
+per-user `com.phonoliteorg.phonolite_app.desktop` entry shadows the packaged app,
+move that old entry out of `~/.local/share/applications` and repin the system entry.
+
+Linux currently provides the desktop host, file selection, secure storage,
+tray/window integration, autostart, native decoders, QUIC and 16/32-bit PCM
+playback through the system default audio output. Native output-device enumeration
+and MPRIS media integration remain unfinished. Linux native packaging and the
+signed GitHub updater are implemented with production rollout gated on signing
+setup and target/session validation. See the
+[Linux support and build checks](docs/linux-native-specification.md).
 
 ### Windows
 
@@ -81,6 +136,23 @@ Build outputs and release uploads are managed manually.
 Keep each version's changes since the previous tag in its own
 `releases/<release-tag>.md` file. See [release notes](releases/README.md) for the
 history and release workflow.
+
+### Linux packages and updates
+
+The Linux tools build `.deb`, `.rpm` and `.pkg.tar.zst` packages from a complete
+release bundle. The app checks signed GitHub metadata and uses an independent
+user-session coordinator plus a polkit-authorized native installer. Package
+managers own installation; no dedicated package repository is required.
+
+Production key creation remains manual. No private key is checked in, and all
+targets currently have `validated: false`, so automatic installation and release
+publishing remain gated. The configured candidates are Ubuntu 26.04, Fedora 44,
+RHEL 10.0 and Arch rolling on x86_64. Build each on its matching baseline; packages
+wrapped on another distribution are inspection artifacts only.
+
+See the [Linux release operations and acceptance checks](docs/linux_distribution_update_plan.md#release-operations)
+for key setup, nFPM pinning, packaging, verification, manual GitHub upload, rotation
+and recovery commands. Windows continues to use its existing appcast and installer.
 
 ### Windows installer and updates
 

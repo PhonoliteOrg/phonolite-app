@@ -132,16 +132,23 @@ void contains_native_exceptions() {
   assert_error(response, "open_failed", "Could not open the folder.");
 }
 
-void transport_failure_does_not_retry() {
+void transport_failure_does_not_retry(gconstpointer data) {
+  const int kind = GPOINTER_TO_INT(data);
   ChannelFixture fixture(accept_uri);
   test_binary_messenger_fail_responses(fixture.messenger(), true);
-  g_autoptr(FlValue) arguments = fl_value_new_string("/tmp/library");
+  g_autoptr(FlValue) arguments = fl_value_new_string(kind == 1 ? "relative/library" : "/tmp/library");
 
   g_test_expect_message(nullptr, G_LOG_LEVEL_WARNING, "*Failed to send folder response*test transport is closed*");
-  g_autoptr(FlMethodResponse) response = fixture.invoke(arguments);
+  g_autoptr(FlMethodResponse) response = fixture.invoke(arguments, kind == 2 ? "unsupported" : "openDirectory");
   g_test_assert_expected_messages();
 
-  g_assert_true(FL_IS_METHOD_SUCCESS_RESPONSE(response));
+  if (kind == 1) {
+    assert_error(response, "invalid_path", "An absolute folder path is required.");
+  } else if (kind == 2) {
+    g_assert_true(FL_IS_METHOD_NOT_IMPLEMENTED_RESPONSE(response));
+  } else {
+    g_assert_true(FL_IS_METHOD_SUCCESS_RESPONSE(response));
+  }
 }
 
 void detach_removes_handler_and_can_reattach() {
@@ -244,7 +251,12 @@ int main(int argc, char** argv) {
   g_test_add_func("/directories-channel/native-failure", preserves_native_failure);
   g_test_add_func("/directories-channel/unknown-method", unknown_method_does_not_launch);
   g_test_add_func("/directories-channel/exception", contains_native_exceptions);
-  g_test_add_func("/directories-channel/transport-failure", transport_failure_does_not_retry);
+  g_test_add_data_func("/directories-channel/transport-failure/success", GINT_TO_POINTER(0),
+                       transport_failure_does_not_retry);
+  g_test_add_data_func("/directories-channel/transport-failure/error", GINT_TO_POINTER(1),
+                       transport_failure_does_not_retry);
+  g_test_add_data_func("/directories-channel/transport-failure/not-implemented", GINT_TO_POINTER(2),
+                       transport_failure_does_not_retry);
   g_test_add_func("/directories-channel/detach-reattach", detach_removes_handler_and_can_reattach);
   g_test_add_func("/directories-channel/repeated-attach", repeated_attach_keeps_existing_binding);
   g_test_add_func("/directories-channel/independent-engines", engines_have_independent_bindings);

@@ -27,3 +27,10 @@ delivery when the app serves a cached range; the next open or seek resumes it.
 Keepalive pings run every 10 seconds. Unsent buffer/playback telemetry is
 coalesced. Rebuild the native library together with the Dart package whenever
 these FFI APIs change.
+
+Original source streaming uses a separate 4 MiB byte queue and pins its source
+version and total length. An established source retries a transient connection
+failure once at the unreturned byte offset within the existing read deadline,
+preserving the decoder and its buffered PCM. Cancellation, certificate/pin
+failures and source rejection bypass that retry. A reconnect must verify the
+same server pin and source representation before returning further bytes.

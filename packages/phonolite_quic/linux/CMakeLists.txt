@@ -17,7 +17,7 @@ file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS "${RUST_ROOT}/src/*.rs")
 
 add_custom_command(
   OUTPUT "${OUTPUT_SO}"
-  COMMAND cargo build ${CARGO_RELEASE_FLAG} --target-dir "${CARGO_TARGET_DIR}"
+  COMMAND cargo build --locked ${CARGO_RELEASE_FLAG} --target-dir "${CARGO_TARGET_DIR}"
   WORKING_DIRECTORY "${RUST_ROOT}"
   COMMAND ${CMAKE_COMMAND} -E copy
     "${CARGO_TARGET_DIR}/${CARGO_PROFILE}/libphonolite_quic.so"

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/auth/login_controller.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/uri_text_input_formatter.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
@@ -88,6 +90,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
           label: 'Server address',
           hintText: 'server.example.com',
           keyboardType: TextInputType.url,
+          inputFormatters: const [UriTextInputFormatter()],
           textInputAction: TextInputAction.next,
           onSubmitted: (_) => FocusScope.of(context).nextFocus(),
         ),
@@ -98,6 +101,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
           label: 'Port',
           hintText: '3000',
           keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _submit(),
         ),
@@ -160,6 +164,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
     String? hintText,
     bool obscureText = false,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
     TextInputAction? textInputAction,
     ValueChanged<String>? onSubmitted,
   }) {
@@ -174,6 +179,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
       enabled: !_feature.isSubmitting,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       textInputAction: textInputAction,
       onSubmitted: onSubmitted,
     );

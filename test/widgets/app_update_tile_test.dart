@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/data/models/updates/app_update_configuration.dart';
 import 'package:phonolite_app/data/models/updates/app_update_release.dart';
+import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_platform.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
 import 'package:phonolite_app/ui/features/settings/sections/misc_settings_section.dart';
@@ -163,6 +164,38 @@ void main() {
     }
   });
 
+  testWidgets('Linux progress enables download cancellation and disables the tile during authorization', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    final platform = _ProgressPlatform()..pendingShow = Completer<void>();
+    final feed = _Feed()..result.complete(const AppUpdateRelease(version: '0.5.0'));
+    final controller = AppUpdatesController(platform: platform, feed: feed, isSupported: () => true);
+    try {
+      await controller.initialize(onInstall: () async {});
+      await pumpSettings(tester, controller);
+      await tester.tap(find.text('App updates'));
+      platform.progress.value = const AppUpdateProgress(phase: AppUpdatePhase.downloading, fraction: 0.42);
+      await tester.pump();
+      expect(find.text('Downloading update… 42%. Select to cancel.'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNotNull);
+      await tester.tap(find.text('App updates'));
+      expect(platform.cancellations, 1);
+      platform.progress.value = const AppUpdateProgress(phase: AppUpdatePhase.authorizing);
+      await tester.pump();
+      expect(find.text('Waiting for administrator authorization…'), findsOneWidget);
+      expect(updateRow(tester).onTap, isNull);
+      platform.pendingShow!.complete();
+      await tester.pumpAndSettle();
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.shutdown();
+      controller.dispose();
+      platform.progress.dispose();
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   for (final target in [TargetPlatform.iOS, TargetPlatform.android]) {
     testWidgets('Miscellaneous excludes the desktop update tile on $target', (tester) async {
       debugDefaultTargetPlatformOverride = target;
@@ -222,4 +255,13 @@ class _Feed implements AppUpdateFeed {
       result.complete(null);
     }
   }
+}
+
+class _ProgressPlatform extends _Platform implements AppUpdateProgressSource {
+  @override
+  final ValueNotifier<AppUpdateProgress> progress = ValueNotifier(const AppUpdateProgress());
+  int cancellations = 0;
+
+  @override
+  void cancelDownload() => cancellations++;
 }

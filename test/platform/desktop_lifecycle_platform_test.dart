@@ -1,21 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tray_manager/tray_manager.dart';
 
 import 'package:phonolite_app/data/configuration/app/desktop_window_configuration.dart';
 import 'package:phonolite_app/infrastructure/platform/app/desktop_lifecycle_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/desktop_tray.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   final view = binding.platformDispatcher.implicitView!;
   const windowChannel = MethodChannel('window_manager');
   const constraintsChannel = MethodChannel('phonolite/window');
-  const trayChannel = MethodChannel('tray_manager');
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   late NativeDesktopLifecyclePlatform platform;
   late List<MethodCall> windowCalls;
-  late List<MethodCall> trayCalls;
+  late _FakeTray tray;
   late List<MethodCall> constraintsCalls;
   late int closes;
   late int quits;
@@ -23,7 +22,7 @@ void main() {
 
   setUp(() async {
     windowCalls = [];
-    trayCalls = [];
+    tray = _FakeTray();
     constraintsCalls = [];
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     closes = 0;
@@ -40,24 +39,18 @@ void main() {
 
       return call.method == 'isMinimized' ? true : null;
     });
-    messenger.setMockMethodCallHandler(trayChannel, (call) async {
-      trayCalls.add(call);
-
-      return null;
-    });
     messenger.setMockMethodCallHandler(constraintsChannel, (call) async {
       constraintsCalls.add(call);
 
       return null;
     });
-    platform = NativeDesktopLifecyclePlatform();
+    platform = NativeDesktopLifecyclePlatform(tray: tray);
     await platform.initialize(onClose: () async => closes++, onQuit: () async => quits++);
   });
 
   tearDown(() async {
     await platform.dispose();
     messenger.setMockMethodCallHandler(windowChannel, null);
-    messenger.setMockMethodCallHandler(trayChannel, null);
     messenger.setMockMethodCallHandler(constraintsChannel, null);
     view.resetPhysicalSize();
     view.resetDevicePixelRatio();
@@ -115,10 +108,11 @@ void main() {
 
   test('tray has Show and Quit; showing restores a minimized window', () async {
     await platform.setBackgroundEnabled(true);
-    final menu = trayCalls.singleWhere((call) => call.method == 'setContextMenu');
-    final items = ((menu.arguments as Map)['menu'] as Map)['items'] as List;
-    expect(items.map((item) => (item as Map)['label']), containsAll(['Show Phonolite', 'Quit Phonolite']));
-    await platform.show();
+    expect(tray.shown, isTrue);
+    expect(tray.onShow, isNotNull);
+    expect(tray.onQuit, isNotNull);
+    tray.onShow!();
+    await Future<void>.delayed(Duration.zero);
     expect(windowCalls.map((call) => call.method), containsAllInOrder(['isMinimized', 'restore', 'show', 'focus']));
   });
 
@@ -127,7 +121,7 @@ void main() {
     windowCalls.clear();
     await platform.setBackgroundEnabled(false);
     expect(windowCalls.map((call) => call.method), ['isMinimized', 'restore', 'show', 'focus']);
-    expect(trayCalls.last.method, 'destroy');
+    expect(tray.shown, isFalse);
   });
 
   test('native close and tray Quit dispatch distinct actions', () async {
@@ -135,10 +129,31 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(closes, 1);
     expect(quits, 0);
-    platform.onTrayMenuItemClick(MenuItem(key: 'quit', label: 'Quit Phonolite'));
+    await platform.setBackgroundEnabled(true);
+    tray.onQuit!();
     await Future<void>.delayed(Duration.zero);
     expect(quits, 1);
     await platform.quit();
     expect(windowCalls.last.method, 'destroy');
   });
+}
+
+class _FakeTray implements DesktopTray {
+  bool shown = false;
+  void Function()? onShow;
+  void Function()? onQuit;
+
+  @override
+  void show({required void Function() onShow, required void Function() onQuit}) {
+    shown = true;
+    this.onShow = onShow;
+    this.onQuit = onQuit;
+  }
+
+  @override
+  void dispose() {
+    shown = false;
+    onShow = null;
+    onQuit = null;
+  }
 }

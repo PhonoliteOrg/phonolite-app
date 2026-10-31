@@ -28,7 +28,8 @@ void main() {
       final automotive = readProjectFile('android/app/src/main/res/xml/automotive_app_desc.xml');
 
       expectContainsAll(appBuild, const [
-        'applicationId = "com.example.phonolite_app"',
+        'namespace = "com.phonoliteorg.phonolite_app"',
+        'applicationId = "com.phonoliteorg.phonolite_app"',
         'implementation("androidx.media:media:1.7.0")',
         'rename { "phonolite-release.apk" }',
       ]);
@@ -76,4 +77,4 @@ void main() {
 }
 
 String _native(String relativePath) =>
-    readProjectFile('android/app/src/main/kotlin/com/example/phonolite_app/$relativePath');
+    readProjectFile('android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/$relativePath');

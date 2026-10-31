@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/data/models/updates/app_update_configuration.dart';
+import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 
 abstract interface class AppUpdatePlatform {
   Future<AppUpdateConfiguration> initialize({required Future<void> Function() onInstall});
@@ -12,7 +14,7 @@ class WindowsAppUpdatePlatform implements AppUpdatePlatform {
   final MethodChannel _channel;
   Future<void> Function()? _onInstall;
 
-  WindowsAppUpdatePlatform({MethodChannel channel = const MethodChannel('phonolite/updates')}) : _channel = channel;
+  WindowsAppUpdatePlatform({this._channel = const MethodChannel('phonolite/updates')});
 
   @override
   Future<AppUpdateConfiguration> initialize({required Future<void> Function() onInstall}) async {
@@ -45,4 +47,13 @@ class WindowsAppUpdatePlatform implements AppUpdatePlatform {
       await _onInstall?.call();
     }
   }
+}
+
+abstract interface class AppUpdateProgressSource {
+  ValueListenable<AppUpdateProgress> get progress;
+  void cancelDownload();
+}
+
+abstract interface class AppUpdatePreparationPlatform {
+  void setPreparationCallback(Future<void> Function() prepare);
 }

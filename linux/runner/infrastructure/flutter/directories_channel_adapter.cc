@@ -2,6 +2,7 @@
 
 #include <exception>
 
+#include "runner/infrastructure/flutter/method_response_sender.h"
 #include "runner/infrastructure/shell/directory_launcher.h"
 
 namespace phonolite {
@@ -60,7 +61,7 @@ void DirectoriesChannelAdapter::method_call_cb(FlMethodChannel*, FlMethodCall* m
   }
 
   g_autoptr(GError) error = nullptr;
-  if (!fl_method_call_respond(method_call, response, &error)) {
+  if (!send_method_response(method_call, response, &error)) {
     g_warning("Failed to send folder response: %s", error != nullptr ? error->message : "Unknown transport failure.");
   }
 }

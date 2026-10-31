@@ -157,6 +157,15 @@ class _GaplessOutputTimeline {
   Future<void> _poll() async {
     final output = _output;
     if (output == null || _closed) return;
+
+    // Probe native completion only for a sealed tail. Doing this during an
+    // active source can leave an end-of-stream request waiting throughout the
+    // song, eventually timing out while audio is still flowing.
+    if (_spans.isNotEmpty && _spans.last.source._sealed && !_userPaused && !_devicePaused && !_aborting) {
+      await output.isIdle().timeout(_progress.timeout);
+      if (!identical(output, _output) || _closed) return;
+    }
+
     var done = await output.collectDoneSamples().timeout(_progress.timeout);
     if (!identical(output, _output) || _closed) return;
     _progress.check(
@@ -196,9 +205,12 @@ class _GaplessOutputTimeline {
   Future<void> writeConverted(_GaplessSourceOutput source, List<int> samples, {int? generation}) async {
     generation ??= source._generation;
     if (samples.isEmpty || _aborting) return;
-    // Keep the scheduling horizon short, independently of decoder read-ahead.
+    // Native backpressure owns refill when available. Audible progress also
+    // includes hardware latency; using it to cap those writes can starve the
+    // native queue before enough audio reaches a higher-latency device.
     final maximumQueued = math.max(_channels, _rate * _channels ~/ 8);
-    while (_spans.fold<int>(0, (sum, span) => sum + span.remaining) >= maximumQueued &&
+    while (_output is! BoundedAudioPcmOutput &&
+        _spans.fold<int>(0, (sum, span) => sum + span.remaining) >= maximumQueued &&
         !_closed &&
         !_aborting &&
         !source._cancelled &&
@@ -214,14 +226,50 @@ class _GaplessOutputTimeline {
     _spans.add(span);
     source._deviceWritten += samples.length;
     try {
-      if (samples is Int32List) {
-        await output.writePcm32(samples);
+      final writing = samples is Int32List ? output.writePcm32(samples) : output.write(samples as Int16List);
+      if (output is BoundedAudioPcmOutput) {
+        await _waitForBoundedWrite(writing);
       } else {
-        await output.write(samples as Int16List);
+        await writing;
       }
     } catch (_) {
       if (_spans.remove(span)) source._deviceWritten -= span.remaining;
       rethrow;
+    }
+  }
+
+  Future<void> _waitForBoundedWrite(Future<void> writing) async {
+    final completed = Completer<void>();
+    unawaited(
+      writing.then<void>(
+        (_) {
+          if (!completed.isCompleted) completed.complete();
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!completed.isCompleted) completed.completeError(error, stack);
+        },
+      ),
+    );
+
+    // A blocked native write must still advance the shared playback clock or
+    // reach its deadline. Statistics collection alone does not fail playback.
+    var checking = false;
+    final timer = Timer.periodic(const Duration(milliseconds: 5), (_) async {
+      if (checking || completed.isCompleted) return;
+      checking = true;
+      try {
+        await poll();
+      } catch (error, stack) {
+        if (!completed.isCompleted) completed.completeError(error, stack);
+      } finally {
+        checking = false;
+      }
+    });
+
+    try {
+      await completed.future;
+    } finally {
+      timer.cancel();
     }
   }
 

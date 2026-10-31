@@ -21,11 +21,11 @@ import zipfile
 APP_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = APP_ROOT / "android/app/src"
 TEST_MAINS = (
-    "com.example.phonolite_app.infrastructure.audio.AudioPlaybackProgressTest",
-    "com.example.phonolite_app.application.controllers.media.NativeMediaControllerTest",
-    "com.example.phonolite_app.application.controllers.vehicle.VehicleBrowseControllerTest",
-    "com.example.phonolite_app.infrastructure.flutter.NativeChannelContractTest",
-    "com.example.phonolite_app.infrastructure.media.MediaServiceConnectionTest",
+    "com.phonoliteorg.phonolite_app.infrastructure.audio.AudioPlaybackProgressTest",
+    "com.phonoliteorg.phonolite_app.application.controllers.media.NativeMediaControllerTest",
+    "com.phonoliteorg.phonolite_app.application.controllers.vehicle.VehicleBrowseControllerTest",
+    "com.phonoliteorg.phonolite_app.infrastructure.flutter.NativeChannelContractTest",
+    "com.phonoliteorg.phonolite_app.infrastructure.media.MediaServiceConnectionTest",
 )
 
 
@@ -106,7 +106,7 @@ def generate_resource_classes(sdk: Path, android_jar: Path, java: Path, output: 
     resource_classes = fresh_output_directory(output, "resource_classes")
 
     manifest = ET.parse(SOURCE_ROOT / "main/AndroidManifest.xml")
-    manifest.getroot().set("package", "com.example.phonolite_app")
+    manifest.getroot().set("package", "com.phonoliteorg.phonolite_app")
     ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
     manifest_path = output / "AndroidManifest.xml"
     manifest.write(manifest_path, encoding="utf-8", xml_declaration=True)

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
@@ -26,6 +27,7 @@ class ObsidianTextField extends StatefulWidget {
   final bool enabled;
   final TextInputAction? textInputAction;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
   final int? maxLines;
   final int? minLines;
 
@@ -46,6 +48,7 @@ class ObsidianTextField extends StatefulWidget {
     this.enabled = true,
     this.textInputAction,
     this.keyboardType,
+    this.inputFormatters,
     this.maxLines = 1,
     this.minLines,
     this.onSubmitted,
@@ -73,6 +76,7 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final singleLine = widget.maxLines == 1;
+    final naturalText = !widget.obscureText && widget.keyboardType != TextInputType.url;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,13 +117,14 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
                   focusNode: _focusNode,
                   obscureText: widget.obscureText,
                   autofillHints: widget.autofillHints,
-                  autocorrect: !widget.obscureText,
-                  enableSuggestions: !widget.obscureText,
-                  enableIMEPersonalizedLearning: !widget.obscureText,
-                  smartDashesType: widget.obscureText ? SmartDashesType.disabled : null,
-                  smartQuotesType: widget.obscureText ? SmartQuotesType.disabled : null,
+                  autocorrect: naturalText,
+                  enableSuggestions: naturalText,
+                  enableIMEPersonalizedLearning: naturalText,
+                  smartDashesType: naturalText ? null : SmartDashesType.disabled,
+                  smartQuotesType: naturalText ? null : SmartQuotesType.disabled,
                   enabled: widget.enabled,
                   keyboardType: widget.keyboardType,
+                  inputFormatters: widget.inputFormatters,
                   textInputAction: widget.textInputAction,
                   textAlignVertical: singleLine || widget.isDense ? TextAlignVertical.center : null,
                   maxLines: widget.maxLines,

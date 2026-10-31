@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/android_channel_output.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_output.dart';
+import 'package:phonolite_app/infrastructure/platform/audio/linux/pulse_audio_output.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/windows/xaudio2_output.dart';
 
 /// Constructs an unopened adapter. The owning session awaits its initialization.
@@ -39,8 +40,16 @@ AudioPcmOutput createAudioPcmOutput({
       bitsPerSample: bitsPerSample,
       validBitsPerSample: validBitsPerSample,
     );
+  } else if (Platform.isLinux) {
+    output = PulseAudioPlayer(
+      sampleRate: sampleRate,
+      channels: channels,
+      deviceId: deviceId,
+      bitsPerSample: bitsPerSample,
+      validBitsPerSample: validBitsPerSample,
+    );
   } else {
-    throw Exception('Audio playback is only implemented for Windows, Apple platforms, and Android right now.');
+    throw UnsupportedError('Audio output is unavailable on this platform.');
   }
 
   return output;

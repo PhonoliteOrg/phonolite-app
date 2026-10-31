@@ -104,6 +104,11 @@ FlMethodResponse* test_binary_messenger_invoke(TestBinaryMessenger* self, const 
   self->handler(FL_BINARY_MESSENGER(self), "phonolite/directories", request, handle, self->handler_data);
   g_assert_nonnull(self->response);
 
+  // Flutter handles an empty reply as not implemented before codec dispatch.
+  if (g_bytes_get_size(self->response) == 0) {
+    return FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+
   FlMethodResponse* response = codec_class->decode_response(codec, self->response, &error);
   g_assert_no_error(error);
   g_assert_nonnull(response);

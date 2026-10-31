@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.14)
 project(phonolite_opus_library LANGUAGES C)
 
 set(OPUS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../third_party/opus")
+if(NOT EXISTS "${OPUS_ROOT}/CMakeLists.txt")
+  message(FATAL_ERROR "Opus sources are missing. Run git submodule update --init --recursive from the app directory.")
+endif()
+
 # Prefer the parent-owned module that supports submodule gitfiles.
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_LIST_DIR}/../cmake")
 
@@ -11,10 +15,15 @@ set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
 set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
 set(OPUS_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/install" CACHE PATH "" FORCE)
+# Keep the codec's install settings out of the parent Flutter bundle cache.
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/install")
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 add_subdirectory("${OPUS_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/opus")
+# The static codec is linked into this package's shared FFI library.
+set_target_properties(opus PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Keep codec execution practical in Flutter's Debug and custom Profile modes.
+target_compile_options(opus PRIVATE "$<$<OR:$<CONFIG:Debug>,$<CONFIG:Profile>>:-O2>")
 set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/opus/cmake_install.cmake"

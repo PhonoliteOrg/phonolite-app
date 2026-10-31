@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
@@ -89,7 +90,12 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   Future<void> _initializeDesktopFeatures() async {
     await DesktopSettingsController.instance.initialize(beforeQuit: _shutdownDesktop);
     if (mounted && AppUpdatesController.instance.supported) {
-      await AppUpdatesController.instance.initialize(onInstall: DesktopSettingsController.instance.quit);
+      await AppUpdatesController.instance.initialize(
+        onPrepare: DesktopSettingsController.instance.prepareForUpdate,
+        onInstall: defaultTargetPlatform == TargetPlatform.linux
+            ? DesktopSettingsController.instance.quitForUpdate
+            : DesktopSettingsController.instance.quit,
+      );
     }
   }
 

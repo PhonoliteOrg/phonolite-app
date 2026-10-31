@@ -18,6 +18,7 @@ class DesktopSettingsController extends ChangeNotifier {
   DesktopSettings _savedSettings = const DesktopSettings();
   Future<void>? _initialization;
   Future<void>? _quitting;
+  Future<void>? _updatePreparation;
   Future<void>? _shutdown;
   Future<void> Function()? _beforeQuit;
   int _mutation = 0;
@@ -29,11 +30,10 @@ class DesktopSettingsController extends ChangeNotifier {
   String? _error;
 
   DesktopSettingsController({
-    DesktopSettingsStorage storage = const DesktopSettingsStorage(),
+    this._storage = const DesktopSettingsStorage(),
     DesktopLifecyclePlatform? platform,
     bool Function()? isSupported,
-  }) : _storage = storage,
-       _platform = platform ?? NativeDesktopLifecyclePlatform(),
+  }) : _platform = platform ?? NativeDesktopLifecyclePlatform(),
        _isSupported = isSupported ?? (() => desktopLifecycleSupported);
 
   bool get supported => _isSupported();
@@ -69,7 +69,7 @@ class DesktopSettingsController extends ChangeNotifier {
   Future<void> setRunInBackground(bool enabled) => _change(_settings.copyWith(runInBackground: enabled));
 
   Future<void> closeWindow() async {
-    if (!_ready || _disposed || _quitting != null || _shutdown != null) {
+    if (!_ready || _disposed || _quitting != null || _updatePreparation != null || _shutdown != null) {
       return;
     }
 
@@ -77,7 +77,7 @@ class DesktopSettingsController extends ChangeNotifier {
       await _changes.drain();
     }
 
-    if (_disposed || _quitting != null || _shutdown != null) {
+    if (_disposed || _quitting != null || _updatePreparation != null || _shutdown != null) {
       return;
     }
 
@@ -86,6 +86,13 @@ class DesktopSettingsController extends ChangeNotifier {
     } else {
       await quit();
     }
+  }
+
+  Future<void> prepareForUpdate() => _updatePreparation ??= _prepareForUpdate();
+
+  Future<void> quitForUpdate() async {
+    await prepareForUpdate();
+    await _platform.quit();
   }
 
   Future<void> quit() => _quitting ??= _quit();
@@ -143,7 +150,12 @@ class DesktopSettingsController extends ChangeNotifier {
   }
 
   Future<void> _change(DesktopSettings next) {
-    if (!_ready || _disposed || _quitting != null || _shutdown != null || _sameSettings(next, _settings)) {
+    if (!_ready ||
+        _disposed ||
+        _quitting != null ||
+        _updatePreparation != null ||
+        _shutdown != null ||
+        _sameSettings(next, _settings)) {
       return Future<void>.value();
     }
 
@@ -209,6 +221,13 @@ class DesktopSettingsController extends ChangeNotifier {
         _notify();
       }
     }
+  }
+
+  Future<void> _prepareForUpdate() async {
+    await _initialization;
+    await _changes.drain();
+    // Cleanup failure must reach the coordinator before it can replace files.
+    await _beforeQuit?.call();
   }
 
   Future<void> _quit() async {

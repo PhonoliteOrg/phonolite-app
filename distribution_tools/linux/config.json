@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "repository": "PhonoliteOrg/phonolite-app",
+  "package_name": "phonolite",
+  "application_id": "com.phonoliteorg.phonolite_app",
+  "manifest_asset": "linux-updates.json",
+  "signature_asset": "linux-updates.json.sig",
+  "install_root": "/opt/phonolite",
+  "helper_directory": "/usr/libexec",
+  "launcher": "/usr/bin/phonolite",
+  "trusted_keys": {},
+  "nfpm": {
+    "version": "2.48.0",
+    "linux_amd64_sha256": "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750"
+  },
+  "targets": [
+    {
+      "id": "ubuntu-26.04-amd64",
+      "os_id": "ubuntu",
+      "os_version": "26.04",
+      "architecture": "amd64",
+      "format": "deb",
+      "validated": false,
+      "dependencies": [
+        "libgtk-3-0t64",
+        "libsecret-1-0",
+        "libpulse0",
+        "libssl3t64",
+        "libjson-glib-1.0-0",
+        "pkexec"
+      ]
+    },
+    {
+      "id": "fedora-44-amd64",
+      "os_id": "fedora",
+      "os_version": "44",
+      "architecture": "amd64",
+      "format": "rpm",
+      "validated": false,
+      "dependencies": [
+        "gtk3",
+        "libsecret",
+        "pulseaudio-libs",
+        "openssl-libs",
+        "json-glib",
+        "polkit"
+      ]
+    },
+    {
+      "id": "rhel-10.0-amd64",
+      "os_id": "rhel",
+      "os_version": "10.0",
+      "architecture": "amd64",
+      "format": "rpm",
+      "validated": false,
+      "dependencies": [
+        "gtk3",
+        "libsecret",
+        "pulseaudio-libs",
+        "openssl-libs",
+        "json-glib",
+        "polkit"
+      ]
+    },
+    {
+      "id": "arch-rolling-amd64",
+      "os_id": "arch",
+      "os_version": "rolling",
+      "architecture": "amd64",
+      "format": "archlinux",
+      "validated": false,
+      "dependencies": [
+        "gtk3",
+        "libsecret",
+        "libpulse",
+        "openssl",
+        "json-glib",
+        "polkit"
+      ]
+    }
+  ],
+  "native_signing_fingerprint": ""
+}

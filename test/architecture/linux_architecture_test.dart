@@ -11,9 +11,11 @@ void main() {
     final build = readProjectFile('$_runner/CMakeLists.txt');
     final membership = readProjectFile('$_runner/sources.cmake');
     final sources = RegExp(r'set\(PHONOLITE_RUNNER_SOURCES[\s\S]*?\n\)').firstMatch(membership)![0]!;
-    final references = RegExp(
-      r'"([^"\n]+\.(?:cc|h))"',
-    ).allMatches(sources).map((match) => match[1]!).where((path) => !path.contains(r'${FLUTTER_MANAGED_DIR}')).toList();
+    final references = RegExp(r'"([^"\n]+\.(?:cc|h))"')
+        .allMatches(sources)
+        .map((match) => match[1]!)
+        .where((path) => !path.contains(r'${FLUTTER_MANAGED_DIR}'))
+        .toList();
     final expected = _nativeFiles().map((file) => _relative(file)).toSet();
 
     expect(references.length, references.toSet().length);
@@ -28,11 +30,40 @@ void main() {
     final project = readProjectFile('linux/CMakeLists.txt');
     expectContainsAll(project, const [
       'set(BINARY_NAME "phonolite_app")',
-      'set(APPLICATION_ID "com.example.phonolite_app")',
+      'set(APPLICATION_ID "com.phonoliteorg.phonolite_app")',
       'cxx_std_14',
       r'set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")',
       'include(flutter/generated_plugins.cmake)',
     ]);
+  });
+
+  test('standalone updater registers sources and keeps privileged code independent of UI', () {
+    final build = readProjectFile('linux/updater/CMakeLists.txt');
+    final references = RegExp(r'(?<![a-z_/])([a-z][a-z_/]*\.(?:cc|h))')
+        .allMatches(build)
+        .map((match) => match[1]!)
+        .toList();
+    final files = Directory('linux/updater')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => RegExp(r'\.(?:cc|h)$').hasMatch(file.path))
+        .toList();
+    expect(references.toSet(), files.map((file) => file.path.substring('linux/updater/'.length)).toSet());
+    expect(references.length, references.toSet().length);
+    final privileged = RegExp(r'add_executable\(phonolite-update-installer[^)]*\)').firstMatch(build)![0]!;
+    expect(privileged, isNot(contains('ui/')));
+    expect(build, contains('target_link_libraries(phonolite-update-installer PRIVATE phonolite_update_core)'));
+    for (final file in files) {
+      final source = file.readAsStringSync();
+      expect(file.readAsLinesSync().length, lessThanOrEqualTo(1000), reason: file.path);
+      if (file.path.contains('/infrastructure/')) {
+        expect(source, isNot(contains('#include "ui/')), reason: file.path);
+        expect(source, isNot(contains('#include "bootstrap/')), reason: file.path);
+      }
+      if (file.path.contains('/data/')) {
+        expect(source, isNot(matches(r'#include <(?:gtk|gio|glib|flutter_linux)/')), reason: file.path);
+      }
+    }
   });
 
   test('Linux data, shell and native capabilities keep responsibility boundaries', () {
@@ -69,7 +100,9 @@ void main() {
   test('Linux keeps native window policy and first-frame startup sequencing', () {
     final shell = readProjectFile('$_runner/ui/shell/application_window.cc');
     expectContainsAll(shell, const [
-      'window_title[] = "phonolite_app"',
+      'const gchar* title = g_get_application_name()',
+      'gtk_window_set_title(window_, title)',
+      'gtk_header_bar_set_title(header_bar, title)',
       'default_window_width = 1280',
       'default_window_height = 720',
       '#ifdef GDK_WINDOWING_X11',
@@ -100,6 +133,7 @@ void main() {
     final application = readProjectFile('$_runner/bootstrap/my_application.cc');
     expectContainsAll(application, const [
       'g_set_prgname(APPLICATION_ID)',
+      'g_set_application_name("Phonolite")',
       'static_cast<GApplicationFlags>(0)',
       'g_strdupv(*arguments + 1)',
       '*exit_status = 1',
@@ -166,7 +200,7 @@ void main() {
       'fl_binary_messenger_set_message_handler_on_channel(',
       'fl_method_channel_set_method_call_handler(channel_, nullptr, nullptr, nullptr)',
     ]);
-    expect(RegExp(r'fl_method_call_respond\(').allMatches(adapter), hasLength(1));
+    expect(RegExp(r'send_method_response\(').allMatches(adapter), hasLength(1));
     expect(adapter, isNot(contains('gtk_widget_set_size_request')));
 
     final shell = readProjectFile('$_runner/ui/shell/application_window.cc');
@@ -195,7 +229,7 @@ void main() {
       'fl_method_success_response_new(nullptr)',
       '"open_failed", result.message.c_str(), nullptr',
     ]);
-    expect(RegExp(r'fl_method_call_respond\(').allMatches(adapter), hasLength(1));
+    expect(RegExp(r'send_method_response\(').allMatches(adapter), hasLength(1));
 
     final launcher = readProjectFile('$_runner/infrastructure/shell/directory_launcher.cc');
     expectContainsAll(launcher, const [
@@ -208,8 +242,10 @@ void main() {
   });
 }
 
-Iterable<File> _nativeFiles() => Directory(
-  _runner,
-).listSync(recursive: true).whereType<File>().where((file) => RegExp(r'\.(?:cc|h)$').hasMatch(file.path));
+Iterable<File> _nativeFiles() =>
+    Directory(_runner)
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => RegExp(r'\.(?:cc|h)$').hasMatch(file.path));
 
 String _relative(File file) => file.path.replaceAll('\\', '/').substring('$_runner/'.length);

@@ -263,7 +263,7 @@ ffi.DynamicLibrary _loadLibrary() {
     }
     return ffi.DynamicLibrary.process();
   }
-  if (Platform.isAndroid) {
+  if (Platform.isAndroid || Platform.isLinux) {
     return ffi.DynamicLibrary.open('libphonolite_opus.so');
   }
   if (Platform.isWindows) {

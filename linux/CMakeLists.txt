@@ -7,7 +7,7 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "phonolite_app")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.example.phonolite_app")
+set(APPLICATION_ID "com.phonoliteorg.phonolite_app")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -32,6 +32,11 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     STRING "Flutter build mode" FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
     "Debug" "Profile" "Release")
+endif()
+
+# Development registration must not capture the installed application's launches.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(APPLICATION_ID "com.phonoliteorg.phonolite_app.devel")
 endif()
 
 # Compilation settings that should be applied to most targets.
@@ -74,12 +79,13 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
-
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build
 # directory.
 set(BUILD_BUNDLE_DIR "${PROJECT_BINARY_DIR}/bundle")
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR
+   CMAKE_INSTALL_PREFIX STREQUAL "${PROJECT_BINARY_DIR}/plugins/phonolite_opus/install")
+  # Repair the old Opus plugin's cached prefix as well as new build directories.
   set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
 
@@ -126,3 +132,15 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Desktop registration tools read the identity from the actual built bundle.
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/application-id" CONTENT "${APPLICATION_ID}\n")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/application-id" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+install(CODE "
+  execute_process(COMMAND \"${Python3_EXECUTABLE}\" \"${CMAKE_CURRENT_SOURCE_DIR}/../distribution_tools/linux/record_bundle.py\"
+    \"${INSTALL_BUNDLE_DATA_DIR}/build-source.json\" RESULT_VARIABLE provenance_status)
+  if(NOT provenance_status EQUAL 0)
+    message(FATAL_ERROR \"Cannot record Linux bundle source identity\")
+  endif()
+" COMPONENT Runtime)

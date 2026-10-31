@@ -5,3 +5,7 @@ project(phonolite_local_opus LANGUAGES C)
 get_filename_component(OPUS_PACKAGE "${CMAKE_CURRENT_LIST_DIR}/../../../../phonolite_opus" REALPATH)
 list(PREPEND CMAKE_MODULE_PATH "${OPUS_PACKAGE}/cmake")
 add_subdirectory("${OPUS_PACKAGE}/third_party/opus" "${CMAKE_CURRENT_BINARY_DIR}/opus")
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_options(opus PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()

@@ -7,7 +7,6 @@
 namespace phonolite {
 namespace {
 
-constexpr char window_title[] = "phonolite_app";
 constexpr int default_window_width = 1280;
 constexpr int default_window_height = 720;
 
@@ -56,15 +55,16 @@ bool ApplicationWindow::should_use_header_bar() const {
 }
 
 void ApplicationWindow::configure_title() {
-  if (!should_use_header_bar()) {
-    gtk_window_set_title(window_, window_title);
+  const gchar* title = g_get_application_name();
+  gtk_window_set_title(window_, title);
 
+  if (!should_use_header_bar()) {
     return;
   }
 
   GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
   gtk_widget_show(GTK_WIDGET(header_bar));
-  gtk_header_bar_set_title(header_bar, window_title);
+  gtk_header_bar_set_title(header_bar, title);
   gtk_header_bar_set_show_close_button(header_bar, TRUE);
   gtk_window_set_titlebar(window_, GTK_WIDGET(header_bar));
 }

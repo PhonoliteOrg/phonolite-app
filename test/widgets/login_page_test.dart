@@ -100,6 +100,37 @@ void main() {
     expect(_action('Forget server'), findsNothing);
   });
 
+  testWidgets('server address rejects invalid input and disables keyboard rewriting', (tester) async {
+    await _pump(tester, _LoginController());
+    final field = tester.widget<TextField>(_input('Server address'));
+    expect(field.autocorrect, isFalse);
+    expect(field.enableSuggestions, isFalse);
+    expect(field.smartDashesType, SmartDashesType.disabled);
+    expect(field.smartQuotesType, SmartQuotesType.disabled);
+
+    await tester.enterText(_input('Server address'), 'music.test');
+    await tester.enterText(_input('Server address'), 'my server.test');
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, 'music.test');
+    await tester.enterText(_input('Server address'), 'music.test😀');
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, 'music.test');
+
+    await tester.enterText(_input('Server address'), 'https://[2001:db8::1]:8443/api');
+    expect(tester.widget<TextField>(_input('Server address')).controller!.text, '[2001:db8::1]');
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
+  });
+
+  testWidgets('port filters nondigits while connection validation checks its range', (tester) async {
+    final controller = _LoginController();
+    await _pump(tester, controller);
+    await tester.enterText(_input('Server address'), 'music.test');
+    await tester.enterText(_input('Port'), '8a4 43');
+    expect(tester.widget<TextField>(_input('Port')).controller!.text, '8443');
+    await tester.enterText(_input('Port'), '65536');
+    await _tapAction(tester, 'Connect');
+    expect(controller.probes, isEmpty);
+    expect(find.text('Port must be a number between 1 and 65535'), findsOneWidget);
+  });
+
   testWidgets('change server disconnects and clears credentials before reconnecting', (tester) async {
     final controller = _LoginController()
       .._auth = AuthState(baseUrl: 'https://fresh.test:8443/api', requiresSignIn: true)

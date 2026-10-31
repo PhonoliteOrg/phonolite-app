@@ -30,7 +30,7 @@ set(OUTPUT_SO "${CMAKE_CURRENT_BINARY_DIR}/libphonolite_local_audio.so")
 add_custom_command(
   OUTPUT "${OUTPUT_SO}"
   DEPENDS ${RUST_SOURCES} ${OPUS_SOURCES} "${RUST_ROOT}/Cargo.toml" "${RUST_ROOT}/Cargo.lock"
-  COMMAND cargo build ${CARGO_RELEASE_FLAG} --target-dir "${CARGO_TARGET_DIR}"
+  COMMAND cargo build --locked ${CARGO_RELEASE_FLAG} --target-dir "${CARGO_TARGET_DIR}"
   WORKING_DIRECTORY "${RUST_ROOT}"
   COMMAND ${CMAKE_COMMAND} -E copy
     "${CARGO_TARGET_DIR}/${CARGO_PROFILE}/libphonolite_local_audio.so"

@@ -6,20 +6,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 
 void main() {
+  final linuxArchitecture = ffi.Abi.current() == ffi.Abi.linuxArm64 ? 'arm64' : 'x64';
   final candidates = [
-    'build/windows/x64/plugins/phonolite_opus/Release/phonolite_opus.dll',
-    'build/windows/x64/runner/Release/phonolite_opus.dll',
+    if (Platform.isWindows) ...[
+      'build/windows/x64/plugins/phonolite_opus/Release/phonolite_opus.dll',
+      'build/windows/x64/runner/Release/phonolite_opus.dll',
+    ],
+    if (Platform.isLinux)
+      for (final mode in ['debug', 'profile', 'release']) ...[
+        'build/linux/$linuxArchitecture/$mode/bundle/lib/libphonolite_opus.so',
+        'build/linux/$linuxArchitecture/$mode/plugins/phonolite_opus/libphonolite_opus.so',
+      ],
   ];
-  final libraryPath = Platform.isWindows
-      ? candidates.where((path) => File(path).existsSync()).firstOrNull
-      : null;
-  // Load the built decoder DLL only. No Flutter app or audio device is opened.
+  final libraryPath = candidates.where((path) => File(path).existsSync()).firstOrNull;
+  // Load the built decoder only. No Flutter app or audio device is opened.
   if (libraryPath != null) {
     ffi.DynamicLibrary.open(File(libraryPath).absolute.path);
   }
-  final skip = libraryPath == null
-      ? 'Requires a compiled Windows phonolite_opus.dll.'
-      : false;
+  final skip = libraryPath == null ? 'Requires a compiled phonolite_opus library for Windows or Linux.' : false;
 
   test('real decoder reused buffers preserve independent PCM lists', () {
     final decoder = OpusDecoder(sampleRate: 48000, channels: 2);
@@ -62,10 +66,7 @@ void main() {
       throwsA(isA<OpusException>().having((error) => error.code, 'code', -2)),
     );
     for (final size in [0, -1, decoder.maxFrameSize + 1]) {
-      expect(
-        () => decoder.decode(silence, frameSize: size),
-        throwsA(isA<OpusException>()),
-      );
+      expect(() => decoder.decode(silence, frameSize: size), throwsA(isA<OpusException>()));
     }
     expect(() => decoder.decode(Uint8List(0)), throwsA(isA<OpusException>()));
     expect(decoder.decode(silence, frameSize: 960), hasLength(1920));

@@ -23,8 +23,17 @@ abstract class AudioPcmOutput {
 
   Future<int> collectDoneSamples();
 
+  /// Checks completion after the producer has finished its current queue.
+  /// Backends may request a native end-of-stream acknowledgement; new writes
+  /// invalidate that request and resume normal streaming.
   Future<bool> isIdle();
 }
+
+/// An output whose writes wait for capacity in a bounded native queue.
+/// Native queue capacity controls refill independently of audible playback
+/// latency, which can exceed a software scheduling horizon. Flush and disposal
+/// must cancel writes waiting for capacity.
+abstract interface class BoundedAudioPcmOutput implements AudioPcmOutput {}
 
 /// Output capability for signed, left-aligned PCM with up to 32 valid bits.
 abstract interface class AudioPcm32Output {

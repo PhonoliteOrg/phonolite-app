@@ -12,13 +12,13 @@ Flutter owns the phone's application pages, navigation, library state and playba
 
 | Current source | Responsibilities | Expected owners |
 | --- | --- | --- |
-| [MainActivity](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/MainActivity.kt) | FlutterActivity presentation, borrowing the shared engine and keeping it alive after Activity destruction | Bootstrap |
-| [PhonoliteApplication](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/PhonoliteApplication.kt), [NativeHost](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/NativeHost.kt), [FlutterEngineOwner](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/FlutterEngineOwner.kt) and [binding](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/FlutterEngineBinding.kt) | Loader initialization, process composition, one shared engine, plugin registration, channel assembly and Dart startup | Bootstrap |
-| [Shared channel adapter](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/flutter/FlutterChannelAdapter.kt), family adapters/codecs and [VehicleClient](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/flutter/VehicleClient.kt) | Registration, platform-thread invocation, wire decoding/replies and typed native/Dart transport | Infrastructure/Flutter |
-| [NativeMediaController](../android/app/src/main/kotlin/com/example/phonolite_app/application/controllers/media/NativeMediaController.kt), [position state](../android/app/src/main/kotlin/com/example/phonolite_app/data/models/playback/PlaybackPositionState.kt) and [VehicleBrowseController](../android/app/src/main/kotlin/com/example/phonolite_app/application/controllers/vehicle/VehicleBrowseController.kt) | Process snapshots/source availability, position acceptance, semantic browse nodes and selection | Application coordination and standalone Data values |
-| [AudioOutputService](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioOutputService.kt), [session](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioOutputSession.kt), [focus controller](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioFocusController.kt), [device catalog](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/OutputDeviceCatalog.kt) and [progress](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/audio/AudioPlaybackProgress.kt) | Registry, focus/noisy receiver, device enumeration, AudioTrack/writer ownership and progress accounting through an injected playback probe | Infrastructure/Audio; configuration/device values live in Data |
-| [PhonoliteMediaService](../android/app/src/main/kotlin/com/example/phonolite_app/bootstrap/PhonoliteMediaService.kt), [service connection](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/media/MediaServiceConnection.kt) and [media-session controller](../android/app/src/main/kotlin/com/example/phonolite_app/infrastructure/media/MediaSessionController.kt) | Android callbacks, bound/started ownership, foreground policy, session publication and composed presentation | Bootstrap and Infrastructure/Media |
-| [MediaItemFactory](../android/app/src/main/kotlin/com/example/phonolite_app/ui/media/MediaItemFactory.kt) and [PlaybackNotificationFactory](../android/app/src/main/kotlin/com/example/phonolite_app/ui/media/PlaybackNotificationFactory.kt) | Shared display labels/flags, media style, icons, action arrangements and final system-facing presentation assembly | UI/Media |
+| [MainActivity](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/bootstrap/MainActivity.kt) | FlutterActivity presentation, borrowing the shared engine and keeping it alive after Activity destruction | Bootstrap |
+| [PhonoliteApplication](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/bootstrap/PhonoliteApplication.kt), [NativeHost](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/bootstrap/NativeHost.kt), [FlutterEngineOwner](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/bootstrap/FlutterEngineOwner.kt) and [binding](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/bootstrap/FlutterEngineBinding.kt) | Loader initialization, process composition, one shared engine, plugin registration, channel assembly and Dart startup | Bootstrap |
+| [Shared channel adapter](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/flutter/FlutterChannelAdapter.kt), family adapters/codecs and [VehicleClient](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/flutter/VehicleClient.kt) | Registration, platform-thread invocation, wire decoding/replies and typed native/Dart transport | Infrastructure/Flutter |
+| [NativeMediaController](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/application/controllers/media/NativeMediaController.kt), [position state](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/data/models/playback/PlaybackPositionState.kt) and [VehicleBrowseController](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/application/controllers/vehicle/VehicleBrowseController.kt) | Process snapshots/source availability, position acceptance, semantic browse nodes and selection | Application coordination and standalone Data values |
+| [AudioOutputService](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/audio/AudioOutputService.kt), [session](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/audio/AudioOutputSession.kt), [focus controller](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/audio/AudioFocusController.kt), [device catalog](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/audio/OutputDeviceCatalog.kt) and [progress](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/audio/AudioPlaybackProgress.kt) | Registry, focus/noisy receiver, device enumeration, AudioTrack/writer ownership and progress accounting through an injected playback probe | Infrastructure/Audio; configuration/device values live in Data |
+| [PhonoliteMediaService](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/bootstrap/PhonoliteMediaService.kt), [service connection](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/media/MediaServiceConnection.kt) and [media-session controller](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/infrastructure/media/MediaSessionController.kt) | Android callbacks, bound/started ownership, foreground policy, session publication and composed presentation | Bootstrap and Infrastructure/Media |
+| [MediaItemFactory](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/ui/media/MediaItemFactory.kt) and [PlaybackNotificationFactory](../android/app/src/main/kotlin/com/phonoliteorg/phonolite_app/ui/media/PlaybackNotificationFactory.kt) | Shared display labels/flags, media style, icons, action arrangements and final system-facing presentation assembly | UI/Media |
 | [AndroidManifest.xml](../android/app/src/main/AndroidManifest.xml) and [automotive descriptor](../android/app/src/main/res/xml/automotive_app_desc.xml) | Framework component identities, permissions, launch configuration, media-service discovery and Android Auto registration | Android configuration/resources |
 | [App Gradle build](../android/app/build.gradle.kts), [settings](../android/settings.gradle.kts) and native package builds | Dependencies, toolchain selection, source sets, native artifacts and APK output | Build configuration and owning packages |
 
@@ -28,7 +28,7 @@ Android Auto renders browsing and playback UI from the supplied media service/se
 
 ## Android structure and responsibility boundaries
 
-Android's structure constrains discovery and lifetime more than the placement of ordinary Kotlin collaborators. Keep the existing app Gradle module and source roots. Responsibility folders become subpackages beneath `com.example.phonolite_app`.
+Android's structure constrains discovery and lifetime more than the placement of ordinary Kotlin collaborators. Keep the existing app Gradle module and source roots. Responsibility folders become subpackages beneath `com.phonoliteorg.phonolite_app`.
 
 | Area | Owns | Boundary |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ android/
     src/
       main/
         AndroidManifest.xml
-        kotlin/com/example/phonolite_app/
+        kotlin/com/phonoliteorg/phonolite_app/
           bootstrap/
             MainActivity.kt
             PhonoliteApplication.kt
@@ -126,11 +126,11 @@ android/
           xml/automotive_app_desc.xml
       debug/AndroidManifest.xml
       profile/AndroidManifest.xml
-      test/kotlin/com/example/phonolite_app/         # Headless JVM contract checks
-      androidTest/kotlin/com/example/phonolite_app/  # Device tests when added
+      test/kotlin/com/phonoliteorg/phonolite_app/         # Headless JVM contract checks
+      androidTest/kotlin/com/phonoliteorg/phonolite_app/  # Device tests when added
 ```
 
-The root package and namespace stay intact. For example, moving MainActivity to the bootstrap package gives it the fully qualified name `com.example.phonolite_app.bootstrap.MainActivity`. Update the manifest's relative/FQCN reference and explicit Intent/class references together. The Gradle namespace/applicationId need not change. Resource imports still use the configured namespace, such as `com.example.phonolite_app.R`.
+The root package and namespace stay intact. For example, moving MainActivity to the bootstrap package gives it the fully qualified name `com.phonoliteorg.phonolite_app.bootstrap.MainActivity`. Update the manifest's relative/FQCN reference and explicit Intent/class references together. The Gradle namespace/applicationId need not change. Resource imports still use the configured namespace, such as `com.phonoliteorg.phonolite_app.R`.
 
 Standalone data definitions live outside transport/service owners. Keep raw MethodCall/Result and Any-based wire representations inside transport. VehicleClient exposes typed results and operations to functional code; the former BridgeInvokeResult envelope is no longer a general application contract. A small transport-only reply helper may stay private beside its adapter.
 
@@ -313,7 +313,7 @@ Coroutines are an option for deliberately changed asynchronous workflows, with a
 
 Keep `src/main`, `src/debug`, `src/profile`, `res` types and qualifier folders intact. Android discovers resources and merges manifests by source set. Move Kotlin collaborators inside the source root and update package/import/component references together. Preserve launch/normal themes, launcher icons, native media drawables, resource names and embedding metadata. New shared native styling belongs in appropriate theme/style resources and UI abstractions.
 
-Preserve namespace/applicationId `com.example.phonolite_app`, main Activity singleTop/configChanges behavior, process-text query and cleartext-disabled network policy. The existing manifest permissions cover internet/network state, wake lock, notifications and foreground media playback. Renaming the application identity or changing permissions/signing is separate product/build work.
+Preserve namespace/applicationId `com.phonoliteorg.phonolite_app`, main Activity singleTop/configChanges behavior, process-text query and cleartext-disabled network policy. The existing manifest permissions cover internet/network state, wake lock, notifications and foreground media playback. Renaming the application identity or changing permissions/signing is separate product/build work.
 
 The checked-in build selects AGP 8.9.1, Kotlin plugin 2.1.0 and Gradle wrapper 8.12. Java source/target and Kotlin bytecode target are 11; that does not mean Gradle runs on JDK 11. SDK and NDK versions come from Flutter extension values. The installed Flutter SDK currently resolves compile/target SDK 36, minimum SDK 24 and NDK 27.0.12077973; these are SDK observations, not fixed literals in the app build. Keep toolchain upgrades separate from organization.
 
@@ -345,7 +345,7 @@ insert_final_newline = true
 ktlint_code_style = android_studio
 
 # Preserve the established app package; new responsibility segments remain lowercase words.
-[app/src/**/kotlin/com/example/phonolite_app/**/*.kt]
+[app/src/**/kotlin/com/phonoliteorg/phonolite_app/**/*.kt]
 ktlint_standard_package-name = disabled
 ```
 

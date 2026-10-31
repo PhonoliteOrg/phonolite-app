@@ -4,6 +4,8 @@
 #include <exception>
 #include <utility>
 
+#include "runner/infrastructure/flutter/method_response_sender.h"
+
 namespace phonolite {
 namespace {
 
@@ -89,7 +91,7 @@ void WindowConstraintsChannelAdapter::method_call_cb(FlMethodChannel*, FlMethodC
   }
 
   g_autoptr(GError) error = nullptr;
-  if (!fl_method_call_respond(method_call, response, &error)) {
+  if (!send_method_response(method_call, response, &error)) {
     g_warning("Failed to send window response: %s", error != nullptr ? error->message : "Unknown transport failure.");
   }
 }

@@ -2,7 +2,7 @@
 
 This extends the [expected architecture](expected-architecture.md), [coding standards](coding-standards.md) and [Windows C++ specification](windows-native-specification.md) to the Flutter Linux host. Shared owners define common structure, design and behavior; specializations provide meaningful differences; assembly connects explicit dependencies. Linux adapts those principles to GTK 3, GObject, GLib/GIO, Flutter's C embedding API and CMake.
 
-Use the established C++ preferences: snake_case operations, lower_snake_case files and folders, PascalCase types, public-contract-first headers, controlled state and logical spacing. Retain Linux's `.cc` implementation extension and the current C++14 baseline. The source map below describes the implemented host organization. Linux playback support remains separate feature work.
+Use the established C++ preferences: snake_case operations, lower_snake_case files and folders, PascalCase types, public-contract-first headers, controlled state and logical spacing. Retain Linux's `.cc` implementation extension and the current C++14 baseline. The source map below describes the implemented host organization. Linux PCM playback uses an isolate-owned Dart FFI adapter to the desktop audio service.
 
 ## Current responsibilities and support
 
@@ -15,19 +15,46 @@ Flutter owns application pages, navigation, library state and playback workflows
 | [FlutterHost](../linux/runner/bootstrap/flutter_host.cc) | Per-window Flutter view/engine, plugin registration, capability assembly and teardown | Bootstrap |
 | [ApplicationWindow](../linux/runner/ui/shell/application_window.cc) | GTK frame, title/header selection, initial geometry and presentation | UI/Shell |
 | [Directory outcome](../linux/runner/data/models/directories/directory_open_result.h), [channel adapter](../linux/runner/infrastructure/flutter/directories_channel_adapter.cc) and [launcher](../linux/runner/infrastructure/shell/directory_launcher.cc) | Independent result values, Flutter wire handling and GIO opening | Data and separate Infrastructure capabilities |
+| [Method response sender](../linux/runner/infrastructure/flutter/method_response_sender.cc) | Typed Flutter replies with caller-owned transport errors, shared by native channel adapters | Infrastructure/Flutter |
 | [Window constraints adapter](../linux/runner/infrastructure/flutter/window_constraints_channel_adapter.cc) | Validate the `phonolite/window` content-size request and invoke the shell capability bound by FlutterHost | Infrastructure transport and UI/Shell sizing |
 | [runner CMake](../linux/runner/CMakeLists.txt) | Explicit runner sources, generated registrant, compiler settings and target linkage | Runner build integration |
 | [project CMake](../linux/CMakeLists.txt) | Application identity, Flutter/plugin integration, bundle installation and library lookup | Project build integration |
 | [generated registrant](../linux/flutter/generated_plugin_registrant.cc), [generated plugin CMake](../linux/flutter/generated_plugins.cmake) and [Flutter CMake](../linux/flutter/CMakeLists.txt) | Managed embedding/plugin integration and ephemeral build output | Flutter-managed files |
 | Package-specific Linux CMake and shared C/Rust sources | Decoder and transport libraries with stable FFI exports | Owning native packages |
 
-Linux is not currently a complete playback platform. The [output factory](../lib/infrastructure/audio/output/audio_output_factory.dart) has no Linux PCM adapter, and the [playback session](../lib/infrastructure/audio/engine/session/playback_session.dart) explicitly rejects unsupported platforms. [Device discovery](../lib/infrastructure/platform/audio/audio_device_discovery.dart) returns only System Default on Linux. The [Opus package loader](../packages/phonolite_opus/lib/phonolite_opus.dart) lacks a Linux branch even though its Linux build produces a shared library. The local decoder and QUIC loaders already recognize their Linux `.so` files.
+The [output factory](../lib/infrastructure/audio/output/audio_output_factory.dart) selects [PulseAudioPlayer](../lib/infrastructure/platform/audio/linux/pulse_audio_output.dart) on Linux. The playback session accepts Linux for both streamed Opus and original/local decoded PCM. The adapter loads `libpulse.so.0`, connecting to either PulseAudio or PipeWire's PulseAudio compatibility service, and supports interleaved signed 16-bit and left-aligned 32-bit PCM. No development headers or extra native plugin are needed for production audio builds.
 
-The [Now Playing service](../lib/infrastructure/platform/media/now_playing_platform_service.dart) supports iOS and Android. No Linux PCM backend, native output-device enumeration or MPRIS integration currently exists. These are explicit future features, not responsibilities to invent or silently implement during organization. File selection, secure storage and other dependencies keep their existing plugin ownership.
+[Device discovery](../lib/infrastructure/platform/audio/audio_device_discovery.dart) currently advertises System Default only on Linux; route the application through the desktop sound settings. The [Now Playing service](../lib/infrastructure/platform/media/now_playing_platform_service.dart) has no Linux MPRIS integration yet. File selection, secure storage and other dependencies retain their plugin ownership.
+
+### Audio and tray ownership
+
+[NativePulseAudioStream](../lib/infrastructure/platform/audio/linux/native_pulse_audio_stream.dart) owns the libpulse mainloop, context, stream and pending flush operation. It pumps the asynchronous API with nonblocking iterations on the audio worker isolate, so no C callback enters a different isolate. Startup has a timeout and stop can close a connecting stream. The connection disables daemon autospawning and uses the desktop's existing service.
+
+`PulseAudioPlayer` implements `BoundedAudioPcmOutput`: native writable capacity controls refill of its 200 ms queue. The shared timeline therefore does not apply its additional 125 ms audible-progress limit to Linux. Device latency can exceed that limit; waiting for audible consumption before replenishing the native queue would then starve playback despite decoded PCM being available. Playback credit still follows the latency-based clock rather than native writes or writable capacity.
+
+The server queue is capped at 200 ms. Writes copy complete frames, yield on backpressure, and use a generation to cancel pending data on flush/disposal. Seeking waits for the server's flush acknowledgement before accepting new PCM and resets the playback clock. Reported progress subtracts the server's queued/device latency from written frames and never moves backwards within a generation; merely queueing samples does not count as listening. Interpolated latency can retain a residual frame after playback ends, so a server drain acknowledgement confirms consumption independently of that estimate. The shared timeline probes native completion only for a sealed source at the queue's tail. Ordinary progress reads never request a drain: continuous writes would keep it pending until the server's operation timeout. New writes cancel a pending probe, and pausing, seeking or disposal cancels it before suspending or releasing the stream. A drain covers only the frames written when it was requested; later writes need their own confirmation. One operation owner manages native acknowledgements and callback lifetimes. Pause corks the stream, and volume converts linear gain to PulseAudio's cubic volume scale. Native errors reach the playback owner instead of leaving an indefinitely blocked queue.
+
+[NativeDesktopTray](../lib/infrastructure/platform/app/desktop_tray.dart) owns the tray icon, image, Show/Quit menu, native listeners and cleanup. `tray_manager` 0.8 uses StatusNotifierItem over D-Bus directly, removing the deprecated libayatana-appindicator dependency. Its native assets require Flutter 3.47 / Dart 3.13 and GTK 3/X11/XInput development files. No legacy API bridge or warning suppression is used. GNOME still needs a StatusNotifierItem/AppIndicator host extension.
+
+### Build and runtime readiness
+
+| Area | Current implementation | Remaining validation or work |
+| --- | --- | --- |
+| Desktop host | GTK window, Flutter engine/plugin registration, minimum content size, directory opening, icon and teardown | On-screen checks under X11 and Wayland remain manual |
+| Tray and startup | Tray/window plugins and app-owned XDG autostart registration | Verify the desktop's AppIndicator host and actual login behavior manually |
+| Secure storage | Local libsecret plugin with Phonolite labels and unchanged lookup attributes | An unlocked desktop Secret Service is needed at runtime; build checks never access the user's secrets |
+| Native libraries | Opus decoder, local file decoder and QUIC transport built and bundled as shared libraries | Native decoder checks cover in-memory/file fixtures; a build does not test live server connections |
+| Playback | Streamed/local PCM through PulseAudio or PipeWire-Pulse; pause, volume, seek/flush and latency-based progress | Headless queue/FFI tests pass; listening on real hardware remains manual |
+| Devices and media controls | System Default is the only advertised Linux output | Native device enumeration and MPRIS integration are absent |
+| Distribution | Full-bundle nFPM packages, signed GitHub metadata, independent coordinator and privileged installer | Production keys and clean-target installation/restart evidence are required before enabling each target |
+
+Build prerequisites, including the required Git submodule and Ubuntu development packages, are listed in the [app README](../README.md#linux). Cross-compilation is not configured for the Rust libraries: build each architecture on a matching host/toolchain until explicit Cargo target/linker support is added.
 
 ## Responsibility boundaries and source organization
 
-Keep physical responsibility folders beneath the existing runner target:
+The runner keeps physical responsibility folders beneath its existing target. Standalone updater targets live under `linux/updater`, sharing data and infrastructure through an ordinary static library. Their Application workflows own authorization and installation sequencing; the user-session UI stays outside the privileged target. The helpers are built during packaging and do not add cryptography development dependencies to normal Flutter builds.
+
+Runner organization:
 
 ```text
 linux/
@@ -47,6 +74,8 @@ linux/
       flutter/
         directories_channel_adapter.h
         directories_channel_adapter.cc
+        method_response_sender.h
+        method_response_sender.cc
         window_constraints_channel_adapter.h
         window_constraints_channel_adapter.cc
       shell/
@@ -148,9 +177,9 @@ Use two-space indentation, attached braces and a 120-column target. Keep signatu
 Preserve the current application identity and startup behavior during extraction:
 
 1. Main owns a MyApplication reference and returns `g_application_run`'s status.
-2. Construction sets the program name and application ID to `com.example.phonolite_app`, with G_APPLICATION_NON_UNIQUE. The executable remains `phonolite_app`.
+2. Construction sets the program name and application ID to `com.phonoliteorg.phonolite_app`, and the human-readable application name to `Phonolite`, with the default GApplication flags for single-instance registration. The executable remains `phonolite_app`.
 3. Local command-line handling duplicates arguments after the executable name, registers the application, reports registration failure with status 1, then activates it with status 0 on success.
-4. Activation creates a new GTK application window with a 1280-by-720 default size and the current title.
+4. Activation creates a GTK application window with a 1280-by-720 default size. Both its window title and header-bar title use the human-readable application name.
 5. The X11 compile guard and runtime screen check choose a header bar only for the exact window-manager name `GNOME Shell`; other X11 managers receive a conventional title. Wayland/default follows the header-bar path. Preserve the close-button rule.
 6. Create FlDartProject with the stored arguments, create FlView, retain the black background, show the child and add it to the window.
 7. Connect first-frame before realizing the view. The first frame reveals the top-level window.
@@ -158,7 +187,7 @@ Preserve the current application identity and startup behavior during extraction
 
 Keep the first-frame sequence in a named host/shell collaboration. Showing the window immediately, moving plugin registration ahead of view realization, changing engine sharing, introducing GTK 4/libadwaita or enforcing one window changes behavior and needs separate verification.
 
-G_APPLICATION_NON_UNIQUE controls process registration; it does not establish a single-window policy. Each activation still constructs a new view/window. Each window now retains its own FlutterHost through a GObject data association, so a later activation cannot overwrite another engine's channel owner. Replacing the command-line vector first clears its previous allocation; Flutter projects retain their own argument copies. These cleanup corrections preserve the existing activation behavior.
+Process registration does not establish a single-window policy. Each activation still constructs a new view/window. Each window retains its own FlutterHost through a GObject data association, so a later activation cannot overwrite another engine's channel owner. Replacing the command-line vector first clears its previous allocation; Flutter projects retain their own argument copies.
 
 The host connects normal window-destroy handling before view realization and clears its data association to release adapters before GTK's default child destruction. It also handles independent view destruction. An explicit engine reference keeps the messenger valid through detachment even when FlView has already cleared its own engine reference during disposal. Destruction unregisters the adapter and disconnects signal IDs before releasing that engine reference. The shell wrapper borrows its GTK-owned window rather than destroying or unrefing it a second time. Host creation is noexcept so native allocation failure cannot unwind through a GTK C callback.
 
@@ -192,6 +221,8 @@ The directory adapter removes its binary messenger handler as well as its method
 
 DirectoriesChannelAdapter owns the method name, FlValue validation, Flutter error envelopes and exactly one response attempt. DirectoryLauncher owns filename-to-URI conversion and GIO opening; its result contains copied values rather than a borrowed GError.
 
+The directory and window adapters share `send_method_response`, which uses Flutter's typed success/error/not-implemented responders. These preserve caller ownership of transport errors. The generic responder in the current embedding propagates an intermediate automatically freed GError, so using it on a failed transport can invalidate the adapter's error message. The native checks cover failure of all three reply types without retrying or starting an engine. Their test messenger interprets an empty envelope as not implemented before dispatching to the codec, matching Flutter's channel behavior.
+
 | Case | Existing Linux behavior to preserve |
 | --- | --- |
 | Request | `phonolite/directories`, `openDirectory`, one scalar string |
@@ -211,25 +242,33 @@ A method call borrowed by a callback must be retained if its reply occurs later,
 
 ## CMake packages and deployment
 
+The [Linux packaging and update implementation plan](linux_distribution_update_plan.md) sequences native packages published through GitHub Releases, signed update discovery, authorized package installation and application restart.
+
 Keep runner membership explicit in [sources.cmake](../linux/runner/sources.cmake), shared by the production target and standalone compile checks. Update paths/includes together with physical moves. Preserve BINARY_NAME, APPLICATION_ID, generated registrant integration, Flutter assembly and bundle installation. Generated plugin registration and `linux/flutter` build glue remain tool-owned; generated changes should come from Flutter's dependency tooling.
 
-The root/runner minimum is CMake 3.13, the FFI package entry points require 3.14, and vendored Opus raises the current full build's minimum to 3.16. The shared standard-settings helper selects C++14, `-Wall -Werror`, and non-Debug `-O3`/NDEBUG. Plugins also use that helper. Apply app-specific settings to the app target rather than silently changing every dependency's language mode or diagnostics.
+The root/runner minimum is CMake 3.13, the FFI package entry points require 3.14, and vendored Opus raises the current full build's minimum to 3.16. The shared standard-settings helper selects C++14, `-Wall -Werror`, and non-Debug `-O3`/NDEBUG. Plugins also use that helper. The tray uses native assets from tray_manager 0.8/nativeapi rather than a generated AppIndicator plugin target; nativeapi owns its C++17 toolchain configuration separately.
 
 The host links GTK 3, GLib and GIO through pkg-config. The installed secure-storage Linux CMake explicitly links libsecret >= 0.18.4; its parent package guidance and the app README also list jsoncpp dependencies. Verify actual build/runtime requirements against the selected plugin version and resulting ELF libraries. Secure storage expects the user's desktop Secret Service when the app runs. Compiling the plugin does not establish that the service is operational, and test doubles should not start it.
 
+Secure storage scopes its keyring entry to APPLICATION_ID, currently `com.phonoliteorg.phonolite_app`. Changing that identity requires a fresh sign-in; credentials under a previous identity are not migrated automatically.
+
+The [local secure-storage plugin](../packages/flutter_secure_storage_linux/README.md) retains upstream version 1.2.3 with the visible credential label `PhonoliteSecureStorage` and helper label `PhonoliteSecureStorage Control`, plus current Clang-compatible literal-operator spelling in its bundled JSON header. The root dependency override selects this copy. The lookup schema, account attribute and stored values retain upstream behavior. Existing credential entries receive the new label on their next write, without requiring another sign-in for the label change.
+
 | Native package | Linux build/output | Ownership |
 | --- | --- | --- |
-| [phonolite_opus](../packages/phonolite_opus/linux/CMakeLists.txt) | Shared C facade with vendored Opus; `libphonolite_opus.so` | Decoder exports and shared upstream source; Linux Dart loading still needs implementation |
+| [phonolite_opus](../packages/phonolite_opus/linux/CMakeLists.txt) | Shared C facade with position-independent static Opus; `libphonolite_opus.so` | Decoder exports and shared upstream source; Linux Dart loading uses the bundled library |
 | [phonolite_local_audio](../packages/phonolite_local_audio/linux/CMakeLists.txt) | Cargo library copied into the build; `libphonolite_local_audio.so` | Decoder handles, PCM, seek positions and release |
 | [phonolite_quic](../packages/phonolite_quic/linux/CMakeLists.txt) | Cargo library with native TLS dependencies; `libphonolite_quic.so` | Transport, authentication, certificate identity, native events and allocations |
 
 Preserve exported names, fixed-width arguments, units, opaque handles and matching close/free functions. Keep shared C/Rust implementations and vendored code in their packages. A new Linux PCM backend or MPRIS capability should extend the appropriate platform boundary and reuse Dart playback workflows rather than relocating business logic into Runner.
 
-Cargo currently follows the host toolchain, selects debug only for Debug and release otherwise, and does not pass `--locked`. The top-level CMake sysroot does not configure Rust target/linker selection automatically. Local-audio's output command lacks source DEPENDS, while QUIC tracks sources and Cargo manifests/lockfile. Opus modifies install settings and links a static library into a shared facade; verify install-prefix isolation and position-independent compilation on the actual Linux build. Keep such build-correctness work separate from source moves.
+Cargo follows the host toolchain, selects debug only for Debug and release otherwise, and passes `--locked`. The top-level CMake sysroot does not configure Rust target/linker selection automatically. Local-audio tracks its Rust, vendored decoder and shared Opus inputs; QUIC tracks its Rust sources and Cargo manifests/lockfile. Both Linux Opus build paths optimize the codec in Debug while preserving debug symbols; the standalone package also optimizes Flutter's custom Profile mode. The standalone Opus package explicitly enables position-independent code for its static library and keeps its install prefix directory-scoped. The root bundle repairs the old plugin-owned cached install prefix while preserving an intentionally configured custom prefix.
 
 Package builds may need cached Cargo, SQLite and native TLS dependencies or network downloads. Dependency preparation is not permission to start an application/server. Native package compilation is broader than a standalone runner source check.
 
 The installed bundle contains the executable, `data` assets/ICU data and `lib` Flutter/plugin/FFI/native-asset libraries; non-Debug builds include the AOT library. Preserve `$ORIGIN/lib` lookup. The intermediate executable under `intermediates_do_not_run` is not the distributable app. Ship the whole installed bundle and inspect its ELF architecture, exports and transitive runtime dependencies on the intended Linux target. [Flutter Linux distribution](https://docs.flutter.dev/platform-integration/linux/building)
+
+The [desktop launcher installer](../distribution_tools/linux/install_desktop_entry.py) registers a selected bundle under `$XDG_DATA_HOME/applications`, falling back to `~/.local/share/applications` when that variable is unset or relative. Its filename matches APPLICATION_ID, with `Name=Phonolite` and absolute executable/icon paths. It installs a self-contained SVG icon under the same data root's `icons/hicolor/scalable/apps`, embedding the existing PNG with a two-pixel transparent inset on each side at a 48-pixel dock size. GNOME uses this metadata to associate Wayland windows with their dock name and logo; setting the GTK window icon alone is insufficient. Re-register after moving the bundle or selecting a different build. This operation never starts the app and is separate from login autostart registration. [GNOME desktop integration](https://developer.gnome.org/documentation/guidelines/maintainer/integrating.html)
 
 ## Formatter
 
@@ -259,7 +298,7 @@ For future changes, preserve these boundaries:
 4. Align CMake membership, includes and generated integration with physical moves.
 5. Verify invalid input, native failure, response lifetime, repeated activation and handler teardown as the affected contracts evolve.
 
-The [Dart directory tests](../test/platform/desktop_directory_service_test.dart), [desktop keyboard tests](../test/widgets/desktop_playback_shortcuts_test.dart), [desktop mouse tests](../test/widgets/desktop_mouse_navigation_test.dart), [logging tests](../test/architecture/app_logging_test.dart) and [output lifecycle tests](../test/architecture/audio_output_lifecycle_test.dart) provide existing headless anchors. They do not verify a Linux audio backend. Some native-decoder tests currently search Windows libraries and skip other hosts; injected streaming tests can still encounter the Linux platform guard.
+The [Dart directory tests](../test/platform/desktop_directory_service_test.dart), [desktop keyboard tests](../test/widgets/desktop_playback_shortcuts_test.dart), [desktop mouse tests](../test/widgets/desktop_mouse_navigation_test.dart), [logging tests](../test/architecture/app_logging_test.dart) and [output lifecycle tests](../test/architecture/audio_output_lifecycle_test.dart) provide existing headless anchors. The Linux output tests add cancellable queue/startup coverage and a headless fixture checks the real Dart FFI implementation against PulseAudio public headers.
 
 The [Linux architecture checks](../test/architecture/linux_architecture_test.dart) verify source membership, layer boundaries, startup ordering, per-window teardown and directory wire contracts. [Standalone native checks](../linux/tests/CMakeLists.txt) separate portable result values from real-SDK platform checks. The [portable helper](../tools/linux_checks/verify_models.py) compiles the production data header as C++14 and runs three value checks:
 
@@ -267,13 +306,22 @@ The [Linux architecture checks](../test/architecture/linux_architecture_test.dar
 python tools/linux_checks/verify_models.py --cxx g++
 ```
 
-The platform checks compile the production runner against real GTK/Flutter headers and provide three GIO launcher cases plus fifteen channel/lifetime cases using real codecs/channels, an in-memory messenger and an injected URI launcher. They never initialize GTK, construct an engine/window or open a file manager. These platform checks are prepared but have not been executed from the Windows workspace. Prepare the real Flutter Linux embedding and generated plugin headers, then use:
+The platform checks compile the production runner against real GTK/Flutter headers and provide three GIO launcher cases plus seventeen channel/lifetime cases using real codecs/channels, an in-memory messenger and an injected URI launcher. They never initialize GTK, construct an engine/window or open a file manager. Prepare the real Flutter Linux embedding and generated plugin headers, then use:
 
 ```sh
 cmake -S linux/tests -B .dart_tool/linux_native_checks -DPHONOLITE_ENABLE_PLATFORM_CHECKS=ON
 cmake --build .dart_tool/linux_native_checks
 ctest --test-dir .dart_tool/linux_native_checks --output-on-failure
 ```
+
+To compile the optional PulseAudio ABI fixture, install `libpulse-dev` on a development/test host. The production app only needs the `libpulse0` runtime. CMake adds `libfake_pulse_audio.so` when it finds the public headers; run the fixture with:
+
+```sh
+PHONOLITE_PULSE_TEST_LIBRARY="$PWD/.dart_tool/linux_native_checks/libfake_pulse_audio.so" \
+  flutter test --no-pub test/platform/linux_pulse_ffi_test.dart
+```
+
+The fixture implements libpulse entirely in memory and checks format/volume layouts, PCM bytes, playback latency, flush/drain acknowledgements, error propagation and handle cleanup. A 44.1 kHz production-worker regression verifies continuous refill when device latency exceeds the shared scheduling horizon. Its simulated server clock enforces a 30-second operation deadline; continuous playback through the production worker must pass that deadline without requesting completion or restarting. Residual-latency cases verify that the final frame completes, prepared successors become audible in order, and completion occurs once without a false output timeout. Pause, seek and writes racing a drain cannot credit unplayed data or inherit an obsolete deadline. It never connects to an audio server or opens hardware.
 
 The standalone target avoids the Flutter app/native-package build graph. Set FLUTTER_EPHEMERAL_DIR when the prepared embedding is elsewhere. Portable-only mode is available with PHONOLITE_ENABLE_PLATFORM_CHECKS=OFF. A test that constructs GtkApplication, a real engine or a rendered window is not an unhosted logic check.
 
@@ -287,7 +335,39 @@ flutter build linux --release
 Run focused Dart checks without installing or launching the native app:
 
 ```sh
-flutter test --no-pub test/architecture/linux_architecture_test.dart test/platform/desktop_directory_service_test.dart test/widgets/desktop_playback_shortcuts_test.dart test/widgets/desktop_mouse_navigation_test.dart test/architecture/app_logging_test.dart test/architecture/audio_output_lifecycle_test.dart
+flutter test --no-pub test/platform/linux_audio_output_test.dart test/platform/desktop_lifecycle_platform_test.dart test/architecture/audio_output_lifecycle_test.dart test/architecture/gapless_playback_test.dart test/architecture/linux_architecture_test.dart test/platform/linux_startup_registration_test.dart test/platform/desktop_directory_service_test.dart test/widgets/desktop_playback_shortcuts_test.dart test/widgets/desktop_mouse_navigation_test.dart test/architecture/app_logging_test.dart test/architecture/opus_decoder_native_test.dart
 ```
 
-Check Profile when configuration behavior changes, and verify package rebuild inputs, bundle contents, runtime dependencies and exported FFI symbols where relevant. Portable value checks, source contracts and formatting passed from the Windows workspace. GTK/Flutter Linux compilation and the real-SDK native checks remain unverified here; they require a configured Linux host. During agent work, compilation and foreground headless verification are allowed; do not launch the app, file manager, display server, D-Bus/Secret Service, audio server or another background service. Desktop rendering, folder display and eventual real playback tests remain user-controlled.
+The Opus native tests discover built Linux libraries and decode synthetic packets without opening an audio device. File/QUIC-source decoder tests accept `PHONOLITE_LOCAL_AUDIO_LIBRARY` pointing to the bundle's `lib/libphonolite_local_audio.so`; source callbacks use in-memory fixtures rather than a network listener. `audio_output_lifecycle_test.dart` and gapless playback tests can exercise the Linux session with injected devices, without opening hardware.
+
+Check Profile when configuration behavior changes, and verify package rebuild inputs, bundle contents, runtime dependencies and exported FFI symbols where relevant. Linux x64 Debug/Profile/Release compilation, complete bundle dependency resolution, all 51 native decoder/transport header exports, real-SDK native checks, and focused audio/lifecycle/platform tests have been verified on Ubuntu 26.04. All three bundles include the native tray asset and have no AppIndicator library dependency. Opus packet decoding is checked against each built mode, and native file/source fixtures verify precision, seeking and cleanup without an audio device. This establishes build and headless integration readiness; GUI behavior, actual keyring access, live networking and audio-device output are separate runtime checks. During agent work, compilation and foreground headless verification are allowed; do not launch the app, file manager, display server, D-Bus/Secret Service, audio server or another background service. Desktop rendering, folder display and real hardware playback tests remain user-controlled.
+
+## Packaged update boundary
+
+`AppUpdateBackend` assembles one Linux platform/feed owner. Its transport uses system
+certificate authorities independently of music-server pins. The installed native
+coordinator verifies the exact Ed25519-signed manifest before Dart receives release
+fields. Downloads use private staging, bounded HTTPS redirects/deadlines and a
+signed length/SHA-256 check. The root installer independently repeats verification
+on a protected copy and checks package ownership, host target and native identity.
+
+The coordinator requests polkit authorization before asking Flutter to prepare.
+`DesktopSettingsController.prepareForUpdate` drains accepted writes and propagates
+cleanup failure. Only its successful preparation sends `prepared`; the installer
+then requires the original PID/start-time identity to exit before invoking the
+manager. The root-owned transaction lock also prevents another packaged instance
+from starting during replacement. Debug builds have a separate `.devel` application
+ID; application storage and production identity remain stable.
+
+The helper uses fixed command vectors and never launches a GUI. APT refuses removals,
+DNF retains local package signature checking, and Arch requires installed dependencies
+without refreshing repositories or initiating a partial system upgrade. Native RPM
+and Arch trust must already be established by the administrator. Receipts distinguish
+transaction completion from desktop relaunch acknowledgement. Package failures do not
+imply rollback; the coordinator presents repair guidance and never automatically
+repeats or downgrades an ambiguous transaction.
+
+The [release operations](linux_distribution_update_plan.md#release-operations) define
+manual production key setup, gated target validation, artifact verification and
+recovery. Only foreground headless tests and builds are automated in this workspace;
+actual polkit dialogs, installation/removal and restart checks remain user-controlled.

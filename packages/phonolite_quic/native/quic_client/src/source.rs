@@ -16,9 +16,13 @@ const INVALID_SOURCE: i32 = -101;
 const TRANSPORT_FAILURE: i32 = -102;
 const SECURITY_FAILURE: i32 = -100;
 
+type SourceConnection = (Arc<ClientHandle>, Option<thread::JoinHandle<()>>);
+type SourceConnector = Box<dyn FnMut() -> Result<SourceConnection, String> + Send>;
+
 pub struct SourceHandle {
     inner: Arc<ClientHandle>,
     worker: Option<thread::JoinHandle<()>>,
+    connect: Option<SourceConnector>,
     track_id: String,
     version: Option<String>,
     total_length: Option<u64>,
@@ -50,25 +54,73 @@ impl SourceHandle {
         capacity: usize,
         timeout: Duration,
     ) -> Result<Vec<u8>, String> {
-        if !self.inner.owner.operation_is_current() {
-            return Err("QUIC source operation interrupted".into());
-        }
-        if self
-            .stream
-            .as_ref()
-            .is_none_or(|stream| stream.next_position != offset)
-        {
-            self.open_stream(offset)?;
-        }
-        let result = self.read_stream(offset, capacity, timeout);
-        if result.is_err() {
+        let deadline = Instant::now() + timeout;
+        let mut resumed = false;
+        self.error_code = TRANSPORT_FAILURE;
+        loop {
+            if !self.inner.owner.operation_is_current() {
+                return Err("QUIC source operation interrupted".into());
+            }
+            if self
+                .inner
+                .cancelled
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err("QUIC source owner is closed".into());
+            }
+
+            let result = (|| {
+                if self
+                    .stream
+                    .as_ref()
+                    .is_none_or(|stream| stream.next_position != offset)
+                {
+                    self.open_stream(offset)?;
+                }
+                self.read_stream(
+                    offset,
+                    capacity,
+                    deadline.saturating_duration_since(Instant::now()),
+                )
+            })();
+            let Err(error) = result else { return result };
             self.stream = None;
             if let Ok(mut delivery) = self.inner.delivery.lock() {
                 delivery.suspend();
             }
             let _ = self.inner.tx.send(ControlCommand::SuspendAudio);
+
+            // Resume the same pinned representation before exposing an I/O
+            // error to the parser. Restarting playback would discard decoded
+            // PCM even when its buffer could cover a brief reconnect.
+            if resumed
+                || self.version.is_none()
+                || self.connect.is_none()
+                || self.error_code != TRANSPORT_FAILURE
+                || security_failure(&error)
+                || Instant::now() >= deadline
+                || self
+                    .inner
+                    .cancelled
+                    .load(std::sync::atomic::Ordering::Acquire)
+                || !self.inner.owner.operation_is_current()
+            {
+                return Err(error);
+            }
+            self.reconnect()?;
+            resumed = true;
         }
-        result
+    }
+
+    fn reconnect(&mut self) -> Result<(), String> {
+        let _ = self.inner.tx.send(ControlCommand::Close);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+        let (inner, worker) = self.connect.as_mut().unwrap()()?;
+        self.inner = inner;
+        self.worker = worker;
+        Ok(())
     }
 
     fn open_stream(&mut self, offset: u64) -> Result<(), String> {
@@ -294,6 +346,10 @@ fn poisoned<T>(_: std::sync::PoisonError<T>) -> String {
     io::Error::other("QUIC source state unavailable").to_string()
 }
 
+fn security_failure(error: &str) -> bool {
+    error.contains("identity") || error.contains("SPKI") || error.contains("certificate")
+}
+
 #[no_mangle]
 pub extern "C" fn phonolite_quic_source_connect(
     host: *const c_char,
@@ -335,20 +391,28 @@ fn source_connect(
     if track_id.is_empty() {
         return std::ptr::null_mut();
     }
-    let connected = connect_client(
-        unsafe { cstr_to_string(host) },
-        port,
-        unsafe { cstr_to_string(token) },
-        unsafe { cstr_to_string(server_pin) },
-        true,
-        owner,
-    );
+    let host = unsafe { cstr_to_string(host) };
+    let token = unsafe { cstr_to_string(token) };
+    let server_pin = unsafe { cstr_to_string(server_pin) };
+    let mut connect: SourceConnector = Box::new(move || {
+        connect_client(
+            host.clone(),
+            port,
+            token.clone(),
+            server_pin.clone(),
+            true,
+            owner.clone(),
+        )
+        .map(|(inner, worker)| (inner, Some(worker)))
+    });
+    let connected = connect();
     let Ok((inner, worker)) = connected else {
         return std::ptr::null_mut();
     };
     Box::into_raw(Box::new(SourceHandle {
         inner,
-        worker: Some(worker),
+        worker,
+        connect: Some(connect),
         track_id,
         version: None,
         total_length: None,
@@ -397,8 +461,7 @@ pub extern "C" fn phonolite_quic_source_read_range(
             bytes.len() as i64
         }
         Err(error) => {
-            if error.contains("identity") || error.contains("SPKI") || error.contains("certificate")
-            {
+            if security_failure(&error) {
                 source.error_code = SECURITY_FAILURE;
             }
             source.error = error;
@@ -518,6 +581,7 @@ mod tests {
             SourceHandle {
                 inner: Arc::clone(&handle.inner),
                 worker: None,
+                connect: None,
                 track_id: "source-track".into(),
                 version: None,
                 total_length: None,
@@ -527,6 +591,159 @@ mod tests {
             },
             commands,
         )
+    }
+
+    fn disconnected_source() -> (SourceHandle, std::sync::mpsc::Receiver<ControlCommand>) {
+        let (mut source, commands) = source();
+        source.version = Some("fixed-source-version".into());
+        source.total_length = Some(10);
+        source.stream = Some(SourceStream {
+            generation: 1,
+            offset: 0,
+            next_position: 4,
+            announced: true,
+            finished: false,
+        });
+        source.inner.delivery.lock().unwrap().begin(1);
+        source.inner.delivery.lock().unwrap().closed = true;
+        *source.inner.last_error.lock().unwrap() =
+            Some("QUIC connection closed: timed_out=true".into());
+        (source, commands)
+    }
+
+    #[test]
+    fn a_dropped_connection_resumes_the_same_version_at_the_unreturned_byte_offset() {
+        let (mut source, _old_commands) = disconnected_source();
+        let (mut next, commands) = test_handle(0);
+        let owner = Arc::clone(&source.inner.owner);
+        Arc::get_mut(&mut next.inner).unwrap().owner = Arc::clone(&owner);
+        Arc::get_mut(&mut next.inner).unwrap().cancelled = Arc::clone(&owner.cancelled);
+        let resumed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let attempts = Arc::clone(&resumed);
+        let inner = Arc::clone(&next.inner);
+        source.connect = Some(Box::new(move || {
+            attempts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok((Arc::clone(&next.inner), None))
+        }));
+        let worker = thread::spawn(move || {
+            let ControlCommand::SourceOpen {
+                generation,
+                offset,
+                source_version,
+                ..
+            } = commands.recv().unwrap()
+            else {
+                panic!("source resume expected")
+            };
+            assert_eq!(offset, 4);
+            assert_eq!(source_version.as_deref(), Some("fixed-source-version"));
+            let tx = announce(&inner, generation, offset, 10);
+            tx.send(vec![5, 6, 7, 8, 9, 10]);
+            tx.event(serde_json::json!({"type":"source_fin", "request_id":generation}));
+            tx.send(Vec::new());
+        });
+        assert_eq!(
+            source.read_range(4, 6, Duration::from_secs(1)).unwrap(),
+            vec![5, 6, 7, 8, 9, 10]
+        );
+        assert!(source
+            .read_range(10, 6, Duration::from_secs(1))
+            .unwrap()
+            .is_empty());
+        assert_eq!(resumed.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert!(!owner.cancelled.load(std::sync::atomic::Ordering::Acquire));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn a_reconnect_cannot_change_the_accepted_source_representation() {
+        let (mut source, _old_commands) = disconnected_source();
+        let (next, commands) = test_handle(0);
+        let inner = Arc::clone(&next.inner);
+        source.connect = Some(Box::new(move || Ok((Arc::clone(&next.inner), None))));
+        let worker = thread::spawn(move || {
+            let ControlCommand::SourceOpen { generation, .. } = commands.recv().unwrap() else {
+                panic!("source resume expected")
+            };
+            inner.events.lock().unwrap().push_back(
+                serde_json::json!({
+                    "type":"source", "request_id":generation, "offset":4, "length":6,
+                    "total_length":10, "source_version":"different-version",
+                })
+                .to_string(),
+            );
+        });
+        assert!(source
+            .read_range(4, 6, Duration::from_secs(1))
+            .unwrap_err()
+            .contains("metadata changed"));
+        assert_eq!(source.error_code, INVALID_SOURCE);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn security_failures_source_rejections_and_owner_cancellation_never_reconnect() {
+        for (message, server, cancelled) in [
+            ("SPKI identity mismatch", false, false),
+            ("source changed during continuous playback", true, false),
+            ("cancelled", false, true),
+        ] {
+            let (mut source, _commands) = disconnected_source();
+            source.connect = Some(Box::new(|| panic!("this failure must not reconnect")));
+            if cancelled {
+                source
+                    .inner
+                    .cancelled
+                    .store(true, std::sync::atomic::Ordering::Release);
+            } else {
+                source.inner.events.lock().unwrap().push_back(
+                    serde_json::json!({
+                        "type":"error", "request_id":1, "message":message,
+                        "origin":if server { "server" } else { "client" },
+                    })
+                    .to_string(),
+                );
+            }
+            assert!(source.read_range(4, 6, Duration::from_secs(1)).is_err());
+        }
+    }
+
+    #[test]
+    fn a_failed_resume_does_not_loop_or_extend_the_original_read_budget() {
+        let (mut source, _old_commands) = disconnected_source();
+        let (next, commands) = test_handle(0);
+        let inner = Arc::clone(&next.inner);
+        let resumed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let attempts = Arc::clone(&resumed);
+        source.connect = Some(Box::new(move || {
+            assert_eq!(
+                attempts.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                0
+            );
+            Ok((Arc::clone(&next.inner), None))
+        }));
+        let worker = thread::spawn(move || {
+            let ControlCommand::SourceOpen { generation, .. } = commands.recv().unwrap() else {
+                panic!("source resume expected")
+            };
+            let tx = announce(&inner, generation, 4, 10);
+            tx.event(serde_json::json!({"type":"error", "message":"connection lost again"}));
+        });
+        assert!(source
+            .read_range(4, 6, Duration::from_secs(1))
+            .unwrap_err()
+            .contains("lost again"));
+        assert_eq!(resumed.load(std::sync::atomic::Ordering::Relaxed), 1);
+        worker.join().unwrap();
+
+        let (mut source, _commands) = disconnected_source();
+        source.inner.delivery.lock().unwrap().closed = false;
+        source.connect = Some(Box::new(|| {
+            panic!("an expired operation must not get a new budget")
+        }));
+        let started = Instant::now();
+        assert!(source.read_range(4, 6, Duration::from_millis(30)).is_err());
+        assert!(started.elapsed() < Duration::from_millis(250));
     }
 
     fn deliver(
