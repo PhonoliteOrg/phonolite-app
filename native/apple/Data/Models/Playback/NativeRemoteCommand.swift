@@ -9,4 +9,5 @@ enum NativeRemoteCommand: String {
   case audioInterruptionEnded
   case audioInterruptionEndedPaused
   case audioServicesReset
+  case audioRouteChanged
 }

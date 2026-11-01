@@ -44,7 +44,7 @@
 	</array>
 	<key>NSUserActivityTypes</key>
 	<array>
-		<string>com.adamuremek.phonolite.nowplaying</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).nowplaying</string>
 	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>

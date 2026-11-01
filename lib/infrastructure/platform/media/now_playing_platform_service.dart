@@ -12,10 +12,9 @@ export 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 class NowPlayingPlatformService {
   final MethodChannel _channel;
 
-  NowPlayingPlatformService({MethodChannel channel = const MethodChannel('phonolite/now_playing')})
-    : _channel = channel;
+  NowPlayingPlatformService({this._channel = const MethodChannel('phonolite/now_playing')});
 
-  bool get isSupported => Platform.isIOS || Platform.isAndroid || Platform.isWindows;
+  bool get isSupported => Platform.isIOS || Platform.isMacOS || Platform.isAndroid || Platform.isWindows;
 
   // iOS can fetch and decode covers while Flutter's renderer is suspended.
   bool get loadsArtworkNatively => Platform.isIOS;

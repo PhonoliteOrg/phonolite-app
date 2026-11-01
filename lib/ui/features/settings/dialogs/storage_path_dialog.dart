@@ -56,6 +56,14 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
     }
   }
 
+  Future<void> settingsChooseFolder() async {
+    final path = await _feature.chooseDirectory(_controller.text.isEmpty ? widget.initialPath : _controller.text);
+
+    if (mounted && path != null) {
+      setState(() => _controller.text = path);
+    }
+  }
+
   @override
   Widget modalContent(BuildContext context) {
     return SizedBox(
@@ -63,18 +71,24 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ObsidianTextField(
-            controller: _controller,
-            label: 'Folder path',
-            hintText: widget.initialPath,
-            height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
-            startPadding: 24,
-            cut: 0,
-            isDense: true,
-            enabled: !_feature.saving,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => settingsSave(),
-          ),
+          if (_feature.requiresDirectoryPicker)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(_controller.text.isEmpty ? 'Default — ${widget.initialPath}' : _controller.text),
+            )
+          else
+            ObsidianTextField(
+              controller: _controller,
+              label: 'Folder path',
+              hintText: widget.initialPath,
+              height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
+              startPadding: 24,
+              cut: 0,
+              isDense: true,
+              enabled: !_feature.busy,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => settingsSave(),
+            ),
           if (_feature.error != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -89,7 +103,9 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
 
   @override
   List<Widget> modalActions(BuildContext context) => [
-    ModalActionButton(label: 'Close', onPressed: _feature.saving ? null : () => Navigator.of(context).pop()),
-    ModalActionButton(label: _feature.saving ? 'Saving' : 'Save', onPressed: _feature.saving ? null : settingsSave),
+    ModalActionButton(label: 'Close', onPressed: _feature.busy ? null : () => Navigator.of(context).pop()),
+    if (_feature.requiresDirectoryPicker)
+      ModalActionButton(label: 'Choose folder', onPressed: _feature.busy ? null : settingsChooseFolder),
+    ModalActionButton(label: _feature.saving ? 'Saving' : 'Save', onPressed: _feature.busy ? null : settingsSave),
   ];
 }

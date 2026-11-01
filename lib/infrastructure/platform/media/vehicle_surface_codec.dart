@@ -54,10 +54,11 @@ class VehicleSurfaceCodec {
     VehicleCommandResult(:final failure) =>
       failure == null ? {'ok': true} : {'error': _failureCode(failure), 'items': const []},
     VehicleItems(:final items) => {'items': items.map(_encodeItem).toList()},
-    VehicleSourceState(:final serverAvailable, :final localAvailable, :final hasAnySource) => {
+    VehicleSourceState(:final serverAvailable, :final localAvailable, :final playbackScope, :final hasAnySource) => {
       'serverAvailable': serverAvailable,
       'localAvailable': localAvailable,
       'hasAnySource': hasAnySource,
+      if (playbackScope != null) 'playbackScope': playbackScope.name,
     },
     VehicleAuthorizationState(:final authorized, :final hasSession, :final status) => {
       'authorized': authorized,
@@ -96,6 +97,7 @@ class VehicleSurfaceCodec {
     VehicleFailure.missingArtist => 'missing_artist',
     VehicleFailure.missingAlbum => 'missing_album',
     VehicleFailure.missingPlaylist => 'missing_playlist',
+    VehicleFailure.localEmpty => 'local_empty',
     VehicleFailure.likedEmpty => 'liked_empty',
     VehicleFailure.customEmpty => 'custom_empty',
   };

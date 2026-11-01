@@ -12,7 +12,7 @@ void main() {
       final project = readProjectModule('ios/Runner.xcodeproj/project.pbxproj');
       final configurations = RegExp(r'/\* (Debug|Release|Profile) \*/ = \{([\s\S]*?)\n\t\t\};')
           .allMatches(project)
-          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;'));
+          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite;'));
       expect(configurations.map((match) => match[1]), unorderedEquals(['Debug', 'Release', 'Profile']));
       for (final configuration in configurations) {
         for (final symbol in symbols) {
@@ -36,7 +36,8 @@ void main() {
       expect(source, isNot(contains('AVAudioSessionCategoryOptionAllowAirPlay')));
       expectContainsAll(source, const [
         'if (!phonolite_audio_prepare_session())',
-        'player->paused || player->started || atomic_load(&player->in_flight) == 0',
+        'player->paused || player->started ||',
+        'atomic_load(&player->in_flight) == 0 && phonolite_audio_pending_spans(player) == 0',
         'return (int32_t)phonolite_audio_start_if_ready(player);',
         'player->output_error = status;',
         'phonolite_audio_flush',
@@ -51,7 +52,7 @@ void main() {
       final artwork = readProjectFiles(const [
         'ios/Runner/Infrastructure/Artwork/NativeArtworkLoader.swift',
         'ios/Runner/Infrastructure/Artwork/NowPlayingArtworkController.swift',
-        'ios/Runner/Infrastructure/Media/NowPlayingInfoPublisher.swift',
+        'native/apple/Infrastructure/Media/NowPlayingInfoPublisher.swift',
       ]);
       final host = readProjectModule('ios/Runner/Bootstrap/NativeHost.swift');
       expectContainsAll(controller, const [
@@ -92,16 +93,16 @@ void main() {
       final host = readProjectModule('ios/Runner/Bootstrap/NativeHost.swift');
       final audioSession = readProjectModule('ios/Runner/Infrastructure/Audio/AudioSessionService.swift');
       final channels = readProjectFiles(const [
-        'ios/Runner/Infrastructure/Flutter/NowPlayingChannelAdapter.swift',
+        'native/apple/Infrastructure/Flutter/NowPlayingChannelAdapter.swift',
         'ios/Runner/Infrastructure/Flutter/CarPlayChannelAdapter.swift',
         'ios/Runner/Infrastructure/Flutter/PermissionsChannelAdapter.swift',
       ]);
       final offlineStorage = readProjectModule('ios/Runner/Data/Storage/Offline/OfflineBackupExclusions.swift');
-      final remoteCommands = readProjectModule('ios/Runner/Infrastructure/Media/RemoteCommandService.swift');
-      final nativeCommands = readProjectModule('ios/Runner/Data/Models/Playback/NativeRemoteCommand.swift');
+      final remoteCommands = readProjectModule('native/apple/Infrastructure/Media/RemoteCommandService.swift');
+      final nativeCommands = readProjectModule('native/apple/Data/Models/Playback/NativeRemoteCommand.swift');
       final nowPlaying = readProjectModule('ios/Runner/Infrastructure/Media/NowPlayingCoordinator.swift');
-      final publisher = readProjectModule('ios/Runner/Infrastructure/Media/NowPlayingInfoPublisher.swift');
-      final nowPlayingCodec = readProjectModule('ios/Runner/Infrastructure/Flutter/NowPlayingCodec.swift');
+      final publisher = readProjectModule('native/apple/Infrastructure/Media/NowPlayingInfoPublisher.swift');
+      final nowPlayingCodec = readProjectModule('native/apple/Infrastructure/Flutter/NowPlayingCodec.swift');
       final pinning = readProjectModule('ios/Runner/Infrastructure/Security/PinnedArtworkSession.swift');
       final permissions = readProjectFiles(const [
         'ios/Runner/Infrastructure/Flutter/PermissionsChannelAdapter.swift',

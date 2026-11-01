@@ -1,4 +1,5 @@
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/playback/playback_state.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_item.dart';
 
 enum VehicleFailure {
@@ -7,6 +8,7 @@ enum VehicleFailure {
   missingArtist,
   missingAlbum,
   missingPlaylist,
+  localEmpty,
   likedEmpty,
   customEmpty,
 }
@@ -32,8 +34,9 @@ class VehicleItems extends VehicleResponse {
 class VehicleSourceState extends VehicleResponse {
   final bool serverAvailable;
   final bool localAvailable;
+  final ActionScope? playbackScope;
 
-  const VehicleSourceState({required this.serverAvailable, required this.localAvailable});
+  const VehicleSourceState({required this.serverAvailable, required this.localAvailable, this.playbackScope});
 
   bool get hasAnySource => serverAvailable || localAvailable;
 }

@@ -102,7 +102,8 @@ class XcodeProject {
     return object;
   }
 
-  static String _path(FileSystemEntity entity) => entity.absolute.path.replaceAll('\\', '/');
+  static String _path(FileSystemEntity entity) =>
+      entity.absolute.uri.normalizePath().toFilePath().replaceAll('\\', '/');
 }
 
 class _OpenStepReader {

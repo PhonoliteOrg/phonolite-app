@@ -362,7 +362,7 @@ The initial formatter download needs network access; later checks use the verifi
 
 ## iOS reference and functional assessment
 
-The comparison used the [iOS native host](../ios/Runner/Bootstrap/NativeHost.swift), [CarPlay browse controller](../ios/Runner/Application/Controllers/CarPlay/CarPlayBrowseController.swift), [remote commands](../ios/Runner/Infrastructure/Media/RemoteCommandService.swift) and [native audio bridge](../ios/Runner/Infrastructure/Audio/Native/phonolite_audio.m), together with their shared Dart clients. The common expected behavior is server/local browsing and playback selection, now-playing metadata and epochs, remote controls, interruption/route-loss pause and bounded PCM output.
+The comparison used the [iOS native host](../ios/Runner/Bootstrap/NativeHost.swift), [CarPlay browse controller](../ios/Runner/Application/Controllers/CarPlay/CarPlayBrowseController.swift), [remote commands](../native/apple/Infrastructure/Media/RemoteCommandService.swift) and [native audio bridge](../ios/Runner/Infrastructure/Audio/Native/phonolite_audio.m), together with their shared Dart clients. The common expected behavior is server/local browsing and playback selection, now-playing metadata and epochs, remote controls, interruption/route-loss pause and bounded PCM output.
 
 The structural extraction preserves those contracts. These source-evidenced corrections were made explicitly:
 

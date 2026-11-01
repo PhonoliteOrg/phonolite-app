@@ -2,6 +2,7 @@ part of '../app_controller.dart';
 
 class _StreamRecoveryCoordinator {
   final AppController _host;
+  final _networkRecoveryRequests = RequestGeneration();
   bool _awaitingStreamReconnect = false;
   Timer? _streamRecoveryTimer;
   DateTime? _lastInterruptedStreamRestartAt;
@@ -9,6 +10,60 @@ class _StreamRecoveryCoordinator {
   int? _lastInterruptedStreamRestartPositionMs;
 
   _StreamRecoveryCoordinator(this._host);
+
+  /// Reopens transport on a known new route without waiting for a dead socket.
+  Future<void> _handleNetworkChange() async {
+    final request = _networkRecoveryRequests.advance();
+    final track = _host._playbackState.track;
+    final starts = _host._playbackCoordinator._playbackStarts;
+    final startGeneration = starts.current;
+    final session = _host.connection.sessionRevision;
+
+    if (_host._disposed ||
+        track == null ||
+        _host._playbackState.sourceScope != ActionScope.server ||
+        _host._playbackState.isLocalPlayback ||
+        _host._isScrubbing ||
+        (!_host._wantsPlayback && !_host._audioEngine.hasActivePlayer)) {
+      return;
+    }
+
+    // A different interface is a fresh recovery opportunity, independent of a
+    // retry cooldown or reconnect backoff accumulated on the previous network.
+    _lastInterruptedStreamRestartAt = null;
+    _lastInterruptedStreamRestartTrackId = null;
+    _lastInterruptedStreamRestartPositionMs = null;
+    _streamRecoveryTimer?.cancel();
+    _streamRecoveryTimer = null;
+
+    if (!_host._canAttemptRemotePlayback) {
+      _awaitingStreamReconnect = _host._wantsPlayback;
+      await _host._triggerImmediateServerReconnect(reason: 'stream network changed');
+    }
+
+    if (_host._disposed ||
+        !_networkRecoveryRequests.isCurrent(request) ||
+        !starts.isCurrent(startGeneration) ||
+        _host.connection.sessionRevision != session ||
+        _host._playbackState.track?.id != track.id ||
+        _host._playbackState.isLocalPlayback ||
+        _host._isScrubbing ||
+        !_host._canAttemptRemotePlayback ||
+        (!_host._wantsPlayback && !_host._audioEngine.hasActivePlayer)) {
+      return;
+    }
+
+    final positionMs = _host._seeking ? _host._seekTargetMs : max(_host._actualPositionMs, _host._displayPositionMs);
+    _retireInterruptedSeek(positionMs);
+    _awaitingStreamReconnect = false;
+    AppLogger.debug('Reopening the current stream after a network change at ${positionMs}ms.');
+    _host._updatePlayback(isLoading: _host._wantsPlayback && !_host._audioSessionSuspended, streamConnected: false);
+
+    // Starting the same occurrence creates fresh transport; it does not select
+    // another track or advance a shuffle reservation. Pause intent is read by
+    // the existing start barrier, including during native audio-route recovery.
+    _host._startPlayback(track, startOffset: Duration(milliseconds: positionMs), quickStart: true);
+  }
 
   void _handleAudioEngineState(bool active, bool paused) {
     if (_host._disposed) {

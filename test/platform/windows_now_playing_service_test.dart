@@ -16,7 +16,7 @@ void main() {
 
   setUp(() {
     publications = [];
-    service = NowPlayingPlatformService();
+    service = NowPlayingPlatformService(channel: channel);
     messenger.setMockMethodCallHandler(channel, (call) async {
       publications.add(call);
 
@@ -39,8 +39,8 @@ void main() {
     const StandardMethodCodec().decodeEnvelope((await response.future)!);
   }
 
-  test('Windows supports the existing native channel and Flutter-loaded artwork', () {
-    if (Platform.isWindows) {
+  test('Windows and macOS support the native channel and Flutter-loaded artwork', () {
+    if (Platform.isWindows || Platform.isMacOS) {
       expect(service.isSupported, isTrue);
       expect(service.loadsArtworkNatively, isFalse);
     }

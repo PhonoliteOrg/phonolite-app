@@ -10,6 +10,7 @@ enum NativeRemoteAction {
   audioInterruptionEnded,
   audioInterruptionEndedPaused,
   audioServicesReset,
+  audioRouteChanged,
   unknown,
 }
 

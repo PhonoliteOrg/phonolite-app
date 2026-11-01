@@ -111,8 +111,17 @@ class _VehicleLibraryCoordinator {
   VehicleSourceState _carPlayStatePayload() {
     final serverAvailable = _host._authState.isAuthorized;
     final localAvailable = _host.offlineTracks.isNotEmpty;
+    final playbackScope = _host._playbackState.sourceScope;
 
-    return VehicleSourceState(serverAvailable: serverAvailable, localAvailable: localAvailable);
+    AppLogger.debug(
+      'CarPlay source state: server=$serverAvailable local=$localAvailable playback=${playbackScope?.name ?? 'none'}',
+    );
+
+    return VehicleSourceState(
+      serverAvailable: serverAvailable,
+      localAvailable: localAvailable,
+      playbackScope: playbackScope,
+    );
   }
 
   Future<VehicleResponse> _carPlayGetArtists(ActionScope scope) async {
@@ -430,6 +439,16 @@ class _VehicleLibraryCoordinator {
     String? playlistId,
   }) async {
     if (scope == ActionScope.local) {
+      await _host._offlineDownloadManager.load();
+
+      // Validate the source before changing modes: an empty Local action must
+      // not discard a server deck that is still supplying the current track.
+      if (_host.offlineTracks.isEmpty) {
+        _host._pushMessage('No downloaded tracks found for shuffle');
+
+        return _carPlayError(VehicleFailure.localEmpty);
+      }
+
       if (kind == VehicleShuffleKind.custom) {
         await _host._ensureCustomShuffleSettingsLoaded();
 

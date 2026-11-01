@@ -10,9 +10,14 @@ void main() {
 
     for (final target in ['Runner', 'RunnerTests']) {
       final registered = project.sources(target);
-      final expected = _files(
-        'ios/$target',
-      ).where((file) => RegExp(r'\.(?:swift|m|mm|c)$').hasMatch(file.path)).map(_path).toSet();
+      final expected = _files('ios/$target')
+          .where((file) => RegExp(r'\.(?:swift|m|mm|c)$').hasMatch(file.path))
+          .map(_path)
+          .toSet();
+
+      if (target == 'Runner') {
+        expected.addAll(_files('native/apple').where((file) => file.path.endsWith('.swift')).map(_path));
+      }
 
       expect(registered.length, registered.toSet().length, reason: '$target must not compile duplicate source entries');
       expect(registered.toSet(), expected, reason: '$target membership must match the physical native source tree');
@@ -35,8 +40,10 @@ void main() {
   test('native Swift follows responsibility areas and keeps entry points in Bootstrap', () {
     const areas = {'Bootstrap', 'Data', 'Application', 'Infrastructure', 'Pages', 'UI'};
 
-    for (final file in _swiftFiles('ios/Runner')) {
-      final relative = file.path.replaceAll('\\', '/').substring('ios/Runner/'.length);
+    for (final file in _swiftFiles('ios/Runner').followedBy(_swiftFiles('native/apple'))) {
+      final path = file.path.replaceAll('\\', '/');
+      final prefix = path.startsWith('native/apple/') ? 'native/apple/' : 'ios/Runner/';
+      final relative = path.substring(prefix.length);
 
       expect(relative, contains('/'), reason: '${file.path}: native implementation belongs in a responsibility area');
       expect(areas, contains(relative.split('/').first), reason: file.path);
@@ -50,7 +57,7 @@ void main() {
   });
 
   test('native values and presentation stay independent of channel dictionaries', () {
-    for (final file in _swiftFiles('ios/Runner')) {
+    for (final file in _swiftFiles('ios/Runner').followedBy(_swiftFiles('native/apple'))) {
       final path = file.path.replaceAll('\\', '/');
       final source = file.readAsLinesSync().where((line) => !line.trimLeft().startsWith('//')).join('\n');
 
@@ -93,4 +100,4 @@ Iterable<File> _files(String directory) => Directory(directory).listSync(recursi
 
 Iterable<File> _swiftFiles(String directory) => _files(directory).where((file) => file.path.endsWith('.swift'));
 
-String _path(FileSystemEntity entity) => entity.absolute.path.replaceAll('\\', '/');
+String _path(FileSystemEntity entity) => entity.absolute.uri.normalizePath().toFilePath().replaceAll('\\', '/');

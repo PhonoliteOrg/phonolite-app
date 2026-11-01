@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:phonolite_app/application/workflows/restore_storage_access.dart';
 import 'package:phonolite_app/bootstrap/phonolite_app.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
@@ -25,7 +26,13 @@ Future<void> runPhonolite() async {
   installServerTrustOverrides();
   installArtworkErrorHandler();
 
+  final storageWarnings = await const RestoreStorageAccess().restore();
+
   await AppLogger.instance.initialize();
+
+  for (final warning in storageWarnings) {
+    AppLogger.warning(warning);
+  }
 
   if (WidgetsBinding.instance is AccessibilityTraceBinding) {
     AppLogger.debug('Windows accessibility startup tracing enabled; recording structural updates in debug.log.');

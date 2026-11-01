@@ -8,7 +8,11 @@
 PRODUCT_NAME = phonolite_app
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonoliteApp
+PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite
+
+// Keep the nib and native test module independent of the displayed app name.
+PRODUCT_MODULE_NAME = Runner
+DEVELOPMENT_TEAM = C598TUZ2S8
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Phonolite. All rights reserved.

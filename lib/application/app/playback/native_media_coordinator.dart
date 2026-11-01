@@ -26,6 +26,8 @@ class _NativeMediaCoordinator {
         return;
       }
 
+      AppLogger.debug('Native media command: ${command.action.name}');
+
       switch (command.action) {
         case NativeRemoteAction.play:
           await _host.pause(false);
@@ -76,6 +78,11 @@ class _NativeMediaCoordinator {
         case NativeRemoteAction.audioServicesReset:
           await _resetAudioServices();
           break;
+        case NativeRemoteAction.audioRouteChanged:
+          if (_host._playbackState.track != null && (_host._wantsPlayback || _host._audioEngine.hasActivePlayer)) {
+            await _resetAudioServices(preservePlaybackIntent: true);
+          }
+          break;
         case NativeRemoteAction.unknown:
           break;
       }
@@ -85,8 +92,16 @@ class _NativeMediaCoordinator {
     _pushNowPlayingUpdate(force: true);
   }
 
-  Future<void> _resetAudioServices() =>
-      _audioResetInFlight ??= _rebuildAudioServices().whenComplete(() => _audioResetInFlight = null);
+  Future<void> _resetAudioServices({bool preservePlaybackIntent = false}) {
+    if (!preservePlaybackIntent) {
+      // A system reset requires explicit Play even when it arrives during a
+      // route rebuild. Route changes retain interruption and user-pause intent.
+      _audioInterrupted = false;
+      _host._wantsPlayback = false;
+    }
+
+    return _audioResetInFlight ??= _rebuildAudioServices().whenComplete(() => _audioResetInFlight = null);
+  }
 
   void _reportAudioResetFailure(Object error) {
     if (_host._disposed) return;
@@ -96,14 +111,12 @@ class _NativeMediaCoordinator {
   }
 
   Future<void> _rebuildAudioServices() async {
-    _audioInterrupted = false;
     final track = _host._playbackState.track;
     final position = Duration(milliseconds: max(_host._actualPositionMs, _host._displayPositionMs));
     final starts = _host._playbackCoordinator._playbackStarts;
     final generation = starts.current;
-    // Apple requires fresh audio objects after a media-services reset. Rebuild
-    // paused; resumption after this event requires an explicit Play action.
-    _host._wantsPlayback = false;
+    // Hardware route changes can invalidate the AudioQueue playback clock.
+    // Fresh output waits for release and applies the latest playback intent.
     _host._audioEngine.pause();
     _host._updatePlayback(isPlaying: false, isLoading: false);
     _host._gaplessCoordinator.invalidate();

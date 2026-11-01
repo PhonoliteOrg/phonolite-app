@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
+import 'package:phonolite_app/data/storage/auth/credential_vault.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 
@@ -26,6 +28,7 @@ void main() {
   final values = <String, String>{};
   final deleted = <String>[];
   final calls = <String>[];
+  final vaultCalls = <MethodCall>[];
   final trustKey = ServerTrustStore.keyForServer('https://saved.test:3000/');
   Object? readFailure;
   String? deleteFailureKey;
@@ -36,10 +39,12 @@ void main() {
     values.clear();
     deleted.clear();
     calls.clear();
+    vaultCalls.clear();
     readFailure = null;
     deleteFailureKey = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, (call) async {
       calls.add(call.method);
+      vaultCalls.add(call);
       if (call.method == 'readAll') {
         if (readFailure != null) throw readFailure!;
         return Map<String, String>.from(values);
@@ -166,6 +171,28 @@ void main() {
 
     expect(values, {sessionKey: savedSession, trustKey: jsonEncode(testServerTrust.toJson())});
     expect(calls, ['readAll', 'write']);
+  });
+
+  test('CarPlay credentials remain device-only and readable after the first unlock', () {
+    expect(CredentialVault.storage.iOptions.toMap()['accessibility'], 'first_unlock_this_device');
+    expect(CredentialVault.storage.iOptions.toMap()['synchronizable'], 'false');
+    expect(CredentialVault.allIOSAccessibilities.toMap().containsKey('accessibility'), isFalse);
+  });
+
+  test('iOS startup rewrites retained credentials and pins while removing obsolete entries', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final session = jsonEncode(credentials.toJson());
+    final pin = jsonEncode(testServerTrust.toJson());
+    values.addAll({sessionKey: session, trustKey: pin, 'phonolite.session.old': 'obsolete'});
+
+    await storage.removeOrphanedCredentials();
+
+    expect(values, {sessionKey: session, trustKey: pin});
+    expect(deleted, ['phonolite.session.old']);
+    final writes = vaultCalls.where((call) => call.method == 'write').toList();
+    expect(writes, hasLength(2));
+    expect(writes.map((call) => (call.arguments as Map)['key']), containsAll([sessionKey, trustKey]));
   });
 
   test('an unreadable vault reports the error without deleting credentials', () async {

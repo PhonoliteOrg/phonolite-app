@@ -13,16 +13,18 @@ Flutter owns application pages, navigation, playback workflows and library state
 | [AppDelegate.swift](../macos/Runner/Bootstrap/AppDelegate.swift) | Application entry point, last-window termination and secure restoration policy | Bootstrap |
 | [MainFlutterWindow.swift](../macos/Runner/Bootstrap/MainFlutterWindow.swift) and [FlutterEngineBinding.swift](../macos/Runner/Bootstrap/FlutterEngineBinding.swift) | Nib-based window assembly, plugin registration and engine-bound dependency lifetime | Bootstrap |
 | [DirectoriesChannelAdapter.swift](../macos/Runner/Infrastructure/Flutter/DirectoriesChannelAdapter.swift) and [DirectoryLauncher.swift](../macos/Runner/Infrastructure/Shell/DirectoryLauncher.swift) | Directory channel parsing/replies and a separately injected NSWorkspace capability | Infrastructure/Flutter and Infrastructure/Shell |
-| [phonolite_audio.c](../macos/Runner/Infrastructure/Audio/Native/phonolite_audio.c) and [header](../macos/Runner/Infrastructure/Audio/Native/phonolite_audio.h) | Twelve exported C operations with the existing opaque handle and ABI | Infrastructure/Audio/Native facade |
+| [phonolite_audio.c](../macos/Runner/Infrastructure/Audio/Native/phonolite_audio.c) and [header](../macos/Runner/Infrastructure/Audio/Native/phonolite_audio.h) | Fourteen exported C operations with the existing opaque handle and ABI | Infrastructure/Audio/Native facade |
 | [audio_queue_player.c](../macos/Runner/Infrastructure/Audio/Native/audio_queue_player.c) and [audio_output_devices.c](../macos/Runner/Infrastructure/Audio/Native/audio_output_devices.c) | AudioQueue resources/accounting and independent CoreAudio output discovery | Separate infrastructure capabilities with private implementation state |
-| [build_opus_static.sh](../macos/Scripts/build_opus_static.sh) | Compile shared Opus sources into the Runner archive | Scripts and native build configuration |
+| [shared Apple media](../native/apple) | Typed playback updates, position epochs, channel transport, system publication and remote commands shared with iOS | Data/Models and Infrastructure |
+| [NowPlayingService.swift](../macos/Runner/Infrastructure/Media/NowPlayingService.swift) and [NowPlayingArtwork.swift](../macos/Runner/Infrastructure/Media/NowPlayingArtwork.swift) | Mac media lifetime, command routing and bounded decoding of artwork supplied by Dart | Infrastructure/Media |
+| [StorageAccessChannelAdapter.swift](../macos/Runner/Infrastructure/Flutter/StorageAccessChannelAdapter.swift), [SecurityScopedDirectories.swift](../macos/Runner/Infrastructure/Files/SecurityScopedDirectories.swift) and [DirectoryBookmarkStore.swift](../macos/Runner/Data/Storage/DirectoryBookmarkStore.swift) | Folder chooser transport, active grants and persistent bookmark data | Infrastructure/Flutter, Infrastructure/Files and Data/Storage |
 | [MainMenu.xib](../macos/Runner/Base.lproj/MainMenu.xib) | Application/delegate connections, menu responder actions and initial window configuration | AppKit resource assembly at its registered path |
 | [Info.plist](../macos/Runner/Info.plist), entitlements, [Configs](../macos/Runner/Configs/AppInfo.xcconfig) and [Xcode project](../macos/Runner.xcodeproj/project.pbxproj) | Bundle identity, startup resources, capabilities, target membership and linking | Host configuration and build integration |
 | [GeneratedPluginRegistrant.swift](../macos/Flutter/GeneratedPluginRegistrant.swift) | Generated plugin registration | Flutter-managed integration |
 
 The [Dart audio factory](../lib/infrastructure/audio/output/audio_output_factory.dart) selects CoreAudioPlayer on macOS. [CoreAudioBindings](../lib/infrastructure/platform/audio/apple/core_audio_bindings.dart) resolves the Runner's audio symbols from the process. The [desktop directory service](../lib/infrastructure/platform/files/desktop_directory_service.dart) creates the absolute directory before invoking its native channel.
 
-macOS currently has no app-owned native content pages, CarPlay, Now Playing channel or remote-command service. The [Now Playing service](../lib/infrastructure/platform/media/now_playing_platform_service.dart) supports iOS and Android. Introduce macOS integrations as explicit features with their own contracts. UIKit, iOS scenes and AVAudioSession are outside this host's architecture.
+The macOS Now Playing channel shares the Apple codec, patch/state rules, publisher and remote-command registration under `native/apple` with iOS. Its engine-bound service translates toggle into play/pause and forwards seeking to Dart. Dart supplies authenticated artwork bytes; Mac decoding is bounded to 1024 pixels and rejects stale completions. Closing into background mode preserves media controls; engine detachment unregisters handlers and clears publication. macOS has no app-owned native content pages or CarPlay. UIKit, iOS scenes and AVAudioSession remain outside this host.
 
 ## Responsibility boundaries
 
@@ -46,26 +48,34 @@ Keep native Pages and Application absent until they contain real responsibilitie
 ## Source organization
 
 `Infrastructure/Flutter/StartupChannelAdapter.swift` implements the desktop login-item channel,
-owned and detached by `FlutterEngineBinding`. It uses `SMAppService.mainApp` on macOS 13+
-and the bundled LaunchAtLogin helper on older supported systems. CocoaPods installs the
-legacy helper framework; the target's **Copy Login Helper** phase embeds its helper.
-Window/tray policy remains in the Dart desktop lifecycle owner. Closing a window can
-hide it, while explicit Quit terminates; reopening from the Dock restores the window.
+owned and detached by `FlutterEngineBinding`. It uses `SMAppService.mainApp` on all
+supported systems. The macOS 13 minimum also matches the native tray dependency;
+no legacy login-helper framework or copy phase is needed. Window/tray policy remains
+in the Dart desktop lifecycle owner. Closing a window can hide it, while explicit
+Quit terminates; reopening from the Dock restores the window.
 
-Use physical folders that match Xcode groups inside the existing Runner module:
+Common Apple sources live under `native/apple`, referenced by both Xcode projects. Use physical folders that match Xcode groups inside the existing Runner module:
 
 ```text
 macos/
   .swift-format
-  Scripts/
-    build_opus_static.sh
   Runner/
     Bootstrap/
       AppDelegate.swift
       MainFlutterWindow.swift
       FlutterEngineBinding.swift
+    Data/
+      Storage/
+        DirectoryBookmarkStore.swift
     Infrastructure/
+      Files/
+        DirectoryPicker.swift
+        SecurityScopedDirectories.swift
+      Media/
+        NowPlayingArtwork.swift
+        NowPlayingService.swift
       Flutter/
+        StorageAccessChannelAdapter.swift
         DirectoriesChannelAdapter.swift
       Shell/
         DirectoryLauncher.swift
@@ -201,7 +211,7 @@ Preserve the current nib lifecycle during extraction:
 
 Changing this sequence, creating a separate shared engine or supporting multiple windows is a lifecycle change that needs its own verification. A file move does not require migrating to a newer Flutter hosting API.
 
-Preserve AppDelegate's `@main` entry point, FlutterAppDelegate inheritance and true results for last-window termination and secure restorable state. `MainMenu.xib` identifies AppDelegate and MainFlutterWindow in module Runner, connects the delegate's `applicationMenu` and `mainFlutterWindow`, and configures the resizable initial 800-by-600 window. `Info.plist` selects `MainMenu` and `NSApplication`. Keep class names, target module, outlets, responder actions, menu shortcuts and resource registration aligned with filesystem changes.
+Preserve AppDelegate's `@main` entry point, FlutterAppDelegate inheritance, false result for last-window termination and true result for secure restorable state. Dart owns explicit Quit; Dock reopen restores the hidden window. `MainMenu.xib` identifies AppDelegate and MainFlutterWindow in module Runner, connects the delegate's `applicationMenu` and `mainFlutterWindow`, and configures the resizable initial 800-by-600 window. `Info.plist` selects `MainMenu` and `NSApplication`. Keep class names, target module, outlets, responder actions, menu shortcuts and resource registration aligned with filesystem changes.
 
 A binding belongs to one engine/messenger. Attachment should be idempotent for that binding; engine replacement requires explicit detachment and rebinding. Remove method handlers while their messenger remains valid, then release dependent owners. A channel's name identifies its communication path, and a nil method handler unregisters it. [Flutter macOS channel contract](https://api.flutter.dev/macos-embedder/interface_flutter_method_channel.html)
 
@@ -220,7 +230,7 @@ Keep the scalar payload, path spelling and Bool-to-reply mapping. The current Sw
 
 ## Native C audio organization and ownership
 
-Keep the exported `phonolite_audio_*` facade C-compatible. Preserve all twelve declared functions, integer widths, pointer types, `extern "C"` guards, opaque PhonoliteAudioPlayer handles, symbol visibility and retention. Moving source must preserve process symbol lookup. Changing C to Objective-C/Swift or adding a method-channel PCM path is a separate implementation change.
+Keep the exported `phonolite_audio_*` facade C-compatible. Preserve all fourteen declared functions, integer widths, pointer types, `extern "C"` guards, opaque PhonoliteAudioPlayer handles, symbol visibility and retention. Moving source must preserve process symbol lookup. Changing C to Objective-C/Swift or adding a method-channel PCM path is a separate implementation change.
 
 Use lower_snake_case C files, functions, fields and locals for owned code being materially refactored; use PascalCase named types and retain required Apple member/API names. Header guards and ABI macros retain their established conventions. A public C header presents includes, C linkage guards, opaque/value declarations and operations in readable lifecycle order. Keep implementation-only declarations in local static helpers or a focused internal header.
 
@@ -230,7 +240,7 @@ Preserve these runtime contracts when extracting:
 
 | Contract | Behavior to retain |
 | --- | --- |
-| PCM format | Interleaved, signed packed 16-bit samples; sampleCount counts Int16 values, not frames or bytes |
+| PCM format | Interleaved, signed packed 16/32-bit samples; sampleCount counts sample values, not frames or bytes |
 | Start and backpressure | Start once queued data is ready; five in-flight buffers; queue-full result `-3` remains distinguishable from other failures |
 | Buffer ownership | Write copies caller samples into an owned AudioQueue buffer; completion releases the tracked entry/buffer |
 | Progress | Collect completed sample counts with atomic exchange; keep sample/channel/time conversion at its existing Dart owner |
@@ -255,31 +265,33 @@ An await allows other work to change state. Request generation, engine/window id
 
 ## Xcode sandbox and package integration
 
-Swift folder organization is a project choice. XIB class/module identity, source target membership, build phases and linked symbols are executable contracts. This [Xcode project](../macos/Runner.xcodeproj/project.pbxproj) uses explicit file references and Sources entries. Moves must update those paths, the Opus script invocation/input/output paths, resource references and any relative header imports together. Keep generated registration and Flutter assembly tool-owned.
+Swift folder organization is a project choice. XIB class/module identity, source target membership, build phases and linked symbols are executable contracts. This [Xcode project](../macos/Runner.xcodeproj/project.pbxproj) uses explicit file references and Sources entries. Moves must update those paths, resource references and any relative header imports together. Both Apple targets register the common Swift sources under `native/apple` exactly once. Keep generated registration and Flutter assembly tool-owned.
 
-Runner and the [Podfile](../macos/Podfile) declare macOS 10.15; Runner uses Swift language mode 5.0 and GNU C11. The local-audio and QUIC podspecs require macOS 11.0. The current [Podfile.lock](../macos/Podfile.lock) lists only Opus and older plugin integration, while the generated registrant includes additional plugins. Resolve the effective minimum and dependency state on the Apple build environment before claiming compatibility or migrating language settings. Swift language mode does not identify the compiler or formatter version.
+Runner, the [Podfile](../macos/Podfile) and the native macOS podspecs declare macOS 13.0, covering Flutter 3.47 and the native tray dependency's deployment target. Runner uses Swift language mode 5.0 and GNU C11. CocoaPods resolves the Rust FFI packages, and secure storage; supported plugins use Flutter-managed Swift Package Manager integration. Keep the generated package resolution and CocoaPods lockfile with the project. Swift language mode does not identify the compiler or formatter version.
 
-The app bundle identifier is `com.phonoliteorg.phonoliteApp`, with `.RunnerTests` appended for the test bundle. Apple bundle identifiers do not permit underscores, so this retains the platform's camel-case spelling of the app name.
+The app bundle identifier is `com.phonoliteorg.phonolite`, with `.RunnerTests` appended for the test bundle. Apple bundle identifiers do not permit underscores, so this retains the platform's camel-case spelling of the app name.
 
-Preserve the current entitlement split. [DebugProfile.entitlements](../macos/Runner/DebugProfile.entitlements) enables sandboxing, outgoing/incoming networking and JIT; [Release.entitlements](../macos/Runner/Release.entitlements) enables sandboxing and outgoing networking. Both contain an empty keychain access-group array. The plist currently allows arbitrary ATS loads. Altering these settings changes capabilities or network policy and belongs to explicit feature/security work.
+Both configurations keep App Sandbox and outgoing networking. Debug/Profile retain Flutter's JIT and incoming-network exceptions. Both also permit user-selected read/write access and app-scoped bookmarks for custom storage locations. The local-network usage description explains music-server access; the app privacy manifest declares bookmark preference storage in UserDefaults. Keychain persistence still requires verification in a signed build.
 
-New file access must use the appropriate sandbox capability. A path or Finder-opening request does not grant arbitrary read/write access. If persistent user-selected resources require security-scoped bookmarks, keep saved bookmark data in Data/Storage and active access lifetime in Infrastructure. Preserve Flutter's development entitlement exceptions and check each build configuration when changing capabilities. [Flutter macOS entitlement guidance](https://docs.flutter.dev/platform-integration/macos/building#entitlements-and-the-app-sandbox)
+`DirectoryPicker` owns AppKit selection independently of channel parsing. The transport saves each accepted grant through `DirectoryBookmarkStore`; `SecurityScopedDirectories` owns active access until engine detachment. `RestoreStorageAccess` restores grants before logs, databases or downloads open. A moved bookmarked directory updates saved paths. Unavailable grants remain saved for reconnected volumes; unavailable logs fall back to their default folder, while offline-library paths remain recoverable. Artwork imports use the user-selected file capability and the existing Flutter picker. A typed path alone does not authorize sandbox access.
 
 Keep shared native packages in their own source trees:
 
 | Package | macOS integration | Ownership |
 | --- | --- | --- |
-| [phonolite_opus](../packages/phonolite_opus/macos/phonolite_opus.podspec) | Podspec C source compilation; Runner also has its own static-build/force-load path | Shared Opus decoder and vendored source |
+| [phonolite_opus](../packages/phonolite_opus/macos/phonolite_opus.podspec) | CMake static archive and Objective-C link anchor built by the pod for Xcode's requested architectures | Shared Opus decoder and vendored source |
 | [phonolite_local_audio](../packages/phonolite_local_audio/macos/phonolite_local_audio.podspec) | Rust static archive, Objective-C link anchor and CocoaPods configuration | Local decoding, opaque handles, PCM and seek results |
 | [phonolite_quic](../packages/phonolite_quic/macos/phonolite_quic.podspec) | Rust static archive, Objective-C link anchor and CocoaPods configuration | Transport, authentication, certificate identity and native allocations |
 
 The package loaders try their packaged macOS framework and can fall back to process lookup. Preserve export names, calling conventions, linker anchors, archive retention, units and matching close/free functions. Rust-allocated QUIC strings require the package's free function. Do not move Rust implementations or upstream Opus into Runner to make the host tree symmetrical. Native C, Objective-C link anchors, shell scripts and Rust retain appropriate language conventions.
 
-The active Runner Opus phase builds `Runner/libphonolite_opus.a`, and all three configurations force-load that archive. The phase invokes `Scripts/build_opus_static.sh` through `/bin/bash`, preserving its interpreter even when a Windows checkout cannot retain the executable bit. The moved script remains two directories below the app root, so its existing `../..` calculation and output paths stay valid. It currently uses the host clang target without an explicit universal-architecture loop. The package podspec also defines Opus compilation with C99. Assess consolidation, architecture coverage and artifact locations as explicit build work; preserve both definitions until the chosen replacement is verified.
+CocoaPods is the single Opus compilation owner on macOS; the former Runner static archive/force-load phase is removed. The pod builds a real static archive through CMake and retains all four FFI exports through an Objective-C anchor, so CocoaPods does not depend on following source-directory symlinks. CMake configures the codec for each target CPU. Both Rust package wrappers delegate to `native/apple/Scripts/build_rust_static.sh`, which honors `ARCHS`, the macOS SDK and deployment target, uses locked Cargo dependencies and combines the requested Intel/Apple Silicon slices. Missing Rust targets fail the build; no fallback to a host-only archive is allowed.
+
+App Store distribution uses the shared iOS/macOS bundle ID `com.phonoliteorg.phonolite`, the existing Apple team and the Music application category. Keep app updates managed by the store. Register the new shared ID in App Store Connect before uploading; an existing app record tied to a different ID cannot be reassigned.
 
 ## Formatter configuration
 
-Use the Swift project's swift-format tool with [macos/.swift-format](../macos/.swift-format), matching the iOS configuration:
+Use the Swift project's swift-format tool with [macos/.swift-format](../macos/.swift-format), matching the iOS configuration. Include `native/apple` when formatting common Apple sources:
 
 ```json
 {
@@ -299,8 +311,8 @@ These settings favor compact signatures where they fit and retain at most one bl
 On an Apple toolchain that provides `swift format`, run from the app root:
 
 ```sh
-swift format format --configuration macos/.swift-format --in-place --recursive macos/Runner macos/RunnerTests
-swift format lint --configuration macos/.swift-format --strict --recursive macos/Runner macos/RunnerTests
+swift format format --configuration macos/.swift-format --in-place --recursive native/apple macos/Runner macos/RunnerTests
+swift format lint --configuration macos/.swift-format --strict --recursive native/apple macos/Runner macos/RunnerTests
 ```
 
 Pin and verify a compatible formatter on the Apple build environment before automated enforcement. A newer formatter executable can be separate from Runner's Swift language mode. Scope it to handwritten Swift; generated registrants, Pods, native C and vendored packages remain outside this pass. [Official swift-format usage](https://github.com/swiftlang/swift-format)
@@ -317,10 +329,11 @@ Preserve nib identities and startup order, one window-owned engine binding, type
 
 The [Apple source contracts](../test/requirements/platform_apple_contract_test.dart), [macOS architecture checks](../test/architecture/macos_architecture_test.dart) and [Dart directory tests](../test/platform/desktop_directory_service_test.dart) anchor source membership, dependency boundaries, startup, exports, channel behavior and Dart directory preparation. Native [RunnerTests](../macos/RunnerTests/RunnerTests.swift) now has ten injected directory/channel checks covering validation, replies, lifecycle and an accepted handler surviving adapter release. They open no folders, but their Xcode target remains app-hosted: ordinary `xcodebuild test` launches Runner. Use compilation/build-for-testing during agent work; leave hosted execution to the user.
 
-The [portable facade verifier](../tools/macos_checks/verify_audio_facade.py) compiles the real exported facade against typed doubles of its internal capabilities. It runs twelve forwarding cases and compiles twelve public-header C++ type assertions, preserving argument widths, handles, sample counts and return values. It does not substitute fake Apple SDK headers or compile the AudioQueue/CoreAudio implementations:
+The [portable facade verifier](../tools/macos_checks/verify_audio_facade.py) compiles the real exported facade against typed doubles of its internal capabilities. It runs fourteen forwarding cases and compiles fourteen public-header C++ type assertions, preserving argument widths, handles, sample counts and return values. It does not substitute fake Apple SDK headers or compile the AudioQueue/CoreAudio implementations:
 
 ```sh
-python tools/macos_checks/verify_audio_facade.py --cc clang
+python3 tools/macos_checks/verify_audio_facade.py --cc clang
+python3 tools/macos_checks/verify_media_storage.py
 ```
 
 It accepts `--cc` and `--cxx` paths for an available GCC/Clang toolchain and writes disposable outputs under `.dart_tool/macos_architecture_refactor`. This is a foreground, unhosted verification executable without window, engine or audio resources.
@@ -332,4 +345,14 @@ xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Deb
 xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug build-for-testing
 ```
 
-Source/project contracts, portable facade/header checks, C formatting and shell syntax checks passed for the refactor. Swift compilation/formatting, Apple-framework compilation, native linking and native XCTest execution require a configured Mac and remain unverified from this Windows workspace. Check Profile and Release builds, exported symbols, static archive integration and entitlements there, using a checkout with real package symlinks and resolved dependencies. Hosted execution, rendered-window checks, Finder opening and real audio/device tests remain user-controlled. No apps, servers or background services should be launched during agent work.
+The foreground `MediaStorageContracts.swift` executable checks metadata publication values, seek epochs, moved/stale bookmarks, idempotent restoration and balanced access cleanup using in-memory storage; it opens no window and changes no system media session. Compile it with the shared playback models/publisher and the Mac bookmark store/access owner. Source/project contracts and portable facade/header checks remain separate from actual SDK compilation and native linking. Check Debug/Profile/Release builds, both architecture slices, exported FFI symbols, static archive integration and entitlements, using a checkout with real package symlinks and resolved dependencies. Hosted execution, rendered-window checks, Finder opening and real audio/device tests remain user-controlled. No apps, servers or background services should be launched during agent work.
+
+Inspect a universal release without launching it:
+
+```sh
+python3 tools/macos_checks/verify_app_bundle.py build/macos/Build/Products/Release/phonolite_app.app
+```
+
+This checks all embedded Mach-O slices and deployment minima, the shared store identity, privacy resource, all CoreAudio process exports and the Opus/local-audio/QUIC framework exports against their public contracts. It does not sign, submit or launch the app.
+
+Verified on 2026-10-31: universal Intel/Apple Silicon Release compilation; Intel Debug build-for-testing and Profile compilation; all nine embedded Mach-O binaries and 68 FFI exports in the Release bundle; shared Apple Swift compilation against the iOS SDK; and 79 focused Dart/platform/native-decoder checks. Four server-generated Opus fixture cases were skipped because those external fixtures were not supplied. The foreground metadata/bookmark and AudioQueue accounting/facade contracts also passed. Native runtime fixtures ran on Intel. Signing, App Store Connect validation/upload, rendered UI, live networking, actual audio devices and hardware media-button checks remain user-controlled.

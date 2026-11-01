@@ -95,6 +95,7 @@ void main() {
       VehicleFailure.missingArtist: 'missing_artist',
       VehicleFailure.missingAlbum: 'missing_album',
       VehicleFailure.missingPlaylist: 'missing_playlist',
+      VehicleFailure.localEmpty: 'local_empty',
       VehicleFailure.likedEmpty: 'liked_empty',
       VehicleFailure.customEmpty: 'custom_empty',
     };
@@ -104,6 +105,17 @@ void main() {
         'error': entry.value,
         'items': [],
       });
+    }
+  });
+
+  test('vehicle source state carries the restored library independently of availability', () {
+    for (final scope in ActionScope.values) {
+      expect(
+        VehicleSurfaceCodec.encodeResponse(
+          VehicleSourceState(serverAvailable: true, localAvailable: true, playbackScope: scope),
+        ),
+        {'serverAvailable': true, 'localAvailable': true, 'hasAnySource': true, 'playbackScope': scope.name},
+      );
     }
   });
 
@@ -157,6 +169,7 @@ void main() {
       'audioInterruptionEnded': NativeRemoteAction.audioInterruptionEnded,
       'audioInterruptionEndedPaused': NativeRemoteAction.audioInterruptionEndedPaused,
       'audioServicesReset': NativeRemoteAction.audioServicesReset,
+      'audioRouteChanged': NativeRemoteAction.audioRouteChanged,
       'unrecognized': NativeRemoteAction.unknown,
     };
 

@@ -13,12 +13,14 @@ void main() {
     final project = XcodeProject(File('macos/Runner.xcodeproj/project.pbxproj'));
 
     for (final target in ['Runner', 'RunnerTests']) {
-      final expected = _files(
-        'macos/$target',
-      ).where((file) => RegExp(r'\.(?:swift|c|m|mm)$').hasMatch(file.path)).map(_path).toSet();
+      final expected = _files('macos/$target')
+          .where((file) => RegExp(r'\.(?:swift|c|m|mm)$').hasMatch(file.path))
+          .map(_path)
+          .toSet();
 
       if (target == 'Runner') {
         expected.add(_path(File('macos/Flutter/GeneratedPluginRegistrant.swift')));
+        expected.addAll(_files('native/apple').where((file) => file.path.endsWith('.swift')).map(_path));
       }
 
       final registered = project.sources(target);
@@ -33,11 +35,7 @@ void main() {
       expect(references, contains(_path(header)), reason: header.path);
     }
 
-    expect(references, contains(_path(File('macos/Scripts/build_opus_static.sh'))));
-    expect(
-      project.shellScripts('Runner')['Build Opus Static'],
-      contains(r'/bin/bash "$PROJECT_DIR/Scripts/build_opus_static.sh"'),
-    );
+    expect(project.shellScripts('Runner'), isNot(contains('Build Opus Static')));
   });
 
   test('macOS native owners follow responsibility areas without reaching through the host', () {
@@ -46,7 +44,7 @@ void main() {
       final relative = path.substring('$_runner/'.length);
       final source = file.readAsStringSync();
 
-      expect(relative.split('/').first, isIn(['Bootstrap', 'Infrastructure']), reason: path);
+      expect(relative.split('/').first, isIn(['Bootstrap', 'Data', 'Infrastructure']), reason: path);
       expect(file.uri.pathSegments.last, matches(r'^[A-Z][A-Za-z0-9]*\.swift$'), reason: path);
       expect(file.readAsLinesSync().length, lessThanOrEqualTo(1000), reason: path);
 
@@ -129,9 +127,10 @@ void main() {
     final expected = RegExp(r"'(phonolite_audio_\w+)'").allMatches(bindings).map((match) => match[1]!).toSet();
     final header = readProjectFile('$_native/phonolite_audio.h');
     final facade = readProjectFile('$_native/phonolite_audio.c');
-    final exported = RegExp(
-      r'PHONOLITE_EXPORT\s+[^;{]+?\b(phonolite_audio_\w+)\(',
-    ).allMatches(facade).map((match) => match[1]!).toList();
+    final exported = RegExp(r'PHONOLITE_EXPORT\s+[^;{]+?\b(phonolite_audio_\w+)\(')
+        .allMatches(facade)
+        .map((match) => match[1]!)
+        .toList();
 
     expect(expected, hasLength(14));
     expect(exported, unorderedEquals(expected));
@@ -163,9 +162,9 @@ void main() {
       'max_in_flight = 5',
       'queue_full = -3',
       'entry->generation == player->generation',
-      'atomic_exchange(&player->completed_samples, 0)',
+      'phonolite_progress_collect(&entry->progress, player->generation, valid, frame)',
       'atomic_store(&player->in_flight, 0)',
-      'atomic_store(&player->completed_samples, 0)',
+      'player->pending_done_samples = 0;',
       'AudioQueueReset(player->queue)',
       'memcpy(buffer->mAudioData, samples, byte_size)',
     ]);
@@ -174,4 +173,4 @@ void main() {
 
 Iterable<File> _files(String directory) => Directory(directory).listSync(recursive: true).whereType<File>();
 
-String _path(FileSystemEntity entity) => entity.absolute.path.replaceAll('\\', '/');
+String _path(FileSystemEntity entity) => entity.absolute.uri.normalizePath().toFilePath().replaceAll('\\', '/');

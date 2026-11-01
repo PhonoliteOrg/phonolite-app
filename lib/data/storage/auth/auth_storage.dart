@@ -5,12 +5,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
+import 'package:phonolite_app/data/storage/auth/credential_vault.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 
 class AuthStorage {
-  static const FlutterSecureStorage _vault = FlutterSecureStorage();
+  static const FlutterSecureStorage _vault = CredentialVault.storage;
   static const String _vaultKey = 'phonolite.auth.session.v1';
   final SettingsFiles _files;
 
@@ -24,7 +25,7 @@ class AuthStorage {
       return;
     }
 
-    final stored = await _vault.readAll();
+    final stored = await _vault.readAll(iOptions: CredentialVault.allIOSAccessibilities);
     AuthCredentials? credentials;
     final rawSession = stored[_vaultKey];
 
@@ -62,9 +63,18 @@ class AuthStorage {
         }
       }
 
-      if (!matchingTrust) {
+      final migrateIOSAccessibility = defaultTargetPlatform == TargetPlatform.iOS;
+
+      if (!matchingTrust || migrateIOSAccessibility) {
         await _vault.write(key: trustKey, value: jsonEncode(credentials.trust.toJson()));
       }
+
+      if (migrateIOSAccessibility) {
+        // Rewrite existing credentials while unlocked so later CarPlay starts
+        // can restore the same session after the screen locks.
+        await _vault.write(key: _vaultKey, value: jsonEncode(credentials.toJson()));
+      }
+
       retainedKeys.add(trustKey);
     }
 
@@ -74,7 +84,7 @@ class AuthStorage {
           key.startsWith('phonolite.trust.') ||
           key.startsWith('phonolite.session.');
       if (appSecurityKey && !retainedKeys.contains(key)) {
-        await _vault.delete(key: key);
+        await _vault.delete(key: key, iOptions: CredentialVault.allIOSAccessibilities);
       }
     }
 
@@ -130,7 +140,7 @@ class AuthStorage {
     }
 
     try {
-      await _vault.delete(key: _vaultKey);
+      await _vault.delete(key: _vaultKey, iOptions: CredentialVault.allIOSAccessibilities);
     } catch (_) {
       AppLogger.warning('Failed to clear auth');
     }
@@ -158,7 +168,7 @@ class AuthStorage {
 
     if (credentials != null &&
         ServerTrust.origin(Uri.parse(credentials.baseUrl)) == ServerTrust.origin(Uri.parse(url))) {
-      await _vault.delete(key: _vaultKey);
+      await _vault.delete(key: _vaultKey, iOptions: CredentialVault.allIOSAccessibilities);
     }
   }
 }

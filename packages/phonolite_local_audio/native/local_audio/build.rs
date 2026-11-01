@@ -55,6 +55,23 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
         configure_android(&mut config);
     }
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        let architecture = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+            Ok("aarch64") => "arm64",
+            Ok("x86_64") => "x86_64",
+            _ => panic!("unsupported macOS architecture"),
+        };
+        config.define("CMAKE_OSX_ARCHITECTURES", architecture);
+        for (environment, setting) in [
+            ("SDKROOT", "CMAKE_OSX_SYSROOT"),
+            ("MACOSX_DEPLOYMENT_TARGET", "CMAKE_OSX_DEPLOYMENT_TARGET"),
+        ] {
+            println!("cargo:rerun-if-env-changed={environment}");
+            if let Some(value) = std::env::var_os(environment) {
+                config.define(setting, value);
+            }
+        }
+    }
     let destination = config
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("OPUS_BUILD_SHARED_LIBRARY", "OFF")

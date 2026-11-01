@@ -102,11 +102,21 @@ final class AudioSessionService: NSObject {
       return
     }
 
+    NSLog("Phonolite audio route changed: reason=%lu playing=%d", reasonValue, isPlaying() ? 1 : 0)
+
     switch reason {
     case .oldDeviceUnavailable:
-      if isPlaying() {
+      // Bluetooth can disappear as wired CarPlay takes over. Preserve playback
+      // for that handoff; disconnecting to the speaker still pauses normally.
+      let connectedToCar = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .carAudio }
+
+      if !connectedToCar {
         sendRemoteCommand(.pause)
       }
+
+      sendRemoteCommand(.audioRouteChanged)
+    case .newDeviceAvailable, .routeConfigurationChange:
+      sendRemoteCommand(.audioRouteChanged)
     default:
       break
     }

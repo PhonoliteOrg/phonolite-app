@@ -7,15 +7,20 @@ Pod::Spec.new do |s|
   s.license = { :type => 'MIT' }
   s.author = { 'Phonolite' => 'dev@phonolite' }
   s.source = { :path => '.' }
-  s.platform = :osx, '11.0'
+  s.platform = :osx, '13.0'
 
   s.source_files = 'Classes/**/*.{m,h}'
   s.vendored_libraries = 'libphonolite_quic.a'
+  s.libraries = 'c++'
+  s.pod_target_xcconfig = {
+    'OTHER_LDFLAGS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/libphonolite_quic.a"'
+  }
 
   s.script_phase = {
     :name => 'Build phonolite_quic',
     :script => 'bash "${PODS_TARGET_SRCROOT}/build_quic_static.sh"',
     :execution_position => :before_compile,
-    :output_files => ['${PODS_TARGET_SRCROOT}/libphonolite_quic.a']
+    :output_files => ['${PODS_TARGET_SRCROOT}/libphonolite_quic.a'],
+    :always_out_of_date => '1'
   }
 end

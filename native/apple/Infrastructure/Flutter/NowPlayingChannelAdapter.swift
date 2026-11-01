@@ -1,4 +1,8 @@
-import Flutter
+#if os(macOS)
+  import FlutterMacOS
+#else
+  import Flutter
+#endif
 
 final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
   private let onUpdate: (NowPlayingUpdate) -> Void
@@ -9,10 +13,8 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
   private let channel = FlutterChannelAdapter(pluginName: "phonolite_now_playing", name: "phonolite/now_playing")
 
   init(
-    onUpdate: @escaping (NowPlayingUpdate) -> Void,
-    onPreloadArtwork: @escaping ([ArtworkSource]) -> Void,
-    onClear: @escaping () -> Void,
-    onAttached: @escaping () -> Void
+    onUpdate: @escaping (NowPlayingUpdate) -> Void, onPreloadArtwork: @escaping ([ArtworkSource]) -> Void,
+    onClear: @escaping () -> Void, onAttached: @escaping () -> Void
   ) {
     self.onUpdate = onUpdate
     self.onPreloadArtwork = onPreloadArtwork
@@ -20,27 +22,28 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
     self.onAttached = onAttached
   }
 
-  var pluginName: String {
-    return channel.pluginName
-  }
+  var pluginName: String { return channel.pluginName }
 
-  var isAttached: Bool {
-    return channel.isAttached
-  }
+  var isAttached: Bool { return channel.isAttached }
 
   func attach(to messenger: FlutterBinaryMessenger) {
     let attached = channel.attach(to: messenger, owner: self) { owner, call, result in
       owner.handle(call, result: result)
     }
 
-    if attached {
-      onAttached()
-    }
+    if attached { onAttached() }
   }
 
-  func send(_ command: NativeRemoteCommand) {
-    channel.send("remoteCommand", arguments: ["type": command.rawValue])
+  func send(_ command: NativeRemoteCommand) { send(type: command.rawValue) }
+
+  func send(type: String, arguments: [String: Any] = [:]) {
+    var payload = arguments
+    payload["type"] = type
+
+    channel.send("remoteCommand", arguments: payload)
   }
+
+  func detach() { channel.detach() }
 
   private func handle(_ call: FlutterMethodCall, result: FlutterResult) {
     switch call.method {
@@ -65,8 +68,7 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
     case "clearNowPlaying":
       onClear()
       result(true)
-    default:
-      result(FlutterMethodNotImplemented)
+    default: result(FlutterMethodNotImplemented)
     }
   }
 }

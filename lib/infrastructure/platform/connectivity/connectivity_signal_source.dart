@@ -1,11 +1,13 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+import 'package:phonolite_app/data/models/network/network_connectivity.dart';
+
 abstract class ConnectivitySignalSource {
   const ConnectivitySignalSource();
 
-  Stream<bool> get availabilityStream;
+  Stream<NetworkConnectivity> get stateStream;
 
-  Future<bool> hasConnectivity();
+  Future<NetworkConnectivity> currentState();
 }
 
 class ConnectivityPlusSignalSource extends ConnectivitySignalSource {
@@ -14,14 +16,23 @@ class ConnectivityPlusSignalSource extends ConnectivitySignalSource {
   ConnectivityPlusSignalSource({Connectivity? connectivity}) : _connectivity = connectivity ?? Connectivity();
 
   @override
-  Stream<bool> get availabilityStream => _connectivity.onConnectivityChanged.map(_hasUsableConnectivity).distinct();
+  Stream<NetworkConnectivity> get stateStream => _connectivity.onConnectivityChanged.map(_decode).distinct();
 
   @override
-  Future<bool> hasConnectivity() async {
-    return _hasUsableConnectivity(await _connectivity.checkConnectivity());
+  Future<NetworkConnectivity> currentState() async {
+    return _decode(await _connectivity.checkConnectivity());
   }
 
-  static bool _hasUsableConnectivity(List<ConnectivityResult> results) {
-    return results.any((result) => result != ConnectivityResult.none);
-  }
+  static NetworkConnectivity _decode(List<ConnectivityResult> results) =>
+      NetworkConnectivity(results.map(_transport).nonNulls);
+
+  static NetworkTransport? _transport(ConnectivityResult result) => switch (result) {
+    ConnectivityResult.wifi => NetworkTransport.wifi,
+    ConnectivityResult.mobile => NetworkTransport.cellular,
+    ConnectivityResult.ethernet => NetworkTransport.ethernet,
+    ConnectivityResult.bluetooth => NetworkTransport.bluetooth,
+    ConnectivityResult.vpn => NetworkTransport.vpn,
+    ConnectivityResult.none => null,
+    _ => NetworkTransport.other,
+  };
 }

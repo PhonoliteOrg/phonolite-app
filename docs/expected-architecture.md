@@ -477,7 +477,29 @@ AAC/ALAC MP4 handling maps supported single unit-rate edits into presentation ti
 
 The shared gapless timeline bounds output-progress waits to five seconds while unpaused audio is queued. Opus delivery uses a separate fifteen-second deadline while bytes are needed; seeks start a fresh deadline, and user pauses or satisfied read-ahead suspend it. Both failures enter the existing position-preserving recovery path. Local output recovery retries once at the confirmed position and publishes a stopped state on a repeated failure. Server admission/shutdown failures remain retryable; source rejection remains distinct.
 
+Connectivity state retains the reported interface set so Wi-Fi-to-cellular
+handoffs remain visible while both states have network access. The availability
+coordinator coalesces changes for 250 ms to suppress brief None/Wi-Fi flicker,
+rejects stale initial queries, rechecks on foreground resume, and owns monitor
+cancellation. The stream recovery coordinator reopens active or paused remote
+playback on the new interface at the latest confirmed position or seek target,
+using the existing start-generation and audio-reset barriers. The new interface
+clears retry history from the old network; a failed first connection on the new
+route still receives normal immediate recovery. Local file playback and shuffle
+navigation stay intact. This policy is shared by iOS, Android and the other
+Flutter hosts. A fresh authenticated stream can briefly interrupt audio while
+the new network becomes reachable; connectivity signals do not establish server
+reachability or provide seamless QUIC migration.
+
 Apple output adapters credit scheduled audio spans using the AudioQueue playback clock, rather than buffer-reuse callbacks. Native interruption/reset notifications travel through the existing media-command boundary; the application media coordinator owns playback intent, suspension, and the reset barrier. A resumable interruption cannot override a user pause, and media-services reset recreates output paused until explicit Play. New starts and Play commands wait for old output release, preventing a stale reset from stopping a newer occurrence.
+
+Audio route notifications use the same barrier to replace invalidated queues while
+retaining track, position, shuffle navigation and current playback intent. CarPlay
+defaults to the restored track's library, falling back to an available source,
+and validates an empty Local
+shuffle before changing modes. `CredentialVault` shares iOS background-accessible,
+device-only Keychain settings between saved authentication and server pins;
+startup migrates retained older entries while preserving validation and cleanup.
 
 OS output recovery uses `AudioEngine.resetOutput` to attempt orderly release and force retirement of an unresponsive worker after the bounded acknowledgment deadline. A later play creates a fresh worker. File deletion continues to require the stricter `stop(waitForRelease: true)` acknowledgment; a reset timeout never authorizes deletion of an in-use file.
 

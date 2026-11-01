@@ -9,7 +9,8 @@ enum CarPlayCodec {
     return CarPlaySourceState(
       serverAvailable: payload?["serverAvailable"] as? Bool ?? false,
       localAvailable: payload?["localAvailable"] as? Bool ?? false,
-      hasAnySource: payload?["hasAnySource"] as? Bool ?? false
+      hasAnySource: payload?["hasAnySource"] as? Bool ?? false,
+      playbackScope: (payload?["playbackScope"] as? String).flatMap(CarPlayScope.init(rawValue:))
     )
   }
 

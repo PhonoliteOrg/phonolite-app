@@ -96,7 +96,17 @@ final class CarPlayNavigationCoordinator {
   }
 
   private func applySourceState(_ state: CarPlaySourceState, force: Bool) {
+    let previous = browse.sourceState
+
     guard shell.isConnected, browse.updateSourceState(state, force: force) else {
+      return
+    }
+
+    if !force,
+      previous.serverAvailable == state.serverAvailable,
+      previous.localAvailable == state.localAvailable,
+      shell.selectSource(state.preferredScope)
+    {
       return
     }
 

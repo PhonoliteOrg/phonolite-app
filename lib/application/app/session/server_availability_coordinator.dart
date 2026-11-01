@@ -1,18 +1,22 @@
 part of '../app_controller.dart';
 
 class _ServerAvailabilityCoordinator {
+  static const _networkChangeDelay = Duration(milliseconds: 250);
+
   final AppController _host;
+  final _connectivityChanges = DebouncedAction();
+  final _connectivityReads = RequestGeneration();
   Timer? _healthTimer;
   Timer? _serverReconnectTimer;
   Future<void>? _serverAvailabilityFuture;
   bool _healthPingInFlight = false;
   bool _appInForeground = true;
-  bool _lastConnectivityAvailable = true;
+  NetworkConnectivity? _lastConnectivity;
   int _serverHealthFailureCount = 0;
   int _serverReconnectAttempt = 0;
   int? _quicPort;
   final Random _reconnectRandom = Random();
-  StreamSubscription<bool>? _connectivitySubscription;
+  StreamSubscription<NetworkConnectivity>? _connectivitySubscription;
 
   _ServerAvailabilityCoordinator(this._host);
 
@@ -26,40 +30,78 @@ class _ServerAvailabilityCoordinator {
   }
 
   void _configureConnectivitySignals() {
-    _connectivitySubscription = _host._connectivitySignalSource.availabilityStream.listen(
-      _handleConnectivityAvailabilityChanged,
+    _connectivitySubscription = _host._connectivitySignalSource.stateStream.listen(
+      _queueConnectivityChange,
       onError: (Object error) {
         _host._pushMessage('Network change monitor failed: $error', level: LogLevel.warning);
       },
     );
 
-    void handleInitialConnectivity(bool available) {
-      if (_host._disposed) {
-        return;
-      }
-
-      _lastConnectivityAvailable = available;
-
-      if (available && _host._authState.status == SessionStatus.serverUnavailable) {
-        unawaited(_triggerImmediateServerReconnect(reason: 'network available'));
-      }
-    }
-
-    unawaited(_host._connectivitySignalSource.hasConnectivity().then(handleInitialConnectivity).catchError((_) {}));
+    unawaited(_refreshConnectivitySnapshot());
   }
 
-  void _handleConnectivityAvailabilityChanged(bool available) {
+  Future<void> _refreshConnectivitySnapshot() async {
+    final request = _connectivityReads.advance();
+
+    try {
+      final state = await _host._connectivitySignalSource.currentState();
+
+      if (!_host._disposed && _connectivityReads.isCurrent(request)) {
+        _queueConnectivityChange(state);
+      }
+    } catch (error) {
+      if (!_host._disposed && _connectivityReads.isCurrent(request)) {
+        AppLogger.debug('Network state check deferred (${error.runtimeType}).');
+      }
+    }
+  }
+
+  Future<void> _stopConnectivitySignals() async {
+    _connectivityChanges.cancel();
+    _connectivityReads.advance();
+    await _connectivitySubscription?.cancel();
+    _connectivitySubscription = null;
+  }
+
+  void _queueConnectivityChange(NetworkConnectivity state) {
     if (_host._disposed) {
       return;
     }
 
-    final wasAvailable = _lastConnectivityAvailable;
+    _connectivityReads.advance();
 
-    _lastConnectivityAvailable = available;
+    if (_lastConnectivity == null) {
+      _applyConnectivityChange(state);
 
-    if (available && !wasAvailable) {
-      unawaited(_triggerImmediateServerReconnect(reason: 'network restored'));
+      return;
     }
+
+    // NWPathMonitor can briefly report None then the same Wi-Fi interface.
+    // Coalesce that noise without hiding a Wi-Fi-to-cellular transition.
+    _connectivityChanges.schedule(_networkChangeDelay, () => _applyConnectivityChange(state));
+  }
+
+  void _applyConnectivityChange(NetworkConnectivity state) {
+    if (_host._disposed) {
+      return;
+    }
+
+    final previous = _lastConnectivity;
+    _lastConnectivity = state;
+
+    if (previous == state || !state.isAvailable) {
+      return;
+    }
+
+    if (previous != null) {
+      AppLogger.debug(
+        'Network interfaces changed: ${previous.transports.map((item) => item.name).join(',')} '
+        '-> ${state.transports.map((item) => item.name).join(',')}',
+      );
+      unawaited(_host._recoveryCoordinator._handleNetworkChange());
+    }
+
+    unawaited(_triggerImmediateServerReconnect(reason: previous == null ? 'network available' : 'network changed'));
   }
 
   void _syncServerReconnectLoop() {
@@ -410,8 +452,6 @@ mixin _ServerAvailabilityFacade {
   int? get _quicPort => _availabilityCoordinator._quicPort;
 
   set _quicPort(int? value) => _availabilityCoordinator._quicPort = value;
-
-  StreamSubscription<bool>? get _connectivitySubscription => _availabilityCoordinator._connectivitySubscription;
 
   Future<void> retryServerConnection() => _availabilityCoordinator.retryServerConnection();
 

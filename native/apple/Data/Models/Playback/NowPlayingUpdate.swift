@@ -15,17 +15,9 @@ struct NowPlayingUpdate {
   let artworkData: Data?
 
   init(
-    trackID: String? = nil,
-    epoch: Int? = nil,
-    title: String? = nil,
-    artist: String? = nil,
-    album: String? = nil,
-    isPlaying: Bool? = nil,
-    liked: Bool? = nil,
-    duration: Double? = nil,
-    position: Double? = nil,
-    artworkSource: ArtworkSource = ArtworkSource(),
-    artworkData: Data? = nil
+    trackID: String? = nil, epoch: Int? = nil, title: String? = nil, artist: String? = nil, album: String? = nil,
+    isPlaying: Bool? = nil, liked: Bool? = nil, duration: Double? = nil, position: Double? = nil,
+    artworkSource: ArtworkSource = ArtworkSource(), artworkData: Data? = nil
   ) {
     self.trackID = trackID
     self.epoch = epoch

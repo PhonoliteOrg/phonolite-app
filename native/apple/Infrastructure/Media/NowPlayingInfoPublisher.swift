@@ -11,17 +11,11 @@ final class NowPlayingInfoPublisher {
     let hasMetadata =
       !title.isEmpty || !artist.isEmpty || !album.isEmpty || state.duration != nil || state.position >= 0
 
-    if hasMetadata {
-      info[MPMediaItemPropertyTitle] = title.isEmpty ? "Now Playing" : title
-    }
+    if hasMetadata { info[MPMediaItemPropertyTitle] = title.isEmpty ? "Now Playing" : title }
 
-    if !artist.isEmpty {
-      info[MPMediaItemPropertyArtist] = artist
-    }
+    if !artist.isEmpty { info[MPMediaItemPropertyArtist] = artist }
 
-    if !album.isEmpty {
-      info[MPMediaItemPropertyAlbumTitle] = album
-    }
+    if !album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = album }
 
     info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
     info[MPNowPlayingInfoPropertyIsLiveStream] = false
@@ -30,17 +24,13 @@ final class NowPlayingInfoPublisher {
     info[MPNowPlayingInfoPropertyPlaybackRate] = state.isPlaying ? 1.0 : 0.0
     info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
 
-    if let artwork {
-      info[MPMediaItemPropertyArtwork] = artwork
-    }
+    if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
 
     return info
   }
 
   func publish(state: NowPlayingState, artwork: MPMediaItemArtwork?) {
-    guard state.trackID != nil else {
-      return
-    }
+    guard state.trackID != nil else { return }
 
     let info = buildInfo(state: state, artwork: artwork)
     let playbackState: MPNowPlayingPlaybackState = state.isPlaying ? .playing : .paused
@@ -50,13 +40,7 @@ final class NowPlayingInfoPublisher {
       MPNowPlayingInfoCenter.default().playbackState = playbackState
     }
 
-    if Thread.isMainThread {
-      apply()
-    } else {
-      DispatchQueue.main.async {
-        apply()
-      }
-    }
+    if Thread.isMainThread { apply() } else { DispatchQueue.main.async { apply() } }
   }
 
   func clear() {

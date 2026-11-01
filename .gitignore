@@ -39,6 +39,7 @@ migrate_working_dir/
 /coverage/
 /macos/Runner/libphonolite_opus.a
 /macos/Runner/opus_build/
+/packages/phonolite_opus/macos/libphonolite_opus.a
 /ios/Runner/libphonolite_opus.a
 /ios/Runner/opus_build/
 /ios/build/

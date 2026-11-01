@@ -23,13 +23,13 @@ The former delegate extensions combined entry points, channels, functional state
 | Responsibility | Current owners | Why it lives there |
 | --- | --- | --- |
 | Application, scene and engine composition | [AppDelegate](../ios/Runner/Bootstrap/AppDelegate.swift), [SceneDelegate](../ios/Runner/Bootstrap/SceneDelegate.swift), [CarPlaySceneDelegate](../ios/Runner/Bootstrap/CarPlaySceneDelegate.swift), [NativeHost](../ios/Runner/Bootstrap/NativeHost.swift), [FlutterEngineBinding](../ios/Runner/Bootstrap/FlutterEngineBinding.swift) | Framework entry points forward lifecycle events; the host wires capabilities and the current scene without spreading AppDelegate lookups through feature code |
-| Shared Flutter transport | [FlutterChannelAdapter](../ios/Runner/Infrastructure/Flutter/FlutterChannelAdapter.swift) and the Now Playing, CarPlay and permission adapters beside it | Registration, invocation and released-owner replies share one mechanism; each channel family keeps its own methods, decoding and callbacks |
+| Shared Flutter transport | [FlutterChannelAdapter](../native/apple/Infrastructure/Flutter/FlutterChannelAdapter.swift) and the Now Playing, CarPlay and permission adapters beside it | Registration, invocation and released-owner replies share one mechanism; each channel family keeps its own methods, decoding and callbacks |
 | Native browse functionality | [CarPlayBrowseController](../ios/Runner/Application/Controllers/CarPlay/CarPlayBrowseController.swift), [CarPlayClient](../ios/Runner/Infrastructure/Flutter/CarPlayClient.swift) and [CarPlayCodec](../ios/Runner/Infrastructure/Flutter/CarPlayCodec.swift) | The controller owns typed request state and stale-result rejection; transport owns wire values, while Dart retains library and playback business rules |
 | CarPlay assembly and design | [CarPlayNavigationCoordinator](../ios/Runner/Pages/CarPlay/CarPlayNavigationCoordinator.swift), concrete pages, [CarPlayBrowsePage](../ios/Runner/Pages/CarPlay/CarPlayBrowsePage.swift), [CarPlayListFrame](../ios/Runner/UI/Structures/CarPlay/CarPlayListFrame.swift) and [CarPlayShell](../ios/Runner/UI/Shell/CarPlay/CarPlayShell.swift) | Pages select content/actions; the common page sequence, list design and scene navigation have shared owners |
-| Playback data and system publication | [NowPlayingUpdate](../ios/Runner/Data/Models/Playback/NowPlayingUpdate.swift), [NowPlayingState](../ios/Runner/Data/Models/Playback/NowPlayingState.swift), [NowPlayingCodec](../ios/Runner/Infrastructure/Flutter/NowPlayingCodec.swift), [NowPlayingCoordinator](../ios/Runner/Infrastructure/Media/NowPlayingCoordinator.swift), [NowPlayingInfoPublisher](../ios/Runner/Infrastructure/Media/NowPlayingInfoPublisher.swift) | Values own metadata and position acceptance; the boundary decodes once; infrastructure coordinates native media and publishes to MediaPlayer |
-| Artwork identity, resources and security | [ArtworkSource](../ios/Runner/Data/Models/Playback/ArtworkSource.swift), [NowPlayingArtworkController](../ios/Runner/Infrastructure/Artwork/NowPlayingArtworkController.swift), its loader/decoder/cache collaborators and [PinnedArtworkSession](../ios/Runner/Infrastructure/Security/PinnedArtworkSession.swift) | Shared identity is data; images, requests, bounded caches and pinned sessions remain with resource owners |
+| Playback data and system publication | [NowPlayingUpdate](../native/apple/Data/Models/Playback/NowPlayingUpdate.swift), [NowPlayingState](../native/apple/Data/Models/Playback/NowPlayingState.swift), [NowPlayingCodec](../native/apple/Infrastructure/Flutter/NowPlayingCodec.swift), [NowPlayingCoordinator](../ios/Runner/Infrastructure/Media/NowPlayingCoordinator.swift), [NowPlayingInfoPublisher](../native/apple/Infrastructure/Media/NowPlayingInfoPublisher.swift) | Values own metadata and position acceptance; the boundary decodes once; infrastructure coordinates native media and publishes to MediaPlayer |
+| Artwork identity, resources and security | [ArtworkSource](../native/apple/Data/Models/Playback/ArtworkSource.swift), [NowPlayingArtworkController](../ios/Runner/Infrastructure/Artwork/NowPlayingArtworkController.swift), its loader/decoder/cache collaborators and [PinnedArtworkSession](../ios/Runner/Infrastructure/Security/PinnedArtworkSession.swift) | Shared identity is data; images, requests, bounded caches and pinned sessions remain with resource owners |
 | Permission values, persistence and capabilities | [LocalNetworkPermissionStatus](../ios/Runner/Data/Models/Permissions/LocalNetworkPermissionStatus.swift), [LocalNetworkPermissionStore](../ios/Runner/Data/Storage/Permissions/LocalNetworkPermissionStore.swift), [LocalNetworkPermissionService](../ios/Runner/Infrastructure/Permissions/LocalNetworkPermissionService.swift), [LocalNetworkPermissionProbe](../ios/Runner/Infrastructure/Permissions/LocalNetworkPermissionProbe.swift), [ApplicationSettingsService](../ios/Runner/Infrastructure/Settings/ApplicationSettingsService.swift) | Saved data, Network probing, Settings access and Flutter messages have distinct owners |
-| Audio session, remote commands and native ABI | [AudioSessionService](../ios/Runner/Infrastructure/Audio/AudioSessionService.swift), [RemoteCommandService](../ios/Runner/Infrastructure/Media/RemoteCommandService.swift), [phonolite_audio.m](../ios/Runner/Infrastructure/Audio/Native/phonolite_audio.m), [phonolite_opus_link.m](../ios/Runner/Infrastructure/Linking/phonolite_opus_link.m) | Apple session/command integration stays outside delegates; C/Objective-C audio handles, callbacks and exported FFI symbols retain their existing implementation and linking responsibilities |
+| Audio session, remote commands and native ABI | [AudioSessionService](../ios/Runner/Infrastructure/Audio/AudioSessionService.swift), [RemoteCommandService](../native/apple/Infrastructure/Media/RemoteCommandService.swift), [phonolite_audio.m](../ios/Runner/Infrastructure/Audio/Native/phonolite_audio.m), [phonolite_opus_link.m](../ios/Runner/Infrastructure/Linking/phonolite_opus_link.m) | Apple session/command integration stays outside delegates; C/Objective-C audio handles, callbacks and exported FFI symbols retain their existing implementation and linking responsibilities |
 
 These are concrete examples of the shared-owner rule. Adding a page or channel should reuse the established assembly or transport mechanism. Add a new owner when responsibility or lifetime differs, rather than duplicating the sequence or extending an unrelated delegate.
 
@@ -218,13 +218,31 @@ Create the loading template once, then update that same template as results arri
 
 [CarPlayShell](../ios/Runner/UI/Shell/CarPlay/CarPlayShell.swift) owns root/push presentation and scene template resources. [CarPlayNavigationCoordinator](../ios/Runner/Pages/CarPlay/CarPlayNavigationCoordinator.swift) selects concrete destinations and binds their supplied capabilities. Bootstrap constructs the artwork loader and adapts it to the shared frame's loading callback; pages and shared UI receive that callback without constructing the infrastructure implementation. Keep page actions distinct from the scene's app navigation, as in the Flutter shell.
 
-Local is always the default destination, including when no tracks are downloaded.
-While the server is connected and authorized, use a `CPTabBarTemplate` root with
-Local first and selected, followed by Server. Removing the last download must
+While the server is connected and authorized, use a `CPTabBarTemplate` root.
+Local always stays first, with Server on its right. The paused restored or current
+track's library is selected independently of that fixed order when its source is
+available. Server tracks keep their source even when audio uses a
+downloaded fallback. Without a restored track or when its source is unavailable,
+prefer Local when downloads exist, otherwise Server while connected. Removing the last download must
 preserve both tabs while connected; this tabbed root retains the system navigation
 used by the CarPlay Now Playing presentation. Without a server connection, present
 the Local grid directly without a source selector and retain its existing
-empty-library messages.
+empty-library messages. An empty local Shuffle request must be rejected before
+changing playback mode or clearing an active server deck.
+
+The Dart vehicle state carries the optional playback scope and publishes changes
+when restoration or selection changes the source. A late restored scope updates
+the existing tab selection on iOS 17 and later without replacing the root.
+Playback position and metadata updates do not reset tabs.
+
+Root construction carries the preferred source without selecting a tab before
+installation. `CarPlayRootSelectionController` waits for the matching successful
+`setRootTemplate` completion before applying the latest requested source. Changes
+received during installation replace the pending selection; root replacement and
+disconnect invalidate older completions. The shell selects the fixed Local/Server
+index after installation without trusting a pre-install `selectedTemplate` value.
+The headless [selection contracts](../ios/NativeTests/CarPlaySelectionContracts.swift)
+exercise this lifecycle without launching an app or CarPlay scene.
 
 Use composition when the common responsibility can be supplied as typed inputs, a renderer or a collaborator. Use a base class when a real superclass-owned lifecycle/assembly sequence needs specialization. Swift has no direct equivalent of Dart's abstract class syntax; prefer protocols and composed implementations over required hooks whose default is `fatalError`. A shared protocol alone does not share implementation.
 
@@ -393,6 +411,19 @@ AudioQueue buffer reuse does not establish audible completion. The native adapte
 
 `AudioSessionService` forwards interruption begin/end (including the system's resume hint) and media-services reset through typed native media commands. The Dart media coordinator owns preserved playback intent and the output-release barrier. User pause during an interruption prevents automatic resumption. A media-services reset retires orphaned output and recreates it paused; an explicit Play received during cleanup waits for release and then applies to the current occurrence.
 
+Audio route changes also rebuild output through that barrier, preserving the track,
+confirmed position, shuffle deck and current playback intent. A Bluetooth-to-wired
+CarPlay handoff keeps playback intent when the resulting route is car audio;
+disconnecting to another output pauses. Repeated route notifications share the
+pending rebuild, and interruption or user-pause state still prevents resumption.
+
+Saved server credentials and pins share `CredentialVault`'s iOS
+`AfterFirstUnlockThisDeviceOnly` accessibility so locked-screen CarPlay can restore
+them after the first device unlock. Startup reads all accessibility classes and
+rewrites the retained session and pin to migrate older `WhenUnlocked` entries.
+Open an upgraded installation once while unlocked to complete that migration.
+Storage failures still propagate without treating protected items as missing.
+
 ## 10. Formatter configuration
 
 The project now includes [ios/.swift-format](../ios/.swift-format) with the following configuration. Use the Swift project's `swift-format` tool with a pinned compatible version. Tool availability is separate from the app's Swift language mode; this Windows workspace has neither executed the formatter nor established a toolchain/version pin.
@@ -452,3 +483,7 @@ The [Dart Apple source contracts](../test/requirements/platform_apple_contract_t
 Xcode references, source target membership, build-script/native paths, plist/entitlement/resource references, generated registration and exported FFI symbols must remain aligned with this map. The handwritten source organization is implemented, but the Windows workspace has no Swift/Xcode executable: Apple SDK compilation, formatter execution and native XCTest execution remain pending on a compatible Apple build environment. Link/source checks and manual review cannot substitute for that build. Add focused coverage for new channel replies, scene lifecycle or permission replacement behavior when those contracts change.
 
 Do not launch apps, simulators, servers or background services during agent work. Static analysis and compilation are allowed. Native tests that require launching an app/simulator must be left for an explicitly authorized environment/workflow. Keep this supplement linked with the shared architecture and Dart standard rather than adding README files to each native directory.
+
+## Shared Apple media sources
+
+`native/apple` owns the playback update/state/command models, artwork-source values, Flutter channel transport and Now Playing codec, MediaPlayer publication and remote-command registration used by both Apple targets. Both Xcode projects compile those common sources directly into Runner. iOS retains its UIKit artwork loading, AVAudioSession, scenes and CarPlay capabilities; macOS supplies its own AppKit artwork and engine lifetime. The common bundle ID is `com.phonoliteorg.phonolite`.

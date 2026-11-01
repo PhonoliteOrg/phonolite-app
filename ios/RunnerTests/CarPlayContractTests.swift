@@ -8,23 +8,30 @@ import Flutter
 @testable import Runner
 
 final class CarPlayContractTests: XCTestCase {
-  func testRootDefaultsToLocalAndOnlyShowsSourceSelectorWhenConnected() throws {
+  func testRootKeepsLocalFirstWhileSelectingTheRestoredLibrary() throws {
     let page = CarPlayRootPage(sourceGrid: CarPlaySourceGrid(
       onLibrary: { _ in },
       onPlaylists: { _ in },
       onLiked: { _ in },
       onShuffle: { _ in }
     ))
-    let cases: [CarPlaySourceState] = [
-      CarPlaySourceState(serverAvailable: true, localAvailable: true),
-      CarPlaySourceState(serverAvailable: true, localAvailable: false),
-      CarPlaySourceState(serverAvailable: false, localAvailable: true),
-      .empty,
+    let cases: [(CarPlaySourceState, CarPlayScope)] = [
+      (CarPlaySourceState(serverAvailable: true, localAvailable: true), .local),
+      (CarPlaySourceState(serverAvailable: true, localAvailable: false), .server),
+      (CarPlaySourceState(serverAvailable: false, localAvailable: true), .local),
+      (CarPlaySourceState(serverAvailable: true, localAvailable: true, playbackScope: .server), .server),
+      (CarPlaySourceState(serverAvailable: true, localAvailable: true, playbackScope: .local), .local),
+      (CarPlaySourceState(serverAvailable: false, localAvailable: true, playbackScope: .server), .local),
+      (CarPlaySourceState(serverAvailable: true, localAvailable: false, playbackScope: .local), .server),
+      (.empty, .local),
     ]
 
-    for state in cases {
+    for (state, scope) in cases {
+      XCTAssertEqual(state.preferredScope, scope)
+
       let content = page.makeContent(state: state, contentStyle: .dark)
       let local = try XCTUnwrap(content.localTemplate)
+      XCTAssertEqual(content.preferredScope, scope)
 
       if state.serverAvailable {
         let tabs = try XCTUnwrap(content.template as? CPTabBarTemplate)
@@ -33,10 +40,6 @@ final class CarPlayContractTests: XCTestCase {
         XCTAssertEqual(tabs.templates.map { $0.tabTitle ?? "" }, ["Local", "Server"])
         XCTAssertTrue(tabs.templates.first === local)
         XCTAssertTrue(tabs.templates.last === server)
-
-        if #available(iOS 17.0, *) {
-          XCTAssertTrue(tabs.selectedTemplate === local)
-        }
       } else {
         XCTAssertTrue(content.template === local)
         XCTAssertNil(content.serverTemplate)
@@ -62,6 +65,26 @@ final class CarPlayContractTests: XCTestCase {
     XCTAssertFalse(explicit.serverAvailable)
     XCTAssertFalse(explicit.localAvailable)
     XCTAssertTrue(explicit.hasAnySource)
+  }
+
+  func testSourceCodecPreservesRestoredScopeAndIgnoresUnknownScopes() {
+    for scope in [CarPlayScope.local, .server] {
+      let state = CarPlayCodec.decodeSourceState([
+        "serverAvailable": true,
+        "localAvailable": true,
+        "playbackScope": scope.rawValue,
+      ])
+
+      XCTAssertEqual(state.playbackScope, scope)
+      XCTAssertEqual(state.preferredScope, scope)
+    }
+
+    XCTAssertNil(CarPlayCodec.decodeSourceState(["playbackScope": "unknown"]).playbackScope)
+    XCTAssertNil(CarPlayCodec.decodeSourceState(nil).playbackScope)
+    XCTAssertNotEqual(
+      CarPlaySourceState(serverAvailable: true, localAvailable: true, playbackScope: .server),
+      CarPlaySourceState(serverAvailable: true, localAvailable: true, playbackScope: .local)
+    )
   }
 
   func testListCodecPreservesDefaultsMetadataAndMalformedEntryFiltering() {

@@ -53,7 +53,7 @@ void main() {
         'albumId: albumId,',
         'ConnectivitySignalSource? connectivitySignalSource,',
         '_configureConnectivitySignals();',
-        'StreamSubscription<bool>? _connectivitySubscription;',
+        'StreamSubscription<NetworkConnectivity>? _connectivitySubscription;',
         'static const Duration storedSessionRestoreTimeout = Duration(seconds: 10);',
         'static const Duration _storedSessionRequestTimeout = Duration(seconds: 4);',
         'await _commitSeek(clamped, requestGeneration);',
@@ -106,7 +106,7 @@ void main() {
         "'token': snapshot.token",
       ]);
       expectContainsAll(nowPlayingPlatform, const [
-        "MethodChannel channel = const MethodChannel('phonolite/now_playing')",
+        "this._channel = const MethodChannel('phonolite/now_playing')",
         'class NativeRemoteCommand',
         'void setRemoteCommandHandler(',
         "invokeMethod('setNowPlaying'",
@@ -141,8 +141,8 @@ void main() {
 
       expectContainsAll(source, const [
         'abstract class ConnectivitySignalSource',
-        'Stream<bool> get availabilityStream;',
-        'Future<bool> hasConnectivity();',
+        'Stream<NetworkConnectivity> get stateStream;',
+        'Future<NetworkConnectivity> currentState();',
         'class ConnectivityPlusSignalSource extends ConnectivitySignalSource',
         '_connectivity.onConnectivityChanged',
         '.distinct()',

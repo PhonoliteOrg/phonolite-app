@@ -22,6 +22,7 @@ class NowPlayingCodec {
       'audioInterruptionEnded' => NativeRemoteAction.audioInterruptionEnded,
       'audioInterruptionEndedPaused' => NativeRemoteAction.audioInterruptionEndedPaused,
       'audioServicesReset' => NativeRemoteAction.audioServicesReset,
+      'audioRouteChanged' => NativeRemoteAction.audioRouteChanged,
       _ => NativeRemoteAction.unknown,
     };
     Duration? position;

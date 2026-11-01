@@ -7,15 +7,20 @@ Pod::Spec.new do |s|
   s.license = { :type => 'MIT' }
   s.author = { 'Phonolite' => 'dev@phonolite' }
   s.source = { :path => '.' }
-  s.platform = :osx, '11.0'
+  s.platform = :osx, '13.0'
 
   s.source_files = 'Classes/**/*.{m,h}'
   s.vendored_libraries = 'libphonolite_local_audio.a'
+  # Keep the link input explicit even on a clean checkout, before the archive exists.
+  s.pod_target_xcconfig = {
+    'OTHER_LDFLAGS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/libphonolite_local_audio.a"'
+  }
 
   s.script_phase = {
     :name => 'Build phonolite_local_audio',
     :script => 'bash "${PODS_TARGET_SRCROOT}/build_local_audio_static.sh"',
     :execution_position => :before_compile,
-    :output_files => ['${PODS_TARGET_SRCROOT}/libphonolite_local_audio.a']
+    :output_files => ['${PODS_TARGET_SRCROOT}/libphonolite_local_audio.a'],
+    :always_out_of_date => '1'
   }
 end

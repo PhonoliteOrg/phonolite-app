@@ -530,6 +530,7 @@ class _PlaybackCoordinator {
     final resolvedLocalPlaybackSource =
         localPlaybackSource ??
         (queueSource != null && queueSource != PlaybackQueueSource.offline ? LocalPlaybackSource.none : null);
+    final previousScope = _playbackState.sourceScope;
 
     _playbackState = _playbackState.copyWith(
       track: track == _unset ? _playbackState.track : track,
@@ -555,6 +556,10 @@ class _PlaybackCoordinator {
     );
     _playbackController.add(_playbackState);
     _host._accountServices.reportPlaybackPresence();
+
+    if (_playbackState.sourceScope != previousScope) {
+      _host._scheduleCarPlayStateUpdate();
+    }
 
     if (nowPlaying) {
       _host._pushNowPlayingUpdate();

@@ -96,6 +96,36 @@ the first native `accessibility_bridge.cc` error for replay and diagnosis.
 See the [accessibility replay tools](tools/accessibility/README.md) for native
 tree validation and the synthetic missing-descendant regression.
 
+### macOS
+
+Requires Flutter 3.47 / Dart 3.13 or later, macOS 13 or later, Xcode, CocoaPods,
+CMake and Rust. Install both native targets for Intel and Apple Silicon:
+
+```sh
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+flutter pub get
+flutter build macos --debug
+flutter build macos --release
+```
+
+CocoaPods builds and embeds the Opus framework from per-architecture CMake archives. The local
+audio and QUIC scripts build matching Rust archives with the same SDK and
+deployment target. Keep the complete app bundle, including its Frameworks and
+Resources, together.
+
+macOS includes CoreAudio output/device selection, decoding, QUIC, menu-bar and
+window integration, launch at login, system Now Playing information and media
+commands. Artwork bytes use the existing authenticated Dart loader. Custom
+storage locations use a native folder chooser and persistent sandbox bookmarks;
+permissions are restored before storage opens at startup.
+
+The iOS and macOS bundle ID is `com.phonoliteorg.phonolite`. Register that ID and
+add macOS to its App Store Connect record for the shared listing. Select the
+correct Apple development team in `macos/Runner.xcworkspace`, then archive,
+validate and upload through Xcode. The Mac App Store manages app updates.
+See the [macOS native specification](docs/macos-native-specification.md) for
+build checks and the remaining user-controlled runtime checks.
+
 ### iOS
 
 Requires a Mac with Xcode, its command-line tools, CocoaPods and CMake.

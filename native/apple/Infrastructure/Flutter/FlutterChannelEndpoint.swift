@@ -1,4 +1,8 @@
-import Flutter
+#if os(macOS)
+  import FlutterMacOS
+#else
+  import Flutter
+#endif
 
 /// Identifies an engine-bound channel and its idempotent attachment operation.
 protocol FlutterChannelEndpoint: AnyObject {

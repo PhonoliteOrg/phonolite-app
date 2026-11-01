@@ -13,6 +13,7 @@ import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
 import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/network/network_connectivity.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
@@ -873,9 +874,9 @@ class _Preferences extends PlaybackPreferencesStorage {
 
 class _Connectivity extends ConnectivitySignalSource {
   @override
-  Stream<bool> get availabilityStream => const Stream.empty();
+  Stream<NetworkConnectivity> get stateStream => const Stream.empty();
   @override
-  Future<bool> hasConnectivity() async => false;
+  Future<NetworkConnectivity> currentState() async => const NetworkConnectivity.offline();
 }
 
 class _NowPlaying extends NowPlayingPlatformService {

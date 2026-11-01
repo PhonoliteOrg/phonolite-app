@@ -17,6 +17,7 @@ import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/library/artist_summary.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/network/network_connectivity.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/playback/account_last_track.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
@@ -1642,10 +1643,10 @@ class _ScopedShuffleSettings extends _ShuffleSettings {
 
 class _Connectivity extends ConnectivitySignalSource {
   @override
-  Stream<bool> get availabilityStream => const Stream.empty();
+  Stream<NetworkConnectivity> get stateStream => const Stream.empty();
 
   @override
-  Future<bool> hasConnectivity() async => true;
+  Future<NetworkConnectivity> currentState() async => NetworkConnectivity([NetworkTransport.wifi]);
 }
 
 class _Vehicle extends VehicleSurfaceService {

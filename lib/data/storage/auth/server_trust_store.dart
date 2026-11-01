@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
+import 'package:phonolite_app/data/storage/auth/credential_vault.dart';
 
 /// Persists authenticated server pins under their normalized origin.
 class ServerTrustStore {
-  static const FlutterSecureStorage _vault = FlutterSecureStorage();
+  static const FlutterSecureStorage _vault = CredentialVault.storage;
   static final Map<String, Future<void>> _mutations = {};
 
   static Future<ServerTrust?> read(String url) async {
@@ -19,7 +20,8 @@ class ServerTrustStore {
       _mutate(url, (key) => _vault.write(key: key, value: jsonEncode(trust.toJson())));
 
   /// Removes only this origin's identity after any already-started pin write.
-  static Future<void> remove(String url) => _mutate(url, (key) => _vault.delete(key: key));
+  static Future<void> remove(String url) =>
+      _mutate(url, (key) => _vault.delete(key: key, iOptions: CredentialVault.allIOSAccessibilities));
 
   static Future<void> _mutate(String url, Future<void> Function(String key) operation) async {
     final key = keyForServer(url);

@@ -23,41 +23,25 @@ struct NowPlayingState {
       position = -1
     }
 
-    if let title = update.title {
-      self.title = title
-    }
+    if let title = update.title { self.title = title }
 
-    if let artist = update.artist {
-      self.artist = artist
-    }
+    if let artist = update.artist { self.artist = artist }
 
-    if let album = update.album {
-      self.album = album
-    }
+    if let album = update.album { self.album = album }
 
-    if let isPlaying = update.isPlaying {
-      self.isPlaying = isPlaying
-    }
+    if let isPlaying = update.isPlaying { self.isPlaying = isPlaying }
 
-    if let liked = update.liked {
-      self.liked = liked
-    }
+    if let liked = update.liked { self.liked = liked }
 
-    if let duration = update.duration {
-      self.duration = duration
-    }
+    if let duration = update.duration { self.duration = duration }
 
-    if let position = update.position {
-      applyPosition(position)
-    }
+    if let position = update.position { applyPosition(position) }
   }
 
   private mutating func applyPosition(_ incoming: Double) {
     let clamped = incoming.isNaN || incoming.isInfinite ? 0.0 : max(0.0, incoming)
 
-    if position >= 0 && clamped + Self.seekBackwardTolerance < position {
-      return
-    }
+    if position >= 0 && clamped + Self.seekBackwardTolerance < position { return }
 
     position = clamped
   }

@@ -62,6 +62,15 @@ class PlaybackState {
 
   ShuffleMode get shuffleMode => shuffleModeFor(shuffleScope);
 
+  /// The selected library owns the source even when server audio uses a download.
+  ActionScope? get sourceScope {
+    if (track == null) {
+      return null;
+    }
+
+    return queueSource == PlaybackQueueSource.offline ? ActionScope.local : ActionScope.server;
+  }
+
   bool get hasPlaylistSource {
     if (queueSourcePlaylistId?.trim().isNotEmpty != true) {
       return false;

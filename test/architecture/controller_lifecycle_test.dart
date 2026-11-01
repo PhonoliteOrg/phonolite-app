@@ -34,6 +34,7 @@ import 'package:phonolite_app/data/models/library/artist_summary.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart' as offline_views;
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/network/network_connectivity.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
@@ -54,6 +55,7 @@ import 'package:phonolite_app/infrastructure/platform/permissions/local_network_
 import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/platform/media/now_playing_platform_service.dart';
 import 'package:phonolite_app/infrastructure/platform/media/vehicle_surface_service.dart';
+
 import '../support/auth_test_helpers.dart';
 import '../support/offline_library_test_helpers.dart';
 
@@ -2305,6 +2307,121 @@ void main() {
     expect(harness.audio.resumes, 1);
   });
 
+  for (final paused in [false, true]) {
+    test('audio route change rebuilds output at the audible position with paused=$paused', () async {
+      final harness = _Harness(authenticated: true);
+      harness.nowPlaying.supported = true;
+      addTearDown(harness.controller.close);
+      await harness.startRemote();
+      harness.onStats!(const Duration(seconds: 12), const Duration(seconds: 2), null, null, false);
+      if (paused) await harness.controller.pause(true);
+
+      await harness.nowPlaying.commandHandler!(const NativeRemoteCommand(action: NativeRemoteAction.audioRouteChanged));
+      await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+
+      expect(harness.audio.stops, greaterThan(0));
+      expect(harness.audio.starts.last.offset, const Duration(seconds: 12));
+      expect(harness.audio.starts.last.initialPaused, paused);
+      expect(harness.controller.playbackState.isPlaying, !paused);
+    });
+  }
+
+  test('user pause during a route rebuild prevents resumption and repeated notifications share release', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    final release = Completer<void>();
+    addTearDown(() async {
+      if (!release.isCompleted) release.complete();
+      await harness.controller.close();
+    });
+    await harness.startRemote();
+    harness.audio.stopGate = release.future;
+    final commands = harness.nowPlaying.commandHandler!;
+    final rebuilding = commands(const NativeRemoteCommand(action: NativeRemoteAction.audioRouteChanged));
+    await offlineTestWaitFor(() => harness.audio.stops > 0);
+    final repeated = commands(const NativeRemoteCommand(action: NativeRemoteAction.audioRouteChanged));
+    await harness.controller.pause(true);
+    expect(harness.audio.starts, hasLength(1));
+    expect(harness.audio.stops, 1);
+
+    release.complete();
+    await Future.wait([rebuilding, repeated]);
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.initialPaused, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+  });
+
+  test('route rebuild preserves an interruption until the system permits resumption', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioRouteChanged));
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.initialPaused, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+    expect(harness.audio.paused, isFalse);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+  });
+
+  test('media services reset during a route rebuild clears automatic resume intent', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    final release = Completer<void>();
+    addTearDown(() async {
+      if (!release.isCompleted) release.complete();
+      await harness.controller.close();
+    });
+    await harness.startRemote();
+    harness.audio.stopGate = release.future;
+    final commands = harness.nowPlaying.commandHandler!;
+    final rebuilding = commands(const NativeRemoteCommand(action: NativeRemoteAction.audioRouteChanged));
+    await offlineTestWaitFor(() => harness.audio.stops > 0);
+    final resetting = commands(const NativeRemoteCommand(action: NativeRemoteAction.audioServicesReset));
+    release.complete();
+    await Future.wait([rebuilding, resetting]);
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.initialPaused, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+  });
+
+  test('a route rebuild retains the server shuffle deck and waits for a newer selected track', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.nowPlaying.supported = true;
+    final release = Completer<void>();
+    addTearDown(() async {
+      if (!release.isCompleted) release.complete();
+      await harness.controller.close();
+    });
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueServerShuffle(scope: 'library');
+    await offlineTestWaitFor(() => harness.audio.starts.length == 1);
+    harness.audio.stopGate = release.future;
+
+    final rebuilding = harness.nowPlaying.commandHandler!(
+      const NativeRemoteCommand(action: NativeRemoteAction.audioRouteChanged),
+    );
+    await offlineTestWaitFor(() => harness.audio.stops > 0);
+    await harness.controller.nextTrack();
+    expect(harness.audio.starts, hasLength(1));
+    expect(harness.controller.playbackState.track?.id, 'deck-track-1');
+
+    release.complete();
+    await rebuilding;
+    await offlineTestWaitFor(() => harness.audio.starts.length == 2);
+    expect(harness.audio.starts.last.trackId, 'deck-track-1');
+    expect(harness.audio.starts.last.initialPaused, isFalse);
+    expect(connection.creates, 1);
+    expect(connection.released, isEmpty);
+  });
+
   test('media services reset recreates playback paused at the audible position', () async {
     final harness = _Harness(authenticated: true);
     harness.nowPlaying.supported = true;
@@ -2535,6 +2652,107 @@ void main() {
     expect(controller.playbackState.shuffleScope, ActionScope.server);
   });
 
+  for (final scope in ActionScope.values) {
+    test('CarPlay follows a paused restored ${scope.name} track when both libraries are available', () async {
+      final directory = await Directory.systemTemp.createTemp('carplay_restored_source_');
+      final library = await _seedResumeLibrary(directory, 1);
+      final localTrack = (await library.readLocalDownloadedTracks()).single;
+      final serverTrack = offlineTestTrack(id: 'carplay-server-track');
+      final saved = AccountPlaybackSnapshot(
+        revision: 1,
+        checkpoint: PlaybackResumeCheckpoint(
+          trackId: serverTrack.id,
+          source: PlaybackSourceContext(kind: 'standalone'),
+          shuffleMode: ShuffleMode.off,
+          shuffleContext: PlaybackSourceContext(kind: 'library'),
+        ),
+      );
+      final pending = Completer<AccountPlaybackSnapshot>();
+      final connection = _ResumeConnection()
+        ..trackResponse = [serverTrack]
+        ..snapshot = saved
+        ..pendingSnapshot = scope == ActionScope.server ? pending.future : null;
+      final resume = PlaybackResumeStorage(files: SettingsFiles(directoryProvider: () async => directory));
+      if (scope == ActionScope.local) {
+        await resume.writeLocal(
+          DevicePlaybackSnapshot(
+            checkpoint: PlaybackResumeCheckpoint(
+              trackId: localTrack.id,
+              source: PlaybackSourceContext(kind: 'library'),
+              shuffleMode: ShuffleMode.off,
+              shuffleContext: PlaybackSourceContext(kind: 'library'),
+            ),
+            queueTrackIds: [localTrack.id],
+          ),
+        );
+      }
+      final harness = _Harness(
+        authenticated: true,
+        connection: connection,
+        offlineStorage: library,
+        offlineDownloadManager: OfflineDownloadManager(connection: connection, storage: library),
+        playbackResumeStorage: resume,
+      );
+      harness.vehicle.supported = true;
+      addTearDown(() async {
+        if (!pending.isCompleted) pending.complete(saved);
+        await harness.controller.close();
+        await library.close();
+        await directory.delete(recursive: true);
+      });
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+
+      if (scope == ActionScope.server) {
+        await _resumeUntil(() => connection.reads > 0);
+        final early = await harness.vehicle.handler!('getCarPlayState', {}) as Map;
+        expect(early.containsKey('playbackScope'), isFalse);
+        pending.complete(saved);
+      }
+
+      await _resumeUntil(() => harness.controller.playbackState.sourceScope == scope);
+      final response = await harness.vehicle.handler!('getCarPlayState', {}) as Map;
+      expect(response['serverAvailable'], isTrue);
+      expect(response['localAvailable'], isTrue);
+      expect(response['playbackScope'], scope.name);
+      expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.audio.starts, isEmpty);
+      expect(harness.audio.localStarts, isEmpty);
+      await _resumeUntil(() => harness.vehicle.states.last['playbackScope'] == scope.name);
+
+      if (scope == ActionScope.server) {
+        // Playing a downloaded fallback does not change the selected library.
+        harness.onStats!(Duration.zero, Duration.zero, null, null, true);
+        final cached = await harness.vehicle.handler!('getCarPlayState', {}) as Map;
+        expect(cached['playbackScope'], 'server');
+      }
+    });
+  }
+
+  test('empty CarPlay local shuffle leaves the active server deck and navigation intact', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.vehicle.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueServerShuffle(scope: 'library');
+    await offlineTestWaitFor(() => harness.audio.starts.isNotEmpty);
+
+    final response = await harness.vehicle.handler!('startShuffle', {'scope': 'local', 'kind': 'library'}) as Map;
+
+    expect(response['error'], 'local_empty');
+    expect(harness.controller.playbackState.shuffleScope, ActionScope.server);
+    expect(harness.controller.playbackState.shuffleMode, ShuffleMode.all);
+    expect(harness.controller.playbackState.track?.id, 'deck-track-0');
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(connection.released, isEmpty);
+    await harness.controller.nextTrack();
+    expect(harness.controller.playbackState.track?.id, 'deck-track-1');
+    expect(connection.creates, 1);
+  });
+
   test('CarPlay server artists include authenticated pinned logo artwork', () async {
     final connection = _Connection()
       ..artistsPageResponse = [
@@ -2739,9 +2957,8 @@ void main() {
         ),
       ]);
       await initialStorage.upsertDownloadJobSources([
-        (await initialStorage.readDownloadJobSources(
-          jobId,
-        )).first.copyWith(status: OfflineDownloadStatus.downloaded, updatedAt: now),
+        (await initialStorage.readDownloadJobSources(jobId)).first
+            .copyWith(status: OfflineDownloadStatus.downloaded, updatedAt: now),
       ]);
       await initialStorage.close();
 
@@ -3258,6 +3475,203 @@ void main() {
 
     harness.onStats!(const Duration(seconds: 21), const Duration(seconds: 2), 96, 400, false);
     expect(harness.controller.playbackState.position, const Duration(seconds: 21));
+  });
+
+  for (final mode in [StreamMode.original, StreamMode.high]) {
+    for (final paused in [false, true]) {
+      test('Wi-Fi to cellular reopens $mode at the current position with paused=$paused', () async {
+        final harness = _Harness(authenticated: true);
+        _enableNetworkEvents(harness);
+        addTearDown(harness.controller.close);
+        await harness.startRemote();
+        harness.controller.updateStreamMode(mode);
+        final count = harness.audio.starts.length;
+        final track = harness.controller.playbackState.track!.id;
+        harness.onStats!(const Duration(seconds: 12), const Duration(seconds: 2), 128, 40, false);
+        if (paused) await harness.controller.pause(true);
+
+        harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+        await _resumeUntil(() => harness.audio.starts.length == count + 1);
+
+        expect(harness.audio.starts.last.trackId, track);
+        expect(harness.audio.starts.last.offset, const Duration(seconds: 12));
+        expect(harness.audio.starts.last.quickStart, isTrue);
+        expect(harness.audio.starts.last.initialPaused, paused);
+        expect(harness.controller.playbackState.isPlaying, !paused);
+        expect(harness.controller.authState.isAuthorized, isTrue);
+      });
+    }
+  }
+
+  test('duplicate interface events and a brief None/Wi-Fi flap do not restart audio', () async {
+    final harness = _Harness(authenticated: true);
+    _enableNetworkEvents(harness);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.wifi]));
+    harness.connectivity.emit(const NetworkConnectivity.offline());
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.wifi]));
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(harness.audio.starts, hasLength(1));
+
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(harness.audio.starts, hasLength(2));
+  });
+
+  test('a late startup connectivity query cannot replace a newer cellular event', () async {
+    final pending = Completer<NetworkConnectivity>();
+    final harness = _Harness(authenticated: true);
+    _enableNetworkEvents(harness);
+    harness.connectivity.pendingCheck = pending.future;
+    addTearDown(() async {
+      if (!pending.isCompleted) pending.complete(NetworkConnectivity([NetworkTransport.wifi]));
+      await harness.controller.close();
+    });
+    await harness.controller.initialize();
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.wifi]));
+    await Future<void>.delayed(Duration.zero);
+    await harness.startRemote();
+
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await Future<void>.delayed(Duration.zero);
+    pending.complete(NetworkConnectivity([NetworkTransport.wifi]));
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(harness.audio.starts, hasLength(2));
+  });
+
+  test('foreground resume detects a network change missed in the background', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.controller.handleAppLifecycleState(AppLifecycleState.paused);
+    harness.connectivity.state = NetworkConnectivity([NetworkTransport.cellular]);
+
+    harness.controller.handleAppLifecycleState(AppLifecycleState.resumed);
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+
+    expect(harness.connectivity.checks, 2);
+    expect(harness.audio.starts.last.trackId, harness.audio.starts.first.trackId);
+  });
+
+  test('network handoff bypasses the failed-network stream recovery cooldown', () async {
+    final harness = _Harness(authenticated: true);
+    _enableNetworkEvents(harness);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.onStats!(const Duration(seconds: 25), Duration.zero, null, null, false);
+    harness.failTransport();
+    harness.failTransport();
+    expect(harness.audio.starts, hasLength(2));
+
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await _resumeUntil(() => harness.audio.starts.length == 3);
+
+    expect(harness.audio.starts.last.offset, const Duration(seconds: 25));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+  });
+
+  test('a stream that fails while cellular settles still gets its first immediate retry', () async {
+    final harness = _Harness(authenticated: true);
+    _enableNetworkEvents(harness);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.onStats!(const Duration(seconds: 25), Duration.zero, null, null, false);
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+
+    harness.failTransport();
+
+    expect(harness.audio.starts, hasLength(3));
+    expect(harness.audio.starts.last.offset, const Duration(seconds: 25));
+  });
+
+  test('network handoff restarts an interrupted seek at its latest target', () async {
+    final harness = _Harness(authenticated: true);
+    _enableNetworkEvents(harness);
+    final seekResult = Completer<bool>();
+    addTearDown(() async {
+      if (!seekResult.isCompleted) seekResult.complete(false);
+      await harness.controller.close();
+    });
+    await harness.startRemote();
+    harness.audio.seekResults.add(seekResult.future);
+    final seeking = harness.controller.seekTo(const Duration(seconds: 50));
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+
+    expect(harness.audio.starts.last.offset, const Duration(seconds: 50));
+    seekResult.complete(false);
+    await seeking;
+    expect(harness.audio.starts, hasLength(2));
+  });
+
+  test('network handoff keeps the current server shuffle deck and cursor', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    _enableNetworkEvents(harness);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueServerShuffle(scope: 'library');
+    await harness.controller.nextTrack();
+    final count = harness.audio.starts.length;
+
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await _resumeUntil(() => harness.audio.starts.length == count + 1);
+
+    expect(harness.controller.playbackState.track?.id, 'deck-track-1');
+    expect(connection.creates, 1);
+    expect(connection.released, isEmpty);
+    await harness.controller.nextTrack();
+    expect(harness.controller.playbackState.track?.id, 'deck-track-2');
+  });
+
+  test('network changes leave downloaded playback running', () async {
+    final directory = await Directory.systemTemp.createTemp('local_network_handoff_');
+    final library = await _seedResumeLibrary(directory, 1);
+    final track = (await library.readLocalDownloadedTracks()).single;
+    final connection = _Connection();
+    final harness = _Harness(
+      authenticated: true,
+      connection: connection,
+      offlineStorage: library,
+      offlineDownloadManager: OfflineDownloadManager(connection: connection, storage: library),
+    );
+    _enableNetworkEvents(harness);
+    addTearDown(() async {
+      await harness.controller.close();
+      await library.close();
+      await directory.delete(recursive: true);
+    });
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.playOfflineTrack(track.id);
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+
+    expect(harness.audio.localStarts, hasLength(1));
+    expect(harness.audio.starts, isEmpty);
+    expect(harness.controller.playbackState.track?.id, track.id);
+  });
+
+  test('shutdown cancels a queued network handoff before it can restart output', () async {
+    final harness = _Harness(authenticated: true);
+    _enableNetworkEvents(harness);
+    await harness.startRemote();
+    harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
+    await Future<void>.delayed(Duration.zero);
+
+    await harness.controller.close();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+
+    expect(harness.audio.starts, hasLength(1));
+    expect(harness.connectivity.events!.hasListener, isFalse);
   });
 
   test('repeated interruption preserves play intent and waits for healthy reconnect', () async {
@@ -5014,14 +5428,30 @@ class _Shuffle extends CustomShuffleSettingsStorage {
   Future<void> writeForAccount(String scope, CustomShuffleSettings settings) async {}
 }
 
+void _enableNetworkEvents(_Harness harness) {
+  final events = StreamController<NetworkConnectivity>.broadcast();
+  harness.connectivity.events = events;
+  addTearDown(events.close);
+}
+
 class _Connectivity extends ConnectivitySignalSource {
   int checks = 0;
+  NetworkConnectivity state = NetworkConnectivity([NetworkTransport.wifi]);
+  StreamController<NetworkConnectivity>? events;
+  Future<NetworkConnectivity>? pendingCheck;
+
   @override
-  Stream<bool> get availabilityStream => const Stream.empty();
+  Stream<NetworkConnectivity> get stateStream => events?.stream ?? const Stream.empty();
+
   @override
-  Future<bool> hasConnectivity() async {
+  Future<NetworkConnectivity> currentState() async {
     checks++;
-    return true;
+    return pendingCheck ?? state;
+  }
+
+  void emit(NetworkConnectivity state) {
+    this.state = state;
+    events!.add(state);
   }
 }
 
@@ -5095,6 +5525,7 @@ class _ArtworkLoader extends NowPlayingArtworkLoader {
 class _Vehicle extends VehicleSurfaceService {
   int disposals = 0;
   bool supported = false;
+  final states = <Map<String, dynamic>>[];
   Future<dynamic> Function(String method, Map<String, dynamic> arguments)? handler;
   @override
   bool get isSupported => supported;
@@ -5104,7 +5535,7 @@ class _Vehicle extends VehicleSurfaceService {
   }
 
   @override
-  Future<void> notifyState(Map<String, dynamic> payload) async {}
+  Future<void> notifyState(Map<String, dynamic> payload) async => states.add(Map.of(payload));
   @override
   Future<void> notifyAuthorization(bool authorized) async {}
   @override

@@ -1,28 +1,37 @@
 PODS:
-  - FlutterMacOS (1.0.0)
-  - path_provider_foundation (0.0.1):
-    - Flutter
+  - flutter_secure_storage_macos (6.1.3):
     - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - phonolite_local_audio (0.1.0)
   - phonolite_opus (0.0.1)
+  - phonolite_quic (0.1.0)
 
 DEPENDENCIES:
+  - flutter_secure_storage_macos (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_macos/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
-  - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
+  - phonolite_local_audio (from `Flutter/ephemeral/.symlinks/plugins/phonolite_local_audio/macos`)
   - phonolite_opus (from `Flutter/ephemeral/.symlinks/plugins/phonolite_opus/macos`)
+  - phonolite_quic (from `Flutter/ephemeral/.symlinks/plugins/phonolite_quic/macos`)
 
 EXTERNAL SOURCES:
+  flutter_secure_storage_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_macos/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
-  path_provider_foundation:
-    :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
+  phonolite_local_audio:
+    :path: Flutter/ephemeral/.symlinks/plugins/phonolite_local_audio/macos
   phonolite_opus:
     :path: Flutter/ephemeral/.symlinks/plugins/phonolite_opus/macos
+  phonolite_quic:
+    :path: Flutter/ephemeral/.symlinks/plugins/phonolite_quic/macos
 
 SPEC CHECKSUMS:
-  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  path_provider_foundation: 0b743cbb62d8e47eab856f09262bb8c1ddcfe6ba
-  phonolite_opus: 11515393e0c5cd5807e4b88bb4fa2da9b2546260
+  flutter_secure_storage_macos: c2754d3483d20bb207bb9e5a14f1b8e771abcdb9
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  phonolite_local_audio: 6470701c635f4f467eee6d8394162ad4ba3df32e
+  phonolite_opus: 884b2d514e2f738db54d73f881f47c6d659159af
+  phonolite_quic: 226bdf220095e1c71f96e2139b34732123521e4b
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: 89c84cf5c2351c1e554c6dea18d31a879fc3a19e
 
-COCOAPODS: 1.15.2
+COCOAPODS: 1.16.2

@@ -47,6 +47,7 @@ import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_stats_snapshot.dart';
+import 'package:phonolite_app/data/models/network/network_connectivity.dart';
 import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/playback/device_playback_snapshot.dart';
@@ -474,6 +475,7 @@ class AppController
     }
 
     if (_appInForeground && !wasForeground) {
+      unawaited(_availabilityCoordinator._refreshConnectivitySnapshot());
       _collectionCoordinator.refresh();
       _accountServices.refresh();
       unawaited(_listeningSync?.sync(immediate: true) ?? Future<void>.value());
@@ -677,7 +679,7 @@ class AppController
     _flushVolumeSave();
 
     final cancellations = <Future<void>>[
-      if (_connectivitySubscription != null) _connectivitySubscription!.cancel(),
+      _availabilityCoordinator._stopConnectivitySignals(),
       if (_carPlayOfflineLibrarySubscription != null) _carPlayOfflineLibrarySubscription!.cancel(),
       if (_carPlayLocalLikedSubscription != null) _carPlayLocalLikedSubscription!.cancel(),
       if (_carPlayLocalPlaylistsSubscription != null) _carPlayLocalPlaylistsSubscription!.cancel(),
