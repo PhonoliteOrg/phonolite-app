@@ -12,6 +12,7 @@ class AudioPlaybackHarness {
 
   AudioPlaybackHarness({
     required QuicClient transport,
+    QuicClient Function()? connectionFactory,
     required OpusDecoder Function(int sampleRate, int channels) decoderFactory,
     required AudioPcmOutput Function(int sampleRate, int channels, int deviceId) outputFactory,
     bool initialPaused = false,
@@ -21,6 +22,7 @@ class AudioPlaybackHarness {
   }) {
     _session = _PlaybackSession.remote(
       reusableConnection: transport,
+      connectionFactory: connectionFactory ?? () => throw StateError('No replacement memory transport supplied.'),
       releaseConnection: (_) {},
       send: _recordEvent,
       playbackId: 1,
@@ -132,6 +134,8 @@ class AudioPlaybackHarness {
       _session.configureListening(context, discardPending: discardPending);
 
   void resume() => _session.resume();
+
+  void notifyNetworkChange(int generation) => _session.notifyNetworkChange(generation);
 
   Future<bool> seek(Duration position) async {
     final requestId = ++_requestId;

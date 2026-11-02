@@ -122,6 +122,8 @@ class GaplessPlaybackHarness {
   });
   Future<void> pause() => _engine.pause();
   void resume() => _engine.resume();
+  void notifyNetworkChange(int generation) =>
+      _engine.notifyNetworkChange(playbackId: _playbackId, routeGeneration: generation);
   void configureListening(Map<String, dynamic>? context) => _engine.configureListening(context);
   Future<void> cancel({int? preparationId}) => _engine.cancelPreparedNext(preparationId: preparationId);
   void acknowledge(int preparationId) => _engine.acknowledge(preparationId);

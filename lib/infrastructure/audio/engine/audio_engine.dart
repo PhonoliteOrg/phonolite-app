@@ -16,6 +16,7 @@ import 'package:phonolite_app/data/models/audio/audio_worker_init.dart';
 import 'package:phonolite_app/data/models/audio/stream_settings.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
+import 'package:phonolite_app/data/rules/audio/audio_recovery_policy.dart';
 import 'package:phonolite_app/data/rules/listening_stats/listening_recorder.dart';
 import 'package:phonolite_app/data/structures/audio/encoded_audio_cache.dart';
 import 'package:phonolite_app/data/structures/audio/pcm_ring_buffer.dart';
@@ -51,19 +52,20 @@ part 'worker/audio_worker_engine.dart';
 const String _audioWorkerPortName = 'phonolite_audio_worker';
 
 /// Creates an audio backend; tests can supply an implementation without workers.
-typedef AudioEngineFactory =
-    AudioEngine Function({
-      void Function(String message)? onMessage,
-      void Function(Duration position, Duration bufferedAhead, double? bitrateKbps, int? rttMs, bool isLocalPlayback)?
-      onStats,
-      void Function()? onComplete,
-      void Function()? onStarted,
-      void Function(bool active, bool paused)? onState,
-    });
+typedef AudioEngineFactory = AudioEngine Function({
+  void Function(String message)? onMessage,
+  void Function(Duration position, Duration bufferedAhead, double? bitrateKbps, int? rttMs, bool isLocalPlayback)?
+  onStats,
+  void Function()? onComplete,
+  void Function()? onStarted,
+  void Function(bool active, bool paused)? onState,
+});
 
 /// Injectable worker startup for tests that do not create a native audio worker.
-typedef AudioWorkerSpawner =
-    Future<AudioWorkerHandle> Function(SendPort messagePort, RootIsolateToken? rootIsolateToken);
+typedef AudioWorkerSpawner = Future<AudioWorkerHandle> Function(
+  SendPort messagePort,
+  RootIsolateToken? rootIsolateToken,
+);
 
 abstract class AudioWorkerHandle {
   void kill();
@@ -107,6 +109,7 @@ class AudioEngine {
   int _outputDeviceId = kDefaultOutputDeviceId;
   double _volume = 1.0;
   int _seekRequestId = 0;
+  int _routeGeneration = 0;
   final Map<int, Completer<bool>> _seekRequests = {};
   final RootIsolateToken? _rootIsolateToken = RootIsolateToken.instance;
 
@@ -132,6 +135,12 @@ class AudioEngine {
   bool get hasActivePlayer => _active;
 
   bool get isPaused => _paused;
+
+  /// Repairs remote delivery without replacing the current playback occurrence.
+  void notifyNetworkChange() {
+    if (_disposed || _shutdown != null || _playbackId <= 0) return;
+    _sendCmd({'cmd': 'network_changed', 'playback_id': _playbackId, 'route_generation': ++_routeGeneration});
+  }
 
   /// Attempts worker startup once; construction alone has no external effects.
   /// Commands wait for its handshake. Recoverable startup failure is reported

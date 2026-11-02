@@ -1137,7 +1137,7 @@ class _ClosingQuic extends MemoryQuic {
   }
 }
 
-class _Decoder implements AudioFileDecoder {
+class _Decoder extends AudioFileDecoder {
   final List<int> samples;
   final Future<void>? opening;
   final Object? failure;
@@ -1158,7 +1158,8 @@ class _Decoder implements AudioFileDecoder {
         bitDepth: 32,
         duration: Duration(microseconds: samples.length * 1000000 ~/ (rate * channels)),
         playableFrames: samples.length ~/ channels,
-      );
+      ),
+      super.local(filePath: 'memory');
   @override
   Future<void> initialize() async {
     await opening;

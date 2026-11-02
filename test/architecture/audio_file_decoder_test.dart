@@ -47,6 +47,50 @@ class _BlockedPcmOutput extends _PrecisePcmOutput {
 }
 
 void main() {
+  test('Original replaces a failed decoder at the last accepted frame without replacing output', () async {
+    final samples = Int32List.fromList(List.generate(5000, (index) => index * 17031));
+    final output = _PrecisePcmOutput();
+    final decoder = _FailingSourceDecoder(samples);
+    var outputs = 0;
+    final session = AudioPlaybackHarness.original(
+      decoderFactory: (_, __) => decoder,
+      outputFactory: (_, __, ___) {
+        outputs++;
+        return output;
+      },
+    );
+    addTearDown(session.close);
+    session.start();
+    await _waitForSession(
+      session,
+      () => session.messages.any((message) => message['type'] == 'complete'),
+      'recovered completion',
+    );
+    expect(decoder.restartFrame, 237, reason: 'Failed partial decoder output was never accepted.');
+    expect(output.samples, orderedEquals(samples));
+    expect(outputs, 1);
+  });
+
+  test('a user seek supersedes an Original decoder replacement still opening', () async {
+    final samples = Int32List.fromList(List.generate(5000, (index) => index * 17031));
+    final output = _PrecisePcmOutput();
+    final decoder = _FailingSourceDecoder(samples, blockReplacement: true);
+    final session = AudioPlaybackHarness.original(
+      decoderFactory: (_, __) => decoder,
+      outputFactory: (_, __, ___) => output,
+    );
+    addTearDown(session.close);
+    session.start();
+    await decoder.replacementCreated.future.timeout(_deadline);
+    expect(await session.seek(const Duration(milliseconds: 50)), isTrue);
+    await _waitForSession(
+      session,
+      () => session.messages.any((message) => message['type'] == 'complete'),
+      'seek completion',
+    );
+    expect(output.samples, orderedEquals(samples.skip(2205)));
+  });
+
   test('Original fills the shared eight-second horizon while output is blocked and stops reading', () async {
     final decoder = _MemorySourceDecoder(Int32List(48000 * 20), sampleRate: 48000);
     final output = _BlockedPcmOutput();
@@ -356,13 +400,13 @@ void main() {
   });
 }
 
-class _MemorySourceDecoder implements AudioFileDecoder {
+class _MemorySourceDecoder extends AudioFileDecoder {
   final Int32List samples;
   final int sampleRate;
   int _position = 0;
   int readSamples = 0;
 
-  _MemorySourceDecoder(this.samples, {this.sampleRate = 192000});
+  _MemorySourceDecoder(this.samples, {this.sampleRate = 192000}) : super.local(filePath: 'memory');
 
   @override
   AudioFileFormat get format => AudioFileFormat(
@@ -398,6 +442,82 @@ class _MemorySourceDecoder implements AudioFileDecoder {
 
   @override
   Future<void> close() async {}
+
+  @override
+  Future<AudioFileDecoder> replacementAtFrame(
+    int presentationFrame, {
+    required Duration remaining,
+    required int attemptsRemaining,
+    void Function(AudioFileDecoder replacement)? onCreated,
+  }) async {
+    final replacement = _MemorySourceDecoder(samples, sampleRate: sampleRate).._position = presentationFrame;
+    onCreated?.call(replacement);
+    await close();
+    await replacement.initialize();
+    return replacement;
+  }
+}
+
+class _FailingSourceDecoder extends _MemorySourceDecoder {
+  int reads = 0;
+  int? restartFrame;
+  final bool blockReplacement;
+  final replacementCreated = Completer<AudioFileDecoder>();
+
+  _FailingSourceDecoder(super.samples, {this.blockReplacement = false}) : super(sampleRate: 44100);
+
+  @override
+  Duration get recoveryRemaining => const Duration(seconds: 15);
+
+  @override
+  int get recoveryAttempts => 1;
+
+  @override
+  Future<Int32List> read32(int maxSamples) async {
+    reads++;
+    if (reads == 1) {
+      return super.read32(237);
+    }
+    _position += 137;
+    throw AudioFileTransportFailure('Injected transport failure after partial native output.');
+  }
+
+  @override
+  Future<AudioFileDecoder> replacementAtFrame(
+    int presentationFrame, {
+    required Duration remaining,
+    required int attemptsRemaining,
+    void Function(AudioFileDecoder replacement)? onCreated,
+  }) async {
+    restartFrame = presentationFrame;
+    final replacement = blockReplacement
+        ? (_OpeningMemoryDecoder(samples, sampleRate: sampleRate).._position = presentationFrame)
+        : (_MemorySourceDecoder(samples, sampleRate: sampleRate).._position = presentationFrame);
+    onCreated?.call(replacement);
+    replacementCreated.complete(replacement);
+    await close();
+    await replacement.initialize();
+    return replacement;
+  }
+}
+
+class _OpeningMemoryDecoder extends _MemorySourceDecoder {
+  final _opening = Completer<void>();
+
+  _OpeningMemoryDecoder(super.samples, {super.sampleRate});
+
+  @override
+  Future<void> initialize() => _opening.future;
+
+  @override
+  void interruptRead() {
+    if (!_opening.isCompleted) {
+      _opening.completeError(StateError('Opening was superseded.'));
+    }
+  }
+
+  @override
+  Future<void> close() async => interruptRead();
 }
 
 Future<void> _waitForSession(AudioPlaybackHarness session, bool Function() predicate, String description) async {

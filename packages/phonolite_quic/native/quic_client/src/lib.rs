@@ -1,8 +1,8 @@
 use std::collections::{HashSet, VecDeque};
 use std::ffi::{CStr, CString};
-use std::net::{ToSocketAddrs, UdpSocket};
+use std::net::ToSocketAddrs;
 use std::os::raw::{c_char, c_int, c_longlong};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 mod security;
 mod source;
 mod owner;
+mod migration;
 use owner::OwnerLease;
 pub use source::SourceHandle;
 
@@ -39,6 +40,9 @@ fn test_handle(generation: u64) -> (QuicHandle, mpsc::Receiver<ControlCommand>) 
                 cancelled: Arc::new(AtomicBool::new(false)),
                 owner: Arc::new(OwnerLease::new()),
                 last_error: Arc::new(Mutex::new(None)),
+                last_error_code: Arc::new(AtomicI32::new(0)),
+                migration_enabled: Arc::new(AtomicBool::new(false)),
+                migration_available: Arc::new(AtomicBool::new(false)),
                 last_stats: Arc::new(Mutex::new(None)),
                 last_rtt_ms: Arc::new(Mutex::new(None)),
             }),
@@ -361,10 +365,38 @@ mod close_tests {
             cancelling.cancelled.store(true, Ordering::Release);
         });
         let started = Instant::now();
-        assert!(wait_for_address(receiver, &owner, true).unwrap_err().contains("closed"));
+        assert!(wait_for_address(receiver, &owner, true, &AtomicBool::new(false)).unwrap_err().contains("closed"));
         assert!(started.elapsed() < Duration::from_millis(250));
         cancel.join().unwrap();
         drop(sender);
+    }
+
+    #[test]
+    fn retiring_one_transport_interrupts_resolution_without_cancelling_the_source_owner() {
+        let owner = OwnerLease::new();
+        let cancelled = AtomicBool::new(true);
+        let (_sender, receiver) = mpsc::channel();
+        assert!(wait_for_address(receiver, &owner, false, &cancelled).is_err());
+        assert!(owner.alive(false));
+    }
+
+    #[test]
+    fn migration_is_off_by_default_and_only_queues_when_ready() {
+        let (mut handle, commands) = test_handle(1);
+        assert_eq!(phonolite_quic_network_changed(&mut handle, 2), 0);
+        phonolite_quic_set_migration_enabled(&mut handle, 1);
+        assert_eq!(phonolite_quic_network_changed(&mut handle, 2), 0);
+        handle.inner.migration_available.store(true, Ordering::Release);
+        assert_eq!(phonolite_quic_network_changed(&mut handle, 2), 1);
+        assert!(matches!(commands.recv().unwrap(), ControlCommand::NetworkChange { route_generation: 2 }));
+    }
+
+    #[test]
+    fn pin_failure_has_a_terminal_code_without_inspecting_its_message() {
+        let (_identity, pipe) = Identity::pipe();
+        let code = AtomicI32::new(0);
+        assert!(verify_transport_identity(&pipe.client, &"0".repeat(64), &mut false, &code).is_err());
+        assert_eq!(code.load(Ordering::Acquire), 2);
     }
 }
 
@@ -376,8 +408,24 @@ struct ClientHandle {
     cancelled: Arc<AtomicBool>,
     owner: Arc<OwnerLease>,
     last_error: Arc<Mutex<Option<String>>>,
+    last_error_code: Arc<AtomicI32>,
+    migration_enabled: Arc<AtomicBool>,
+    migration_available: Arc<AtomicBool>,
     last_stats: Arc<Mutex<Option<String>>>,
     last_rtt_ms: Arc<Mutex<Option<i64>>>,
+}
+
+impl ClientHandle {
+    fn migration_enabled(&self) -> bool {
+        self.migration_enabled.load(Ordering::Acquire) || self.owner.migration_enabled()
+    }
+
+    pub(crate) fn try_migrate(&self, route_generation: u64) -> bool {
+        self.migration_enabled()
+            && self.migration_available.load(Ordering::Acquire)
+            && !self.cancelled.load(Ordering::Acquire)
+            && self.tx.send(ControlCommand::NetworkChange { route_generation }).is_ok()
+    }
 }
 
 struct AudioSender {
@@ -499,6 +547,7 @@ impl AudioDelivery {
 }
 
 enum ControlCommand {
+    NetworkChange { route_generation: u64 },
     SourceOpen {
         generation: u64,
         track_id: String,
@@ -736,9 +785,12 @@ fn connect_client(
         delivery,
         events,
         generation: AtomicU64::new(0),
-        cancelled: Arc::clone(&owner.cancelled),
+        cancelled: Arc::new(AtomicBool::new(false)),
         owner: Arc::clone(&owner),
         last_error: Arc::clone(&last_error),
+        last_error_code: Arc::new(AtomicI32::new(0)),
+        migration_enabled: Arc::new(AtomicBool::new(false)),
+        migration_available: Arc::new(AtomicBool::new(false)),
         last_stats: Arc::clone(&last_stats),
         last_rtt_ms: Arc::clone(&last_rtt_ms),
     });
@@ -757,7 +809,9 @@ fn connect_client(
             owner,
             enforce_owner_lease,
             bounded_resolution,
+            &thread_handle,
         ) {
+            thread_handle.last_error_code.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire).ok();
             if let Ok(mut guard) = thread_handle.last_error.lock() {
                 *guard = Some(err.clone());
             }
@@ -769,7 +823,7 @@ fn connect_client(
                     events.pop_front();
                 }
                 events
-                    .push_back(serde_json::json!({ "type": "error", "message": err }).to_string());
+                    .push_back(serde_json::json!({ "type": "error", "origin": "transport", "code": thread_handle.last_error_code.load(Ordering::Acquire), "retryable": thread_handle.last_error_code.load(Ordering::Acquire) == 1, "message": err }).to_string());
             }
         }
     }).map_err(|error| format!("QUIC worker could not start: {error}"))?;
@@ -1072,6 +1126,26 @@ pub extern "C" fn phonolite_quic_heartbeat(handle: *mut QuicHandle) {
     if let Some(handle) = unsafe { handle.as_ref() } { handle.inner.owner.touch(); }
 }
 
+#[no_mangle]
+pub extern "C" fn phonolite_quic_error_code(handle: *const QuicHandle) -> c_int {
+    unsafe { handle.as_ref() }.map_or(4, |handle| handle.inner.last_error_code.load(Ordering::Acquire))
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_set_migration_enabled(handle: *mut QuicHandle, enabled: c_int) {
+    if let Some(handle) = unsafe { handle.as_ref() } {
+        handle.inner.migration_enabled.store(enabled != 0, Ordering::Release);
+    }
+}
+
+/// Returns one only when a bounded migration was queued; zero requests the
+/// caller's ordinary same-session reconnect fallback without changing streams.
+#[no_mangle]
+pub extern "C" fn phonolite_quic_network_changed(handle: *mut QuicHandle, route_generation: u64) -> c_int {
+    let Some(handle) = (unsafe { handle.as_ref() }) else { return 0 };
+    i32::from(handle.inner.try_migrate(route_generation))
+}
+
 unsafe fn cstr_to_string(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return String::new();
@@ -1103,23 +1177,20 @@ fn run_client(
     owner: Arc<OwnerLease>,
     enforce_owner_lease: bool,
     bounded_resolution: bool,
+    handle: &ClientHandle,
 ) -> Result<(), String> {
-    let addrs = resolve_source_address(&addr, &owner, enforce_owner_lease)?;
-    if !owner.alive(enforce_owner_lease) { return Ok(()); }
-    let server_addr = addrs
-        .iter()
-        .find(|addr| addr.is_ipv4())
-        .copied()
-        .or_else(|| addrs.first().copied())
-        .ok_or_else(|| "invalid server addr: no resolved addresses".to_string())?;
-    let socket = UdpSocket::bind(if server_addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }).map_err(|err| format!("{}", err))?;
-    socket
-        .connect(server_addr)
-        .map_err(|err| format!("socket connect: {}", err))?;
-    socket
-        .set_nonblocking(true)
-        .map_err(|err| format!("socket nonblock: {}", err))?;
-    let local_addr = socket.local_addr().map_err(|err| format!("{}", err))?;
+    let addrs = resolve_source_address(&addr, &owner, enforce_owner_lease, &handle.cancelled)?;
+    if handle.cancelled.load(Ordering::Acquire) || !owner.alive(enforce_owner_lease) { return Ok(()); }
+    let mut ordered = addrs;
+    ordered.sort_by_key(|address| !address.is_ipv4());
+    let mut route_error = "invalid server addr: no resolved addresses".to_string();
+    let (server_addr, mut sockets) = ordered.into_iter().find_map(|address| {
+        match migration::RouteSockets::new(address) {
+            Ok(sockets) => Some((address, sockets)),
+            Err(error) => { route_error = format!("socket route: {error}"); None }
+        }
+    }).ok_or(route_error)?;
+    let local_addr = sockets.routes[0].local;
     if let Ok(mut guard) = last_stats.lock() {
         *guard = Some(format!(
             "QUIC client socket local={} server={}",
@@ -1148,6 +1219,7 @@ fn run_client(
     config.set_initial_max_streams_bidi(16);
     config.set_initial_max_streams_uni(32);
     config.set_disable_active_migration(true);
+    config.set_active_connection_id_limit(4);
 
     let scid = generate_cid();
     let scid_conn_id = quiche::ConnectionId::from_ref(&scid);
@@ -1165,15 +1237,44 @@ fn run_client(
     let mut last_stats_log = Instant::now();
     let mut last_ping = Instant::now();
     let mut pending_datagrams = VecDeque::new();
+    let mut confirmation = migration::HandshakeConfirmation::default();
+    let mut pending_migration: Option<migration::PendingMigration> = None;
+    let mut last_route_generation = 0;
 
     loop {
-        if !owner.alive(enforce_owner_lease) {
-            send_connection_close(&mut conn, &mut send_buf, |packet, _| socket.send(packet));
+        if handle.cancelled.load(Ordering::Acquire) || !owner.alive(enforce_owner_lease) {
+            send_connection_close(&mut conn, &mut send_buf, |packet, info| sockets.send(packet, info.from, info.to));
             tx_bytes.send(Vec::new());
             return Ok(());
         }
         while let Ok(cmd) = rx_cmd.try_recv() {
             match cmd {
+                ControlCommand::NetworkChange { route_generation } => {
+                    owner.note_route(route_generation);
+                    if route_generation <= last_route_generation { continue; }
+                    last_route_generation = route_generation;
+                    // A newer hint never renews an existing validation deadline.
+                    if pending_migration.is_some() { continue; }
+                    if !handle.migration_enabled()
+                        || !migration::permitted(&conn, confirmation.confirmed, peer_verified)
+                    {
+                        tx_bytes.event(serde_json::json!({"type":"transport_recovery", "route_generation":route_generation,"code":"migration_unavailable"}));
+                        return Err("QUIC path replacement requires reconnect".into());
+                    }
+                    migration::replenish_cids(&mut conn).map_err(|error| format!("QUIC migration IDs: {error:?}"))?;
+                    let next_local = sockets.candidate().map_err(|error| format!("QUIC candidate route: {error}"))?;
+                    if let Err(error) = conn.probe_path(next_local, server_addr) {
+                        tx_bytes.event(serde_json::json!({"type":"transport_recovery", "route_generation":route_generation,"code":"migration_probe_failed"}));
+                        return Err(format!("QUIC path probe failed: {error:?}"));
+                    }
+                    let now = Instant::now();
+                    let mut pending = migration::PendingMigration::new(route_generation, next_local, server_addr, now);
+                    if let Some(remaining) = owner.recovery_remaining() {
+                        pending.deadline = pending.deadline.min(now + remaining);
+                    }
+                    pending_migration = Some(pending);
+                    handle.migration_available.store(false, Ordering::Release);
+                }
                 ControlCommand::SourceOpen { generation, track_id, offset, source_version } => {
                     tx_bytes.generation = generation;
                     state.active_track = Some(track_id.clone());
@@ -1285,7 +1386,7 @@ fn run_client(
                     retire_active_stream(&mut state, &mut conn);
                 }
                 ControlCommand::Close => {
-                    send_connection_close(&mut conn, &mut send_buf, |packet, _| socket.send(packet));
+                    send_connection_close(&mut conn, &mut send_buf, |packet, info| sockets.send(packet, info.from, info.to));
                     let _ = tx_bytes.send(Vec::new());
                     return Ok(());
                 }
@@ -1301,40 +1402,42 @@ fn run_client(
             last_ping = Instant::now();
         }
 
-        if verify_identity(&conn, &expected_pin, &mut peer_verified)? { flush_control(&mut state, &mut conn); }
+        if verify_transport_identity(&conn, &expected_pin, &mut peer_verified, &handle.last_error_code)? { flush_control(&mut state, &mut conn); }
         flush_conn(
             &mut conn,
-            &socket,
+            &sockets,
             &mut send_buf,
             &last_error,
             &mut pending_datagrams,
         );
 
-        loop {
-            if !owner.alive(enforce_owner_lease) {
-                send_connection_close(&mut conn, &mut send_buf, |packet, _| socket.send(packet));
-                tx_bytes.send(Vec::new());
-                return Ok(());
-            }
-            match socket.recv_from(&mut recv_buf) {
-                Ok((len, from)) => {
-                    receive_datagram(
-                        &mut conn,
-                        &mut recv_buf[..len],
-                        from,
-                        local_addr,
-                        &last_error,
-                    );
+        for route in &sockets.routes {
+            for _ in 0..64 {
+                if handle.cancelled.load(Ordering::Acquire) || !owner.alive(enforce_owner_lease) {
+                    send_connection_close(&mut conn, &mut send_buf, |packet, info| sockets.send(packet, info.from, info.to));
+                    tx_bytes.send(Vec::new());
+                    return Ok(());
                 }
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(err) => {
-                    set_last_error_if_empty(&last_error, format!("udp recv error: {}", err));
-                    return Err(format!("recv error: {}", err));
+                match route.socket.recv_from(&mut recv_buf) {
+                    Ok((len, from)) => {
+                        receive_datagram(
+                            &mut conn,
+                            &mut recv_buf[..len],
+                            from,
+                            route.local,
+                            &last_error,
+                        );
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
+                    Err(err) => {
+                        set_last_error_if_empty(&last_error, format!("udp recv error: {}", err));
+                        return Err(format!("recv error: {}", err));
+                    }
                 }
             }
         }
 
-        if verify_identity(&conn, &expected_pin, &mut peer_verified)? {
+        if verify_transport_identity(&conn, &expected_pin, &mut peer_verified, &handle.last_error_code)? {
         handle_readable(
             &mut state,
             &mut conn,
@@ -1345,9 +1448,41 @@ fn run_client(
         )?;
         flush_control(&mut state, &mut conn);
         }
+        if handle.migration_enabled() && peer_verified
+            && conn.peer_transport_params().is_some_and(|params| !params.disable_active_migration)
+        {
+            confirmation.update(&mut conn, peer_verified);
+            migration::replenish_cids(&mut conn).map_err(|error| format!("QUIC connection IDs: {error:?}"))?;
+        }
+        while let Some(event) = conn.path_event_next() {
+            match event {
+                quiche::PathEvent::Validated(local, peer)
+                    if pending_migration.as_ref().is_some_and(|pending| pending.matches(local, peer)) => {
+                        migration::activate(&mut conn, local, peer).map_err(|error| format!("QUIC migration failed: {error:?}"))?;
+                        sockets.activate(local, Instant::now());
+                        let pending = pending_migration.take().unwrap();
+                        tx_bytes.event(serde_json::json!({"type":"path", "status":"validated", "route_generation":pending.generation}));
+                    }
+                quiche::PathEvent::FailedValidation(local, peer) | quiche::PathEvent::Closed(local, peer)
+                    if pending_migration.as_ref().is_some_and(|pending| pending.matches(local, peer)) => {
+                        let pending = pending_migration.take().unwrap();
+                        tx_bytes.event(serde_json::json!({"type":"transport_recovery", "route_generation":pending.generation,"code":"migration_validation_failed"}));
+                        return Err("QUIC replacement path failed validation".into());
+                    }
+                _ => {}
+            }
+        }
+        if pending_migration.as_ref().is_some_and(|pending| Instant::now() >= pending.deadline) {
+            let pending = pending_migration.take().unwrap();
+            tx_bytes.event(serde_json::json!({"type":"transport_recovery", "route_generation":pending.generation,"code":"migration_validation_timeout"}));
+            return Err("QUIC replacement path validation timed out".into());
+        }
+        sockets.retire(Instant::now());
+        pending_datagrams.retain(|packet| sockets.owns(packet.from));
+        handle.migration_available.store(pending_migration.is_none() && migration::permitted(&conn, confirmation.confirmed, peer_verified), Ordering::Release);
         flush_conn(
             &mut conn,
-            &socket,
+            &sockets,
             &mut send_buf,
             &last_error,
             &mut pending_datagrams,
@@ -1362,6 +1497,10 @@ fn run_client(
         next_timeout = conn.timeout().map(|t| Instant::now() + t);
 
         if conn.is_closed() {
+            let tls_failure = conn.peer_error().into_iter().chain(conn.local_error())
+                .any(|error| !error.is_app && (0x100..0x200).contains(&error.error_code));
+            handle.last_error_code.compare_exchange(0, if tls_failure { 2 } else { 1 }, Ordering::AcqRel, Ordering::Acquire).ok();
+            handle.migration_available.store(false, Ordering::Release);
             if let Some(detail) = connection_close_detail(&conn) {
                 set_last_error(&last_error, detail);
             } else {
@@ -1386,7 +1525,7 @@ fn run_client(
     }
 }
 
-fn resolve_source_address(addr: &str, owner: &OwnerLease, enforce_owner_lease: bool) -> Result<Vec<std::net::SocketAddr>, String> {
+fn resolve_source_address(addr: &str, owner: &OwnerLease, enforce_owner_lease: bool, cancelled: &AtomicBool) -> Result<Vec<std::net::SocketAddr>, String> {
     // Numeric addresses require no resolver worker. A hostname lookup may not
     // be cancellable in the operating system, so it never owns the connection,
     // credentials or UDP socket. Closing the source can always join its worker.
@@ -1398,17 +1537,20 @@ fn resolve_source_address(addr: &str, owner: &OwnerLease, enforce_owner_lease: b
             .map_err(|error| format!("invalid server addr: {error}"));
         let _ = tx.send(result);
     }).map_err(|error| format!("QUIC address resolver could not start: {error}"))?;
-    wait_for_address(rx, owner, enforce_owner_lease)
+    wait_for_address(rx, owner, enforce_owner_lease, cancelled)
 }
 
 fn wait_for_address(
     rx: mpsc::Receiver<Result<Vec<std::net::SocketAddr>, String>>,
     owner: &OwnerLease,
     enforce_owner_lease: bool,
+    cancelled: &AtomicBool,
 ) -> Result<Vec<std::net::SocketAddr>, String> {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let budget = owner.recovery_remaining().unwrap_or(Duration::from_secs(5)).min(Duration::from_secs(5));
+    let deadline = Instant::now() + budget;
     loop {
-        if !owner.alive(enforce_owner_lease) { return Err("QUIC owner closed during address lookup".into()); }
+        if cancelled.load(Ordering::Acquire) || !owner.alive(enforce_owner_lease) { return Err("QUIC owner closed during address lookup".into()); }
+        if Instant::now() >= deadline { return Err("QUIC address lookup timed out".into()); }
         match rx.recv_timeout(Duration::from_millis(5)) {
             Ok(result) => return result,
             Err(mpsc::RecvTimeoutError::Disconnected) => return Err("QUIC address lookup failed".into()),
@@ -1449,6 +1591,13 @@ fn verify_identity(conn: &quiche::Connection, pin: &str, verified: &mut bool) ->
     Ok(true)
 }
 
+fn verify_transport_identity(conn: &quiche::Connection, pin: &str, verified: &mut bool, code: &AtomicI32) -> Result<bool, String> {
+    verify_identity(conn, pin, verified).map_err(|error| {
+        code.store(2, Ordering::Release);
+        error
+    })
+}
+
 fn flush_control(state: &mut ClientState, conn: &mut quiche::Connection) {
     loop {
         let Some((_, front)) = state.pending_control.front() else {
@@ -1476,6 +1625,7 @@ struct PendingDatagram {
     bytes: Vec<u8>,
     at: Instant,
     address: std::net::SocketAddr,
+    from: std::net::SocketAddr,
 }
 
 fn send_connection_close(
@@ -1501,7 +1651,7 @@ fn send_connection_close(
 
 fn flush_conn(
     conn: &mut quiche::Connection,
-    socket: &UdpSocket,
+    sockets: &migration::RouteSockets,
     out: &mut [u8],
     last_error: &Arc<Mutex<Option<String>>>,
     pending: &mut VecDeque<PendingDatagram>,
@@ -1513,11 +1663,13 @@ fn flush_conn(
     while pending.len() < MAX_PENDING_PACKETS && pending_bytes + out.len() <= MAX_PENDING_BYTES {
         match conn.send(out) {
             Ok((len, send_info)) => {
+                if !sockets.owns(send_info.from) { continue; }
                 pending_bytes += len;
                 let packet = PendingDatagram {
                     bytes: out[..len].to_vec(),
                     at: send_info.at,
                     address: send_info.to,
+                    from: send_info.from,
                 };
                 let index = pending.partition_point(|queued| queued.at <= packet.at);
                 pending.insert(index, packet);
@@ -1534,8 +1686,7 @@ fn flush_conn(
         .is_some_and(|packet| packet.at <= Instant::now())
     {
         let packet = pending.pop_front().unwrap();
-        // The socket is connected; send() avoids EISCONN on some platforms.
-        match socket.send(&packet.bytes) {
+        match sockets.send(&packet.bytes, packet.from, packet.address) {
             Ok(_) => {}
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                 pending.push_front(packet);

@@ -3479,7 +3479,7 @@ void main() {
 
   for (final mode in [StreamMode.original, StreamMode.high]) {
     for (final paused in [false, true]) {
-      test('Wi-Fi to cellular reopens $mode at the current position with paused=$paused', () async {
+      test('Wi-Fi to cellular preserves $mode playback with paused=$paused', () async {
         final harness = _Harness(authenticated: true);
         _enableNetworkEvents(harness);
         addTearDown(harness.controller.close);
@@ -3491,12 +3491,11 @@ void main() {
         if (paused) await harness.controller.pause(true);
 
         harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
-        await _resumeUntil(() => harness.audio.starts.length == count + 1);
+        await _resumeUntil(() => harness.audio.networkChanges == 1);
 
         expect(harness.audio.starts.last.trackId, track);
-        expect(harness.audio.starts.last.offset, const Duration(seconds: 12));
-        expect(harness.audio.starts.last.quickStart, isTrue);
-        expect(harness.audio.starts.last.initialPaused, paused);
+        expect(harness.audio.starts, hasLength(count));
+        expect(harness.controller.playbackState.position, const Duration(seconds: 12));
         expect(harness.controller.playbackState.isPlaying, !paused);
         expect(harness.controller.authState.isAuthorized, isTrue);
       });
@@ -3515,10 +3514,11 @@ void main() {
     expect(harness.audio.starts, hasLength(1));
 
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
-    await _resumeUntil(() => harness.audio.starts.length == 2);
+    await _resumeUntil(() => harness.audio.networkChanges == 1);
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    expect(harness.audio.starts, hasLength(2));
+    expect(harness.audio.starts, hasLength(1));
+    expect(harness.audio.networkChanges, 1);
   });
 
   test('a late startup connectivity query cannot replace a newer cellular event', () async {
@@ -3538,10 +3538,11 @@ void main() {
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
     await Future<void>.delayed(Duration.zero);
     pending.complete(NetworkConnectivity([NetworkTransport.wifi]));
-    await _resumeUntil(() => harness.audio.starts.length == 2);
+    await _resumeUntil(() => harness.audio.networkChanges == 1);
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    expect(harness.audio.starts, hasLength(2));
+    expect(harness.audio.starts, hasLength(1));
+    expect(harness.audio.networkChanges, 1);
   });
 
   test('foreground resume detects a network change missed in the background', () async {
@@ -3552,7 +3553,7 @@ void main() {
     harness.connectivity.state = NetworkConnectivity([NetworkTransport.cellular]);
 
     harness.controller.handleAppLifecycleState(AppLifecycleState.resumed);
-    await _resumeUntil(() => harness.audio.starts.length == 2);
+    await _resumeUntil(() => harness.audio.networkChanges == 1);
 
     expect(harness.connectivity.checks, 2);
     expect(harness.audio.starts.last.trackId, harness.audio.starts.first.trackId);
@@ -3582,15 +3583,15 @@ void main() {
     await harness.startRemote();
     harness.onStats!(const Duration(seconds: 25), Duration.zero, null, null, false);
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
-    await _resumeUntil(() => harness.audio.starts.length == 2);
+    await _resumeUntil(() => harness.audio.networkChanges == 1);
 
     harness.failTransport();
 
-    expect(harness.audio.starts, hasLength(3));
+    expect(harness.audio.starts, hasLength(2));
     expect(harness.audio.starts.last.offset, const Duration(seconds: 25));
   });
 
-  test('network handoff restarts an interrupted seek at its latest target', () async {
+  test('network handoff preserves an in-flight seek and its target', () async {
     final harness = _Harness(authenticated: true);
     _enableNetworkEvents(harness);
     final seekResult = Completer<bool>();
@@ -3602,12 +3603,12 @@ void main() {
     harness.audio.seekResults.add(seekResult.future);
     final seeking = harness.controller.seekTo(const Duration(seconds: 50));
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
-    await _resumeUntil(() => harness.audio.starts.length == 2);
+    await _resumeUntil(() => harness.audio.networkChanges == 1);
 
-    expect(harness.audio.starts.last.offset, const Duration(seconds: 50));
-    seekResult.complete(false);
+    expect(harness.audio.starts, hasLength(1));
+    seekResult.complete(true);
     await seeking;
-    expect(harness.audio.starts, hasLength(2));
+    expect(harness.audio.starts, hasLength(1));
   });
 
   test('network handoff keeps the current server shuffle deck and cursor', () async {
@@ -3623,7 +3624,8 @@ void main() {
     final count = harness.audio.starts.length;
 
     harness.connectivity.emit(NetworkConnectivity([NetworkTransport.cellular]));
-    await _resumeUntil(() => harness.audio.starts.length == count + 1);
+    await _resumeUntil(() => harness.audio.networkChanges == 1);
+    expect(harness.audio.starts, hasLength(count));
 
     expect(harness.controller.playbackState.track?.id, 'deck-track-1');
     expect(connection.creates, 1);
@@ -4706,6 +4708,9 @@ class _PresenceResumeStorage extends PlaybackResumeStorage {
 }
 
 class _Audio implements AudioEngine {
+  int networkChanges = 0;
+  @override
+  void notifyNetworkChange() => networkChanges++;
   @override
   void Function(int)? onGaplessTransition;
   @override

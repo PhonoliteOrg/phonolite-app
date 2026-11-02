@@ -304,6 +304,22 @@ class LocalAudioDecoder {
     return Duration(milliseconds: actualMs);
   }
 
+  /// Seeks to an exact presentation frame without millisecond rounding.
+  int seekFrame(int presentationFrame) {
+    _ensureActive();
+    if (presentationFrame < 0) {
+      throw ArgumentError.value(presentationFrame, 'presentationFrame');
+    }
+    final actual = _bindings.seekFrame(_handle, presentationFrame);
+    if (actual < 0) {
+      throw LocalAudioException(
+        _lastError(_bindings, _handle) ?? 'exact audio restart failed',
+        code: _bindings.errorCode(_handle),
+      );
+    }
+    return actual;
+  }
+
   String? lastError() {
     _ensureActive();
     return _lastError(_bindings, _handle);
@@ -497,6 +513,8 @@ typedef _OpenQuicDart =
 typedef _SeekNative =
     ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Int64);
 typedef _SeekDart = int Function(ffi.Pointer<_LocalAudioHandle>, int);
+typedef _SeekFrameNative =
+    ffi.Int64 Function(ffi.Pointer<_LocalAudioHandle>, ffi.Uint64);
 
 typedef _IntGetterNative = ffi.Int32 Function(ffi.Pointer<_LocalAudioHandle>);
 typedef _IntGetterDart = int Function(ffi.Pointer<_LocalAudioHandle>);
@@ -527,6 +545,10 @@ class _Bindings {
   final _ReadDart read;
   final _Read32Dart read32;
   final _SeekDart seek;
+  late final _SeekDart seekFrame = _library
+      .lookupFunction<_SeekFrameNative, _SeekDart>(
+        'phonolite_local_audio_seek_frame',
+      );
   final _IntGetterDart sampleRate;
   final _IntGetterDart channels;
   final _IntGetterDart bitDepth;

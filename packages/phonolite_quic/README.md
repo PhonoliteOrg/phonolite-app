@@ -34,3 +34,22 @@ failure once at the unreturned byte offset within the existing read deadline,
 preserving the decoder and its buffered PCM. Cancellation, certificate/pin
 failures and source rejection bypass that retry. A reconnect must verify the
 same server pin and source representation before returning further bytes.
+
+Route changes are signaled separately from seek/cancellation through the owner
+lease. Original recovery shares one fifteen-second episode and three connection
+attempts; native read/seek budgets remain five seconds. Source metadata and the
+remaining episode budget can be transferred to a fresh decoder after an escaped
+read failure. Rebuild both native audio libraries with the Dart bindings and C
+headers when these APIs change.
+
+QUIC migration defaults off. Build the app with
+`--dart-define=PHONOLITE_QUIC_MIGRATION=true` and enable the server's
+`quic_allow_client_migration` setting to opt in after platform validation.
+`notifyNetworkChange()` reports whether a migration was queued. `pollEvent()`
+reports validated paths or `transport_recovery` when buffered reconnect is
+required. The client verifies handshake confirmation, identity, peer permission
+and spare IDs, preserves source/destination address and pacing metadata, and
+bounds path validation to one second. It activates a validated path with a
+non-probing packet so receive-only audio does not wait for the next keepalive.
+Migration changes the client's route to the same server; it does not select an
+alternate LAN/public server endpoint.

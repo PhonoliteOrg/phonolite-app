@@ -403,13 +403,13 @@ void main() {
   }, skip: fixturePath == null ? 'Set PHONOLITE_PULSE_TEST_LIBRARY to the headless CMake fixture.' : false);
 }
 
-class _MemoryDecoder extends Fake implements AudioFileDecoder {
+class _MemoryDecoder extends AudioFileDecoder {
   final int samples;
   final int rate;
   late int _remaining = samples;
   bool closed = false;
 
-  _MemoryDecoder({this.samples = 1920, this.rate = 48000});
+  _MemoryDecoder({this.samples = 1920, this.rate = 48000}) : super.local(filePath: 'memory');
 
   @override
   AudioFileFormat get format => AudioFileFormat(

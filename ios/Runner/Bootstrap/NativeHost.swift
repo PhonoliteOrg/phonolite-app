@@ -5,6 +5,7 @@ final class NativeHost {
   private let nowPlaying = NowPlayingCoordinator(artworkSession: nil)
   private let permissions = LocalNetworkPermissionService()
   private let settings = ApplicationSettingsService()
+  private let networkRoutes = NetworkRouteChannelAdapter()
 
   private var engineBinding: FlutterEngineBinding?
   private weak var carPlaySession: CarPlayNavigationCoordinator?
@@ -48,6 +49,7 @@ final class NativeHost {
   }
 
   func bindEngine(_ binding: FlutterEngineBinding) {
+    networkRoutes.detach()
     engineBinding = binding
   }
 
@@ -69,6 +71,14 @@ final class NativeHost {
 
   func configurePermissionsChannel() {
     engineBinding?.attach(permissionsChannel)
+  }
+
+  func configureNetworkRouteChannel() {
+    engineBinding?.attach(networkRoutes)
+  }
+
+  func detachNetworkRouteChannel() {
+    networkRoutes.detach()
   }
 
   func requestLocalNetworkPermission() {

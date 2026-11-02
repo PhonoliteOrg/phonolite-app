@@ -29,6 +29,7 @@ pub struct SourceHandle {
     stream: Option<SourceStream>,
     error: String,
     error_code: i32,
+    route_generation: u64,
 }
 
 #[derive(Deserialize)]
@@ -54,7 +55,7 @@ impl SourceHandle {
         capacity: usize,
         timeout: Duration,
     ) -> Result<Vec<u8>, String> {
-        let deadline = Instant::now() + timeout;
+        let deadline = Instant::now() + timeout.min(self.inner.owner.recovery_remaining().unwrap_or(timeout));
         let mut resumed = false;
         self.error_code = TRANSPORT_FAILURE;
         loop {
@@ -65,6 +66,7 @@ impl SourceHandle {
                 .inner
                 .cancelled
                 .load(std::sync::atomic::Ordering::Acquire)
+                || self.inner.owner.cancelled.load(std::sync::atomic::Ordering::Acquire)
             {
                 return Err("QUIC source owner is closed".into());
             }
@@ -98,21 +100,25 @@ impl SourceHandle {
                 || self.connect.is_none()
                 || self.error_code != TRANSPORT_FAILURE
                 || security_failure(&error)
+                || self.inner.last_error_code.load(std::sync::atomic::Ordering::Acquire) == 2
                 || Instant::now() >= deadline
                 || self
                     .inner
                     .cancelled
                     .load(std::sync::atomic::Ordering::Acquire)
+                || self.inner.owner.cancelled.load(std::sync::atomic::Ordering::Acquire)
                 || !self.inner.owner.operation_is_current()
             {
                 return Err(error);
             }
+            self.inner.owner.begin_recovery(Duration::from_secs(15), 3);
             self.reconnect()?;
             resumed = true;
         }
     }
 
     fn reconnect(&mut self) -> Result<(), String> {
+        self.inner.cancelled.store(true, std::sync::atomic::Ordering::Release);
         let _ = self.inner.tx.send(ControlCommand::Close);
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -120,6 +126,7 @@ impl SourceHandle {
         let (inner, worker) = self.connect.as_mut().unwrap()()?;
         self.inner = inner;
         self.worker = worker;
+        self.route_generation = self.inner.owner.route_generation();
         Ok(())
     }
 
@@ -166,16 +173,28 @@ impl SourceHandle {
         let deadline = Instant::now() + timeout;
         let mut bytes = Vec::with_capacity(capacity);
         let mut buffer = [0; 16 * 1024];
+        let mut last_progress = Instant::now();
         loop {
             if self
                 .inner
                 .cancelled
                 .load(std::sync::atomic::Ordering::Acquire)
+                || self.inner.owner.cancelled.load(std::sync::atomic::Ordering::Acquire)
             {
                 return Err("QUIC source owner is closed".into());
             }
             if !self.inner.owner.operation_is_current() {
                 return Err("QUIC source operation interrupted".into());
+            }
+            if self.inner.owner.route_generation() != self.route_generation {
+                let generation = self.inner.owner.route_generation();
+                self.inner.owner.begin_recovery(Duration::from_secs(15), 3);
+                if self.inner.try_migrate(generation) {
+                    self.route_generation = generation;
+                    last_progress = Instant::now();
+                } else {
+                    return Err("Original source route changed".into());
+                }
             }
             loop {
                 let event = self.inner.events.lock().map_err(poisoned)?.pop_front();
@@ -196,11 +215,15 @@ impl SourceHandle {
                         let accepted: Announcement =
                             serde_json::from_value(event).map_err(|error| error.to_string())?;
                         self.validate(&accepted, self.stream.as_ref().unwrap().offset, capacity)?;
+                        self.inner.owner.accept_source(super::owner::SourceMetadata {
+                            source_version: accepted.source_version.clone(), total_length: accepted.total_length,
+                        }).map_err(|error| { self.error_code = INVALID_SOURCE; error })?;
                         self.version = Some(accepted.source_version);
                         self.total_length = Some(accepted.total_length);
                         self.stream.as_mut().unwrap().announced = true;
                     }
                     Some("source_fin") => self.stream.as_mut().unwrap().finished = true,
+                    Some("transport_recovery") => return Err("Original path migration failed".into()),
                     Some("error") => {
                         let message = event["message"]
                             .as_str()
@@ -273,6 +296,7 @@ impl SourceHandle {
             if read > 0 {
                 let read = read as usize;
                 bytes.extend_from_slice(&buffer[..read]);
+                last_progress = Instant::now();
             } else if read == 0 || (closed && !finished) {
                 // The FIN event and the closed flag are published separately.
                 // Observe queued events before deciding a close was premature.
@@ -293,6 +317,12 @@ impl SourceHandle {
                 let _ = self.inner.tx.send(ControlCommand::SuspendAudio);
                 return Err(self.inner.last_error.lock().map_err(poisoned)?.clone()
                     .unwrap_or_else(|| "Original audio over QUIC timed out; the server may not support source streaming".into()));
+            }
+            if let Some(remaining) = self.inner.owner.recovery_remaining() {
+                if remaining.is_zero() { return Err("Original connection recovery budget exhausted".into()); }
+            }
+            if last_progress.elapsed() >= self.inner.owner.stall_timeout() && self.version.is_some() {
+                return Err("Original source delivery stalled".into());
             }
             if read <= 0 {
                 thread::sleep(Duration::from_millis(2));
@@ -395,6 +425,7 @@ fn source_connect(
     let token = unsafe { cstr_to_string(token) };
     let server_pin = unsafe { cstr_to_string(server_pin) };
     let mut connect: SourceConnector = Box::new(move || {
+        if let Some(owner) = owner.as_ref() { owner.reserve_connection()?; }
         connect_client(
             host.clone(),
             port,
@@ -409,16 +440,19 @@ fn source_connect(
     let Ok((inner, worker)) = connected else {
         return std::ptr::null_mut();
     };
+    let accepted = inner.owner.source_metadata();
+    let route_generation = inner.owner.route_generation();
     Box::into_raw(Box::new(SourceHandle {
         inner,
         worker,
         connect: Some(connect),
         track_id,
-        version: None,
-        total_length: None,
+        version: accepted.as_ref().map(|metadata| metadata.source_version.clone()),
+        total_length: accepted.map(|metadata| metadata.total_length),
         stream: None,
         error: String::new(),
         error_code: 0,
+        route_generation,
     }))
     .cast()
 }
@@ -588,6 +622,7 @@ mod tests {
                 stream: None,
                 error: String::new(),
                 error_code: TRANSPORT_FAILURE,
+                route_generation: 0,
             },
             commands,
         )
@@ -706,6 +741,39 @@ mod tests {
             }
             assert!(source.read_range(4, 6, Duration::from_secs(1)).is_err());
         }
+    }
+
+    #[test]
+    fn owner_cancellation_is_distinct_from_transport_retirement_and_never_reconnects() {
+        let (mut source, _commands) = disconnected_source();
+        assert!(!source.inner.cancelled.load(std::sync::atomic::Ordering::Acquire));
+        source.inner.owner.cancelled.store(true, std::sync::atomic::Ordering::Release);
+        source.connect = Some(Box::new(|| panic!("a cancelled owner must not reconnect")));
+        assert!(source.read_range(4, 6, Duration::from_secs(1)).unwrap_err().contains("owner is closed"));
+    }
+
+    #[test]
+    fn an_opted_in_validated_route_keeps_the_same_source_stream() {
+        let (mut source, commands) = disconnected_source();
+        source.inner.delivery.lock().unwrap().closed = false;
+        source.inner.migration_enabled.store(true, std::sync::atomic::Ordering::Release);
+        source.inner.migration_available.store(true, std::sync::atomic::Ordering::Release);
+        source.inner.owner.note_route(7);
+        let inner = Arc::clone(&source.inner);
+        let worker = thread::spawn(move || {
+            assert!(matches!(commands.recv().unwrap(), ControlCommand::NetworkChange { route_generation: 7 }));
+            let sender = AudioSender {
+                delivery: Arc::clone(&inner.delivery), events: Arc::clone(&inner.events), generation: 1,
+            };
+            sender.event(serde_json::json!({"type":"path", "status":"validated"}));
+            sender.send(vec![5, 6, 7, 8, 9, 10]);
+            sender.event(serde_json::json!({"type":"source_fin", "request_id":1}));
+            sender.send(Vec::new());
+        });
+        assert_eq!(source.read_range(4, 6, Duration::from_secs(1)).unwrap(), vec![5, 6, 7, 8, 9, 10]);
+        assert_eq!(source.route_generation, 7);
+        assert_eq!(source.inner.owner.recovery_attempts(), 0);
+        worker.join().unwrap();
     }
 
     #[test]

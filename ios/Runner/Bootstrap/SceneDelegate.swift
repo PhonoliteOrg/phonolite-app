@@ -12,6 +12,7 @@ final class SceneDelegate: FlutterSceneDelegate {
     if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
       appDelegate.nativeHost.configureNowPlayingChannel()
       appDelegate.nativeHost.configurePermissionsChannel()
+      appDelegate.nativeHost.configureNetworkRouteChannel()
     }
   }
 

@@ -387,6 +387,17 @@ Keep the existing [Dart native value models](../lib/data/models/playback/native_
 
 ## 9. Lifetimes, queues and Swift concurrency
 
+The shared Apple `NetworkRouteChannelAdapter` owns the
+`com.phonoliteorg.phonolite_app/network_routes` event channel. Its subscription
+starts a `NetworkRouteMonitor`; cancellation, host rebind and application
+termination cancel observation and fence late callbacks. The monitor computes a
+private signature from NWPath, gateways and numeric active-interface addresses,
+then publishes only monotonic revision numbers on the main queue. This retains
+Wi-Fi-to-Wi-Fi/IP changes that transport-type equality would suppress. Dart
+combines revisions with connectivity_plus and keeps its fallback if the native
+channel is unavailable. These observations are network hints, independent of
+audio-output route changes and server reachability.
+
 | Lifetime | Owns | Ends when |
 | --- | --- | --- |
 | Application/native host | Process-wide native services and media state/cache | The owning host shuts down |

@@ -2,17 +2,37 @@
 //! IDs are never reused, so a late parent message cannot address a new source.
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::os::raw::c_char;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const LEASE_TIMEOUT: Duration = Duration::from_secs(10);
+const RECOVERY_TIMEOUT: Duration = Duration::from_secs(15);
+const RECOVERY_ATTEMPTS: u32 = 3;
+
+#[derive(Clone)]
+pub(crate) struct SourceMetadata {
+    pub source_version: String,
+    pub total_length: u64,
+}
+
+struct RecoveryEpisode {
+    deadline: Instant,
+    remaining_attempts: u32,
+    attempts: u32,
+}
 
 pub(crate) struct OwnerLease {
     pub cancelled: Arc<AtomicBool>,
     heartbeat: Mutex<Instant>,
     operation_epoch: AtomicU64,
     active_epoch: AtomicU64,
+    route_generation: AtomicU64,
+    recovery: Mutex<Option<RecoveryEpisode>>,
+    source_metadata: Mutex<Option<SourceMetadata>>,
+    playable_ms: AtomicU64,
+    migration_enabled: AtomicBool,
 }
 
 impl OwnerLease {
@@ -22,6 +42,11 @@ impl OwnerLease {
             heartbeat: Mutex::new(Instant::now()),
             operation_epoch: AtomicU64::new(0),
             active_epoch: AtomicU64::new(0),
+            route_generation: AtomicU64::new(0),
+            recovery: Mutex::new(None),
+            source_metadata: Mutex::new(None),
+            playable_ms: AtomicU64::new(8000),
+            migration_enabled: AtomicBool::new(false),
         }
     }
 
@@ -49,6 +74,72 @@ impl OwnerLease {
 
     pub fn operation_is_current(&self) -> bool {
         self.operation_epoch.load(Ordering::Acquire) == self.active_epoch.load(Ordering::Acquire)
+    }
+
+    pub fn route_generation(&self) -> u64 {
+        self.route_generation.load(Ordering::Acquire)
+    }
+
+    pub fn stall_timeout(&self) -> Duration {
+        Duration::from_secs(if self.playable_ms.load(Ordering::Acquire) <= 4000 { 1 } else { 2 })
+    }
+
+    pub fn migration_enabled(&self) -> bool {
+        self.migration_enabled.load(Ordering::Acquire)
+    }
+
+    pub fn note_route(&self, generation: u64) {
+        self.route_generation.fetch_max(generation, Ordering::AcqRel);
+    }
+
+    pub fn begin_recovery(&self, remaining: Duration, attempts_remaining: u32) {
+        let Ok(mut recovery) = self.recovery.lock() else { return };
+        let deadline = Instant::now() + remaining.min(RECOVERY_TIMEOUT);
+        match recovery.as_mut() {
+            Some(active) => {
+                active.deadline = active.deadline.min(deadline);
+                active.remaining_attempts = active.remaining_attempts.min(attempts_remaining);
+            }
+            None => *recovery = Some(RecoveryEpisode {
+                deadline,
+                remaining_attempts: attempts_remaining.min(RECOVERY_ATTEMPTS),
+                attempts: RECOVERY_ATTEMPTS.saturating_sub(attempts_remaining.min(RECOVERY_ATTEMPTS)),
+            }),
+        }
+    }
+
+    pub fn reserve_connection(&self) -> Result<(), String> {
+        let mut recovery = self.recovery.lock().map_err(|_| "QUIC recovery state unavailable")?;
+        if let Some(active) = recovery.as_mut() {
+            if Instant::now() >= active.deadline || active.remaining_attempts == 0 {
+                return Err("Original connection recovery budget exhausted".into());
+            }
+            active.remaining_attempts -= 1;
+            active.attempts += 1;
+        }
+        Ok(())
+    }
+
+    pub fn recovery_remaining(&self) -> Option<Duration> {
+        self.recovery.lock().ok()?.as_ref()
+            .map(|active| active.deadline.saturating_duration_since(Instant::now()))
+    }
+
+    pub fn recovery_attempts(&self) -> u32 {
+        self.recovery.lock().ok().and_then(|active| active.as_ref().map(|active| active.attempts)).unwrap_or(0)
+    }
+
+    pub fn source_metadata(&self) -> Option<SourceMetadata> {
+        self.source_metadata.lock().ok()?.clone()
+    }
+
+    pub fn accept_source(&self, metadata: SourceMetadata) -> Result<(), String> {
+        let mut accepted = self.source_metadata.lock().map_err(|_| "QUIC source metadata unavailable")?;
+        if accepted.as_ref().is_some_and(|old| old.source_version != metadata.source_version || old.total_length != metadata.total_length) {
+            return Err("QUIC source representation or length changed".into());
+        }
+        *accepted = Some(metadata);
+        Ok(())
     }
 }
 
@@ -110,6 +201,63 @@ pub extern "C" fn phonolite_quic_owner_begin_operation(id: u64, epoch: u64) -> i
     i32::from(owner.operation_is_current())
 }
 
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_route_changed(id: u64, generation: u64) {
+    if let Some(owner) = get(id).filter(|owner| owner.alive(true)) { owner.note_route(generation); }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_playable_ms(id: u64, playable_ms: u64) {
+    if let Some(owner) = get(id) { owner.playable_ms.store(playable_ms, Ordering::Release); }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_set_migration_enabled(id: u64, enabled: i32) {
+    if let Some(owner) = get(id) { owner.migration_enabled.store(enabled != 0, Ordering::Release); }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_recovery_begin(id: u64, remaining_ms: u32, attempts_remaining: u32) {
+    if let Some(owner) = get(id).filter(|owner| owner.alive(true)) {
+        owner.begin_recovery(Duration::from_millis(remaining_ms as u64), attempts_remaining);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_recovery_remaining_ms(id: u64) -> u32 {
+    get(id).and_then(|owner| owner.recovery_remaining()).map_or(0, |remaining| remaining.as_millis().min(u32::MAX as u128) as u32)
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_recovery_attempts(id: u64) -> u32 {
+    get(id).map_or(0, |owner| owner.recovery_attempts())
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_recovery_finish(id: u64) {
+    if let Some(owner) = get(id) {
+        if let Ok(mut recovery) = owner.recovery.lock() { *recovery = None; }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_copy_source_metadata(id: u64, output: *mut u8, capacity: usize) -> usize {
+    let Some(metadata) = get(id).and_then(|owner| owner.source_metadata()) else { return 0 };
+    let encoded = serde_json::json!({"source_version": metadata.source_version, "total_length": metadata.total_length}).to_string();
+    if !output.is_null() && capacity >= encoded.len() {
+        unsafe { std::ptr::copy_nonoverlapping(encoded.as_ptr(), output, encoded.len()); }
+    }
+    encoded.len()
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_expect_source(id: u64, source_version: *const c_char, total_length: u64) -> i32 {
+    let Some(owner) = get(id).filter(|owner| owner.alive(true)) else { return 0 };
+    let version = unsafe { super::cstr_to_string(source_version) };
+    if version.is_empty() || version.len() > 256 { return 0; }
+    i32::from(owner.accept_source(SourceMetadata { source_version: version, total_length }).is_ok())
+}
+
 /// Pointer-shaped ID for NativeFinalizer; never dereferenced.
 #[no_mangle]
 pub extern "C" fn phonolite_quic_owner_release(id: *mut c_void) {
@@ -169,5 +317,44 @@ mod tests {
         assert_eq!(phonolite_quic_owner_begin_operation(id, 1), 1);
         assert!(owner.operation_is_current());
         phonolite_quic_owner_release(id as usize as *mut c_void);
+    }
+
+    #[test]
+    fn route_hints_do_not_cancel_an_operation_or_spend_a_paused_recovery_budget() {
+        let owner = OwnerLease::new();
+        owner.note_route(2);
+        owner.note_route(1);
+        assert_eq!(owner.route_generation(), 2);
+        assert!(owner.operation_is_current());
+        assert!(owner.alive(false));
+        assert!(owner.recovery_remaining().is_none());
+    }
+
+    #[test]
+    fn recovery_deadline_and_cumulative_attempts_cannot_be_renewed_by_nested_retries() {
+        let owner = OwnerLease::new();
+        owner.begin_recovery(Duration::from_secs(4), 3);
+        owner.reserve_connection().unwrap();
+        let deadline = owner.recovery.lock().unwrap().as_ref().unwrap().deadline;
+        owner.begin_recovery(Duration::from_secs(15), 3);
+        assert_eq!(owner.recovery.lock().unwrap().as_ref().unwrap().deadline, deadline);
+        assert_eq!(owner.recovery_attempts(), 1);
+        let replacement = OwnerLease::new();
+        replacement.begin_recovery(owner.recovery_remaining().unwrap(), 2);
+        replacement.reserve_connection().unwrap();
+        replacement.reserve_connection().unwrap();
+        assert_eq!(replacement.recovery_attempts(), 3);
+        assert!(replacement.reserve_connection().is_err());
+        replacement.begin_recovery(Duration::ZERO, 3);
+        assert!(replacement.recovery_remaining().unwrap().is_zero());
+    }
+
+    #[test]
+    fn expected_source_metadata_is_pinned_before_replacement_bytes() {
+        let owner = OwnerLease::new();
+        owner.accept_source(SourceMetadata { source_version: "version".into(), total_length: 123 }).unwrap();
+        assert!(owner.accept_source(SourceMetadata { source_version: "changed".into(), total_length: 123 }).is_err());
+        assert!(owner.accept_source(SourceMetadata { source_version: "version".into(), total_length: 124 }).is_err());
+        assert_eq!(owner.source_metadata().unwrap().total_length, 123);
     }
 }

@@ -31,6 +31,7 @@ class _AudioWorkerEngine {
   int _playbackId = 0, _startGeneration = 0, _preparationGeneration = 0, _listeningRevision = 0;
   int _tailGeneration = 0;
   int _requestedPlaybackId = 0;
+  int _routeGeneration = 0;
   final List<Map> _pendingPreparations = [];
   bool _stopping = false;
   int _audibleSuppression = 0;
@@ -60,6 +61,21 @@ class _AudioWorkerEngine {
   }
 
   Future<void> dispose() => stop();
+
+  void notifyNetworkChange({required int playbackId, required int routeGeneration}) {
+    if (_stopping || playbackId != _playbackId || routeGeneration <= _routeGeneration) return;
+    _routeGeneration = routeGeneration;
+    final entries = _occurrences.toList();
+    final current = _current;
+    if (current != null) {
+      entries.remove(current);
+      entries.insert(0, current);
+    }
+    for (final entry in entries) {
+      entry.session.notifyNetworkChange(routeGeneration);
+    }
+  }
+
   void acknowledge(int id) {
     final entry = _unacknowledged.remove(id);
     if (entry != null) {
@@ -370,6 +386,7 @@ class _AudioWorkerEngine {
             decoderFactory: decoderFactory,
             fileDecoderFactory: fileDecoderFactory == null ? null : makeDecoder,
             reusableConnection: settings.isOriginal ? null : transportFactory?.call(trackId),
+            connectionFactory: transportFactory == null ? null : () => transportFactory!(trackId),
           );
     entry = _GaplessOccurrence(session, output, preparationId, _listeningRevision, context);
     _occurrences.add(entry);

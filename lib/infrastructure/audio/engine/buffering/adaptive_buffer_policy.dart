@@ -290,6 +290,7 @@ class _AdaptiveAudioBufferPolicy {
 
 // Forwarding preserves the existing library entry point and virtual dispatch.
 mixin _AdaptiveAudioBufferPolicyFacade {
+  int _bufferedAudioMs() => _ownerBuffer._bufferedAudioMs();
   _AdaptiveAudioBufferPolicy get _ownerBuffer;
 
   bool get _quickStart => _ownerBuffer._quickStart;

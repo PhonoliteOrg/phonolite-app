@@ -13,6 +13,29 @@ void main() {
   final library = Platform.environment['PHONOLITE_QUIC_LIBRARY'];
   final enabled = library != null && File(library).existsSync();
 
+  test('owner route hints retain the operation and pinned recovery metadata across native bindings', () {
+    final owner = QuicOwnerLease();
+    addTearDown(owner.close);
+    expect(QuicOwnerLease.beginOperation(owner.id, 0), isTrue);
+    owner.notifyNetworkChange(2);
+    owner.notifyNetworkChange(1);
+    owner.setMigrationEnabled(true);
+    owner.reportPlayableMilliseconds(3000);
+    expect(owner.isAlive, isTrue);
+    expect(QuicOwnerLease.beginOperation(owner.id, 0), isTrue);
+    expect(owner.expectSource('fixed-version', 12345), isTrue);
+    expect(owner.expectSource('changed-version', 12345), isFalse);
+    expect(owner.sourceMetadata, {'source_version': 'fixed-version', 'total_length': 12345});
+    owner.beginRecovery(remaining: const Duration(seconds: 4), attemptsRemaining: 2);
+    expect(owner.recoveryAttempts, 1);
+    final before = owner.recoveryRemaining;
+    owner.beginRecovery();
+    expect(owner.recoveryRemaining, lessThanOrEqualTo(before));
+    owner.finishRecovery();
+    expect(owner.recoveryAttempts, 0);
+    expect(owner.recoveryRemaining, Duration.zero);
+  }, skip: enabled ? false : 'Set PHONOLITE_QUIC_LIBRARY to the rebuilt native client DLL.');
+
   for (final scenario in [
     (duringOpen: false, silentExit: false),
     (duringOpen: true, silentExit: false),
@@ -107,9 +130,9 @@ void main() {
   }, skip: enabled ? false : 'Set PHONOLITE_QUIC_LIBRARY to the built native client DLL.');
 }
 
-int Function(int) _ownerAlive() => ffi.DynamicLibrary.open(
-  Platform.environment['PHONOLITE_QUIC_LIBRARY']!,
-).lookupFunction<ffi.Int32 Function(ffi.Uint64), int Function(int)>('phonolite_quic_owner_alive');
+int Function(int) _ownerAlive() =>
+    ffi.DynamicLibrary.open(Platform.environment['PHONOLITE_QUIC_LIBRARY']!)
+        .lookupFunction<ffi.Int32 Function(ffi.Uint64), int Function(int)>('phonolite_quic_owner_alive');
 
 /// A real isolate performing only synchronous memory/atomic checks, never audio
 /// or network calls. It cannot process its queued close while this loop runs.

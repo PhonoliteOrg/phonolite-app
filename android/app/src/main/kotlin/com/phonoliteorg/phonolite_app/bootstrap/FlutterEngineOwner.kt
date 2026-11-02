@@ -36,6 +36,15 @@ class FlutterEngineOwner(context: Context, private val createBinding: (BinaryMes
       GeneratedPluginRegister.registerGeneratedPlugins(engine)
 
       val binding = createBinding(engine.dartExecutor.binaryMessenger)
+      engine.addEngineLifecycleListener(object : FlutterEngine.EngineLifecycleListener {
+        override fun onPreEngineRestart() {
+          binding.stopNetworkRouteObservation()
+        }
+
+        override fun onEngineWillDestroy() {
+          binding.detach()
+        }
+      })
       binding.attach()
       engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
 

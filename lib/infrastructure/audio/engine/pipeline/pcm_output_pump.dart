@@ -90,10 +90,14 @@ class _PcmOutputPump {
     }
   }
 
-  Future<void> _writeToBuffer(List<int> samples) async {
+  Future<int> _writeToBuffer(List<int> samples, {void Function(int samples)? onAccepted}) async {
+    final channels = math.max(1, _host._channels);
+    if (samples.length % channels != 0) {
+      throw StateError('PCM append must contain complete channel frames.');
+    }
     final buffer = _host._buffer;
     if (buffer == null) {
-      return;
+      return 0;
     }
 
     final epoch = _host._outputEpoch;
@@ -105,7 +109,9 @@ class _PcmOutputPump {
         epoch == _host._outputEpoch &&
         generation == _host._seekRequestGeneration &&
         identical(buffer, _host._buffer)) {
-      final written = buffer.write(samples, offset);
+      final available = math.min(buffer.free, samples.length - offset);
+      final count = available - available % channels;
+      final written = count == 0 ? 0 : buffer.write(samples, offset, count);
 
       if (written == 0) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -113,7 +119,10 @@ class _PcmOutputPump {
       }
 
       offset += written;
+      onAccepted?.call(written);
     }
+
+    return offset;
   }
 
   Future<void> _writeSamples(AudioPcmOutput player, List<int> samples) async {
@@ -185,5 +194,6 @@ mixin _PcmOutputPumpFacade {
 
   Future<void> _runPump() => _ownerPump._runPump();
 
-  Future<void> _writeToBuffer(List<int> samples) => _ownerPump._writeToBuffer(samples);
+  Future<int> _writeToBuffer(List<int> samples, {void Function(int samples)? onAccepted}) =>
+      _ownerPump._writeToBuffer(samples, onAccepted: onAccepted);
 }

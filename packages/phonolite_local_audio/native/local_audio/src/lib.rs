@@ -115,10 +115,15 @@ impl LocalAudioHandle {
     }
 
     fn seek(&mut self, position_ms: i64) -> Result<i64, String> {
+        let requested_ms = position_ms.max(0) as u64;
+        let target = millis_to_frames(requested_ms, self.sample_rate);
+        let frame = self.seek_frame(target, false)?;
+        Ok(if frame == target { requested_ms as i64 } else { (u128::from(frame) * 1000 / u128::from(self.sample_rate)) as i64 })
+    }
+
+    fn seek_frame(&mut self, target_frames: u64, precise: bool) -> Result<u64, String> {
         let _operation = quic_source::OperationGuard::enter();
         quic_source::check_operation()?;
-        let requested_ms = position_ms.max(0) as u64;
-        let target_frames = millis_to_frames(requested_ms, self.sample_rate);
         if let Some(total) = self.playable_frames {
             if target_frames >= total {
                 self.decoder.reset();
@@ -127,23 +132,23 @@ impl LocalAudioHandle {
                 self.position_frames = total;
                 self.pending_skip_frames = 0;
                 self.seeked_to_end = true;
-                return Ok((u128::from(total) * 1000 / u128::from(self.sample_rate)) as i64);
+                return Ok(total);
             }
         }
         // Predictive codec state must converge before the
         // requested sample. Decode bounded pre-roll into the existing skip path.
-        let seek_ms = if self.requires_accurate_seek {
-            requested_ms.saturating_sub(1000)
+        let seek_frame = if self.requires_accurate_seek {
+            target_frames.saturating_sub(self.sample_rate as u64)
         } else {
-            requested_ms
+            target_frames
         };
-        let seconds = seek_ms / 1000;
-        let frac = (seek_ms % 1000) as f64 / 1000.0;
+        let seconds = seek_frame / self.sample_rate as u64;
+        let frac = (seek_frame % self.sample_rate as u64) as f64 / self.sample_rate as f64;
         let time = Time::new(seconds, frac);
         let seeked = self
             .format
             .seek(
-                if self.requires_accurate_seek {
+                if precise || self.requires_accurate_seek {
                     SeekMode::Accurate
                 } else {
                     SeekMode::Coarse
@@ -167,9 +172,13 @@ impl LocalAudioHandle {
                 time_to_frames(time_base.calc_time(seeked.actual_ts), self.sample_rate)
             })
             .unwrap_or(0);
+        if precise && actual_frames > target_frames {
+            set_failure_code(-101);
+            return Err("source cannot restart at the requested presentation frame".into());
+        }
         self.position_frames = actual_frames.min(target_frames);
         self.pending_skip_frames = target_frames.saturating_sub(self.position_frames);
-        Ok(requested_ms as i64)
+        Ok(target_frames)
     }
 
     fn decode_next_packet(&mut self) -> Result<bool, String> {
@@ -764,6 +773,25 @@ pub unsafe extern "C" fn phonolite_local_audio_seek(
         Ok(actual_ms) => actual_ms,
         Err(err) => {
             decoder.last_error = Some(err);
+            decoder.last_error_code = failure_code();
+            -2
+        }
+    }
+}
+
+/// # Safety
+/// `handle` must be a live decoder exclusively borrowed for this call.
+#[no_mangle]
+pub unsafe extern "C" fn phonolite_local_audio_seek_frame(
+    handle: *mut LocalAudioHandle,
+    presentation_frame: u64,
+) -> i64 {
+    set_failure_code(0);
+    let decoder = match handle_mut(handle) { Ok(decoder) => decoder, Err(code) => return code };
+    match decoder.seek_frame(presentation_frame, true) {
+        Ok(frame) => i64::try_from(frame).unwrap_or(-2),
+        Err(error) => {
+            decoder.last_error = Some(error);
             decoder.last_error_code = failure_code();
             -2
         }

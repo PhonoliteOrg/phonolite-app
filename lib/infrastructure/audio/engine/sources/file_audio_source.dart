@@ -8,8 +8,24 @@ class _FileAudioSource {
   bool _streamEnded = false;
   int _channels = 2;
   int _frameSamples = 0;
+  int _routeGeneration = 0;
+  int _nextPresentationFrame = 0;
+  int? _recoveryCheckpoint;
+  Duration? _healthySince;
+  ({int sampleRate, int channels, int bitDepth, int? playableFrames})? _sourceFormat;
+  final Stopwatch _clock = Stopwatch()..start();
+  static const _recoveryPolicy = AudioRecoveryPolicy();
 
   _FileAudioSource(this._host);
+
+  void notifyNetworkChange(int generation) {
+    if (generation <= _routeGeneration || _host._isLocalFile || !_host._isActive) {
+      return;
+    }
+    _routeGeneration = generation;
+    _healthySince = null;
+    _host._fileDecoder?.notifyNetworkChange(generation);
+  }
 
   Future<void> _runLocalFilePlayback(String filePath) async {
     _host._log('Opening local audio file: $filePath');
@@ -48,6 +64,7 @@ class _FileAudioSource {
       _host._configureBufferProfile(Uri.parse(_host.baseUrl).host);
     }
     _host._fileDecoder = decoder;
+    decoder.notifyNetworkChange(_routeGeneration);
     await decoder.initialize();
 
     if (!_host._isActive) {
@@ -55,11 +72,18 @@ class _FileAudioSource {
     }
 
     final format = decoder.format;
+    _sourceFormat = (
+      sampleRate: format.sampleRate,
+      channels: format.channels,
+      bitDepth: format.bitDepth,
+      playableFrames: format.playableFrames,
+    );
 
     _host._sampleRate = format.sampleRate;
     _host._sourceBitDepth = format.bitDepth;
     _host._pcmBitsPerSample = 32;
     _channels = format.channels;
+    _nextPresentationFrame = _host.startOffset.inMilliseconds * format.sampleRate ~/ 1000;
 
     _host._baseOffsetMs = _host.startOffset.inMilliseconds;
     _host._quickStart = _host.quickStart && _host.startOffset.inMilliseconds > 0;
@@ -82,10 +106,25 @@ class _FileAudioSource {
     final alignedReadSamples = readSamples - (readSamples % _channels);
     final readBufferSize = alignedReadSamples > 0 ? alignedReadSamples : _channels;
 
+    var failedDecoder = false;
     while (_host._isActive) {
+      decoder = _host._fileDecoder ?? decoder;
+      _observeRecovery(decoder);
       final pendingSeekMs = _host._pendingSeekMs;
 
       if (pendingSeekMs != null) {
+        if (failedDecoder) {
+          final generation = _host._seekRequestGeneration;
+          try {
+            decoder = await _replaceDecoder(decoder, pendingSeekMs * _host._sampleRate ~/ 1000, resetBudget: true);
+            failedDecoder = false;
+          } catch (_) {
+            if (!_host._isActive || generation != _host._seekRequestGeneration) {
+              continue;
+            }
+            rethrow;
+          }
+        }
         await _applyLocalSeek(decoder, pendingSeekMs);
         continue;
       }
@@ -145,9 +184,32 @@ class _FileAudioSource {
       final generation = _host._seekRequestGeneration;
       final Int32List samples;
       try {
+        decoder.reportPlayableMilliseconds(_host._bufferedAudioMs());
         samples = await decoder.read32(readBufferSize);
+      } on AudioFileTransportFailure {
+        if (!_host._isActive || generation != _host._seekRequestGeneration) {
+          continue;
+        }
+
+        if (_host._isLocalFile) {
+          rethrow;
+        }
+        _recoveryCheckpoint ??= _nextPresentationFrame;
+        _healthySince = null;
+        try {
+          decoder = await _replaceDecoder(decoder, _nextPresentationFrame);
+        } catch (_) {
+          if (!_host._isActive || generation != _host._seekRequestGeneration) {
+            failedDecoder = true;
+            continue;
+          }
+          rethrow;
+        }
+        continue;
       } catch (_) {
-        if (!_host._isActive || generation != _host._seekRequestGeneration) continue;
+        if (!_host._isActive || generation != _host._seekRequestGeneration) {
+          continue;
+        }
         rethrow;
       }
 
@@ -157,10 +219,19 @@ class _FileAudioSource {
 
       if (samples.isEmpty) {
         _streamEnded = true;
+        decoder.finishRecovery();
         continue;
       }
 
-      await _host._writeToBuffer(samples);
+      if (decoder.recoveryAttempts > 0 || decoder.recoveryRemaining > Duration.zero) {
+        _recoveryCheckpoint ??= _nextPresentationFrame;
+      }
+      await _host._writeToBuffer(
+        samples,
+        onAccepted: (count) {
+          _nextPresentationFrame += count ~/ _channels;
+        },
+      );
     }
 
     _streamEnded = true;
@@ -177,6 +248,65 @@ class _FileAudioSource {
     if (_host._isActive) {
       _host._listening.flush(endReason: 'finished');
       _host._sendPlaybackMessage({'type': 'complete'});
+    }
+  }
+
+  Future<AudioFileDecoder> _replaceDecoder(AudioFileDecoder previous, int frame, {bool resetBudget = false}) async {
+    final generation = _host._seekRequestGeneration;
+    final expected = _sourceFormat!;
+    if (!resetBudget) {
+      previous.beginRecovery();
+    }
+    final remaining = resetBudget ? AudioRecoveryPolicy.budget : previous.recoveryRemaining;
+    final attempts = resetBudget ? 0 : previous.recoveryAttempts;
+    if (remaining <= Duration.zero || attempts >= AudioRecoveryPolicy.maximumAttempts) {
+      throw TimeoutException('Original audio connection recovery exhausted.', AudioRecoveryPolicy.budget);
+    }
+    final delay = resetBudget ? Duration.zero : _recoveryPolicy.retryDelay(attempts);
+    final waiting = Stopwatch()..start();
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay < remaining ? delay : remaining);
+    }
+    if (!_host._isActive || generation != _host._seekRequestGeneration) {
+      throw StateError('Original recovery was superseded.');
+    }
+    final replacement = await previous.replacementAtFrame(
+      frame,
+      remaining: remaining - waiting.elapsed,
+      attemptsRemaining: AudioRecoveryPolicy.maximumAttempts - attempts,
+      onCreated: (replacement) {
+        _host._fileDecoder = replacement;
+        replacement.notifyNetworkChange(_routeGeneration);
+      },
+    );
+    if (!_host._isActive || generation != _host._seekRequestGeneration) {
+      await replacement.close();
+      throw StateError('Original recovery was superseded.');
+    }
+    final actual = replacement.format;
+    if (actual.sampleRate != expected.sampleRate ||
+        actual.channels != expected.channels ||
+        actual.bitDepth != expected.bitDepth ||
+        actual.playableFrames != expected.playableFrames) {
+      throw AudioSourceRejected('Original source presentation changed during recovery.');
+    }
+    return replacement;
+  }
+
+  void _observeRecovery(AudioFileDecoder decoder) {
+    final checkpoint = _recoveryCheckpoint;
+    if (checkpoint == null || _nextPresentationFrame <= checkpoint) {
+      return;
+    }
+    if (_host._bufferedAudioMs() < 2000) {
+      _healthySince = null;
+      return;
+    }
+    _healthySince ??= _clock.elapsed;
+    if (_clock.elapsed - _healthySince! >= AudioRecoveryPolicy.healthyPeriod) {
+      decoder.finishRecovery();
+      _recoveryCheckpoint = null;
+      _healthySince = null;
     }
   }
 
@@ -202,7 +332,9 @@ class _FileAudioSource {
     try {
       actual = await decoder.seek(Duration(milliseconds: targetMs));
     } catch (_) {
-      if (!_host._isActive || requestGeneration != _host._seekRequestGeneration) return;
+      if (!_host._isActive || requestGeneration != _host._seekRequestGeneration) {
+        return;
+      }
       rethrow;
     }
 
@@ -211,6 +343,10 @@ class _FileAudioSource {
     }
 
     _host._baseOffsetMs = actual.inMilliseconds;
+    _nextPresentationFrame = actual.inMilliseconds * _host._sampleRate ~/ 1000;
+    _recoveryCheckpoint = null;
+    _healthySince = null;
+    decoder.finishRecovery();
 
     final requestedAtMs = _host._pendingSeekRequestedAtMs;
 

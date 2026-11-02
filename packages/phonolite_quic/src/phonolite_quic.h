@@ -42,6 +42,11 @@ uint64_t phonolite_quic_generation(QuicHandle* handle);
 int32_t phonolite_quic_read(QuicHandle* handle, uint8_t* buffer, size_t buffer_len);
 char* phonolite_quic_poll_event(QuicHandle* handle);
 char* phonolite_quic_last_error(QuicHandle* handle);
+/* 0 none, 1 transient transport, 2 identity/TLS, 3 source rejection, 4 cancelled. */
+int32_t phonolite_quic_error_code(const QuicHandle* handle);
+void phonolite_quic_set_migration_enabled(QuicHandle* handle, int32_t enabled);
+/* 1 queues a bounded same-server migration; 0 requires reconnect/resume. */
+int32_t phonolite_quic_network_changed(QuicHandle* handle, uint64_t route_generation);
 char* phonolite_quic_poll_stats(QuicHandle* handle);
 long long phonolite_quic_poll_rtt_ms(QuicHandle* handle);
 void phonolite_quic_free_string(char* ptr);
@@ -54,6 +59,15 @@ void phonolite_quic_owner_cancel(uint64_t owner_id);
 int32_t phonolite_quic_owner_alive(uint64_t owner_id);
 uint64_t phonolite_quic_owner_interrupt(uint64_t owner_id);
 int32_t phonolite_quic_owner_begin_operation(uint64_t owner_id, uint64_t epoch);
+void phonolite_quic_owner_route_changed(uint64_t owner_id, uint64_t generation);
+void phonolite_quic_owner_recovery_begin(uint64_t owner_id, uint32_t remaining_ms, uint32_t attempts_remaining);
+uint32_t phonolite_quic_owner_recovery_remaining_ms(uint64_t owner_id);
+uint32_t phonolite_quic_owner_recovery_attempts(uint64_t owner_id);
+void phonolite_quic_owner_recovery_finish(uint64_t owner_id);
+void phonolite_quic_owner_playable_ms(uint64_t owner_id, uint64_t playable_ms);
+void phonolite_quic_owner_set_migration_enabled(uint64_t owner_id, int32_t enabled);
+size_t phonolite_quic_owner_copy_source_metadata(uint64_t owner_id, uint8_t* output, size_t capacity);
+int32_t phonolite_quic_owner_expect_source(uint64_t owner_id, const char* source_version, uint64_t total_length);
 void phonolite_quic_owner_release(void* owner_id);
 void phonolite_quic_owner_release_finalizer(void* owner_id);
 void* phonolite_quic_source_connect_owned(const char* host, uint16_t port, const char* track_id,

@@ -258,6 +258,16 @@ Adapters own MethodCall/Result, maps, method names, StandardMessageCodec values 
 | `phonolite/now_playing` | Incoming setNowPlaying/clearNowPlaying; successful calls return true; outbound remoteCommand carries the existing type/arguments |
 | `phonolite/carplay` | Incoming authState/carPlayState; source/auth updates return true; outbound browse/play methods keep their existing names and local/server scopes |
 | `phonolite/audio_output` | open, write, flush, setVolume, pause, resume, collectDoneSamples, isIdle, close and listOutputDevices with existing scalar/map/byte-array results |
+| `com.phonoliteorg.phonolite_app/network_routes` | Event stream of route revisions; subscription owns the native default-network monitor |
+
+`NetworkRouteMonitor` observes Android 7/API 24 and newer default-network callbacks.
+Its private signature includes network identity, interface addresses, routes and
+DNS, so a Wi-Fi-to-Wi-Fi change can advance a revision without changing the
+reported transport type. The event adapter emits revision numbers rather than
+network credentials or address records. Cancellation, engine restart and engine
+destruction unregister the monitor and fence late callbacks. Older/unsupported
+hosts retain connectivity_plus notifications and transport-progress recovery.
+Route hints do not establish server reachability or override playback intent.
 
 Unknown methods continue to use notImplemented. Preserve missing/malformed argument fallbacks, Boolean/number/string coercions and response types. Android has no current `phonolite/permissions` adapter; the existing [Dart permission service](../lib/infrastructure/platform/permissions/local_network_permission_service.dart) targets iOS.
 

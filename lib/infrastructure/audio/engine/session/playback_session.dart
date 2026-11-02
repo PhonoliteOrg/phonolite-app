@@ -57,6 +57,7 @@ class _PlaybackSession
   final Duration transportProgressTimeout;
   final String? localFilePath;
   final void Function(QuicClient)? _releaseConnection;
+  final QuicClient Function()? _connectionFactory;
   final OpusDecoder Function(int sampleRate, int channels)? _decoderFactory;
   final AudioFileDecoder Function(Uri url, Duration startOffset)? _fileDecoderFactory;
   final AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? _outputFactory;
@@ -95,6 +96,7 @@ class _PlaybackSession
     required double volume,
     required int outputDeviceId,
     QuicClient? reusableConnection,
+    QuicClient Function()? connectionFactory,
     this.serverPin = '',
     Map<String, dynamic>? listeningContext,
     OpusDecoder Function(int sampleRate, int channels)? decoderFactory,
@@ -112,6 +114,7 @@ class _PlaybackSession
        _outputFactory = outputFactory,
        _gaplessSource = gaplessSource,
        _quic = reusableConnection,
+       _connectionFactory = connectionFactory,
        _releaseConnection = releaseConnection {
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _ownerPump = _PcmOutputPump(this);
@@ -166,6 +169,7 @@ class _PlaybackSession
        _fileDecoderFactory = fileDecoderFactory,
        _outputFactory = outputFactory,
        _gaplessSource = gaplessSource,
+       _connectionFactory = null,
        _releaseConnection = null {
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _ownerPump = _PcmOutputPump(this);
@@ -192,6 +196,15 @@ class _PlaybackSession
   bool get _isFileSource => _isLocalFile || settings.isOriginal;
 
   bool get _isActive => !_stopRequested && _playbackId == _getPlaybackId();
+
+  void notifyNetworkChange(int generation) {
+    if (!_isActive || _isLocalFile) return;
+    if (settings.isOriginal) {
+      _ownerFile.notifyNetworkChange(generation);
+    } else {
+      _ownerRemote.notifyNetworkChange(generation);
+    }
+  }
 
   QuicClient? takeConnection(String key, String nextTrackId) {
     if (_isLocalFile || trackId == nextTrackId || '$baseUrl|$quicPort|$token|$serverPin' != key) {
@@ -278,7 +291,10 @@ class _PlaybackSession
         await source.abort();
       }
 
-      final rejected = err is AudioSourceRejected;
+      final rejected =
+          err is AudioSourceRejected ||
+          err is ServerIdentityChangedException ||
+          (err is QuicException && err.kind != QuicFailureKind.none && err.kind != QuicFailureKind.transport);
 
       // Invalidate every producer/pump before releasing native resources. File
       // read failures otherwise leave a detached pump waiting on a disposed output.
@@ -434,23 +450,7 @@ class _PlaybackSession
 
     _configureBufferProfile(host);
 
-    final int httpPort;
-
-    if (uri.hasPort) {
-      httpPort = uri.port;
-    } else {
-      httpPort = uri.scheme == 'https' ? 443 : 80;
-    }
-
-    final port = quicPort != null && quicPort! > 0 ? quicPort! : httpPort + 1;
-    var quic =
-        _quic ??
-        QuicClient.connect(
-          host: host == 'localhost' ? '127.0.0.1' : host,
-          port: port,
-          token: token,
-          serverPin: serverPin,
-        );
+    var quic = _quic ?? _ownerRemote.connect();
 
     _quic = quic;
 
@@ -463,10 +463,13 @@ class _PlaybackSession
         queue: queueTrackIds,
         startMs: startOffset.inMilliseconds,
       );
-    } catch (_) {
+    } catch (error) {
+      if (_ownerRemote._terminalFailure(quic, error)) {
+        throw AudioSourceRejected(error.toString());
+      }
       quic.close();
 
-      quic = QuicClient.connect(host: host, port: port, token: token, serverPin: serverPin);
+      quic = _ownerRemote.connect();
       _quic = quic;
 
       _transportRequestId = quic.openTrack(

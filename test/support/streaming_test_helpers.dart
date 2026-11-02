@@ -33,6 +33,13 @@ class MemoryQuic implements QuicClient {
   bool closed = false;
 
   @override
+  QuicFailureKind get lastFailureKind => closed ? QuicFailureKind.transport : QuicFailureKind.none;
+  @override
+  bool notifyNetworkChange(int routeGeneration) => false;
+  @override
+  void setMigrationEnabled(bool enabled) {}
+
+  @override
   int get requestId => _generation;
 
   @override

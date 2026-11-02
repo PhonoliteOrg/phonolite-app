@@ -57,6 +57,8 @@
 		E93C0938C75638231B5B5067 /* NowPlayingChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 745578BBA88630C134615EAD /* NowPlayingChannelAdapter.swift */; };
 		F22E88E515F57723E9F432B3 /* NowPlayingUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD6F8DA3C494D5671B3C21F /* NowPlayingUpdate.swift */; };
 		FD64925130A1D0EFA7E31FCB /* NowPlayingArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BE0BAAAAADA2F3FA8DAE62 /* NowPlayingArtwork.swift */; };
+		CA5F10F5E7639634160B9356 /* NetworkRouteMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A589CF1491375C57E815630D /* NetworkRouteMonitor.swift */; };
+		C38F383B30A13F3592BF9336 /* NetworkRouteChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 409E1F087619961B689C6999 /* NetworkRouteChannelAdapter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -147,6 +149,8 @@
 		E539979DED23202D731C8BF6 /* NativeRemoteCommand.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeRemoteCommand.swift; sourceTree = "<group>"; };
 		EEDE0DE2F321A56FB61A8F6C /* StorageAccessChannelAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StorageAccessChannelAdapter.swift; sourceTree = "<group>"; };
 		FD812765E8C6DF6918B99872 /* DirectoryBookmarkStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DirectoryBookmarkStore.swift; sourceTree = "<group>"; };
+		A589CF1491375C57E815630D /* NetworkRouteMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteMonitor.swift; sourceTree = "<group>"; };
+		409E1F087619961B689C6999 /* NetworkRouteChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteChannelAdapter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -194,6 +198,7 @@
 		317EEF556DF5465A8D47564C /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
+				409E1F087619961B689C6999 /* NetworkRouteChannelAdapter.swift */,
 				8C1D74A2B263B607BD1AA0C0 /* FlutterChannelAdapter.swift */,
 				5223CB8D4DDC3EC294951D2F /* FlutterChannelEndpoint.swift */,
 				745578BBA88630C134615EAD /* NowPlayingChannelAdapter.swift */,
@@ -339,6 +344,7 @@
 		9111A6F6D0B02CB713885C45 /* Infrastructure */ = {
 			isa = PBXGroup;
 			children = (
+				C87FC8B7C267909998807DE1 /* Network */,
 				317EEF556DF5465A8D47564C /* Flutter */,
 				4575B51F82BB3645C1B7E990 /* Media */,
 			);
@@ -454,6 +460,14 @@
 				6C09BDB5511EF5860E7D4219 /* Pods_RunnerTests.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C87FC8B7C267909998807DE1 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				A589CF1491375C57E815630D /* NetworkRouteMonitor.swift */,
+			);
+			path = Network;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -710,6 +724,8 @@
 				D79EF898D812DA672C912C7D /* FlutterChannelAdapter.swift in Sources */,
 				A66153DEF51C79E09F204436 /* FlutterChannelEndpoint.swift in Sources */,
 				E93C0938C75638231B5B5067 /* NowPlayingChannelAdapter.swift in Sources */,
+				C38F383B30A13F3592BF9336 /* NetworkRouteChannelAdapter.swift in Sources */,
+				CA5F10F5E7639634160B9356 /* NetworkRouteMonitor.swift in Sources */,
 				504DAEF32F2009C03DA76970 /* NowPlayingCodec.swift in Sources */,
 				7F8D9AB5CE3B0DA2F2F7A5A8 /* NowPlayingInfoPublisher.swift in Sources */,
 				2ADE480D43A71061EA3BC665 /* RemoteCommandService.swift in Sources */,

@@ -127,10 +127,13 @@ String? certificateSpki(Uint8List certificate) {
   }
 }
 
+enum QuicFailureKind { none, transport, identity, sourceRejected, cancelled }
+
 class QuicException implements Exception {
-  QuicException(this.message);
+  QuicException(this.message, {this.kind = QuicFailureKind.transport});
 
   final String message;
+  final QuicFailureKind kind;
 
   @override
   String toString() => 'QuicException: $message';
@@ -140,6 +143,7 @@ class ServerIdentityChangedException extends QuicException {
   ServerIdentityChangedException()
     : super(
         'Server identity changed. Sign in again to verify the new server key.',
+        kind: QuicFailureKind.identity,
       );
 }
 
@@ -223,6 +227,112 @@ class QuicOwnerLease implements ffi.Finalizable {
       >('phonolite_quic_owner_begin_operation');
   static bool beginOperation(int ownerId, int epoch) =>
       _beginOperation(ownerId, epoch) != 0;
+
+  static final _routeChanged = _loadLibrary()
+      .lookupFunction<
+        ffi.Void Function(ffi.Uint64, ffi.Uint64),
+        void Function(int, int)
+      >('phonolite_quic_owner_route_changed');
+  static final _recoveryBegin = _loadLibrary()
+      .lookupFunction<
+        ffi.Void Function(ffi.Uint64, ffi.Uint32, ffi.Uint32),
+        void Function(int, int, int)
+      >('phonolite_quic_owner_recovery_begin');
+  static final _recoveryRemaining = _loadLibrary()
+      .lookupFunction<ffi.Uint32 Function(ffi.Uint64), int Function(int)>(
+        'phonolite_quic_owner_recovery_remaining_ms',
+      );
+  static final _recoveryAttempts = _loadLibrary()
+      .lookupFunction<ffi.Uint32 Function(ffi.Uint64), int Function(int)>(
+        'phonolite_quic_owner_recovery_attempts',
+      );
+  static final _recoveryFinish = _loadLibrary()
+      .lookupFunction<ffi.Void Function(ffi.Uint64), void Function(int)>(
+        'phonolite_quic_owner_recovery_finish',
+      );
+  static final _playableMilliseconds = _loadLibrary()
+      .lookupFunction<
+        ffi.Void Function(ffi.Uint64, ffi.Uint64),
+        void Function(int, int)
+      >('phonolite_quic_owner_playable_ms');
+  static final _setMigrationEnabled = _loadLibrary()
+      .lookupFunction<
+        ffi.Void Function(ffi.Uint64, ffi.Int32),
+        void Function(int, int)
+      >('phonolite_quic_owner_set_migration_enabled');
+  static final _copySourceMetadata = _loadLibrary()
+      .lookupFunction<
+        ffi.Size Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.Size),
+        int Function(int, ffi.Pointer<ffi.Uint8>, int)
+      >('phonolite_quic_owner_copy_source_metadata');
+  static final _expectSource = _loadLibrary()
+      .lookupFunction<
+        ffi.Int32 Function(ffi.Uint64, ffi.Pointer<Utf8>, ffi.Uint64),
+        int Function(int, ffi.Pointer<Utf8>, int)
+      >('phonolite_quic_owner_expect_source');
+
+  /// Hints a route change without interrupting or freeing the borrowed decoder.
+  void notifyNetworkChange(int generation) {
+    if (_id != 0) _routeChanged(_id, generation);
+  }
+
+  /// Tightens an existing episode; a hint never renews its native deadline.
+  void beginRecovery({
+    Duration remaining = const Duration(seconds: 15),
+    int attemptsRemaining = 3,
+  }) {
+    if (_id != 0)
+      _recoveryBegin(
+        _id,
+        remaining.inMilliseconds.clamp(0, 0xffffffff),
+        attemptsRemaining.clamp(0, 3),
+      );
+  }
+
+  Duration get recoveryRemaining =>
+      Duration(milliseconds: _id == 0 ? 0 : _recoveryRemaining(_id));
+  int get recoveryAttempts => _id == 0 ? 0 : _recoveryAttempts(_id);
+
+  /// Call only after validated playable progress satisfies the episode policy.
+  void finishRecovery() {
+    if (_id != 0) _recoveryFinish(_id);
+  }
+
+  void reportPlayableMilliseconds(int milliseconds) {
+    if (_id != 0)
+      _playableMilliseconds(_id, milliseconds < 0 ? 0 : milliseconds);
+  }
+
+  void setMigrationEnabled(bool enabled) {
+    if (_id != 0) _setMigrationEnabled(_id, enabled ? 1 : 0);
+  }
+
+  Map<String, dynamic>? get sourceMetadata {
+    if (_id == 0) return null;
+    final length = _copySourceMetadata(_id, ffi.nullptr, 0);
+    if (length == 0) return null;
+    if (length > 64 * 1024)
+      throw QuicException('Invalid Original source metadata.');
+    final output = calloc<ffi.Uint8>(length);
+    try {
+      if (_copySourceMetadata(_id, output, length) != length) return null;
+      final decoded = jsonDecode(utf8.decode(output.asTypedList(length)));
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } finally {
+      calloc.free(output);
+    }
+  }
+
+  bool expectSource(String sourceVersion, int totalLength) {
+    if (_id == 0 || totalLength < 0) return false;
+    final version = sourceVersion.toNativeUtf8();
+    try {
+      return _expectSource(_id, version, totalLength) != 0;
+    } finally {
+      calloc.free(version);
+    }
+  }
+
   void heartbeat() {
     if (_id != 0) _heartbeat(_id);
   }
@@ -431,6 +541,27 @@ class QuicClient implements ffi.Finalizable {
     return _bindings.generation(_handle);
   }
 
+  QuicFailureKind get lastFailureKind {
+    if (_closed) return QuicFailureKind.cancelled;
+    final code = _bindings.errorCode(_handle);
+    return code >= 0 && code < QuicFailureKind.values.length
+        ? QuicFailureKind.values[code]
+        : QuicFailureKind.transport;
+  }
+
+  /// Migration is opt-in until client/server and device validation are complete.
+  void setMigrationEnabled(bool enabled) {
+    _ensureActive();
+    _bindings.setMigrationEnabled(_handle, enabled ? 1 : 0);
+  }
+
+  /// True queues validation for at most one second; false requests normal
+  /// reconnect/resume. Poll events for `path` or `transport_recovery` results.
+  bool notifyNetworkChange(int routeGeneration) {
+    _ensureActive();
+    return _bindings.networkChanged(_handle, routeGeneration) != 0;
+  }
+
   int openTrack({
     required String trackId,
     String? mode,
@@ -631,7 +762,10 @@ class QuicClient implements ffi.Finalizable {
 
   void _ensureActive() {
     if (_closed || _handle == ffi.nullptr) {
-      throw QuicException('QUIC client is closed');
+      throw QuicException(
+        'QUIC client is closed',
+        kind: QuicFailureKind.cancelled,
+      );
     }
   }
 }
@@ -844,7 +978,22 @@ class _Bindings {
           .asFunction(),
       heartbeat = library.lookupFunction<_CloseNative, _CloseDart>(
         'phonolite_quic_heartbeat',
-      );
+      ),
+      errorCode = library
+          .lookupFunction<
+            ffi.Int32 Function(ffi.Pointer<_QuicHandle>),
+            int Function(ffi.Pointer<_QuicHandle>)
+          >('phonolite_quic_error_code'),
+      setMigrationEnabled = library
+          .lookupFunction<
+            ffi.Void Function(ffi.Pointer<_QuicHandle>, ffi.Int32),
+            void Function(ffi.Pointer<_QuicHandle>, int)
+          >('phonolite_quic_set_migration_enabled'),
+      networkChanged = library
+          .lookupFunction<
+            ffi.Int32 Function(ffi.Pointer<_QuicHandle>, ffi.Uint64),
+            int Function(ffi.Pointer<_QuicHandle>, int)
+          >('phonolite_quic_network_changed');
 
   final _ConnectDart connect;
   final _OpenTrackDart openTrack;
@@ -862,4 +1011,7 @@ class _Bindings {
   final _FreeStringDart freeString;
   final _CloseDart close;
   final _CloseDart heartbeat;
+  final int Function(ffi.Pointer<_QuicHandle>) errorCode;
+  final void Function(ffi.Pointer<_QuicHandle>, int) setMigrationEnabled;
+  final int Function(ffi.Pointer<_QuicHandle>, int) networkChanged;
 }

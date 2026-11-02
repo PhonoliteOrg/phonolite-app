@@ -7,6 +7,7 @@ import com.phonoliteorg.phonolite_app.data.models.playback.NativeRemoteCommand
 import com.phonoliteorg.phonolite_app.infrastructure.audio.AudioOutputService
 import com.phonoliteorg.phonolite_app.infrastructure.flutter.VehicleClient
 import com.phonoliteorg.phonolite_app.infrastructure.media.MediaServiceGateway
+import com.phonoliteorg.phonolite_app.infrastructure.network.NetworkRouteMonitor
 import io.flutter.embedding.engine.FlutterEngine
 
 class NativeHost(context: Context) {
@@ -21,7 +22,7 @@ class NativeHost(context: Context) {
     AudioOutputService(appContext) { sendRemoteCommand(NativeRemoteCommand.Pause) }
   }
   private val engineOwner = FlutterEngineOwner(appContext) { messenger ->
-    FlutterEngineBinding(messenger, mediaController, audioOutput)
+    FlutterEngineBinding(messenger, mediaController, audioOutput, NetworkRouteMonitor(appContext))
   }
 
   val vehicleClient: VehicleClient

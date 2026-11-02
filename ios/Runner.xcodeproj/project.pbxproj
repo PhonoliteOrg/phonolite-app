@@ -79,6 +79,8 @@
 		F3A59BE0E2D5339438E1AD51 /* CarPlayShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837DBA73036E7A1A27C0CF9B /* CarPlayShell.swift */; };
 		F3D9A592E3B27CC6968414EC /* PermissionsChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A255849EF1410B4B409F2A /* PermissionsChannelAdapter.swift */; };
 		FDCA6FBA26BFD23EE6588684 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73AF8DC5334365A6CDA5C1C3 /* Pods_RunnerTests.framework */; };
+		E9B4141AEFEC381440EB26C8 /* NetworkRouteMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */; };
+		2D900959AD5354C139671362 /* NetworkRouteChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -195,6 +197,8 @@
 		F01B70C341B64EDCF52ADC74 /* NativeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHost.swift; sourceTree = "<group>"; };
 		F318A394A099EE15A49762FB /* NowPlayingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingState.swift; sourceTree = "<group>"; };
 		F7ED4E901663D666C978E3B4 /* CarPlayScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayScope.swift; sourceTree = "<group>"; };
+		F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteMonitor.swift; sourceTree = "<group>"; };
+		8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteChannelAdapter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -285,6 +289,7 @@
 		3ADBA2EFDF0584624B85B660 /* Infrastructure */ = {
 			isa = PBXGroup;
 			children = (
+				310129190748141601A89C62 /* Network */,
 				B073396ED8F52DA51CDBD4DB /* Flutter */,
 				643B022F0650CB5D2DCEA41B /* Media */,
 			);
@@ -525,6 +530,7 @@
 		B073396ED8F52DA51CDBD4DB /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
+				8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */,
 				7CAAEE2C6BDED0320E862BEF /* FlutterChannelAdapter.swift */,
 				93D43C5169E2CB8BF9F8DBA8 /* FlutterChannelEndpoint.swift */,
 				634750EFE7D1C619EECE4A1C /* NowPlayingChannelAdapter.swift */,
@@ -681,6 +687,14 @@
 				B48CA9278547309E4C70F428 /* Structures */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		310129190748141601A89C62 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */,
+			);
+			path = Network;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -959,6 +973,8 @@
 				E8B9A3B0C8DB4BB60D4257C6 /* FlutterChannelAdapter.swift in Sources */,
 				C8FFE79B90290BD0BB0D8F94 /* FlutterChannelEndpoint.swift in Sources */,
 				F22A7162C4F0AC71AC696D4E /* NowPlayingChannelAdapter.swift in Sources */,
+				2D900959AD5354C139671362 /* NetworkRouteChannelAdapter.swift in Sources */,
+				E9B4141AEFEC381440EB26C8 /* NetworkRouteMonitor.swift in Sources */,
 				668F88CFBEC5A6837E6A9ADD /* NowPlayingCodec.swift in Sources */,
 				F3D9A592E3B27CC6968414EC /* PermissionsChannelAdapter.swift in Sources */,
 				B1C2D3E4F5061728394A5B6C /* phonolite_opus_link.m in Sources */,

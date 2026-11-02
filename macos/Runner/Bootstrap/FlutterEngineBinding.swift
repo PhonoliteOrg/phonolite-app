@@ -8,6 +8,7 @@ final class FlutterEngineBinding {
   private let media: NowPlayingService
   private let storageAccess: StorageAccessChannelAdapter
   private let messenger: FlutterBinaryMessenger
+  private let networkRoutes = NetworkRouteChannelAdapter()
 
   init(
     messenger: FlutterBinaryMessenger, directoryLauncher: DirectoryLauncher = DirectoryLauncher(),
@@ -34,9 +35,11 @@ final class FlutterEngineBinding {
     storageAccess.attach()
     startup.attach()
     nowPlaying.attach(to: messenger)
+    networkRoutes.attach(to: messenger)
   }
 
   func detach() {
+    networkRoutes.detach()
     nowPlaying.detach()
     media.detach()
     storageAccess.detach()

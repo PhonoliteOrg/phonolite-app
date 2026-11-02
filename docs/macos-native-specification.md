@@ -28,6 +28,16 @@ The macOS Now Playing channel shares the Apple codec, patch/state rules, publish
 
 ## Responsibility boundaries
 
+`FlutterEngineBinding` also owns the shared Apple network-route event adapter.
+The `com.phonoliteorg.phonolite_app/network_routes` subscription starts an
+NWPathMonitor and compares path/gateway/interface-address signatures. It emits
+only revision numbers, allowing Dart to retain Wi-Fi-to-Wi-Fi changes alongside
+connectivity_plus transport snapshots. Listener cancellation and binding detach
+cancel the native monitor; late callbacks cannot publish into a replacement
+subscription. Native hints remain independent of server reachability. The
+Windows/Linux hosts currently retain plugin notifications plus transport-progress
+recovery without this native route channel.
+
 | Area | Owns | Boundary |
 | --- | --- | --- |
 | Bootstrap | AppKit entry points, engine/view construction, plugin registration and dependency lifetimes | Other areas do not import or discover the concrete host |

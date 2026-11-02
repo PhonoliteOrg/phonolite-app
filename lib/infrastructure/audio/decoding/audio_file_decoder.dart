@@ -8,8 +8,15 @@ import 'package:phonolite_quic/phonolite_quic.dart';
 import 'package:phonolite_app/data/models/audio/audio_file_format.dart';
 import 'package:phonolite_app/data/models/audio/audio_source_rejected.dart';
 
-typedef AudioFileDecoderWorkerSpawner =
-    Future<Isolate> Function(Map<String, dynamic> configuration, SendPort errors, SendPort exit);
+typedef AudioFileDecoderWorkerSpawner = Future<Isolate> Function(
+  Map<String, dynamic> configuration,
+  SendPort errors,
+  SendPort exit,
+);
+
+class AudioFileTransportFailure extends StateError {
+  AudioFileTransportFailure(super.message);
+}
 
 /// Owns a native file decoder on a separate isolate, including its bounded
 /// network reads. Playback controls and device release never wait on synchronous
@@ -38,6 +45,12 @@ class AudioFileDecoder {
   Timer? _heartbeat;
   QuicOwnerLease? _quicOwner;
   int _nextRequest = 0;
+  int _routeGeneration = 0;
+  int? _startFrame;
+  Map<String, dynamic>? _expectedSourceMetadata;
+  Duration? _recoveryRemaining;
+  int _recoveryAttemptsRemaining = 3;
+  Stopwatch? _recoveryTransferClock;
 
   AudioFileDecoder.local({required String filePath, Duration startOffset = Duration.zero})
     : _filePath = filePath,
@@ -85,6 +98,12 @@ class AudioFileDecoder {
 
   AudioFileFormat get format => _format ?? (throw StateError('Audio decoder is not initialized.'));
 
+  Map<String, dynamic>? get sourceMetadata => _quicOwner?.sourceMetadata ?? _expectedSourceMetadata;
+
+  Duration get recoveryRemaining => _quicOwner?.recoveryRemaining ?? Duration.zero;
+
+  int get recoveryAttempts => _quicOwner?.recoveryAttempts ?? 0;
+
   Future<void> initialize() => _initialization ??= _initialize();
 
   /// Waits for the native decoder to close before retiring its isolate.
@@ -93,6 +112,61 @@ class AudioFileDecoder {
   /// Interrupts the borrowed source operation without freeing its handle.
   /// A following seek resets parser state on the same owned connection.
   void interruptRead() => _quicOwner?.interrupt();
+
+  void notifyNetworkChange(int routeGeneration) {
+    if (routeGeneration <= _routeGeneration) {
+      return;
+    }
+    _routeGeneration = routeGeneration;
+    _quicOwner?.notifyNetworkChange(routeGeneration);
+  }
+
+  void beginRecovery({Duration remaining = const Duration(seconds: 15), int attemptsRemaining = 3}) {
+    _quicOwner?.beginRecovery(remaining: remaining, attemptsRemaining: attemptsRemaining);
+  }
+
+  void finishRecovery() => _quicOwner?.finishRecovery();
+
+  void reportPlayableMilliseconds(int milliseconds) => _quicOwner?.reportPlayableMilliseconds(milliseconds);
+
+  /// Retires a failed parser and initializes a fresh, representation-pinned one.
+  /// The caller retains accepted PCM/output and supplies its next missing frame.
+  Future<AudioFileDecoder> replacementAtFrame(
+    int presentationFrame, {
+    required Duration remaining,
+    required int attemptsRemaining,
+    void Function(AudioFileDecoder replacement)? onCreated,
+  }) async {
+    final metadata = sourceMetadata;
+    if (_quicHost == null || metadata == null) {
+      throw StateError('This source has no pinned Original restart descriptor.');
+    }
+    final replacement =
+        AudioFileDecoder.quic(
+            host: _quicHost,
+            port: _quicPort!,
+            trackId: _quicTrackId!,
+            token: _token,
+            serverPin: _serverPin,
+            workerSpawner: _workerSpawner,
+          )
+          .._startFrame = presentationFrame
+          .._expectedSourceMetadata = metadata
+          .._recoveryRemaining = remaining
+          .._recoveryAttemptsRemaining = attemptsRemaining
+          .._recoveryTransferClock = (Stopwatch()..start())
+          .._routeGeneration = _routeGeneration;
+    _expectedSourceMetadata = metadata;
+    onCreated?.call(replacement);
+    try {
+      await close();
+      await replacement.initialize();
+      return replacement;
+    } catch (_) {
+      await replacement.close();
+      rethrow;
+    }
+  }
 
   Future<Int32List> read32(int maxSamples) async {
     final response = await _request('read', {'max_samples': maxSamples});
@@ -119,7 +193,24 @@ class AudioFileDecoder {
 
     try {
       if (_quicHost != null) {
-        _quicOwner = QuicOwnerLease();
+        _quicOwner ??= QuicOwnerLease();
+        _quicOwner!.setMigrationEnabled(const bool.fromEnvironment('PHONOLITE_QUIC_MIGRATION'));
+        final metadata = _expectedSourceMetadata;
+        if (metadata != null &&
+            !_quicOwner!.expectSource(metadata['source_version'] as String, metadata['total_length'] as int)) {
+          throw AudioSourceRejected('The expected Original source identity is unavailable.');
+        }
+        final remaining = _recoveryRemaining;
+        if (remaining != null) {
+          final budget = remaining - (_recoveryTransferClock?.elapsed ?? Duration.zero);
+          _quicOwner!.beginRecovery(
+            remaining: budget.isNegative ? Duration.zero : budget,
+            attemptsRemaining: _recoveryAttemptsRemaining,
+          );
+        }
+        if (_routeGeneration > 0) {
+          _quicOwner!.notifyNetworkChange(_routeGeneration);
+        }
       }
       final configuration = <String, dynamic>{
         'reply': _messages!.sendPort,
@@ -132,6 +223,7 @@ class AudioFileDecoder {
         'token': _token,
         'server_pin': _serverPin,
         'start_ms': _startOffset.inMilliseconds,
+        'start_frame': _startFrame,
       };
       _isolate = await (_workerSpawner ?? _spawnWorker)(configuration, _errors!.sendPort, _exit!.sendPort);
     } catch (error, stack) {
@@ -243,6 +335,8 @@ class AudioFileDecoder {
     final error = message['error'];
     final failure = message['source_rejected'] == true
         ? AudioSourceRejected(error?.toString() ?? 'Original source is unavailable.')
+        : message['transport_failure'] == true
+        ? AudioFileTransportFailure(error?.toString() ?? 'Original transport failed.')
         : StateError(error?.toString() ?? 'Audio decoder failed.');
     final requestId = message['id'] as int?;
 
@@ -358,6 +452,14 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
       );
     }
 
+    final startFrame = configuration['start_frame'] as int?;
+    if (startFrame != null) {
+      final actual = decoder.seekFrame(startFrame);
+      if (actual != startFrame) {
+        throw LocalAudioException('Original restart checkpoint is outside the source.', code: -101);
+      }
+    }
+
     reply.send({
       'type': 'ready',
       'format': AudioFileFormat(
@@ -423,11 +525,16 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
           'id': requestId,
           'error': error.toString(),
           'source_rejected': error is LocalAudioException && error.isSourceRejected,
+          'transport_failure': error is LocalAudioException && error.code == -103,
         });
       }
     }
   } catch (error) {
-    reply.send({'error': error.toString(), 'source_rejected': error is LocalAudioException && error.isSourceRejected});
+    reply.send({
+      'error': error.toString(),
+      'source_rejected': error is LocalAudioException && error.isSourceRejected,
+      'transport_failure': error is LocalAudioException && error.code == -103,
+    });
   } finally {
     decoder?.close();
     await incoming.cancel();

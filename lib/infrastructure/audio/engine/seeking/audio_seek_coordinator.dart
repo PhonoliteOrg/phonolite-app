@@ -39,6 +39,7 @@ class _AudioSeekCoordinator {
     _seekReadyRequestId = requestId;
 
     final ms = math.max(0, position.inMilliseconds);
+    _host._ownerRemote.onSeek(ms);
 
     _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
     _host._quickStart = true;
@@ -95,7 +96,11 @@ class _AudioSeekCoordinator {
 
     if (cached != null) {
       // A cached seek requires neither server transcoding nor retransmission.
-      quic.suspendAudio();
+      try {
+        quic.suspendAudio();
+      } catch (_) {
+        _host._ownerRemote._repairRequested = true;
+      }
       _host._waitingForHeader = false;
       _pendingSeekId = null;
       _cachedSeek = cached;

@@ -25,6 +25,12 @@ void _audioWorkerMain(AudioWorkerInit init) {
     final cmd = message['cmd'];
 
     switch (cmd) {
+      case 'network_changed':
+        engine.notifyNetworkChange(
+          playbackId: (message['playback_id'] as num?)?.toInt() ?? 0,
+          routeGeneration: (message['route_generation'] as num?)?.toInt() ?? 0,
+        );
+        break;
       case 'commit_gapless':
         if (message['playback_id'] == engine._playbackId) {
           engine.acknowledge((message['preparation_id'] as num?)?.toInt() ?? 0);

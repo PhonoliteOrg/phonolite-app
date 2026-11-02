@@ -24,6 +24,24 @@ fn decode(decoder: &mut LocalAudioHandle) -> Vec<i32> {
 }
 
 #[test]
+fn fresh_decoder_restarts_at_non_millisecond_presentation_frames() {
+    for (name, bytes) in [
+        ("flac", include_bytes!("../tests/fixtures/tone.flac").as_slice()),
+        ("vorbis", include_bytes!("../tests/fixtures/vorbis.ogg").as_slice()),
+        ("aac", include_bytes!("../tests/fixtures/aac.m4a").as_slice()),
+    ] {
+        let mut original = open(bytes, 0);
+        let full = decode(&mut original);
+        let channels = original.output_channels;
+        for frame in [1, 237, 4409, 9001] {
+            let mut replacement = open(bytes, 0);
+            assert_eq!(replacement.seek_frame(frame, true).unwrap(), frame);
+            assert_eq!(decode(&mut replacement), full[frame as usize * channels..], "{name}: frame {frame}");
+        }
+    }
+}
+
+#[test]
 fn multi_frame_flac_repeated_seeks_after_read_ahead_eof_preserve_every_sample() {
     let bytes = include_bytes!("../tests/fixtures/tone.flac");
     let mut decoder = open(bytes, 0);

@@ -25,6 +25,7 @@ import Flutter
     nativeHost.configureNowPlayingChannel()
     nativeHost.configureCarPlayChannel()
     nativeHost.configurePermissionsChannel()
+    nativeHost.configureNetworkRouteChannel()
     nativeHost.requestLocalNetworkPermission()
     nativeHost.refreshOfflineStorageBackupExclusions()
 
@@ -35,6 +36,12 @@ import Flutter
     super.applicationDidEnterBackground(application)
 
     nativeHost.refreshOfflineStorageBackupExclusions()
+  }
+
+  override func applicationWillTerminate(_ application: UIApplication) {
+    nativeHost.detachNetworkRouteChannel()
+
+    super.applicationWillTerminate(application)
   }
 
   override func application(

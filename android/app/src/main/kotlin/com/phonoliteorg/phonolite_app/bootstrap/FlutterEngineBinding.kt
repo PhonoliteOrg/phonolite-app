@@ -7,12 +7,19 @@ import com.phonoliteorg.phonolite_app.data.models.playback.NativeRemoteCommand
 import com.phonoliteorg.phonolite_app.infrastructure.audio.AudioOutputService
 import com.phonoliteorg.phonolite_app.infrastructure.flutter.AudioOutputChannelAdapter
 import com.phonoliteorg.phonolite_app.infrastructure.flutter.MethodChannelEndpoint
+import com.phonoliteorg.phonolite_app.infrastructure.flutter.NetworkRouteChannelAdapter
 import com.phonoliteorg.phonolite_app.infrastructure.flutter.NowPlayingChannelAdapter
 import com.phonoliteorg.phonolite_app.infrastructure.flutter.VehicleChannelAdapter
 import com.phonoliteorg.phonolite_app.infrastructure.flutter.VehicleClient
+import com.phonoliteorg.phonolite_app.infrastructure.network.NetworkRouteMonitor
 import io.flutter.plugin.common.BinaryMessenger
 
-class FlutterEngineBinding(messenger: BinaryMessenger, media: NativeMediaController, output: AudioOutputService) {
+class FlutterEngineBinding(
+  messenger: BinaryMessenger,
+  media: NativeMediaController,
+  output: AudioOutputService,
+  networkRoutes: NetworkRouteMonitor
+) {
   private val mainHandler = Handler(Looper.getMainLooper())
   private val dispatchToPlatform: (() -> Unit) -> Unit = { operation -> mainHandler.post(operation) }
   private val nowPlaying = NowPlayingChannelAdapter(
@@ -30,6 +37,7 @@ class FlutterEngineBinding(messenger: BinaryMessenger, media: NativeMediaControl
     dispatchToPlatform,
     output
   )
+  private val routes = NetworkRouteChannelAdapter(messenger, networkRoutes)
 
   val vehicleClient: VehicleClient
     get() = vehicle
@@ -38,12 +46,18 @@ class FlutterEngineBinding(messenger: BinaryMessenger, media: NativeMediaControl
     nowPlaying.attach()
     vehicle.attach()
     audio.attach()
+    routes.attach()
   }
 
   fun detach() {
+    routes.detach()
     audio.detach()
     vehicle.detach()
     nowPlaying.detach()
+  }
+
+  fun stopNetworkRouteObservation() {
+    routes.stopObserving()
   }
 
   fun sendRemoteCommand(command: NativeRemoteCommand) {

@@ -41,14 +41,18 @@ class PcmRingBuffer {
     _writeIndex = _length;
   }
 
-  int write(List<int> data, int offset) {
+  int write(List<int> data, int offset, [int? count]) {
+    if (count != null && count < 0) {
+      throw RangeError.value(count, 'count');
+    }
+
     if (offset >= data.length || _length >= _capacity) {
       return 0;
     }
 
     final available = _capacity - _length;
 
-    final remaining = data.length - offset;
+    final remaining = math.min(data.length - offset, count ?? data.length - offset);
     final toWrite = remaining < available ? remaining : available;
 
     final firstPart = toWrite < (_capacity - _writeIndex) ? toWrite : (_capacity - _writeIndex);

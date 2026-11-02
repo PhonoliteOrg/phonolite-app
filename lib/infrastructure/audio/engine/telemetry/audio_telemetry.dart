@@ -23,7 +23,10 @@ class _AudioTelemetry {
   void _reportBuffer({bool force = false, bool suspended = false}) {
     final quic = _host._quic;
 
-    if (quic == null || !_PlaybackSession._serverBackpressureEnabled) {
+    if (quic == null ||
+        !_PlaybackSession._serverBackpressureEnabled ||
+        _host._ownerRemote._repairRequested ||
+        _host._ownerRemote._repairing) {
       return;
     }
 
@@ -50,7 +53,12 @@ class _AudioTelemetry {
     _lastBufferReportAtMs = now;
     _lastReportedBufferMs = bufferedMs;
     _lastReportedTargetMs = targetMs;
-    quic.sendBufferStats(bufferMs: bufferedMs, targetMs: targetMs, force: true);
+    try {
+      quic.sendBufferStats(bufferMs: bufferedMs, targetMs: targetMs, force: true);
+    } catch (_) {
+      // Telemetry cannot invalidate a cached seek or stop accepted playback.
+      _host._ownerRemote._repairRequested = true;
+    }
   }
 
   void _reportStarted() {

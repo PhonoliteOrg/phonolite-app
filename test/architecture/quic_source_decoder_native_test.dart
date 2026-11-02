@@ -33,6 +33,8 @@ void main() {
         expect(_decodeAll(decoder), orderedEquals(expected));
         expect(decoder.seek(const Duration(milliseconds: 5)), const Duration(milliseconds: 5));
         expect(_decodeAll(decoder), orderedEquals(expected.sublist(960)));
+        expect(decoder.seekFrame(961), 961);
+        expect(_decodeAll(decoder), orderedEquals(expected.sublist(961)));
         decoder.close();
         decoder.close();
         expect(source.closed, 1);
@@ -174,15 +176,14 @@ Uint8List _wav(int bits, List<int> samples) {
   return bytes;
 }
 
-typedef _ReadRangeNative =
-    ffi.Int64 Function(
-      ffi.Pointer<ffi.Void>,
-      ffi.Uint64,
-      ffi.Pointer<ffi.Uint8>,
-      ffi.Size,
-      ffi.Uint32,
-      ffi.Pointer<ffi.Uint64>,
-    );
+typedef _ReadRangeNative = ffi.Int64 Function(
+  ffi.Pointer<ffi.Void>,
+  ffi.Uint64,
+  ffi.Pointer<ffi.Uint8>,
+  ffi.Size,
+  ffi.Uint32,
+  ffi.Pointer<ffi.Uint64>,
+);
 typedef _ErrorCodeNative = ffi.Int32 Function(ffi.Pointer<ffi.Void>);
 typedef _ErrorNative = ffi.Size Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Uint8>, ffi.Size);
 typedef _CloseNative = ffi.Void Function(ffi.Pointer<ffi.Void>);

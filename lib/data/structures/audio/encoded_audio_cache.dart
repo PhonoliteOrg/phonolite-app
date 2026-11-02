@@ -173,6 +173,12 @@ class EncodedAudioCache {
     return endMs - positionMs;
   }
 
+  /// True only when contiguous retained data reaches a validated final range.
+  bool hasCompleteTrackAhead(int positionMs) {
+    final endMs = positionMs + bufferedAheadMs(positionMs);
+    return _segments.any((segment) => segment.endOfTrack && segment.hasAllFrames && segment.rangeEndMs <= endMs);
+  }
+
   void clear() {
     for (final segment in _segments) {
       segment._packets.clear();

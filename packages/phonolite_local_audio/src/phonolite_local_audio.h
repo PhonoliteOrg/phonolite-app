@@ -33,6 +33,9 @@ int64_t phonolite_local_audio_read(LocalAudioHandle* handle, int16_t* out, uint6
 /* Interleaved signed PCM32; integer source samples are left-aligned. */
 int64_t phonolite_local_audio_read32(LocalAudioHandle* handle, int32_t* out, uint64_t max_samples);
 int64_t phonolite_local_audio_seek(LocalAudioHandle* handle, int64_t position_ms);
+/* Exact presentation frame per channel, with codec preroll and sample trimming.
+ * Returns the accepted frame, or a negative error. Does not flush any output. */
+int64_t phonolite_local_audio_seek_frame(LocalAudioHandle* handle, uint64_t presentation_frame);
 int32_t phonolite_local_audio_sample_rate(LocalAudioHandle* handle);
 int32_t phonolite_local_audio_bit_depth(LocalAudioHandle* handle);
 /* HTTP status, -100 trust, -101 unsupported source, -102 invalid source,
