@@ -18,24 +18,28 @@ import '../support/widget_test_helpers.dart';
 void main() {
   setUpAll(configureTestFonts);
 
-  testWidgets('loading play button blocks repeated activation and restores playback controls', (tester) async {
+  testWidgets('play button keeps its icon while disabled and enables when available', (tester) async {
     var plays = 0;
 
-    Future<void> show({required bool isLoading}) => tester.pumpWidget(
+    Future<void> show({required bool enabled, IconData icon = Icons.play_arrow}) => tester.pumpWidget(
       wrapInTestApp(
         Center(
-          child: PlaybackHudPlayButton(icon: Icons.play_arrow, onPressed: () => plays++, isLoading: isLoading),
+          child: PlaybackHudPlayButton(icon: icon, onPressed: enabled ? () => plays++ : null),
         ),
       ),
     );
 
-    await show(isLoading: true);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await show(enabled: false);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     await tester.tap(find.byType(PlaybackHudPlayButton), warnIfMissed: false);
     await tester.pump();
     expect(plays, 0);
 
-    await show(isLoading: false);
+    await show(enabled: false, icon: Icons.pause);
+    expect(find.byIcon(Icons.pause), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await show(enabled: true, icon: Icons.pause);
     await tester.pumpAndSettle();
     expect(find.byType(CircularProgressIndicator), findsNothing);
     await tester.tap(find.byType(PlaybackHudPlayButton));
@@ -127,8 +131,9 @@ void main() {
         final loadingIndicator = find.descendant(of: playButton, matching: find.byType(CircularProgressIndicator));
         expect(loadingIndicator, findsNothing);
         await pump(null, isLoading: true);
-        expect(loadingIndicator, findsOneWidget);
-        expect(tester.widget<CircularProgressIndicator>(loadingIndicator).semanticsLabel, 'Loading playback');
+        expect(loadingIndicator, findsNothing);
+        expect(tester.widget<PlaybackHudPlayButton>(playButton).onPressed, isNull);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
         expect(artRect(), idle);
         final track = Track(
           id: 'song',
@@ -141,6 +146,8 @@ void main() {
         );
         await pump(track);
         expect(loadingIndicator, findsNothing);
+        expect(tester.widget<PlaybackHudPlayButton>(playButton).onPressed, isNotNull);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(artRect(), idle);
 
         await pump(track.copyWith(albumId: 'album', albumArtPath: file.path));

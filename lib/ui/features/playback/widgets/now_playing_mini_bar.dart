@@ -113,9 +113,28 @@ class NowPlayingMiniBar extends StatelessWidget {
                         width: artSize,
                         height: artSize,
                         color: ObsidianPalette.obsidianGlass.withByteOpacity(0.6),
-                        child: track == null
-                            ? Icon(PhonoliteIcons.music, color: ObsidianPalette.textMuted, size: artSize * 0.5)
-                            : AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            track == null
+                                ? Icon(PhonoliteIcons.music, color: ObsidianPalette.textMuted, size: artSize * 0.5)
+                                : AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers),
+                            if (state.isLoading)
+                              ColoredBox(
+                                color: Colors.black.withByteOpacity(0.34),
+                                child: Center(
+                                  child: SizedBox.square(
+                                    dimension: s(18),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: s(2.2),
+                                      valueColor: const AlwaysStoppedAnimation<Color>(ObsidianPalette.gold),
+                                      semanticsLabel: 'Loading playback',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -167,7 +186,6 @@ class NowPlayingMiniBar extends StatelessWidget {
                         child: PlaybackHudPlayButton(
                           icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
                           onPressed: playEnabled ? onPlayPause : null,
-                          isLoading: state.isLoading,
                           size: playSize,
                         ),
                       ),
