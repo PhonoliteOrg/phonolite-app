@@ -142,8 +142,7 @@ impl SourceHandle {
             .map_err(poisoned)?
             .begin(generation);
         self.inner.events.lock().map_err(poisoned)?.clear();
-        *self.inner.last_error.lock().map_err(poisoned)? = None;
-        self.inner
+        if self.inner
             .tx
             .send(ControlCommand::SourceOpen {
                 generation,
@@ -151,7 +150,15 @@ impl SourceHandle {
                 offset,
                 source_version: self.version.clone(),
             })
-            .map_err(|_| "QUIC source connection is closed".to_string())?;
+            .is_err()
+        {
+            // The command receiver drops before the worker publishes its error.
+            if let Some(worker) = self.worker.take() {
+                let _ = worker.join();
+            }
+            return Err(self.inner.last_error.lock().map_err(poisoned)?.clone()
+                .unwrap_or_else(|| "QUIC source connection is closed".into()));
+        }
 
         self.stream = Some(SourceStream {
             generation,
@@ -495,7 +502,9 @@ pub extern "C" fn phonolite_quic_source_read_range(
             bytes.len() as i64
         }
         Err(error) => {
-            if security_failure(&error) {
+            if security_failure(&error)
+                || source.inner.last_error_code.load(std::sync::atomic::Ordering::Acquire) == 2
+            {
                 source.error_code = SECURITY_FAILURE;
             }
             source.error = error;
@@ -542,6 +551,47 @@ pub extern "C" fn phonolite_quic_source_close(handle: *mut c_void) {
 mod tests {
     use super::super::{handle_control_bytes, test_handle, AudioSender, ClientState};
     use super::*;
+
+    #[test]
+    fn a_closed_worker_preserves_its_connection_error_and_failure_kind() {
+        for (message, worker_code, source_code) in [
+            ("socket route: Operation not permitted (os error 1)", 1, TRANSPORT_FAILURE),
+            ("QUIC server identity does not match the authenticated server", 2, SECURITY_FAILURE),
+            ("connection verification failed", 2, SECURITY_FAILURE),
+        ] {
+            let (mut source, commands) = source();
+            drop(commands);
+            *source.inner.last_error.lock().unwrap() = Some(message.into());
+            source.inner.last_error_code.store(worker_code, std::sync::atomic::Ordering::Release);
+            let mut output = [0; 4];
+            let mut total = 0;
+            let count = phonolite_quic_source_read_range(
+                (&mut source as *mut SourceHandle).cast(), 0, output.as_mut_ptr(), output.len(), 1000, &mut total,
+            );
+
+            assert_eq!(source.error, message);
+            assert_eq!(count, i64::from(source_code));
+        }
+    }
+
+    #[test]
+    fn a_closed_worker_finishes_publishing_its_error_before_it_is_reported() {
+        let (mut source, commands) = source();
+        let inner = Arc::clone(&source.inner);
+        let (closed, receiver) = std::sync::mpsc::channel();
+        source.worker = Some(thread::spawn(move || {
+            drop(commands);
+            closed.send(()).unwrap();
+            thread::sleep(Duration::from_millis(10));
+            *inner.last_error.lock().unwrap() = Some("socket route unavailable".into());
+        }));
+        receiver.recv().unwrap();
+
+        assert_eq!(
+            source.read_range(0, 4, Duration::from_secs(1)).unwrap_err(),
+            "socket route unavailable",
+        );
+    }
 
     #[test]
     fn owner_cancellation_interrupts_an_inflight_fill_and_rejects_later_reads() {

@@ -49,6 +49,7 @@ class ObsidianHoverCard extends StatelessWidget {
         return Material(
           color: Colors.transparent,
           child: InkWell(
+            mouseCursor: WidgetStateMouseCursor.clickable,
             onTap: withButtonHaptic(onTap),
             onLongPress: onLongPress,
             splashColor: splashColor,

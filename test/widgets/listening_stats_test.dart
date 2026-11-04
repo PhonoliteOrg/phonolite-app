@@ -90,6 +90,13 @@ class _StatsController extends Fake implements AppController {
   Map<String, String> get artworkHeaders => server.authorizationHeaders;
 
   @override
+  bool get gaplessResampling => false;
+  @override
+  Stream<bool> get gaplessResamplingStream => const Stream.empty();
+  @override
+  void setGaplessResampling(bool enabled) {}
+
+  @override
   bool get statsCollectionEnabled => enabled;
   @override
   Stream<bool> get statsCollectionEnabledStream => collectionUpdates.stream;

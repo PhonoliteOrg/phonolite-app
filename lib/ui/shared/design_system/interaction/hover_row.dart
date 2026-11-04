@@ -61,6 +61,7 @@ class ObsidianHoverRow extends StatelessWidget {
         return Material(
           color: Colors.transparent,
           child: InkWell(
+            mouseCursor: WidgetStateMouseCursor.clickable,
             canRequestFocus: canRequestFocus,
             onTap: withButtonHaptic(enabled ? onTap : null),
             onLongPress: enabled ? onLongPress : null,

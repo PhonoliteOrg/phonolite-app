@@ -26,6 +26,7 @@ class _ObsidianPlayButtonState extends State<ObsidianPlayButton> {
     final iconColor = _hovered ? Colors.black : ObsidianPalette.gold;
 
     return MouseRegion(
+      cursor: active ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: SizedBox(

@@ -162,6 +162,7 @@ class _TechButtonState extends State<TechButton> with PointerInteraction<TechBut
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          mouseCursor: WidgetStateMouseCursor.clickable,
           onTap: withButtonHaptic(widget.onTap),
           child: Container(
             constraints: touchLayout ? const BoxConstraints(minHeight: 48, minWidth: 48) : null,

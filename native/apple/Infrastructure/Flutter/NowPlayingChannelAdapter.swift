@@ -9,17 +9,20 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
   private let onPreloadArtwork: ([ArtworkSource]) -> Void
   private let onClear: () -> Void
   private let onAttached: () -> Void
+  private let onActivateAudioSession: () -> Bool
 
   private let channel = FlutterChannelAdapter(pluginName: "phonolite_now_playing", name: "phonolite/now_playing")
 
   init(
     onUpdate: @escaping (NowPlayingUpdate) -> Void, onPreloadArtwork: @escaping ([ArtworkSource]) -> Void,
-    onClear: @escaping () -> Void, onAttached: @escaping () -> Void
+    onClear: @escaping () -> Void, onAttached: @escaping () -> Void,
+    onActivateAudioSession: @escaping () -> Bool = { false }
   ) {
     self.onUpdate = onUpdate
     self.onPreloadArtwork = onPreloadArtwork
     self.onClear = onClear
     self.onAttached = onAttached
+    self.onActivateAudioSession = onActivateAudioSession
   }
 
   var pluginName: String { return channel.pluginName }
@@ -68,6 +71,7 @@ final class NowPlayingChannelAdapter: FlutterChannelEndpoint {
     case "clearNowPlaying":
       onClear()
       result(true)
+    case "activateAudioSession": result(onActivateAudioSession())
     default: result(FlutterMethodNotImplemented)
     }
   }

@@ -66,12 +66,15 @@ class SettingsIconAction extends StatelessWidget {
         button: true,
         enabled: enabled,
         label: tooltip,
-        child: GestureDetector(
-          onTap: withButtonHaptic(onPressed),
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(icon, size: 22, color: color),
+        child: MouseRegion(
+          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          child: GestureDetector(
+            onTap: withButtonHaptic(onPressed),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(icon, size: 22, color: color),
+            ),
           ),
         ),
       ),

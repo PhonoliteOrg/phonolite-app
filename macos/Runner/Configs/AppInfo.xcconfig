@@ -5,14 +5,17 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = phonolite_app
+PRODUCT_NAME = Phonolite
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite
+PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite
 
 // Keep the nib and native test module independent of the displayed app name.
 PRODUCT_MODULE_NAME = Runner
 DEVELOPMENT_TEAM = C598TUZ2S8
+
+// Preserve the audio entry points that Dart resolves at runtime in archives.
+STRIP_STYLE = non-global
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Phonolite. All rights reserved.

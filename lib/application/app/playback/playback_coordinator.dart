@@ -3,6 +3,7 @@ part of '../app_controller.dart';
 class _PlaybackCoordinator {
   final AppController _host;
   final _playbackStarts = RequestGeneration();
+  final _playbackIntents = RequestGeneration();
   bool _wantsPlayback = false;
   bool _audioOutputStarted = false;
   final _playbackController = StreamController<PlaybackState>.broadcast();
@@ -164,6 +165,7 @@ class _PlaybackCoordinator {
 
   Future<void> pause(bool paused) async {
     try {
+      final intent = _playbackIntents.advance();
       _wantsPlayback = !paused;
       _host._awaitingStreamReconnect = false;
       _host._streamRecoveryTimer?.cancel();
@@ -179,10 +181,24 @@ class _PlaybackCoordinator {
           if (_playbackStarts.isCurrent(generation)) _host._nativeCoordinator._reportAudioResetFailure(error);
           return;
         }
-        if (!_host._disposed && _wantsPlayback && _playbackStarts.isCurrent(generation)) {
+        if (!_host._disposed &&
+            _wantsPlayback &&
+            _playbackStarts.isCurrent(generation) &&
+            _playbackIntents.isCurrent(intent)) {
           await pause(false);
         }
         return;
+      }
+
+      if (!paused && _host._nativeCoordinator._audioInterrupted) {
+        final generation = _playbackStarts.current;
+        await _host._nativeCoordinator._reactivateInterruptedSession();
+        if (_host._disposed ||
+            !_wantsPlayback ||
+            !_playbackIntents.isCurrent(intent) ||
+            !_playbackStarts.isCurrent(generation)) {
+          return;
+        }
       }
 
       if (!paused) {

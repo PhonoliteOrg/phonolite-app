@@ -164,6 +164,8 @@ UI owns layout, animation, hover, focus, Flutter text/scroll/animation controlle
 
 Shared design has several levels: theme and tokens define visual values; controls own consistent rendering and interaction; section, modal and shell structures own common arrangements. Use all applicable levels. Supplying the same colors to several separately rebuilt controls does not make their structure or interaction shared. A design change should flow from its owning abstraction to every member of the family.
 
+Enabled click targets use the hand pointer on desktop. `ObsidianTheme` supplies `WidgetStateMouseCursor.clickable` for Material control families; shared ink surfaces set it explicitly because Flutter's default ink cursor uses an arrow on native platforms. Custom gesture controls provide the equivalent enabled/disabled cursor through their pointer region. Disabled controls retain the arrow, text inputs retain the text cursor, and passive surfaces do not advertise an action.
+
 ### Controllers provide functionality
 
 Feature controllers live under `application/controllers/<feature>`. They own validation, loading/errors, functional selection, filtering, pagination, debouncing, asynchronous commands, request generations and stale-result guards. Shared application workflows live in the app component or other named application modules.

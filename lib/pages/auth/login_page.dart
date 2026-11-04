@@ -131,6 +131,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
         ),
         const SizedBox(height: 12),
         InkWell(
+          mouseCursor: WidgetStateMouseCursor.clickable,
           onTap: withButtonHaptic(_feature.isSubmitting ? null : () => _feature.setRememberMe(!_feature.rememberMe)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 56),

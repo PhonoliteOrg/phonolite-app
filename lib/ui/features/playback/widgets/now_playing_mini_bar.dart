@@ -98,6 +98,7 @@ class NowPlayingMiniBar extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
+            mouseCursor: WidgetStateMouseCursor.clickable,
             onTap: withButtonHaptic(onExpand),
             child: Container(
               height: _height,
@@ -156,15 +157,18 @@ class NowPlayingMiniBar extends StatelessWidget {
                     ),
                   ),
                   SizedBox(width: s(8)),
-                  GestureDetector(
-                    onTap: withButtonHaptic(playEnabled ? onPlayPause : null),
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: EdgeInsets.all(playPadding),
-                      child: PlaybackHudPlayButton(
-                        icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
-                        onPressed: playEnabled ? onPlayPause : null,
-                        size: playSize,
+                  MouseRegion(
+                    cursor: playEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+                    child: GestureDetector(
+                      onTap: withButtonHaptic(playEnabled ? onPlayPause : null),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: EdgeInsets.all(playPadding),
+                        child: PlaybackHudPlayButton(
+                          icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                          onPressed: playEnabled ? onPlayPause : null,
+                          size: playSize,
+                        ),
                       ),
                     ),
                   ),

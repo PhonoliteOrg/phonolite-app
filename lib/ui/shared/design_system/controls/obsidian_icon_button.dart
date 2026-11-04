@@ -32,6 +32,7 @@ class ObsidianIconButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        mouseCursor: WidgetStateMouseCursor.clickable,
         onTap: withButtonHaptic(onPressed),
         child: Center(
           child: iconWidget != null

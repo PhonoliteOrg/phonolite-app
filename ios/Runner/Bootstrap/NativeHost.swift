@@ -23,7 +23,8 @@ final class NativeHost {
     onUpdate: { [weak self] update in self?.nowPlaying.update(update) },
     onPreloadArtwork: { [weak self] sources in self?.nowPlaying.preloadArtwork(sources) },
     onClear: { [weak self] in self?.nowPlaying.clear() },
-    onAttached: { [weak self] in self?.remoteCommands.configure() }
+    onAttached: { [weak self] in self?.remoteCommands.configure() },
+    onActivateAudioSession: { [weak self] in self?.audioSession.activateForPlayback() ?? false }
   )
 
   private lazy var carPlayChannel = CarPlayChannelAdapter(

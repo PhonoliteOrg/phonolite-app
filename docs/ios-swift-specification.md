@@ -422,6 +422,8 @@ AudioQueue buffer reuse does not establish audible completion. The native adapte
 
 `AudioSessionService` forwards interruption begin/end (including the system's resume hint) and media-services reset through typed native media commands. The Dart media coordinator owns preserved playback intent and the output-release barrier. User pause during an interruption prevents automatic resumption. A media-services reset retires orphaned output and recreates it paused; an explicit Play received during cleanup waits for release and then applies to the current occurrence.
 
+An interruption-end notification is not guaranteed. Explicit Play asks AudioSessionService to reactivate through the engine-bound Now Playing channel when Dart still considers audio interrupted. Only a successful native activation clears that interruption; denial keeps playback paused. A newer interruption, track selection or Play/Pause intent invalidates an outstanding activation so a delayed reply cannot resume stale playback.
+
 Audio route changes also rebuild output through that barrier, preserving the track,
 confirmed position, shuffle deck and current playback intent. A Bluetooth-to-wired
 CarPlay handoff keeps playback intent when the resulting route is car audio;
@@ -497,4 +499,4 @@ Do not launch apps, simulators, servers or background services during agent work
 
 ## Shared Apple media sources
 
-`native/apple` owns the playback update/state/command models, artwork-source values, Flutter channel transport and Now Playing codec, MediaPlayer publication and remote-command registration used by both Apple targets. Both Xcode projects compile those common sources directly into Runner. iOS retains its UIKit artwork loading, AVAudioSession, scenes and CarPlay capabilities; macOS supplies its own AppKit artwork and engine lifetime. The common bundle ID is `com.phonoliteorg.phonolite`.
+`native/apple` owns the playback update/state/command models, artwork-source values, Flutter channel transport and Now Playing codec, MediaPlayer publication and remote-command registration used by both Apple targets. Both Xcode projects compile those common sources directly into Runner. iOS retains its UIKit artwork loading, AVAudioSession, scenes and CarPlay capabilities; macOS supplies its own AppKit artwork and engine lifetime. The common bundle ID is `com.adamuremek.phonolite`.

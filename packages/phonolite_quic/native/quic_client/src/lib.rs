@@ -56,6 +56,16 @@ mod transition_tests {
     use super::*;
 
     #[test]
+    fn open_acknowledgements_still_require_a_string_track_id() {
+        assert!(serde_json::from_str::<ServerMessage>(
+            r#"{"type":"open_ok","track_id":"track"}"#
+        ).is_ok());
+        for invalid in [r#"{"type":"open_ok"}"#, r#"{"type":"open_ok","track_id":3}"#] {
+            assert!(serde_json::from_str::<ServerMessage>(invalid).is_err());
+        }
+    }
+
+    #[test]
     fn stale_stream_announcement_cannot_select_audio_from_an_earlier_open() {
         let (handle, _) = test_handle(3);
         let sender = AudioSender {
@@ -554,13 +564,6 @@ enum ControlCommand {
         offset: u64,
         source_version: Option<String>,
     },
-    SourceRange {
-        generation: u64,
-        track_id: String,
-        offset: u64,
-        length: u32,
-        source_version: Option<String>,
-    },
     Open {
         generation: u64,
         track_id: String,
@@ -599,14 +602,6 @@ enum ClientMessage<'a> {
         request_id: u64,
         track_id: &'a str,
         offset: u64,
-        source_version: Option<&'a str>,
-    },
-    #[serde(rename = "source_range")]
-    SourceRange {
-        request_id: u64,
-        track_id: &'a str,
-        offset: u64,
-        length: u32,
         source_version: Option<&'a str>,
     },
     #[serde(rename = "auth")]
@@ -681,7 +676,10 @@ enum ServerMessage {
         end_of_track: Option<bool>,
     },
     #[serde(rename = "open_ok")]
-    OpenOk { track_id: String },
+    OpenOk {
+        #[serde(rename = "track_id")]
+        _track_id: String,
+    },
     #[serde(rename = "pong")]
     Pong { ts: Option<i64> },
 }
@@ -1282,18 +1280,6 @@ fn run_client(
                     state.source_stream = true;
                     enqueue_control(&mut state, ClientMessage::SourceOpen {
                         request_id: generation, track_id: &track_id, offset,
-                        source_version: source_version.as_deref(),
-                    });
-                }
-                ControlCommand::SourceRange {
-                    generation, track_id, offset, length, source_version,
-                } => {
-                    tx_bytes.generation = generation;
-                    state.active_track = Some(track_id.clone());
-                    retire_active_stream(&mut state, &mut conn);
-                    state.source_stream = true;
-                    enqueue_control(&mut state, ClientMessage::SourceRange {
-                        request_id: generation, track_id: &track_id, offset, length,
                         source_version: source_version.as_deref(),
                     });
                 }

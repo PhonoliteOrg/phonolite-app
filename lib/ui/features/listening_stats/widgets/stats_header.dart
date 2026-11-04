@@ -203,10 +203,13 @@ class _SelectorIconButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: GestureDetector(
-        onTap: withButtonHaptic(onTap),
-        behavior: HitTestBehavior.opaque,
-        child: Icon(icon, color: ObsidianPalette.gold, size: size),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: withButtonHaptic(onTap),
+          behavior: HitTestBehavior.opaque,
+          child: Icon(icon, color: ObsidianPalette.gold, size: size),
+        ),
       ),
     );
   }

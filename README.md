@@ -98,7 +98,7 @@ tree validation and the synthetic missing-descendant regression.
 
 ### macOS
 
-Requires Flutter 3.47 / Dart 3.13 or later, macOS 13 or later, Xcode, CocoaPods,
+Requires Flutter 3.47 / Dart 3.13 or later, macOS 13 or later, Xcode,
 CMake and Rust. Install both native targets for Intel and Apple Silicon:
 
 ```sh
@@ -108,10 +108,12 @@ flutter build macos --debug
 flutter build macos --release
 ```
 
-CocoaPods builds and embeds the Opus framework from per-architecture CMake archives. The local
-audio and QUIC scripts build matching Rust archives with the same SDK and
-deployment target. Keep the complete app bundle, including its Frameworks and
-Resources, together.
+Flutter build hooks compile and bundle the Opus, local-audio and QUIC frameworks
+for each requested architecture with the selected macOS SDK and deployment
+target. Other plugins use Swift Package Manager. Secure storage uses a local
+packaging fork of version 3.1.3 with unchanged Dart and Keychain implementations.
+Keep the complete app bundle, including its Frameworks and Resources, together.
+See [native build hooks](packages/phonolite_native_build/README.md) for details.
 
 macOS includes CoreAudio output/device selection, decoding, QUIC, menu-bar and
 window integration, launch at login, system Now Playing information and media
@@ -119,10 +121,30 @@ commands. Artwork bytes use the existing authenticated Dart loader. Custom
 storage locations use a native folder chooser and persistent sandbox bookmarks;
 permissions are restored before storage opens at startup.
 
-The iOS and macOS bundle ID is `com.phonoliteorg.phonolite`. Register that ID and
-add macOS to its App Store Connect record for the shared listing. Select the
-correct Apple development team in `macos/Runner.xcworkspace`, then archive,
-validate and upload through Xcode. The Mac App Store manages app updates.
+Before the first certificate-signed build, open `macos/Runner.xcworkspace` in
+Xcode, select the Runner target's Signing & Capabilities tab, enable
+Automatically manage signing and select your development team. Build once in
+Xcode to create the Mac development provisioning profile, or allow Xcode to
+manage it from the command line:
+
+```sh
+xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner \
+  -configuration Debug -derivedDataPath build/macos \
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+```
+
+The registration flag lets Xcode register this Mac with the selected development
+team when it is not already included in that team's development devices.
+Then repeat the Flutter build. Flutter's macOS build command does not pass
+`-allowProvisioningUpdates`, so automatic signing in the project alone cannot
+create a missing profile during that build. Keep certificate-based signing and
+the Keychain entitlements enabled so secure credential storage remains available.
+
+The iOS and macOS bundle ID is `com.adamuremek.phonolite`, matching the existing
+Phonolite App Store Connect record. Add macOS to that record for the shared
+listing. Select the correct Apple development team in `macos/Runner.xcworkspace`,
+then archive, validate and upload through Xcode. The Mac App Store manages app
+updates.
 See the [macOS native specification](docs/macos-native-specification.md) for
 build checks and the remaining user-controlled runtime checks.
 

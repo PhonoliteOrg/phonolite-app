@@ -51,6 +51,8 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
 
 dependency_overrides:
+  flutter_secure_storage_macos:
+    path: packages/flutter_secure_storage_macos
   flutter_secure_storage_linux:
     path: packages/flutter_secure_storage_linux
 

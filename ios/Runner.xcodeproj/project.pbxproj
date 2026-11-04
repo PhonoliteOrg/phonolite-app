@@ -13,6 +13,7 @@
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		21B41B75FC8C2A592A101AAA /* RemoteCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DADBC02743CD6F21264E5F9 /* RemoteCommandService.swift */; };
 		2BF34D164687E2653FB5E9B4 /* PinnedArtworkSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06250F1F7A019EBE19A61006 /* PinnedArtworkSession.swift */; };
+		2D900959AD5354C139671362 /* NetworkRouteChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		3C2F7F347D6757EA803F9BED /* FlutterEngineBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B829BC38EE0520F777D1C5 /* FlutterEngineBinding.swift */; };
@@ -26,7 +27,6 @@
 		5DBB69DC44BADFD8DFA42217 /* CarPlayCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972DD4C82C9DB52945DC7A81 /* CarPlayCommand.swift */; };
 		601312D74B47440636F4FD94 /* CarPlaySourceGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 494AE31F8B7C67ACAF7B6BD6 /* CarPlaySourceGrid.swift */; };
 		61BFAAFF433AB3A4AE47F189 /* CarPlayBrowseController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6624B0F491073033CC07ACF5 /* CarPlayBrowseController.swift */; };
-		A1100026A1100026A1100026 /* CarPlayRootSelectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110026A1110026A1110026 /* CarPlayRootSelectionController.swift */; };
 		668F88CFBEC5A6837E6A9ADD /* NowPlayingCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD148CAB3F2C8AD80763D49 /* NowPlayingCodec.swift */; };
 		676082D8DC3469BA1F0E1597 /* NowPlayingContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA2EE51270275CFB54A57C57 /* NowPlayingContractTests.swift */; };
 		6EB47435C4584993857F6E1E /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 379AAB0110284E8FB3C9C3E8 /* AVFoundation.framework */; };
@@ -57,6 +57,7 @@
 		A1010008A1010008A1010008 /* NowPlayingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1020008A1020008A1020008 /* NowPlayingCoordinator.swift */; };
 		A1030026A1030026A1030026 /* LaunchSnapshotCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1040026A1040026A1040026 /* LaunchSnapshotCover.swift */; };
 		A1050026A1050026A1050026 /* LaunchSnapshotCoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1060026A1060026A1060026 /* LaunchSnapshotCoverTests.swift */; };
+		A1100026A1100026A1100026 /* CarPlayRootSelectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1110026A1110026A1110026 /* CarPlayRootSelectionController.swift */; };
 		A2483F8BD49D38C732373AE5 /* ArtworkCacheKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B35CF6A6DC90C54675DD85 /* ArtworkCacheKey.swift */; };
 		A47522A3FE929CD83F4D153D /* CarPlayRootPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680EE0AB4EEE31FCC26D80B2 /* CarPlayRootPage.swift */; };
 		A75B45F66E370724F988EACC /* NowPlayingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F318A394A099EE15A49762FB /* NowPlayingState.swift */; };
@@ -73,14 +74,13 @@
 		E6AA6E7FB0F91EB2F8FFF4FD /* CarPlayIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 554341FB92C51068A93C431A /* CarPlayIconProvider.swift */; };
 		E7B0B9A800EE2F4E2196E0F6 /* CarPlayArtworkLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54BDB86E12E3A7B5030B5FF5 /* CarPlayArtworkLoader.swift */; };
 		E8B9A3B0C8DB4BB60D4257C6 /* FlutterChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAAEE2C6BDED0320E862BEF /* FlutterChannelAdapter.swift */; };
+		E9B4141AEFEC381440EB26C8 /* NetworkRouteMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */; };
 		ECAD6C6F384935EE055BD930 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01B70C341B64EDCF52ADC74 /* NativeHost.swift */; };
 		F144143D37CA4E15E0E59618 /* CachedNowPlayingArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9D5807E8BCA18A504D7F4D /* CachedNowPlayingArtwork.swift */; };
 		F22A7162C4F0AC71AC696D4E /* NowPlayingChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 634750EFE7D1C619EECE4A1C /* NowPlayingChannelAdapter.swift */; };
 		F3A59BE0E2D5339438E1AD51 /* CarPlayShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837DBA73036E7A1A27C0CF9B /* CarPlayShell.swift */; };
 		F3D9A592E3B27CC6968414EC /* PermissionsChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A255849EF1410B4B409F2A /* PermissionsChannelAdapter.swift */; };
 		FDCA6FBA26BFD23EE6588684 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73AF8DC5334365A6CDA5C1C3 /* Pods_RunnerTests.framework */; };
-		E9B4141AEFEC381440EB26C8 /* NetworkRouteMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */; };
-		2D900959AD5354C139671362 /* NetworkRouteChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -139,7 +139,6 @@
 		5E016653A88D013196094581 /* NativeArtworkLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeArtworkLoader.swift; sourceTree = "<group>"; };
 		634750EFE7D1C619EECE4A1C /* NowPlayingChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingChannelAdapter.swift; sourceTree = "<group>"; };
 		6624B0F491073033CC07ACF5 /* CarPlayBrowseController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayBrowseController.swift; sourceTree = "<group>"; };
-		A1110026A1110026A1110026 /* CarPlayRootSelectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayRootSelectionController.swift; sourceTree = "<group>"; };
 		680EE0AB4EEE31FCC26D80B2 /* CarPlayRootPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayRootPage.swift; sourceTree = "<group>"; };
 		6E5D8BB7706D0BD85C904359 /* CarPlaySourceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySourceState.swift; sourceTree = "<group>"; };
 		6FD5DB4D4312CE63538D14CE /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
@@ -156,6 +155,7 @@
 		837DBA73036E7A1A27C0CF9B /* CarPlayShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayShell.swift; sourceTree = "<group>"; };
 		86FED5F99546D2399C399302 /* CarPlayContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayContractTests.swift; sourceTree = "<group>"; };
 		8C331FC3A5EA4997E80442F4 /* NowPlayingUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingUpdate.swift; sourceTree = "<group>"; };
+		8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteChannelAdapter.swift; sourceTree = "<group>"; };
 		9158907D441C071181F92BE7 /* ArtworkSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkSource.swift; sourceTree = "<group>"; };
 		93A255849EF1410B4B409F2A /* PermissionsChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsChannelAdapter.swift; sourceTree = "<group>"; };
 		93D43C5169E2CB8BF9F8DBA8 /* FlutterChannelEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterChannelEndpoint.swift; sourceTree = "<group>"; };
@@ -173,6 +173,7 @@
 		A1020008A1020008A1020008 /* NowPlayingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCoordinator.swift; sourceTree = "<group>"; };
 		A1040026A1040026A1040026 /* LaunchSnapshotCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSnapshotCover.swift; sourceTree = "<group>"; };
 		A1060026A1060026A1060026 /* LaunchSnapshotCoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSnapshotCoverTests.swift; sourceTree = "<group>"; };
+		A1110026A1110026A1110026 /* CarPlayRootSelectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayRootSelectionController.swift; sourceTree = "<group>"; };
 		A19E461740D1465E9679DAFE /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		A1B2C3D4E5F60718293A4B5C /* phonolite_opus_link.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = phonolite_opus_link.m; sourceTree = "<group>"; };
 		A6F9EEA373A4D58DE7013ACA /* CarPlayNavigationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayNavigationCoordinator.swift; sourceTree = "<group>"; };
@@ -195,10 +196,9 @@
 		EBD148CAB3F2C8AD80763D49 /* NowPlayingCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCodec.swift; sourceTree = "<group>"; };
 		EC949DFC98FAB2C40195A34E /* OfflineBackupExclusions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineBackupExclusions.swift; sourceTree = "<group>"; };
 		F01B70C341B64EDCF52ADC74 /* NativeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHost.swift; sourceTree = "<group>"; };
+		F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteMonitor.swift; sourceTree = "<group>"; };
 		F318A394A099EE15A49762FB /* NowPlayingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingState.swift; sourceTree = "<group>"; };
 		F7ED4E901663D666C978E3B4 /* CarPlayScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayScope.swift; sourceTree = "<group>"; };
-		F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteMonitor.swift; sourceTree = "<group>"; };
-		8C9DF25B3F0382FCD1C8ECE3 /* NetworkRouteChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRouteChannelAdapter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -275,6 +275,14 @@
 			path = CarPlay;
 			sourceTree = "<group>";
 		};
+		310129190748141601A89C62 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */,
+			);
+			path = Network;
+			sourceTree = "<group>";
+		};
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -293,7 +301,6 @@
 				B073396ED8F52DA51CDBD4DB /* Flutter */,
 				643B022F0650CB5D2DCEA41B /* Media */,
 			);
-			name = Infrastructure;
 			path = Infrastructure;
 			sourceTree = "<group>";
 		};
@@ -337,7 +344,6 @@
 				AFE89A0242F076AADC66D572 /* NowPlayingInfoPublisher.swift */,
 				4DADBC02743CD6F21264E5F9 /* RemoteCommandService.swift */,
 			);
-			name = Media;
 			path = Media;
 			sourceTree = "<group>";
 		};
@@ -374,7 +380,6 @@
 			children = (
 				F31D86F9BE900AECFD14763F /* Playback */,
 			);
-			name = Models;
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -536,7 +541,6 @@
 				634750EFE7D1C619EECE4A1C /* NowPlayingChannelAdapter.swift */,
 				EBD148CAB3F2C8AD80763D49 /* NowPlayingCodec.swift */,
 			);
-			name = Flutter;
 			path = Flutter;
 			sourceTree = "<group>";
 		};
@@ -666,7 +670,6 @@
 				F318A394A099EE15A49762FB /* NowPlayingState.swift */,
 				8C331FC3A5EA4997E80442F4 /* NowPlayingUpdate.swift */,
 			);
-			name = Playback;
 			path = Playback;
 			sourceTree = "<group>";
 		};
@@ -675,7 +678,6 @@
 			children = (
 				6F1ECBDA37609A0970C45B99 /* Models */,
 			);
-			name = Data;
 			path = Data;
 			sourceTree = "<group>";
 		};
@@ -687,14 +689,6 @@
 				B48CA9278547309E4C70F428 /* Structures */,
 			);
 			path = UI;
-			sourceTree = "<group>";
-		};
-		310129190748141601A89C62 /* Network */ = {
-			isa = PBXGroup;
-			children = (
-				F1BDF8C22CA6AF365C320184 /* NetworkRouteMonitor.swift */,
-			);
-			path = Network;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -775,7 +769,7 @@
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
-				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */,
+				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
@@ -855,9 +849,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1090,7 +1088,11 @@
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C598TUZ2S8;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_BITCODE = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Phonolite;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -1099,7 +1101,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.4.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-force_load",
@@ -1136,10 +1138,11 @@
 					"-Wl,-exported_symbol,_phonolite_local_audio_error_code",
 					"-Wl,-exported_symbol,_phonolite_local_audio_close",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				STRIP_STYLE = "non-global";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -1160,7 +1163,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -1179,7 +1182,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -1196,7 +1199,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -1323,8 +1326,12 @@
 				CODE_SIGN_ENTITLEMENTS = Runner/RunnerDebug.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C598TUZ2S8;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_BITCODE = NO;
 				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Phonolite;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -1333,7 +1340,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.4.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-Wl,-exported_symbol,_$s6Runner*",
@@ -1371,9 +1378,10 @@
 					"-Wl,-exported_symbol,_phonolite_local_audio_error_code",
 					"-Wl,-exported_symbol,_phonolite_local_audio_close",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				REGISTER_APP_GROUPS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -1394,7 +1402,11 @@
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C598TUZ2S8;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_BITCODE = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Phonolite;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -1403,7 +1415,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.4.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-force_load",
@@ -1440,10 +1452,11 @@
 					"-Wl,-exported_symbol,_phonolite_local_audio_error_code",
 					"-Wl,-exported_symbol,_phonolite_local_audio_close",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				STRIP_STYLE = "non-global";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -1490,7 +1503,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */ = {
+		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
 		};

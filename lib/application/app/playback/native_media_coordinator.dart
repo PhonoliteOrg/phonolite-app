@@ -10,6 +10,7 @@ class _NativeMediaCoordinator {
   bool _nowPlayingReady = false;
   int _nowPlayingEpoch = 0;
   bool _audioInterrupted = false;
+  int _interruptionRevision = 0;
   Future<void>? _audioResetInFlight;
 
   _NativeMediaCoordinator(this._host);
@@ -62,6 +63,7 @@ class _NativeMediaCoordinator {
 
           break;
         case NativeRemoteAction.audioInterruptionBegan:
+          _interruptionRevision++;
           if (!_audioInterrupted) {
             _audioInterrupted = true;
             _host._audioEngine.pause();
@@ -72,6 +74,7 @@ class _NativeMediaCoordinator {
         case NativeRemoteAction.audioInterruptionEnded:
         case NativeRemoteAction.audioInterruptionEndedPaused:
           if (!_audioInterrupted) break;
+          _interruptionRevision++;
           _audioInterrupted = false;
           await _host.pause(command.action == NativeRemoteAction.audioInterruptionEndedPaused || !_host._wantsPlayback);
           break;
@@ -92,10 +95,28 @@ class _NativeMediaCoordinator {
     _pushNowPlayingUpdate(force: true);
   }
 
+  Future<void> _reactivateInterruptedSession() async {
+    if (!_audioInterrupted) {
+      return;
+    }
+
+    final revision = _interruptionRevision;
+    try {
+      final activated = await _host._nowPlayingPlatform.activateAudioSession();
+      if (activated && !_host._disposed && revision == _interruptionRevision) {
+        _audioInterrupted = false;
+        AppLogger.debug('Audio session reactivated after explicit Play.');
+      }
+    } catch (error) {
+      AppLogger.debug('Audio session reactivation was not accepted: $error');
+    }
+  }
+
   Future<void> _resetAudioServices({bool preservePlaybackIntent = false}) {
     if (!preservePlaybackIntent) {
       // A system reset requires explicit Play even when it arrives during a
       // route rebuild. Route changes retain interruption and user-pause intent.
+      _interruptionRevision++;
       _audioInterrupted = false;
       _host._wantsPlayback = false;
     }

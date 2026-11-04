@@ -41,6 +41,15 @@ class NowPlayingPlatformService {
 
   Future<void> publish(NativeNowPlayingSnapshot snapshot) => setNowPlaying(NowPlayingCodec.encodeSnapshot(snapshot));
 
+  /// Explicit Play can retry activation if iOS never delivered interruption end.
+  Future<bool> activateAudioSession() async {
+    if (!Platform.isIOS) {
+      return false;
+    }
+
+    return await _channel.invokeMethod<bool>('activateAudioSession') ?? false;
+  }
+
   Future<void> preloadArtwork(Iterable<NativeArtworkSource> sources) async {
     if (!loadsArtworkNatively) {
       return;

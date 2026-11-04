@@ -631,22 +631,26 @@ class _DownloadStatusButton extends StatelessWidget {
 
     final progress = download?.progress;
     final showProgressRing = downloading;
+    final onTap = action;
 
     return Tooltip(
       message: tooltip,
-      child: GestureDetector(
-        onTap: withButtonHaptic(action),
-        behavior: HitTestBehavior.opaque,
-        child: SizedBox(
-          width: isCompact ? 44 : _trackActionButtonExtent,
-          height: isCompact ? 44 : _trackActionButtonExtent,
-          child: Center(
-            child: _statusIndicator(
-              iconSize: iconSize,
-              color: color,
-              progress: progress,
-              showProgressRing: showProgressRing,
-              showReload: showsReload,
+      child: MouseRegion(
+        cursor: onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: GestureDetector(
+          onTap: withButtonHaptic(onTap),
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox(
+            width: isCompact ? 44 : _trackActionButtonExtent,
+            height: isCompact ? 44 : _trackActionButtonExtent,
+            child: Center(
+              child: _statusIndicator(
+                iconSize: iconSize,
+                color: color,
+                progress: progress,
+                showProgressRing: showProgressRing,
+                showReload: showsReload,
+              ),
             ),
           ),
         ),

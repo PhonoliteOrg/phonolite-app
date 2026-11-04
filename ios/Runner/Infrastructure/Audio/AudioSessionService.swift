@@ -18,7 +18,9 @@ final class AudioSessionService: NSObject {
     NotificationCenter.default.removeObserver(self)
   }
 
-  func configureInitialSession() {
+  func configureInitialSession() { _ = activateForPlayback() }
+
+  func activateForPlayback() -> Bool {
     do {
       let session = AVAudioSession.sharedInstance()
 
@@ -26,8 +28,12 @@ final class AudioSessionService: NSObject {
       // allowAirPlay is only valid for the playAndRecord category.
       try session.setCategory(.playback, mode: .default, options: [])
       try session.setActive(true)
+
+      return true
     } catch {
       NSLog("Failed to activate audio session: %@", "\(error)")
+
+      return false
     }
   }
 

@@ -8,7 +8,9 @@ Rust QUIC client FFI library for the Phonolite Flutter app.
 3. iOS/macOS: Xcode command line tools (for `lipo`/`xcrun`).
 
 ## Notes
-1. iOS/macOS CocoaPods runs `build_quic_static.sh` to produce `libphonolite_quic.a`.
+1. iOS CocoaPods runs `build_quic_static.sh` to produce `libphonolite_quic.a`.
+   macOS uses a Flutter build hook to compile the same Rust crate as a dynamic
+   library and bundle `phonolite_quic.framework` for Intel and Apple Silicon.
 2. Android Gradle invokes `cargo ndk` to populate `src/main/jniLibs`.
 3. Windows/Linux CMake invokes `cargo build` and bundles the resulting library.
 
@@ -34,6 +36,11 @@ failure once at the unreturned byte offset within the existing read deadline,
 preserving the decoder and its buffered PCM. Cancellation, certificate/pin
 failures and source rejection bypass that retry. A reconnect must verify the
 same server pin and source representation before returning further bytes.
+
+When a source worker exits before accepting an open command, the source reports
+that worker's original error and failure kind. It waits for the worker to finish
+publishing the error instead of replacing socket or identity failures with a
+generic closed-connection message.
 
 Route changes are signaled separately from seek/cancellation through the owner
 lease. Original recovery shares one fifteen-second episode and three connection

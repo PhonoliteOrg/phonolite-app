@@ -152,12 +152,21 @@ pub(crate) fn get(id: u64) -> Option<Arc<OwnerLease>> {
     registry().lock().ok()?.get(&id).cloned()
 }
 
+fn next_owner_id(next: &AtomicU64) -> Option<u64> {
+    let mut id = next.load(Ordering::Relaxed);
+    while id <= isize::MAX as u64 {
+        match next.compare_exchange_weak(id, id + 1, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return Some(id),
+            Err(current) => id = current,
+        }
+    }
+    None
+}
+
 #[no_mangle]
 pub extern "C" fn phonolite_quic_owner_create() -> u64 {
     static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-    let Ok(id) = NEXT_ID.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| {
-        (id <= isize::MAX as u64).then(|| id + 1)
-    }) else { return 0 };
+    let Some(id) = next_owner_id(&NEXT_ID) else { return 0 };
     let Ok(mut owners) = registry().lock() else {
         return 0;
     };
@@ -278,6 +287,30 @@ pub extern "C" fn phonolite_quic_owner_release_finalizer(id: *mut c_void) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owner_ids_stop_at_the_pointer_limit_without_wrapping() {
+        let next = AtomicU64::new(isize::MAX as u64);
+        assert_eq!(next_owner_id(&next), Some(isize::MAX as u64));
+        assert_eq!(next_owner_id(&next), None);
+        assert_eq!(next.load(Ordering::Relaxed), isize::MAX as u64 + 1);
+    }
+
+    #[test]
+    fn concurrent_owner_ids_are_unique() {
+        let next = Arc::new(AtomicU64::new(1));
+        let workers: Vec<_> = (0..4).map(|_| {
+            let next = Arc::clone(&next);
+            std::thread::spawn(move || {
+                (0..256).map(|_| next_owner_id(&next).unwrap()).collect::<Vec<_>>()
+            })
+        }).collect();
+        let ids: std::collections::BTreeSet<_> = workers.into_iter()
+            .flat_map(|worker| worker.join().unwrap()).collect();
+        assert_eq!(ids.len(), 1024);
+        assert_eq!(ids.first(), Some(&1));
+        assert_eq!(ids.last(), Some(&1024));
+    }
 
     #[test]
     fn releasing_an_owner_cancels_borrowers_without_reusing_or_dereferencing_its_id() {

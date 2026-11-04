@@ -8,9 +8,10 @@ import 'package:phonolite_opus/phonolite_opus.dart';
 void main() {
   final linuxArchitecture = ffi.Abi.current() == ffi.Abi.linuxArm64 ? 'arm64' : 'x64';
   final candidates = [
+    if (Platform.environment['PHONOLITE_OPUS_LIBRARY'] case final String library) library,
     if (Platform.isMacOS)
       for (final mode in ['Debug', 'Profile', 'Release'])
-        'build/macos/Build/Products/$mode/phonolite_app.app/Contents/Frameworks/phonolite_opus.framework/phonolite_opus',
+        'build/macos/Build/Products/$mode/Phonolite.app/Contents/Frameworks/phonolite_opus.framework/phonolite_opus',
     if (Platform.isWindows) ...[
       'build/windows/x64/plugins/phonolite_opus/Release/phonolite_opus.dll',
       'build/windows/x64/runner/Release/phonolite_opus.dll',

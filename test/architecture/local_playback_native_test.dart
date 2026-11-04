@@ -48,21 +48,23 @@ void main() {
 
   final candidates = [
     if (Platform.environment['PHONOLITE_LOCAL_AUDIO_LIBRARY'] case final String library) library,
-    'build/windows/x64/plugins/phonolite_local_audio/phonolite_local_audio.dll',
-    'build/windows/x64/plugins/phonolite_local_audio/cargo/release/phonolite_local_audio.dll',
-    'build/windows/x64/runner/Release/phonolite_local_audio.dll',
+    if (Platform.isWindows) ...[
+      'build/windows/x64/plugins/phonolite_local_audio/phonolite_local_audio.dll',
+      'build/windows/x64/plugins/phonolite_local_audio/cargo/release/phonolite_local_audio.dll',
+      'build/windows/x64/runner/Release/phonolite_local_audio.dll',
+    ],
   ];
-  final libraryPath = Platform.isWindows ? candidates.where((path) => File(path).existsSync()).firstOrNull : null;
+  final libraryPath = candidates.where((path) => File(path).existsSync()).firstOrNull;
   // Only the decoder is loaded. PCM output remains an in-memory test adapter.
   if (libraryPath != null) {
     ffi.DynamicLibrary.open(File(libraryPath).absolute.path);
   }
-  final skip = libraryPath == null ? 'Requires a compiled Windows phonolite_local_audio.dll.' : false;
+  final skip = libraryPath == null ? 'Requires a compiled decoder; set PHONOLITE_LOCAL_AUDIO_LIBRARY.' : false;
 
   for (final extension in ['flac', 'mp3']) {
-    final filePath = File(
-      'packages/phonolite_local_audio/native/local_audio/tests/fixtures/tone.$extension',
-    ).absolute.path;
+    final filePath = File('packages/phonolite_local_audio/native/local_audio/tests/fixtures/tone.$extension')
+        .absolute
+        .path;
 
     test('$extension EOF idle wait accepts the latest paused seek', () async {
       final idleGate = Completer<bool>();

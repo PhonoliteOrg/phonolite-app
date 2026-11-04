@@ -12,7 +12,7 @@ void main() {
       final project = readProjectModule('ios/Runner.xcodeproj/project.pbxproj');
       final configurations = RegExp(r'/\* (Debug|Release|Profile) \*/ = \{([\s\S]*?)\n\t\t\};')
           .allMatches(project)
-          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite;'));
+          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;'));
       expect(configurations.map((match) => match[1]), unorderedEquals(['Debug', 'Release', 'Profile']));
       for (final configuration in configurations) {
         for (final symbol in symbols) {
@@ -339,6 +339,20 @@ void main() {
         'VehicleShuffleKind.custom => ShuffleMode.custom',
         "await _host.queueLocalShuffle(",
       ]);
+    });
+
+    test('macos sandbox permits QUIC UDP send and receive in every build mode', () {
+      for (final configuration in ['DebugProfile', 'Release']) {
+        final entitlements = readProjectFile('macos/Runner/$configuration.entitlements');
+
+        for (final entitlement in ['app-sandbox', 'network.client', 'network.server']) {
+          expect(
+            entitlements,
+            matches(RegExp('<key>com\\.apple\\.security\\.${RegExp.escape(entitlement)}</key>\\s*<true\\s*/>')),
+            reason: '$configuration needs the sandbox and both network permissions for QUIC UDP traffic.',
+          );
+        }
+      }
     });
 
     test('macos preserves app shell and native output device enumeration', () {

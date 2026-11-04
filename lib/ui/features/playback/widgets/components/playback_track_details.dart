@@ -109,6 +109,7 @@ class PlaybackIntelZone extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          mouseCursor: WidgetStateMouseCursor.clickable,
           onTap: withButtonHaptic(onTap),
           borderRadius: BorderRadius.circular(s(12)),
           child: paddedContent,

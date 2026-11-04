@@ -137,12 +137,16 @@ class ObsidianTheme {
         contentTextStyle: scaledBody.bodyMedium?.copyWith(color: ObsidianPalette.textPrimary),
       ),
       listTileTheme: ListTileThemeData(
+        mouseCursor: WidgetStateMouseCursor.clickable,
         iconColor: ObsidianPalette.textMuted,
         textColor: ObsidianPalette.textPrimary,
         titleTextStyle: scaledBody.titleMedium,
         subtitleTextStyle: scaledBody.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
       ),
       iconTheme: const IconThemeData(color: ObsidianPalette.textMuted),
+      checkboxTheme: const CheckboxThemeData(mouseCursor: WidgetStateMouseCursor.clickable),
+      radioTheme: const RadioThemeData(mouseCursor: WidgetStateMouseCursor.clickable),
+      popupMenuTheme: const PopupMenuThemeData(mouseCursor: WidgetStateMouseCursor.clickable),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: ObsidianPalette.obsidianGlass,
         selectedColor: ObsidianPalette.goldSoft,
@@ -171,6 +175,7 @@ class ObsidianTheme {
         labelStyle: scaledDisplay.labelLarge?.copyWith(letterSpacing: 1.1 * scale),
       ),
       sliderTheme: base.sliderTheme.copyWith(
+        mouseCursor: WidgetStateMouseCursor.clickable,
         activeTrackColor: ObsidianPalette.gold,
         inactiveTrackColor: ObsidianPalette.textMuted.withByteOpacity(0.2),
         secondaryActiveTrackColor: ObsidianPalette.goldSoft,
@@ -184,17 +189,23 @@ class ObsidianTheme {
           padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 14 * scale),
           textStyle: scaledDisplay.labelLarge?.copyWith(letterSpacing: 1.1 * scale),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale)),
-        ).copyWith(overlayColor: noOverlay),
+        ).copyWith(overlayColor: noOverlay, mouseCursor: WidgetStateMouseCursor.clickable),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: ObsidianPalette.gold,
           textStyle: scaledDisplay.labelLarge?.copyWith(letterSpacing: 1.1 * scale),
-        ).copyWith(overlayColor: noOverlay),
+        ).copyWith(overlayColor: noOverlay, mouseCursor: WidgetStateMouseCursor.clickable),
       ),
-      outlinedButtonTheme: OutlinedButtonThemeData(style: const ButtonStyle(overlayColor: noOverlay)),
-      filledButtonTheme: FilledButtonThemeData(style: const ButtonStyle(overlayColor: noOverlay)),
-      iconButtonTheme: const IconButtonThemeData(style: ButtonStyle(overlayColor: noOverlay)),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: const ButtonStyle(overlayColor: noOverlay, mouseCursor: WidgetStateMouseCursor.clickable),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: const ButtonStyle(overlayColor: noOverlay, mouseCursor: WidgetStateMouseCursor.clickable),
+      ),
+      iconButtonTheme: const IconButtonThemeData(
+        style: ButtonStyle(overlayColor: noOverlay, mouseCursor: WidgetStateMouseCursor.clickable),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(splashColor: Colors.transparent),
     );
   }

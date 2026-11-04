@@ -4,7 +4,9 @@ project(phonolite_local_opus LANGUAGES C)
 # Share the app's checked-in libopus sources and its gitfile-aware version module.
 get_filename_component(OPUS_PACKAGE "${CMAKE_CURRENT_LIST_DIR}/../../../../phonolite_opus" REALPATH)
 list(PREPEND CMAKE_MODULE_PATH "${OPUS_PACKAGE}/cmake")
+include(OpusAppleArm64)
 add_subdirectory("${OPUS_PACKAGE}/third_party/opus" "${CMAKE_CURRENT_BINARY_DIR}/opus")
+phonolite_opus_enable_apple_arm64(opus)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_options(opus PRIVATE "$<$<CONFIG:Debug>:-O2>")

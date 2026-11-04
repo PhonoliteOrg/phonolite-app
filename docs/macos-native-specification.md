@@ -109,8 +109,6 @@ macos/
   Flutter/                       # Managed registration, configuration and output
   Runner.xcodeproj/
   Runner.xcworkspace/
-  Podfile
-  Podfile.lock
 ```
 
 MainFlutterWindow remains the nib entry point. FlutterEngineBinding assembles and retains the channel adapter for the specific engine; the window owns its binding and detaches it before teardown or view replacement. The binding does not become a second owner of the view controller already retained by AppKit. AppDelegate keeps application policy and required framework forwarding. Add an app-scoped NativeHost only when services genuinely outlive individual windows or several bindings need shared coordination.
@@ -223,6 +221,8 @@ Changing this sequence, creating a separate shared engine or supporting multiple
 
 Preserve AppDelegate's `@main` entry point, FlutterAppDelegate inheritance, false result for last-window termination and true result for secure restorable state. Dart owns explicit Quit; Dock reopen restores the hidden window. `MainMenu.xib` identifies AppDelegate and MainFlutterWindow in module Runner, connects the delegate's `applicationMenu` and `mainFlutterWindow`, and configures the resizable initial 800-by-600 window. `Info.plist` selects `MainMenu` and `NSApplication`. Keep class names, target module, outlets, responder actions, menu shortcuts and resource registration aligned with filesystem changes.
 
+MainFlutterWindow hides the visible window title and title-bar separator, uses a transparent title bar and applies the dark native appearance. The native window and FlutterViewController share an explicit opaque black background: Flutter's translucent ObsidianBackground gradient composites over that base, so the title bar must match the rendered canvas rather than the `ObsidianPalette.obsidian` token. Keep the standard compact title-bar height, native window buttons and native dragging. Flutter content stays below the title bar; no toolbar or custom header row is added.
+
 A binding belongs to one engine/messenger. Attachment should be idempotent for that binding; engine replacement requires explicit detachment and rebinding. Remove method handlers while their messenger remains valid, then release dependent owners. A channel's name identifies its communication path, and a nil method handler unregisters it. [Flutter macOS channel contract](https://api.flutter.dev/macos-embedder/interface_flutter_method_channel.html)
 
 Keep each request's exactly-once reply obligation visible, including unknown methods, failures and a released owner. A weak capture must still complete an outstanding request where the contract requires it. Do not search all windows or reach through `NSApplication.shared.delegate` from feature code to recover dependencies.
@@ -277,11 +277,13 @@ An await allows other work to change state. Request generation, engine/window id
 
 Swift folder organization is a project choice. XIB class/module identity, source target membership, build phases and linked symbols are executable contracts. This [Xcode project](../macos/Runner.xcodeproj/project.pbxproj) uses explicit file references and Sources entries. Moves must update those paths, resource references and any relative header imports together. Both Apple targets register the common Swift sources under `native/apple` exactly once. Keep generated registration and Flutter assembly tool-owned.
 
-Runner, the [Podfile](../macos/Podfile) and the native macOS podspecs declare macOS 13.0, covering Flutter 3.47 and the native tray dependency's deployment target. Runner uses Swift language mode 5.0 and GNU C11. CocoaPods resolves the Rust FFI packages, and secure storage; supported plugins use Flutter-managed Swift Package Manager integration. Keep the generated package resolution and CocoaPods lockfile with the project. Swift language mode does not identify the compiler or formatter version.
+Runner declares macOS 13.0, covering Flutter 3.47 and the native tray dependency's deployment target. Runner uses Swift language mode 5.0 and GNU C11. Flutter build hooks compile and bundle the three FFI frameworks; the other plugins use Flutter-managed Swift Package Manager integration. macOS no longer requires CocoaPods. Keep the generated Swift package resolution with the project. Swift language mode does not identify the compiler or formatter version.
 
-The app bundle identifier is `com.phonoliteorg.phonolite`, with `.RunnerTests` appended for the test bundle. Apple bundle identifiers do not permit underscores, so this retains the platform's camel-case spelling of the app name.
+The application product is `Phonolite.app`, with `Phonolite` as its executable and bundle name. The internal target, scheme and Swift module remain `Runner`, preserving the nib and native test identities. The app bundle identifier is `com.adamuremek.phonolite`, matching the existing Phonolite App Store Connect record, with `.RunnerTests` appended for the test bundle.
 
-Both configurations keep App Sandbox and outgoing networking. Debug/Profile retain Flutter's JIT and incoming-network exceptions. Both also permit user-selected read/write access and app-scoped bookmarks for custom storage locations. The local-network usage description explains music-server access; the app privacy manifest declares bookmark preference storage in UserDefaults. Keychain persistence still requires verification in a signed build.
+Archive stripping uses `non-global` so the exported audio functions remain available to Dart's runtime symbol lookup. Verify the completed archive as well as regular Release builds; archive postprocessing can otherwise remove these entry points.
+
+Both configurations keep App Sandbox and permit outgoing and incoming networking. QUIC uses UDP, whose sandbox permissions apply to both sending and receiving, so Release also requires `com.apple.security.network.server`; outgoing HTTPS alone does not verify streaming access. Debug/Profile additionally retain Flutter's JIT exception. Both also permit user-selected read/write access and app-scoped bookmarks for custom storage locations. The local-network usage description explains music-server access; the app privacy manifest declares bookmark preference storage in UserDefaults. Keychain persistence still requires verification in a signed build.
 
 `DirectoryPicker` owns AppKit selection independently of channel parsing. The transport saves each accepted grant through `DirectoryBookmarkStore`; `SecurityScopedDirectories` owns active access until engine detachment. `RestoreStorageAccess` restores grants before logs, databases or downloads open. A moved bookmarked directory updates saved paths. Unavailable grants remain saved for reconnected volumes; unavailable logs fall back to their default folder, while offline-library paths remain recoverable. Artwork imports use the user-selected file capability and the existing Flutter picker. A typed path alone does not authorize sandbox access.
 
@@ -289,15 +291,17 @@ Keep shared native packages in their own source trees:
 
 | Package | macOS integration | Ownership |
 | --- | --- | --- |
-| [phonolite_opus](../packages/phonolite_opus/macos/phonolite_opus.podspec) | CMake static archive and Objective-C link anchor built by the pod for Xcode's requested architectures | Shared Opus decoder and vendored source |
-| [phonolite_local_audio](../packages/phonolite_local_audio/macos/phonolite_local_audio.podspec) | Rust static archive, Objective-C link anchor and CocoaPods configuration | Local decoding, opaque handles, PCM and seek results |
-| [phonolite_quic](../packages/phonolite_quic/macos/phonolite_quic.podspec) | Rust static archive, Objective-C link anchor and CocoaPods configuration | Transport, authentication, certificate identity and native allocations |
+| [phonolite_opus](../packages/phonolite_opus/hook/build.dart) | Flutter code asset compiled by CMake for each requested architecture | Shared Opus decoder and vendored source |
+| [phonolite_local_audio](../packages/phonolite_local_audio/hook/build.dart) | Flutter code asset from the existing Rust dynamic-library target | Local decoding, opaque handles, PCM and seek results |
+| [phonolite_quic](../packages/phonolite_quic/hook/build.dart) | Flutter code asset from the existing Rust dynamic-library target | Transport, authentication, certificate identity and native allocations |
 
 The package loaders try their packaged macOS framework and can fall back to process lookup. Preserve export names, calling conventions, linker anchors, archive retention, units and matching close/free functions. Rust-allocated QUIC strings require the package's free function. Do not move Rust implementations or upstream Opus into Runner to make the host tree symmetrical. Native C, Objective-C link anchors, shell scripts and Rust retain appropriate language conventions.
 
-CocoaPods is the single Opus compilation owner on macOS; the former Runner static archive/force-load phase is removed. The pod builds a real static archive through CMake and retains all four FFI exports through an Objective-C anchor, so CocoaPods does not depend on following source-directory symlinks. CMake configures the codec for each target CPU. Both Rust package wrappers delegate to `native/apple/Scripts/build_rust_static.sh`, which honors `ARCHS`, the macOS SDK and deployment target, uses locked Cargo dependencies and combines the requested Intel/Apple Silicon slices. Missing Rust targets fail the build; no fallback to a host-only archive is allowed.
+The [shared native build package](../packages/phonolite_native_build/README.md) owns macOS code-asset compilation. Opus retains its existing CMake configuration and native exports; Apple Silicon uses NEON unconditionally without unsupported runtime detection. Both Rust packages use locked Cargo dependencies and their existing `cdylib` targets. Every hook honors Flutter's requested architecture and minimum macOS version and the selected macOS SDK. Flutter combines Intel/Apple Silicon slices and packages/signs the existing framework names. Missing Rust targets and unsupported architectures fail the build; no fallback to a host-only archive is allowed. Source dependencies, including the shared vendored Opus sources, invalidate the hook cache. Other platforms retain their current plugin integration.
 
-App Store distribution uses the shared iOS/macOS bundle ID `com.phonoliteorg.phonolite`, the existing Apple team and the Music application category. Keep app updates managed by the store. Register the new shared ID in App Store Connect before uploading; an existing app record tied to a different ID cannot be reassigned.
+The [secure-storage packaging fork](../packages/flutter_secure_storage_macos/README.md) adds Swift Package Manager support to version 3.1.3 while preserving its Dart API, method channel, Keychain queries and Swift implementation. Keep its upstream license and privacy manifest. Review the override when upgrading the parent secure-storage package.
+
+App Store distribution uses the shared iOS/macOS bundle ID `com.adamuremek.phonolite`, the existing Apple team and the Music application category. Keep app updates managed by the store. Add macOS to the existing Phonolite App Store Connect record before validating or uploading. The archive must use that record's bundle ID; an existing app record tied to a different ID cannot be reassigned after a build has been uploaded.
 
 ## Formatter configuration
 
@@ -348,21 +352,23 @@ python3 tools/macos_checks/verify_media_storage.py
 
 It accepts `--cc` and `--cxx` paths for an available GCC/Clang toolchain and writes disposable outputs under `.dart_tool/macos_architecture_refactor`. This is a foreground, unhosted verification executable without window, engine or audio resources.
 
-On a compatible configured Mac, compilation can use the existing CocoaPods workspace without launching the app:
+On a compatible configured Mac, compilation can use the Flutter workspace without launching the app:
 
 ```sh
 xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug build
 xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug build-for-testing
 ```
 
-The foreground `MediaStorageContracts.swift` executable checks metadata publication values, seek epochs, moved/stale bookmarks, idempotent restoration and balanced access cleanup using in-memory storage; it opens no window and changes no system media session. Compile it with the shared playback models/publisher and the Mac bookmark store/access owner. Source/project contracts and portable facade/header checks remain separate from actual SDK compilation and native linking. Check Debug/Profile/Release builds, both architecture slices, exported FFI symbols, static archive integration and entitlements, using a checkout with real package symlinks and resolved dependencies. Hosted execution, rendered-window checks, Finder opening and real audio/device tests remain user-controlled. No apps, servers or background services should be launched during agent work.
+The foreground `MediaStorageContracts.swift` executable checks metadata publication values, seek epochs, moved/stale bookmarks, idempotent restoration and balanced access cleanup using in-memory storage; it opens no window and changes no system media session. Compile it with the shared playback models/publisher and the Mac bookmark store/access owner. Source/project contracts and portable facade/header checks remain separate from actual SDK compilation and native linking. Check Debug/Profile/Release builds, both architecture slices, exported FFI symbols, code-asset packaging and entitlements, using a checkout with resolved dependencies. Hosted execution, rendered-window checks, Finder opening and real audio/device tests remain user-controlled. No apps, servers or background services should be launched during agent work.
 
 Inspect a universal release without launching it:
 
 ```sh
-python3 tools/macos_checks/verify_app_bundle.py build/macos/Build/Products/Release/phonolite_app.app
+python3 tools/macos_checks/verify_app_bundle.py build/macos/Build/Products/Release/Phonolite.app
 ```
+
+Set `PHONOLITE_OPUS_LIBRARY` and `PHONOLITE_LOCAL_AUDIO_LIBRARY` to the built framework executables when running the foreground native decoder and playback tests on macOS. These tests load the decoder libraries and use in-memory PCM output; they do not open the app or an audio device. The playback checks cover paused seeks and end-of-file handling, while the source-decoder checks cover PCM24/PCM32 samples, byte-range reads and callback ownership.
 
 This checks all embedded Mach-O slices and deployment minima, the shared store identity, privacy resource, all CoreAudio process exports and the Opus/local-audio/QUIC framework exports against their public contracts. It does not sign, submit or launch the app.
 
-Verified on 2026-10-31: universal Intel/Apple Silicon Release compilation; Intel Debug build-for-testing and Profile compilation; all nine embedded Mach-O binaries and 68 FFI exports in the Release bundle; shared Apple Swift compilation against the iOS SDK; and 79 focused Dart/platform/native-decoder checks. Four server-generated Opus fixture cases were skipped because those external fixtures were not supplied. The foreground metadata/bookmark and AudioQueue accounting/facade contracts also passed. Native runtime fixtures ran on Intel. Signing, App Store Connect validation/upload, rendered UI, live networking, actual audio devices and hardware media-button checks remain user-controlled.
+Verified on 2026-11-03: warning-free universal Intel/Apple Silicon Release and Profile builds; Intel Debug build-for-testing; all eight embedded Mach-O binaries and 81 FFI exports in both shipping configurations; and strict, deep Release code-signature verification. The Intel Debug build also retains all 81 exports, with the host audio functions in its loaded debug dylib. The 119 Rust tests and 33 focused Flutter/platform/native-decoder/playback tests passed. One existing server-generated rendition fixture test remains ignored because its independent fixtures were not supplied. Native runtime tests ran on Intel. App Store Connect validation/upload, rendered UI, live networking, actual audio devices, hardware media buttons and Keychain persistence remain user-controlled.

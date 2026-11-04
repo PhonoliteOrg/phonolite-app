@@ -2291,6 +2291,22 @@ void main() {
     expect(harness.audio.resumes, 1);
   });
 
+  test('explicit Play reactivates a session when interruption end was not delivered', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    harness.nowPlaying.activation = () async => true;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+
+    expect(harness.nowPlaying.activationRequests, 1);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.audio.resumes, 1);
+  });
+
   test('Play during an interruption records intent without resuming the output', () async {
     final harness = _Harness(authenticated: true);
     harness.nowPlaying.supported = true;
@@ -2300,9 +2316,89 @@ void main() {
     final commands = harness.nowPlaying.commandHandler!;
     await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
     await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.nowPlaying.activationRequests, 1);
     expect(harness.controller.playbackState.isPlaying, isFalse);
     expect(harness.audio.resumes, 0);
     await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.audio.resumes, 1);
+  });
+
+  test('a rejected audio activation stays interrupted and explicit Play can retry', () async {
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    harness.nowPlaying.activation = () async => throw StateError('Audio session is unavailable');
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.resumes, 0);
+
+    harness.nowPlaying.activation = () async => true;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    expect(harness.audio.resumes, 1);
+  });
+
+  test('user Pause while explicit Play reactivates the session prevents resumption', () async {
+    final activation = Completer<bool>();
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    harness.nowPlaying.activation = () => activation.future;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+
+    final playing = commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    await offlineTestWaitFor(() => harness.nowPlaying.activationRequests == 1);
+    await harness.controller.pause(true);
+    activation.complete(true);
+    await playing;
+
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.resumes, 0);
+  });
+
+  test('a new interruption invalidates an earlier explicit Play activation', () async {
+    final activation = Completer<bool>();
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    harness.nowPlaying.activation = () => activation.future;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+
+    final playing = commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    await offlineTestWaitFor(() => harness.nowPlaying.activationRequests == 1);
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+    activation.complete(true);
+    await playing;
+
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+    expect(harness.audio.resumes, 0);
+  });
+
+  test('interruption end during explicit Play activation resumes only once', () async {
+    final activation = Completer<bool>();
+    final harness = _Harness(authenticated: true);
+    harness.nowPlaying.supported = true;
+    harness.nowPlaying.activation = () => activation.future;
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    final commands = harness.nowPlaying.commandHandler!;
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionBegan));
+
+    final playing = commands(const NativeRemoteCommand(action: NativeRemoteAction.play));
+    await offlineTestWaitFor(() => harness.nowPlaying.activationRequests == 1);
+    await commands(const NativeRemoteCommand(action: NativeRemoteAction.audioInterruptionEnded));
+    activation.complete(true);
+    await playing;
+
     expect(harness.controller.playbackState.isPlaying, isTrue);
     expect(harness.audio.resumes, 1);
   });
@@ -5463,6 +5559,8 @@ class _Connectivity extends ConnectivitySignalSource {
 class _NowPlaying extends NowPlayingPlatformService {
   int disposals = 0;
   int clears = 0;
+  int activationRequests = 0;
+  Future<bool> Function()? activation;
   Future<void> Function(NativeRemoteCommand)? commandHandler;
   bool supported = false;
   bool nativeArtwork = false;
@@ -5480,6 +5578,15 @@ class _NowPlaying extends NowPlayingPlatformService {
 
   @override
   Future<void> setNowPlaying(Map<String, dynamic> payload) async => updates.add(payload);
+
+  @override
+  Future<bool> activateAudioSession() async {
+    activationRequests++;
+    final action = activation;
+
+    return action == null ? false : await action();
+  }
+
   @override
   Future<void> preloadArtwork(Iterable<NativeArtworkSource> sources) async {
     preloads.add(sources.toList());
