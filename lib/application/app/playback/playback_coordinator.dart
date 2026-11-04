@@ -6,6 +6,9 @@ class _PlaybackCoordinator {
   final _playbackIntents = RequestGeneration();
   bool _wantsPlayback = false;
   bool _audioOutputStarted = false;
+  bool _isAudioLoading = false;
+  Object? _shuffleSelection;
+  int? _preparingArtworkStart;
   final _playbackController = StreamController<PlaybackState>.broadcast();
   late PlaybackState _playbackState;
   List<OutputDevice> _outputDevices = <OutputDevice>[];
@@ -18,6 +21,8 @@ class _PlaybackCoordinator {
   Stream<PlaybackState> get playbackStream => _playbackController.stream;
 
   PlaybackState get playbackState => _playbackState;
+
+  bool get _waitingForArtwork => _preparingArtworkStart == _playbackStarts.current;
 
   List<OutputDevice> get outputDevices => List.unmodifiable(_outputDevices);
 
@@ -36,6 +41,7 @@ class _PlaybackCoordinator {
 
   Future<void> nextTrack({bool fromAutoAdvance = false}) async {
     _host._gaplessCoordinator.invalidate();
+    final selection = _beginShuffleSelection(enabled: _playbackState.shuffleMode != ShuffleMode.off);
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
@@ -101,6 +107,7 @@ class _PlaybackCoordinator {
     } catch (err) {
       _host._pushMessage('Failed to move to next track: $err');
     } finally {
+      _finishShuffleSelection(selection);
       if (fromAutoAdvance) {
         _host._autoAdvanceInFlight = false;
       }
@@ -109,6 +116,7 @@ class _PlaybackCoordinator {
 
   Future<void> prevTrack({bool fromAutoAdvance = false}) async {
     _host._gaplessCoordinator.invalidate();
+    final selection = _beginShuffleSelection(enabled: _playbackState.shuffleMode != ShuffleMode.off);
     try {
       if (!fromAutoAdvance) {
         _host._armAutoAdvanceGuard();
@@ -160,10 +168,15 @@ class _PlaybackCoordinator {
       _host._handleApiError(err, context: 'previous track');
     } catch (err) {
       _host._pushMessage('Failed to move to previous track: $err');
+    } finally {
+      _finishShuffleSelection(selection);
     }
   }
 
   Future<void> pause(bool paused) async {
+    final selection = _beginShuffleSelection(
+      enabled: !paused && _playbackState.track == null && _playbackState.shuffleMode != ShuffleMode.off,
+    );
     try {
       final intent = _playbackIntents.advance();
       _wantsPlayback = !paused;
@@ -230,7 +243,7 @@ class _PlaybackCoordinator {
 
       if (paused || suspended) {
         _host._audioEngine.pause();
-      } else if (_playbackState.track != null) {
+      } else if (_playbackState.track != null && !_waitingForArtwork) {
         if (!_host._audioEngine.hasActivePlayer) {
           _host._lastInterruptedStreamRestartAt = null;
           _startPlayback(_playbackState.track!, startOffset: _playbackState.position);
@@ -246,6 +259,8 @@ class _PlaybackCoordinator {
       _host._handleApiError(err, context: 'pause');
     } catch (err) {
       _host._pushMessage('Failed to pause: $err');
+    } finally {
+      _finishShuffleSelection(selection);
     }
   }
 
@@ -476,8 +491,11 @@ class _PlaybackCoordinator {
       final token = _host.connection.token;
       final metadataRevision = _host._metadataReadRevision;
 
-      // Metadata is display data; do not delay audio while fetching it.
+      // Upcoming metadata can hydrate independently of the selected cover.
       for (final queued in _host._playQueue.skip(_host._playIndex).take(2)) {
+        if (queued.id == track.id && _host._shuffleArtworkPreloader != null) {
+          continue;
+        }
         if (!_host._needsTrackHydration(queued)) {
           continue;
         }
@@ -518,6 +536,29 @@ class _PlaybackCoordinator {
     }
   }
 
+  Object? _beginShuffleSelection({bool enabled = true}) {
+    if (!enabled) {
+      return null;
+    }
+
+    final selection = Object();
+    _shuffleSelection = selection;
+    _updatePlayback();
+
+    return selection;
+  }
+
+  bool _isShuffleSelectionCurrent(Object? selection) => selection == null || identical(_shuffleSelection, selection);
+
+  void _finishShuffleSelection(Object? selection) {
+    if (selection == null || !identical(_shuffleSelection, selection)) {
+      return;
+    }
+
+    _shuffleSelection = null;
+    _updatePlayback();
+  }
+
   void _updatePlayback({
     Object? track = _unset,
     bool? isPlaying,
@@ -547,11 +588,13 @@ class _PlaybackCoordinator {
         localPlaybackSource ??
         (queueSource != null && queueSource != PlaybackQueueSource.offline ? LocalPlaybackSource.none : null);
     final previousScope = _playbackState.sourceScope;
+    // Audio buffering and shuffle selection finish independently.
+    _isAudioLoading = isLoading ?? _isAudioLoading;
 
     _playbackState = _playbackState.copyWith(
       track: track == _unset ? _playbackState.track : track,
       isPlaying: isPlaying,
-      isLoading: isLoading,
+      isLoading: _isAudioLoading || _shuffleSelection != null || _waitingForArtwork,
       position: position,
       duration: duration,
       bufferRatio: bufferRatio,
@@ -614,6 +657,37 @@ class _PlaybackCoordinator {
         }
         if (_host._disposed || !_playbackStarts.isCurrent(startGeneration) || _playbackState.track?.id != track.id) {
           return;
+        }
+      }
+      if (_host._shuffleArtworkPreloader != null) {
+        _preparingArtworkStart = startGeneration;
+        _audioOutputStarted = false;
+        _host._audioEngine.pause();
+        _updatePlayback(isLoading: true);
+        bool isCurrent() =>
+            !_host._disposed &&
+            _host._shutdown == null &&
+            _playbackStarts.isCurrent(startGeneration) &&
+            _playbackState.track?.id == track.id;
+        try {
+          final ready = await _host._playbackArtworkCoordinator.prepare(
+            track,
+            local: shouldUseLocal,
+            isCurrent: isCurrent,
+          );
+          if (!isCurrent()) {
+            return;
+          }
+          track = ready.copyWith(liked: _playbackState.track!.liked, inPlaylists: _playbackState.track!.inPlaylists);
+          _host._playQueue = _host._playQueue.map((item) => item.id == track.id ? track : item).toList();
+          _updatePlayback(
+            track: track,
+            duration: Duration(milliseconds: track.durationMs),
+          );
+        } finally {
+          if (_preparingArtworkStart == startGeneration) {
+            _preparingArtworkStart = null;
+          }
         }
       }
       final initialPaused = !_wantsPlayback || _host._audioSessionSuspended;
@@ -695,7 +769,7 @@ class _PlaybackCoordinator {
       }
     }
 
-    startSelectedSource();
+    unawaited(startSelectedSource());
   }
 
   Future<void> _startLocalPlayback(

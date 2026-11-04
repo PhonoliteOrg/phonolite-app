@@ -243,6 +243,22 @@ class _GaplessCoordinator {
     final download = _host.availableOfflineDownloadForTrack(track.id);
     final local = state.queueSource == PlaybackQueueSource.offline || !_host._canAttemptRemotePlayback;
     final filePath = local ? download?.filePath : null;
+    if (_host._shuffleArtworkPreloader != null) {
+      bool isCurrent() =>
+          !_host._disposed &&
+          _host._shutdown == null &&
+          sourceSession == _host.connection.sessionRevision &&
+          (after == null
+              ? revision == _revision
+              : _preparingLookahead == after.id &&
+                    (identical(_candidate, after) || (_lastTransitionedId == after.id && _candidate == null)));
+      track = await _host._playbackArtworkCoordinator.prepare(track, local: local, isCurrent: isCurrent);
+      if (isCurrent()) {
+        final resolved = track;
+        _host._playQueue = _host._playQueue.map((item) => item.id == resolved.id ? resolved : item).toList();
+        replacementQueue = replacementQueue?.map((item) => item.id == resolved.id ? resolved : item).toList();
+      }
+    }
     final candidate = _GaplessCandidate(
       id: ++_nextId,
       afterId: after?.id,
@@ -389,7 +405,9 @@ class _GaplessCoordinator {
     final indexed = _host._playIndex >= 0 && _host._playIndex < _host._playQueue.length
         ? _host._playQueue[_host._playIndex]
         : null;
-    final track = indexed?.id == candidate.track.id ? indexed! : candidate.track;
+    final track = indexed?.id == candidate.track.id && !_host._needsTrackHydration(indexed!)
+        ? indexed
+        : candidate.track;
     final wantsPlayback = _host._wantsPlayback;
     _host._accountServices.prepareTrackStart();
     _host._bumpNowPlayingEpoch();

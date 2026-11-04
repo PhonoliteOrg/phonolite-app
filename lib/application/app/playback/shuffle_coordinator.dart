@@ -63,6 +63,7 @@ class _ShuffleCoordinator {
     final revision = _host.connection.sessionRevision;
     bool isCurrent() =>
         _serverShuffleRequests.isCurrent(request) && _host._sessionCoordinator._isServerSessionCurrent(revision);
+    final selection = _host._playbackCoordinator._beginShuffleSelection(enabled: play);
     try {
       final mode = _host._playbackState.shuffleMode;
       if (mode == ShuffleMode.off || _host._playbackState.shuffleScope != ActionScope.server) return;
@@ -151,10 +152,15 @@ class _ShuffleCoordinator {
       if (!isCurrent()) return;
       _clearServerShuffleSession();
       _host._pushMessage('Failed to queue shuffle: $err');
+    } finally {
+      _host._playbackCoordinator._finishShuffleSelection(selection);
     }
   }
 
   void _clearServerShuffleSession({bool cancelNavigation = true}) {
+    if (cancelNavigation) {
+      _host._playbackCoordinator._finishShuffleSelection(_host._playbackCoordinator._shuffleSelection);
+    }
     if (cancelNavigation) _serverNavigationRequests.advance();
     _serverShuffleRequests.advance();
     final deck = _serverDeck;
@@ -268,6 +274,8 @@ class _ShuffleCoordinator {
     bool preserveContext = false,
     String? avoidTrackId,
   }) async {
+    final playback = _host._playbackCoordinator;
+    final selection = play ? playback._beginShuffleSelection() : playback._shuffleSelection;
     try {
       final mode = _host._playbackState.shuffleMode;
 
@@ -304,12 +312,18 @@ class _ShuffleCoordinator {
         }
 
         await _host.loadLocalPlaylistTracks(sourcePlaylistId);
+        if (!playback._isShuffleSelectionCurrent(selection)) {
+          return;
+        }
         tracks = _host.localPlaylistTracks;
         offlineSource = OfflineQueueSource.localPlaylist;
         contextScope = 'localPlaylist';
       } else if (mode == ShuffleMode.liked) {
         if (_host.localLiked.isEmpty) {
           await _host.loadLocalLikedTracks();
+          if (!playback._isShuffleSelectionCurrent(selection)) {
+            return;
+          }
         }
 
         tracks = _host.localLiked;
@@ -361,6 +375,9 @@ class _ShuffleCoordinator {
         contextScope = 'localAlbum';
       } else if (mode == ShuffleMode.custom) {
         await _host._ensureCustomShuffleSettingsLoaded();
+        if (!playback._isShuffleSelectionCurrent(selection)) {
+          return;
+        }
 
         final artistIds = _host._customShuffleSettings.localArtistIds.toSet();
         final genres = _host._customShuffleSettings.localGenres.map((genre) => genre.toLowerCase()).toSet();
@@ -408,6 +425,8 @@ class _ShuffleCoordinator {
       }
     } catch (err) {
       _host._pushMessage('Failed to queue local shuffle: $err');
+    } finally {
+      playback._finishShuffleSelection(selection);
     }
   }
 
@@ -416,11 +435,7 @@ class _ShuffleCoordinator {
       return PlaybackQueueSource.playlist;
     }
 
-    if (scope == 'liked') {
-      return PlaybackQueueSource.liked;
-    }
-
-    if (_host._playbackState.shuffleMode == ShuffleMode.liked) {
+    if (scope == 'liked' || _host._playbackState.shuffleMode == ShuffleMode.liked) {
       return PlaybackQueueSource.liked;
     }
 
@@ -952,24 +967,15 @@ class _ShuffleCoordinator {
     );
   }
 
-  String _shuffleQueryMode(ShuffleMode mode) {
-    switch (mode) {
-      case ShuffleMode.off:
-        return 'off';
-      case ShuffleMode.all:
-        return 'all';
-      case ShuffleMode.artist:
-        return 'artist';
-      case ShuffleMode.album:
-        return 'album';
-      case ShuffleMode.custom:
-        return 'custom';
-      case ShuffleMode.liked:
-        return 'liked';
-      case ShuffleMode.currentPlaylist:
-        return 'playlist';
-    }
-  }
+  String _shuffleQueryMode(ShuffleMode mode) => switch (mode) {
+    ShuffleMode.off => 'off',
+    ShuffleMode.all => 'all',
+    ShuffleMode.artist => 'artist',
+    ShuffleMode.album => 'album',
+    ShuffleMode.custom => 'custom',
+    ShuffleMode.liked => 'liked',
+    ShuffleMode.currentPlaylist => 'playlist',
+  };
 
   List<Track> _shuffleTracks(List<Track> tracks, {String? avoidTrackId}) {
     final shuffled = List<Track>.from(tracks);

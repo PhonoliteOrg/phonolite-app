@@ -104,6 +104,7 @@ part 'local_data/local_data_coordinator.dart';
 part 'playback/native_media_coordinator.dart';
 part 'playback/gapless_coordinator.dart';
 part 'playback/playback_coordinator.dart';
+part 'playback/playback_artwork_coordinator.dart';
 part 'playback/playback_queue.dart';
 part 'playback/playback_resume_coordinator.dart';
 part 'playback/playback_resume_restorer.dart';
@@ -201,6 +202,7 @@ class AppController
   late final _StreamRecoveryCoordinator _recoveryCoordinator;
   @override
   late final _PlaybackCoordinator _playbackCoordinator;
+  late final _PlaybackArtworkCoordinator _playbackArtworkCoordinator;
   late final _GaplessCoordinator _gaplessCoordinator;
   @override
   late final _SeekCoordinator _seekCoordinator;
@@ -301,6 +303,7 @@ class AppController
     _availabilityCoordinator = _ServerAvailabilityCoordinator(this);
     _recoveryCoordinator = _StreamRecoveryCoordinator(this);
     _playbackCoordinator = _PlaybackCoordinator(this);
+    _playbackArtworkCoordinator = _PlaybackArtworkCoordinator(this);
     _gaplessCoordinator = _GaplessCoordinator(this);
     _seekCoordinator = _SeekCoordinator(this);
     _nativeCoordinator = _NativeMediaCoordinator(this);
@@ -575,7 +578,7 @@ class AppController
     int? rttMs,
     bool isLocalPlayback,
   ) {
-    if (_disposed) {
+    if (_disposed || _playbackCoordinator._waitingForArtwork) {
       return;
     }
 
@@ -622,7 +625,7 @@ class AppController
   }
 
   void _handleAudioStarted() {
-    if (_disposed) {
+    if (_disposed || _playbackCoordinator._waitingForArtwork) {
       return;
     }
 

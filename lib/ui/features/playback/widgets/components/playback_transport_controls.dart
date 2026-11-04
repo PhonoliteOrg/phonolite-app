@@ -65,6 +65,7 @@ class PlaybackCommandZone extends StatelessWidget {
             PlaybackHudPlayButton(
               icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
               onPressed: playEnabled ? onPlayPause : null,
+              isLoading: state.isLoading,
             ),
             SizedBox(width: s(8)),
             ObsidianHudIconButton(
@@ -129,6 +130,7 @@ class PlaybackExpandedControls extends StatelessWidget {
         icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
         size: 56,
         onPressed: playEnabled ? onPlayPause : null,
+        isLoading: state.isLoading,
       );
       final next = ObsidianHudIconButton(
         icon: PhonoliteIcons.skipForward,
@@ -209,6 +211,7 @@ class PlaybackExpandedControls extends StatelessWidget {
               PlaybackHudPlayButton(
                 icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
                 onPressed: playEnabled ? onPlayPause : null,
+                isLoading: state.isLoading,
                 size: playSize,
               ),
               SizedBox(width: gap),
@@ -288,6 +291,7 @@ class PlaybackCompactControls extends StatelessWidget {
           PlaybackHudPlayButton(
             icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
             onPressed: playEnabled ? onPlayPause : null,
+            isLoading: state.isLoading,
             size: playSize,
           ),
           ObsidianHudIconButton(icon: PhonoliteIcons.square, onPressed: transportEnabled ? onStop : null, size: s(24)),

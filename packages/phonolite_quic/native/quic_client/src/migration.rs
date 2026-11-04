@@ -190,7 +190,7 @@ mod tests {
     struct Identity(std::path::PathBuf);
 
     impl Identity {
-        fn pipe(disable_migration: bool) -> (Self, quiche::testing::Pipe) {
+        fn pipe(disable_migration: bool) -> (Self, quiche::test_utils::Pipe) {
             let path =
                 std::env::temp_dir().join(format!("phonolite-migration-{}", rand::random::<u64>()));
             std::fs::create_dir(&path).unwrap();
@@ -217,7 +217,7 @@ mod tests {
             config.set_active_connection_id_limit(4);
             config.set_disable_active_migration(disable_migration);
             config.set_max_ack_delay(0);
-            let mut pipe = quiche::testing::Pipe::with_config(&mut config).unwrap();
+            let mut pipe = quiche::test_utils::Pipe::with_config(&mut config).unwrap();
             pipe.handshake().unwrap();
             (Self(path), pipe)
         }
@@ -241,8 +241,8 @@ mod tests {
         confirmation.update(&mut pipe.client, true);
         assert!(confirmation.marker_started);
         assert!(!confirmation.confirmed);
-        let flight = quiche::testing::emit_flight(&mut pipe.client).unwrap();
-        quiche::testing::process_flight(&mut pipe.server, flight).unwrap();
+        let flight = quiche::test_utils::emit_flight(&mut pipe.client).unwrap();
+        quiche::test_utils::process_flight(&mut pipe.server, flight).unwrap();
         confirmation.update(&mut pipe.client, true);
         assert!(!confirmation.confirmed);
         pipe.advance().unwrap();
@@ -274,7 +274,7 @@ mod tests {
         let mut bytes = [0; 64];
         assert_eq!(pipe.server.stream_recv(0, &mut bytes).unwrap().0, 6);
         let new_local = "127.0.0.1:9876".parse().unwrap();
-        let peer = quiche::testing::Pipe::server_addr();
+        let peer = quiche::test_utils::Pipe::server_addr();
         pipe.client.probe_path(new_local, peer).unwrap();
         pipe.advance().unwrap();
         assert!(pipe.client.is_path_validated(new_local, peer).unwrap());

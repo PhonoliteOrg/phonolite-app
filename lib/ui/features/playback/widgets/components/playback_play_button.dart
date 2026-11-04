@@ -14,8 +14,15 @@ class PlaybackHudPlayButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final double size;
+  final bool isLoading;
 
-  const PlaybackHudPlayButton({super.key, required this.icon, required this.onPressed, this.size = 54});
+  const PlaybackHudPlayButton({
+    super.key,
+    required this.icon,
+    required this.onPressed,
+    this.size = 54,
+    this.isLoading = false,
+  });
 
   @override
   State<PlaybackHudPlayButton> createState() => PlaybackHudPlayButtonState();
@@ -25,7 +32,7 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
   static const Duration _transition = Duration(milliseconds: 200);
 
   @override
-  bool get interactionEnabled => widget.onPressed != null;
+  bool get interactionEnabled => widget.onPressed != null && !widget.isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -35,24 +42,25 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
     final baseSize = s(widget.size);
     final iconSize = baseSize * 0.48;
     final borderWidth = s(1.5 * scaleFactor);
-    final enabled = widget.onPressed != null;
+    final enabled = interactionEnabled;
+    final hasStatus = enabled || widget.isLoading;
     final highlight = enabled && (hovered || pressed);
     final double glowOpacity;
 
-    if (enabled) {
+    if (hasStatus) {
       glowOpacity = highlight ? 0.7 : 0.35;
     } else {
       glowOpacity = 0.0;
     }
 
-    final baseColor = enabled ? ObsidianPalette.gold : ObsidianPalette.textMuted.withByteOpacity(0.28);
+    final baseColor = hasStatus ? ObsidianPalette.gold : ObsidianPalette.textMuted.withByteOpacity(0.28);
     final idleFill = enabled
         ? ObsidianPalette.obsidianElevated.withValues(alpha: 0.72)
         : ObsidianPalette.obsidianElevated.withValues(alpha: 0.4);
     final idleIcon = enabled ? ObsidianPalette.gold : ObsidianPalette.textMuted.withByteOpacity(0.75);
 
     return pointerRegion(
-      onTap: widget.onPressed,
+      onTap: enabled ? widget.onPressed : null,
 
       child: SizedBox(
         width: baseSize,
@@ -96,6 +104,17 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
                           duration: _transition,
                           curve: Curves.easeOut,
                           builder: (context, animatedIconColor, ___) {
+                            if (widget.isLoading) {
+                              return SizedBox.square(
+                                dimension: iconSize,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: s(2.2 * scaleFactor),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(ObsidianPalette.gold),
+                                  semanticsLabel: 'Loading playback',
+                                ),
+                              );
+                            }
+
                             return Icon(widget.icon, color: animatedIconColor, size: iconSize);
                           },
                         ),

@@ -3,7 +3,7 @@
 Rust QUIC client FFI library for the Phonolite Flutter app.
 
 ## Build Requirements
-1. Rust toolchain (`rustup`, `cargo`).
+1. Rust 1.85 or newer (`rustup`, `cargo`).
 2. Android: `cargo-ndk` and the Android NDK.
 3. iOS/macOS: Xcode command line tools (for `lipo`/`xcrun`).
 
@@ -25,6 +25,12 @@ Native delivery holds at most 512 KiB. When full, it leaves active audio inside
 QUIC's flow-control window while continuing to process control messages. Short
 FFI reads retain the remainder for the next read. `suspendAudio()` cancels active
 delivery when the app serves a cached range; the next open or seek resumes it.
+
+Retired streams send a `cancel` control message to the server and discard
+incoming bytes until RESET/FIN is consumed. This returns both connection byte
+credit and stream slots during repeated seeks, even when audio delivery is full.
+Both native client and server use quiche 0.24.9 or later in the 0.24 series for
+correct RESET flow-control accounting. Rebuild both when updating this transport.
 
 Keepalive pings run every 10 seconds. Unsent buffer/playback telemetry is
 coalesced. Rebuild the native library together with the Dart package whenever

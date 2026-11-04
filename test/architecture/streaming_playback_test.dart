@@ -387,6 +387,7 @@ void main() {
       await waitUntil(() => session.cachedAheadMilliseconds(0) >= 3000);
       transport.events.add({
         'type': 'error',
+        'origin': 'server',
         'request_id': transport.requestId,
         'message': 'range unavailable',
       });

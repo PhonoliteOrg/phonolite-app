@@ -7,6 +7,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_play_button.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
@@ -16,6 +17,30 @@ import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  testWidgets('loading play button blocks repeated activation and restores playback controls', (tester) async {
+    var plays = 0;
+
+    Future<void> show({required bool isLoading}) => tester.pumpWidget(
+      wrapInTestApp(
+        Center(
+          child: PlaybackHudPlayButton(icon: Icons.play_arrow, onPressed: () => plays++, isLoading: isLoading),
+        ),
+      ),
+    );
+
+    await show(isLoading: true);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.tap(find.byType(PlaybackHudPlayButton), warnIfMissed: false);
+    await tester.pump();
+    expect(plays, 0);
+
+    await show(isLoading: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await tester.tap(find.byType(PlaybackHudPlayButton));
+    expect(plays, 1);
+  });
 
   for (final layout in [(width: 1280.0, mini: false), (width: 780.0, mini: true), (width: 430.0, mini: true)]) {
     testWidgets('${layout.width}px player keeps artwork bounds through metadata and image loading', (tester) async {
@@ -47,7 +72,7 @@ void main() {
           );
         });
 
-        Future<void> pump(Track? track) => tester.pumpWidget(
+        Future<void> pump(Track? track, {bool isLoading = false}) => tester.pumpWidget(
           ArtworkScope(
             loader: loader,
             child: AppScope(
@@ -57,13 +82,13 @@ void main() {
                   scale: ObsidianScale.compute(layout.width),
                   child: layout.mini
                       ? NowPlayingMiniBar(
-                          state: controller.playbackState.copyWith(track: track),
+                          state: controller.playbackState.copyWith(track: track, isLoading: isLoading),
                           onPlayPause: _noop,
                           onNext: _noop,
                           onExpand: _noop,
                         )
                       : NowPlayingBar(
-                          state: controller.playbackState.copyWith(track: track),
+                          state: controller.playbackState.copyWith(track: track, isLoading: isLoading),
                           onOpenAlbum: _noop,
                           onPlayPause: _noop,
                           onNext: _noop,
@@ -98,6 +123,13 @@ void main() {
 
         await pump(null);
         final idle = artRect();
+        final playButton = find.byType(PlaybackHudPlayButton);
+        final loadingIndicator = find.descendant(of: playButton, matching: find.byType(CircularProgressIndicator));
+        expect(loadingIndicator, findsNothing);
+        await pump(null, isLoading: true);
+        expect(loadingIndicator, findsOneWidget);
+        expect(tester.widget<CircularProgressIndicator>(loadingIndicator).semanticsLabel, 'Loading playback');
+        expect(artRect(), idle);
         final track = Track(
           id: 'song',
           title: 'Song',
@@ -108,6 +140,7 @@ void main() {
           inPlaylists: false,
         );
         await pump(track);
+        expect(loadingIndicator, findsNothing);
         expect(artRect(), idle);
 
         await pump(track.copyWith(albumId: 'album', albumArtPath: file.path));

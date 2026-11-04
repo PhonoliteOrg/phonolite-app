@@ -11,7 +11,7 @@ bytes = "1.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.9.2"
-quiche = { version = "0.20", default-features = false, features = ["boringssl-vendored"] }
+quiche = { version = "0.24.9", default-features = false, features = ["boringssl-vendored"] }
 opaque-ke = { version = "=4.0.1", features = ["argon2"] }
 rand08 = { package = "rand", version = "0.8" }
 argon2 = "0.5"

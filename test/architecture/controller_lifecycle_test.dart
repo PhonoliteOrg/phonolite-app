@@ -1154,7 +1154,217 @@ void main() {
     }
   });
 
-  test('server shuffle warms the current and next two album covers without delaying audio', () async {
+  for (final shuffle in [false, true]) {
+    test('${shuffle ? 'shuffle' : 'album'} startup waits for decoded artwork and keeps loading', () async {
+      final connection = _WindowShuffleConnection();
+      final artwork = _RecordingArtworkPreloader();
+      final ready = Completer<void>();
+      artwork.pending[connection.buildAlbumCoverUrl('album-1')] = ready.future;
+      final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      if (shuffle) {
+        harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+      }
+      final starting = shuffle
+          ? harness.controller.queueShuffle(scope: 'library')
+          : harness.controller.queueAlbum('album-1');
+      await _resumeUntil(() => artwork.preparations.isNotEmpty);
+      expect(harness.audio.starts, isEmpty);
+      expect(harness.controller.playbackState.isLoading, isTrue);
+      harness.onStarted!();
+      harness.onStats!(const Duration(seconds: 5), Duration.zero, null, null, false);
+      expect(harness.controller.playbackState.isLoading, isTrue);
+      expect(harness.controller.playbackState.position, Duration.zero);
+
+      ready.complete();
+      await starting;
+      await _resumeUntil(() => harness.audio.starts.isNotEmpty);
+      expect(harness.audio.starts, hasLength(1));
+      expect(harness.controller.playbackState.isLoading, isTrue);
+      harness.onStarted!();
+      expect(harness.controller.playbackState.isLoading, isFalse);
+    });
+  }
+
+  test('Stop during artwork loading prevents a late audio start', () async {
+    final connection = _Connection();
+    final artwork = _RecordingArtworkPreloader();
+    final ready = Completer<void>();
+    artwork.pending[connection.buildAlbumCoverUrl('album-1')] = ready.future;
+    final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final starting = harness.controller.queueAlbum('album-1');
+    await _resumeUntil(() => artwork.preparations.isNotEmpty);
+    await harness.controller.stop();
+    expect(harness.controller.playbackState.isLoading, isFalse);
+    ready.complete();
+    await starting;
+    expect(harness.audio.starts, isEmpty);
+    expect(harness.controller.playbackState.track, isNull);
+  });
+
+  test('a replacement track waits for its own artwork and discards an older completion', () async {
+    final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'first', albumId: 'first-album')];
+    final artwork = _RecordingArtworkPreloader();
+    final firstCover = connection.buildAlbumCoverUrl('first-album');
+    final secondCover = connection.buildAlbumCoverUrl('second-album');
+    final firstReady = Completer<void>();
+    final secondReady = Completer<void>();
+    artwork.pending[firstCover] = firstReady.future;
+    artwork.pending[secondCover] = secondReady.future;
+    final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    await harness.controller.queueAlbum('first-album');
+    await _resumeUntil(() => artwork.preparations.any((request) => request.source == firstCover));
+    connection.trackResponse = [offlineTestTrack(id: 'second', albumId: 'second-album')];
+    await harness.controller.queueAlbum('second-album');
+    await _resumeUntil(() => artwork.preparations.any((request) => request.source == secondCover));
+    firstReady.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.audio.starts, isEmpty);
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    secondReady.complete();
+    await _resumeUntil(() => harness.audio.starts.isNotEmpty);
+    expect(harness.audio.starts.single.trackId, 'second');
+  });
+
+  test('shuffle resolves missing album metadata before waiting for its cover', () async {
+    final sparse = offlineTestTrack(id: 'sparse').copyWith(albumId: null, artist: '', album: '');
+    final metadata = Completer<Track>();
+    final connection = _Connection()
+      ..trackResponse = [sparse]
+      ..pendingTrackById = metadata.future;
+    final artwork = _RecordingArtworkPreloader();
+    final ready = Completer<void>();
+    final cover = connection.buildAlbumCoverUrl('resolved-album');
+    artwork.pending[cover] = ready.future;
+    final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    await harness.controller.queueShuffle(scope: 'library');
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    expect(harness.audio.starts, isEmpty);
+    expect(artwork.preparations, isEmpty);
+    metadata.complete(sparse.copyWith(albumId: 'resolved-album', artist: 'Artist', album: 'Album'));
+    await _resumeUntil(() => artwork.preparations.isNotEmpty);
+    expect(artwork.preparations.first.source, cover);
+    expect(harness.audio.starts, isEmpty);
+    ready.complete();
+    await _resumeUntil(() => harness.audio.starts.isNotEmpty);
+    expect(harness.controller.playbackState.track?.albumId, 'resolved-album');
+  });
+
+  for (final hasCover in [false, true]) {
+    test('downloaded playback ${hasCover ? 'waits for its local cover' : 'starts without artwork'}', () async {
+      final directory = await Directory.systemTemp.createTemp('local_artwork_start_');
+      final cover = File('${directory.path}/cover.png');
+      await cover.writeAsBytes([1, 2, 3]);
+      final storage = await _seedResumeLibrary(directory, 1, albumArtPath: hasCover ? cover.path : null);
+      final connection = _Connection();
+      final artwork = _RecordingArtworkPreloader();
+      final harness = _Harness(
+        connection: connection,
+        offlineStorage: storage,
+        offlineDownloadManager: OfflineDownloadManager(connection: connection, storage: storage),
+        shuffleArtworkPreloader: artwork,
+      );
+      addTearDown(() async {
+        await harness.controller.close();
+        await storage.close();
+        await directory.delete(recursive: true);
+      });
+      await harness.controller.initialize();
+      final track = harness.controller.offlineTracks.single;
+      final ready = Completer<void>();
+      if (hasCover) {
+        artwork.pending[track.albumArtPath!] = ready.future;
+      }
+      await harness.controller.playOfflineTrack(track.id);
+      if (hasCover) {
+        await _resumeUntil(() => artwork.preparations.isNotEmpty);
+        expect(artwork.preparations.first.source, track.albumArtPath);
+        expect(artwork.preparations.first.headers, isEmpty);
+        expect(harness.controller.playbackState.isLoading, isTrue);
+        expect(harness.audio.localStarts, isEmpty);
+        ready.complete();
+      } else {
+        expect(artwork.preparations, isEmpty);
+      }
+      await _resumeUntil(() => harness.audio.localStarts.isNotEmpty);
+      expect(harness.audio.localStarts.single.trackId, track.id);
+    });
+  }
+
+  test('pause intent is preserved while artwork loads', () async {
+    final connection = _Connection();
+    final artwork = _RecordingArtworkPreloader();
+    final ready = Completer<void>();
+    artwork.pending[connection.buildAlbumCoverUrl('album-1')] = ready.future;
+    final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final starting = harness.controller.queueAlbum('album-1');
+    await _resumeUntil(() => artwork.preparations.isNotEmpty);
+    await harness.controller.pause(true);
+    expect(harness.audio.starts, isEmpty);
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    ready.complete();
+    await starting;
+    await _resumeUntil(() => harness.audio.starts.isNotEmpty);
+    expect(harness.audio.starts.single.initialPaused, isTrue);
+    expect(harness.controller.playbackState.isPlaying, isFalse);
+  });
+
+  test('artwork failure allows playback to proceed', () async {
+    final connection = _Connection();
+    final artwork = _RecordingArtworkPreloader();
+    final ready = Completer<void>();
+    artwork.pending[connection.buildAlbumCoverUrl('album-1')] = ready.future;
+    final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    final starting = harness.controller.queueAlbum('album-1');
+    await _resumeUntil(() => artwork.preparations.isNotEmpty);
+    ready.completeError(const ArtworkLoadException(statusCode: 404));
+    await starting;
+    await _resumeUntil(() => harness.audio.starts.isNotEmpty);
+    expect(harness.audio.starts, hasLength(1));
+    harness.onStarted!();
+    expect(harness.controller.playbackState.isLoading, isFalse);
+  });
+
+  test('gapless preparation waits for the upcoming cover while boundary buffering stays visible', () async {
+    final connection = _Connection()
+      ..trackResponse = [offlineTestTrack(id: 'first'), offlineTestTrack(id: 'second', albumId: 'next-album')];
+    final artwork = _RecordingArtworkPreloader();
+    final ready = Completer<void>();
+    final nextCover = connection.buildAlbumCoverUrl('next-album');
+    artwork.pending[nextCover] = ready.future;
+    final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    await _resumeUntil(() => artwork.preparations.any((request) => request.source == nextCover));
+    expect(harness.audio.preparations, isEmpty);
+    harness.audio.onGaplessBuffering!(true);
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    ready.complete();
+    await _resumeUntil(() => harness.audio.preparations.isNotEmpty);
+    harness.audio.onGaplessTransition!(harness.audio.preparations.single.id);
+    expect(harness.controller.playbackState.track?.id, 'second');
+    expect(harness.controller.playbackState.isLoading, isFalse);
+  });
+
+  test('server shuffle warms upcoming covers and prepares the selected cover before audio', () async {
     final connection = _WindowShuffleConnection()..distinctAlbumIds = true;
     final artwork = _RecordingArtworkPreloader();
     final harness = _Harness(authenticated: true, connection: connection, shuffleArtworkPreloader: artwork);
@@ -1383,6 +1593,144 @@ void main() {
     expect(connection.saved, isEmpty);
   });
 
+  for (final action in ['play', 'next', 'previous', 'queue']) {
+    test('$action shows loading while selecting the first shuffle track', () async {
+      final connection = _WindowShuffleConnection();
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+      final reply = Completer<ShuffleSessionPage>();
+      connection.pendingCreate = reply.future;
+
+      final starting = switch (action) {
+        'play' => harness.controller.pause(false),
+        'next' => harness.controller.nextTrack(),
+        'previous' => harness.controller.prevTrack(),
+        _ => harness.controller.queueShuffle(scope: 'library'),
+      };
+      await connection.createStarted.future;
+      expect(harness.controller.playbackState.track, isNull);
+      expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.controller.playbackState.isLoading, isTrue);
+
+      reply.complete(connection.page('window-1', 0));
+      await starting;
+      expect(harness.audio.starts, hasLength(1));
+      expect(harness.controller.playbackState.isLoading, isTrue);
+      harness.onStarted!();
+      expect(harness.controller.playbackState.isLoading, isFalse);
+    });
+  }
+
+  for (final failure in [false, true]) {
+    test('${failure ? 'failed' : 'empty'} shuffle selection clears loading', () async {
+      final connection = _WindowShuffleConnection();
+      final harness = _Harness(authenticated: true, connection: connection);
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      await harness.controller.restoreSession();
+      harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+      final reply = Completer<ShuffleSessionPage>();
+      connection.pendingCreate = reply.future;
+      final starting = harness.controller.pause(false);
+      await connection.createStarted.future;
+      expect(harness.controller.playbackState.isLoading, isTrue);
+
+      if (failure) {
+        reply.completeError(ApiException(503, 'Shuffle unavailable'));
+      } else {
+        reply.complete(
+          ShuffleSessionPage(
+            sessionId: 'empty',
+            offset: 0,
+            nextOffset: 0,
+            total: 0,
+            hasMore: false,
+            items: [],
+            itemOffsets: [],
+          ),
+        );
+      }
+      await starting;
+      expect(harness.controller.playbackState.isLoading, isFalse);
+      expect(harness.controller.playbackState.track, isNull);
+      expect(harness.audio.starts, isEmpty);
+    });
+  }
+
+  test('background shuffle refresh does not mark playback as loading', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    final reply = Completer<ShuffleSessionPage>();
+    connection.pendingCreate = reply.future;
+    final refreshing = harness.controller.queueServerShuffle(scope: 'library', play: false, startTrackId: 'track');
+    await connection.createStarted.future;
+    expect(harness.controller.playbackState.isLoading, isFalse);
+    reply.complete(connection.page('window-1', 0));
+    await refreshing;
+    expect(harness.controller.playbackState.isLoading, isFalse);
+    expect(harness.audio.starts, hasLength(1));
+  });
+
+  test('a cancelled shuffle response cannot clear a newer selection indicator', () async {
+    final connection = _WindowShuffleConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.controller.updateShuffleMode(ShuffleMode.all, scope: ActionScope.server);
+    final firstReply = Completer<ShuffleSessionPage>();
+    connection.pendingCreate = firstReply.future;
+    final first = harness.controller.queueShuffle(scope: 'library');
+    await connection.createStarted.future;
+    await harness.controller.stop();
+    expect(harness.controller.playbackState.isLoading, isFalse);
+
+    final secondReply = Completer<ShuffleSessionPage>();
+    connection.pendingCreate = secondReply.future;
+    final second = harness.controller.queueShuffle(scope: 'library');
+    await _resumeUntil(() => connection.creates == 2);
+    firstReply.complete(connection.page('window-1', 0));
+    await first;
+    expect(harness.controller.playbackState.isLoading, isTrue);
+    expect(harness.controller.playbackState.track, isNull);
+    secondReply.complete(connection.page('window-2', 0));
+    await second;
+    harness.onStarted!();
+    expect(harness.controller.playbackState.isLoading, isFalse);
+  });
+
+  for (final cancel in [false, true]) {
+    test('local custom shuffle shows selection loading and ${cancel ? 'cancels' : 'clears'} it', () async {
+      final harness = _Harness();
+      addTearDown(harness.controller.close);
+      await harness.controller.initialize();
+      harness.controller.updateShuffleMode(ShuffleMode.custom, scope: ActionScope.local);
+      final settings = Completer<CustomShuffleSettings>();
+      harness.shuffle.pending = settings.future;
+      final loadingSettings = harness.controller.loadCustomShuffleSettings();
+      final selecting = harness.controller.pause(false);
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.controller.playbackState.track, isNull);
+      expect(harness.controller.playbackState.isLoading, isTrue);
+
+      if (cancel) {
+        await harness.controller.stop();
+        expect(harness.controller.playbackState.isLoading, isFalse);
+      }
+      settings.complete(const CustomShuffleSettings(localGenres: ['ambient']));
+      await Future.wait([loadingSettings, selecting]);
+      expect(harness.controller.playbackState.isLoading, isFalse);
+      expect(harness.controller.playbackState.track, isNull);
+      expect(harness.audio.localStarts, isEmpty);
+    });
+  }
+
   test('rapid initial Next actions share one server shuffle deck and retain both steps', () async {
     final connection = _WindowShuffleConnection();
     final harness = _Harness(authenticated: true, connection: connection);
@@ -1443,12 +1791,14 @@ void main() {
         }
       }
       await harness.controller.stop();
+      expect(harness.controller.playbackState.isLoading, isFalse);
       final starts = harness.audio.starts.length;
       reply.complete(connection.page('window-1', creating ? 0 : 10));
       await starting;
       await Future<void>.delayed(Duration.zero);
       expect(harness.controller.playbackState.track, isNull);
       expect(harness.controller.playbackState.isPlaying, isFalse);
+      expect(harness.controller.playbackState.isLoading, isFalse);
       expect(harness.audio.starts, hasLength(starts));
       expect(connection.released, contains('window-1'));
     });
@@ -4605,10 +4955,10 @@ void _expectTrackMetadata(Track actual, Track original) {
   expect(actual.artistBannerPath, original.artistBannerPath);
 }
 
-Future<OfflineLibraryStorage> _seedResumeLibrary(Directory directory, int count) async {
+Future<OfflineLibraryStorage> _seedResumeLibrary(Directory directory, int count, {String? albumArtPath}) async {
   final storage = OfflineLibraryStorage(baseDirectory: directory);
   for (var index = 0; index < count; index++) {
-    final track = offlineTestTrack(id: 'server-$index', title: 'Unique song $index');
+    final track = offlineTestTrack(id: 'server-$index', title: 'Unique song $index', albumArtPath: albumArtPath);
     final media = await offlineTestMediaFile(directory, 'resume-$index.mp3');
     final download = await storage.prepareDownload(
       offlineTestDownload(serverBaseUrl: 'https://unused.test', track: track, filePath: media.path),
@@ -5611,6 +5961,15 @@ class _RecordingArtworkPreloader implements ArtworkPreloader {
   final updates = <List<ArtworkRequest>>[];
   List<ArtworkRequest> current = const [];
   int clears = 0;
+  final preparations = <ArtworkRequest>[];
+  final pending = <String, Future<void>>{};
+
+  @override
+  Future<ArtworkPreparation> prepare(ArtworkRequest request) async {
+    preparations.add(request);
+    await pending[request.source];
+    return ArtworkPreparation.ready;
+  }
 
   @override
   void update(Iterable<ArtworkRequest> requests) {

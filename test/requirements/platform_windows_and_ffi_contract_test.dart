@@ -110,7 +110,7 @@ void main() {
         'end_of_track: Option<bool>',
       ]);
       expectContainsAll(cargo, const [
-        'quiche = { version = "0.20", default-features = false, features = ["boringssl-vendored"] }',
+        'quiche = { version = "0.24.9", default-features = false, features = ["boringssl-vendored"] }',
       ]);
       expectContainsAll(header, const [
         'phonolite_quic_connect',

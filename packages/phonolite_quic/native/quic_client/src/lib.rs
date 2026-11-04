@@ -296,7 +296,7 @@ mod close_tests {
     struct Identity(std::path::PathBuf);
 
     impl Identity {
-        fn pipe() -> (Self, quiche::testing::Pipe) {
+        fn pipe() -> (Self, quiche::test_utils::Pipe) {
             let path = std::env::temp_dir().join(format!("phonolite-client-close-{}", rand::random::<u64>()));
             std::fs::create_dir(&path).unwrap();
             let pair = rcgen::generate_simple_self_signed(vec!["quic.tech".into()]).unwrap();
@@ -306,12 +306,15 @@ mod close_tests {
             config.load_cert_chain_from_pem_file(path.join("cert.pem").to_str().unwrap()).unwrap();
             config.load_priv_key_from_pem_file(path.join("key.pem").to_str().unwrap()).unwrap();
             config.set_application_protos(ALPN_QUIC).unwrap();
-            config.set_initial_max_data(1024 * 1024);
+            config.set_initial_max_data(64 * 1024);
+            config.set_max_connection_window(64 * 1024);
+            config.set_initial_max_stream_data_uni(16 * 1024);
+            config.set_initial_max_streams_uni(32);
             config.set_initial_max_stream_data_bidi_remote(64 * 1024);
             config.set_initial_max_stream_data_bidi_local(64 * 1024);
             config.set_initial_max_streams_bidi(16);
             config.verify_peer(false);
-            let mut pipe = quiche::testing::Pipe::with_config(&mut config).unwrap();
+            let mut pipe = quiche::test_utils::Pipe::with_config(&mut config).unwrap();
             pipe.handshake().unwrap();
             (Self(path), pipe)
         }
@@ -323,6 +326,62 @@ mod close_tests {
             let _ = std::fs::remove_file(self.0.join("key.pem"));
             let _ = std::fs::remove_dir(&self.0);
         }
+    }
+
+    #[test]
+    fn retired_audio_returns_flow_control_credit_across_repeated_seeks() {
+        let (_identity, mut pipe) = Identity::pipe();
+        let mut state = ClientState::new();
+        let audio = [7; 8 * 1024];
+
+        for seek in 0..64 {
+            let stream_id = 3 + seek * 4;
+            assert_eq!(
+                pipe.server.stream_send(stream_id, &audio, false),
+                Ok(audio.len()),
+                "seek {seek} must not inherit exhausted connection credit"
+            );
+            pipe.advance().unwrap();
+            assert!(pipe.client.stream_readable(stream_id));
+            state.active_stream = Some(stream_id);
+            retire_active_stream(&mut state);
+            assert!(state.retired_streams.contains(&stream_id));
+            let (_, cancel) = state.pending_control.pop_front().unwrap();
+            let cancel: serde_json::Value = serde_json::from_slice(&cancel).unwrap();
+            assert_eq!(cancel["type"], "cancel");
+            assert_eq!(cancel["stream_id"], stream_id);
+            // The server cancels the requested stream; RESET must remain
+            // observable so both byte and stream-count credit are returned.
+            pipe.server.stream_shutdown(stream_id, quiche::Shutdown::Write, 0).unwrap();
+            pipe.advance().unwrap();
+            discard_retired_streams(&mut state, &mut pipe.client);
+            pipe.advance().unwrap();
+            assert!(state.retired_streams.is_empty());
+        }
+    }
+
+    #[test]
+    fn retirement_before_audio_arrives_preserves_the_replacement_and_releases_on_fin() {
+        let (_identity, mut pipe) = Identity::pipe();
+        let mut state = ClientState::new();
+        retire_stream(&mut state, 3);
+        retire_stream(&mut state, 3);
+        assert_eq!(state.pending_control.len(), 1);
+        discard_retired_streams(&mut state, &mut pipe.client);
+        assert!(state.retired_streams.contains(&3));
+
+        // A peer can finish naturally before receiving cancellation. Retired
+        // audio must be consumed without replacing or discarding current audio.
+        pipe.server.stream_send(3, b"obsolete", true).unwrap();
+        pipe.server.stream_send(7, b"current", true).unwrap();
+        state.active_stream = Some(7);
+        pipe.advance().unwrap();
+        discard_retired_streams(&mut state, &mut pipe.client);
+        assert!(state.retired_streams.is_empty());
+        assert_eq!(state.active_stream, Some(7));
+        let mut audio = [0; 7];
+        assert_eq!(pipe.client.stream_recv(7, &mut audio), Ok((7, true)));
+        assert_eq!(&audio, b"current");
     }
 
     #[test]
@@ -338,7 +397,7 @@ mod close_tests {
         assert!(!packets.is_empty());
         assert!(packets.len() <= 3);
         assert_eq!(state.pending_control.len(), 1);
-        quiche::testing::process_flight(&mut pipe.server, packets).unwrap();
+        quiche::test_utils::process_flight(&mut pipe.server, packets).unwrap();
         assert!(pipe.server.is_draining());
         assert_eq!(pipe.server.peer_error().unwrap().error_code, 0);
         assert!(!pipe.server.stream_readable(0));
@@ -637,6 +696,8 @@ enum ClientMessage<'a> {
     },
     #[serde(rename = "advance")]
     Advance,
+    #[serde(rename = "cancel")]
+    Cancel { stream_id: u64 },
     #[serde(rename = "ping")]
     Ping { ts: Option<i64> },
 }
@@ -1276,7 +1337,7 @@ fn run_client(
                 ControlCommand::SourceOpen { generation, track_id, offset, source_version } => {
                     tx_bytes.generation = generation;
                     state.active_track = Some(track_id.clone());
-                    retire_active_stream(&mut state, &mut conn);
+                    retire_active_stream(&mut state);
                     state.source_stream = true;
                     enqueue_control(&mut state, ClientMessage::SourceOpen {
                         request_id: generation, track_id: &track_id, offset,
@@ -1295,7 +1356,7 @@ fn run_client(
                     tx_bytes.generation = generation;
                     state.source_stream = false;
                     state.active_track = Some(track_id.clone());
-                    retire_active_stream(&mut state, &mut conn);
+                    retire_active_stream(&mut state);
                     let queue_opt = if queue.is_empty() {
                         None
                     } else {
@@ -1337,7 +1398,7 @@ fn run_client(
                     tx_bytes.generation = generation;
                     state.source_stream = false;
                     state.active_track = Some(track_id.clone());
-                    retire_active_stream(&mut state, &mut conn);
+                    retire_active_stream(&mut state);
                     enqueue_control(
                         &mut state,
                         ClientMessage::Seek {
@@ -1369,7 +1430,7 @@ fn run_client(
                     enqueue_control(&mut state, ClientMessage::Advance);
                 }
                 ControlCommand::SuspendAudio => {
-                    retire_active_stream(&mut state, &mut conn);
+                    retire_active_stream(&mut state);
                 }
                 ControlCommand::Close => {
                     send_connection_close(&mut conn, &mut send_buf, |packet, info| sockets.send(packet, info.from, info.to));
@@ -1737,12 +1798,7 @@ fn handle_readable(
             }
         }
     }
-    state.retired_streams.retain(|stream_id| {
-        // Announcements can arrive before the stream's first data packet.
-        // Retry shutdown once QUIC knows about that stream.
-        conn.stream_shutdown(*stream_id, quiche::Shutdown::Read, 0)
-            .is_err()
-    });
+    discard_retired_streams(state, conn);
     if let Some(stream_id) = state.active_stream {
         while conn.stream_readable(stream_id) {
             let capacity = tx_bytes.available().min(buf.len());
@@ -1784,15 +1840,31 @@ fn handle_readable(
     Ok(())
 }
 
-fn retire_active_stream(state: &mut ClientState, conn: &mut quiche::Connection) {
+fn retire_active_stream(state: &mut ClientState) {
     if let Some(stream_id) = state.active_stream.take() {
-        if conn
-            .stream_shutdown(stream_id, quiche::Shutdown::Read, 0)
-            .is_err()
-        {
-            state.retired_streams.insert(stream_id);
-        }
+        retire_stream(state, stream_id);
     }
+}
+
+fn retire_stream(state: &mut ClientState, stream_id: u64) {
+    if state.retired_streams.insert(stream_id) {
+        enqueue_control(state, ClientMessage::Cancel { stream_id });
+    }
+}
+
+fn discard_retired_streams(state: &mut ClientState, conn: &mut quiche::Connection) {
+    // Keep the receive side open until the server's RESET/FIN is consumed.
+    // Read shutdown hides the terminal event and strands stream-count credit.
+    // Discarding bypasses the bounded audio queue, including during cached seeks.
+    state.retired_streams.retain(|stream_id| loop {
+        match conn.stream_discard(*stream_id, usize::MAX) {
+            Ok((_, true)) | Err(quiche::Error::StreamReset(_)) => return false,
+            Ok((0, false))
+            | Err(quiche::Error::Done | quiche::Error::InvalidStreamState(_)) => return true,
+            Ok(_) => {}
+            Err(_) => return false,
+        }
+    });
 }
 
 fn handle_control_bytes(
@@ -1833,11 +1905,11 @@ fn handle_control_bytes(
                         || !state.source_stream
                         || state.active_track.as_deref() != Some(track_id.as_str())
                     {
-                        state.retired_streams.insert(stream_id);
+                        retire_stream(state, stream_id);
                         continue;
                     }
                     if let Some(previous) = state.active_stream.replace(stream_id) {
-                        if previous != stream_id { state.retired_streams.insert(previous); }
+                        if previous != stream_id { retire_stream(state, previous); }
                     }
                     tx.event(serde_json::json!({
                         "type": "source", "request_id": request_id, "track_id": track_id,
@@ -1862,12 +1934,12 @@ fn handle_control_bytes(
                         || role != "active"
                         || state.active_track.as_deref() != Some(track_id.as_str())
                     {
-                        state.retired_streams.insert(stream_id);
+                        retire_stream(state, stream_id);
                         continue;
                     }
                     if let Some(previous) = state.active_stream.replace(stream_id) {
                         if previous != stream_id {
-                            state.retired_streams.insert(previous);
+                            retire_stream(state, previous);
                         }
                     }
                     tx.event(serde_json::json!({

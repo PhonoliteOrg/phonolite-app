@@ -310,6 +310,7 @@ class _RemoteAudioSource {
         if (progressRequestId != _transportRequestId) {
           progressRequestId = _transportRequestId;
           progress.reset();
+          lastProgress = _clock.elapsed;
         }
 
         if (_host._streamEnded && !_waitingForHeader) {
@@ -359,6 +360,7 @@ class _RemoteAudioSource {
         if (progressRequestId != _transportRequestId) {
           progressRequestId = _transportRequestId;
           progress.reset();
+          lastProgress = _clock.elapsed;
         }
 
         if (read == -5) {

@@ -22,6 +22,42 @@ class _RetiredTelemetryQuic extends MemoryQuic {
 }
 
 void main() {
+  test('each rapid seek gets its own stall deadline before reconnecting', () async {
+    final transport = MemoryQuic();
+    int? latestSeekId;
+    transport.onRequest = (start, seekId) {
+      latestSeekId = seekId;
+      if (start == 0) {
+        transport.deliverRange(startMs: 0, endMs: 10000, packetCount: 10, complete: false);
+      }
+    };
+    final output = MemoryPcmOutput();
+    var replacements = 0;
+    final harness = AudioPlaybackHarness(
+      transport: transport,
+      connectionFactory: () {
+        replacements++;
+        throw StateError('The current seek is still within its delivery deadline.');
+      },
+      decoderFactory: MemoryOpusDecoder.new,
+      outputFactory: (_, __, ___) => output,
+    );
+    addTearDown(harness.close);
+    harness.start();
+    await waitUntil(() => output.writes > 0);
+
+    final obsolete = harness.seek(const Duration(seconds: 20));
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final latest = harness.seek(const Duration(seconds: 40));
+    expect(await obsolete, isFalse);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(replacements, 0);
+
+    transport.deliverRange(startMs: 40000, endMs: 41000, seekId: latestSeekId, endOfTrack: true);
+    expect(await latest, isTrue);
+    expect(output.flushes, 2);
+  });
+
   test('partial Opus delivery reconnects at the gap with one output and exact frame count', () async {
     final first = MemoryQuic();
     first.onRequest = (start, seekId) {

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/models/artwork/artwork_preloader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_image.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/decoded_artwork_preloader.dart';
@@ -81,6 +82,79 @@ void main() {
     cache.maximumSizeBytes = previousCacheLimit;
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('prepare waits for a decoded frame and shares an in-flight preload', (tester) async {
+    final loader = _Loader();
+    final preloader = DecodedArtworkPreloader(loader: loader);
+    addTearDown(preloader.dispose);
+    final request = ArtworkRequest(source: 'selected-cover');
+    await tester.runAsync(() async {
+      final bytes = Completer<Uint8List>();
+      loader.pending[request.source] = bytes;
+      preloader.update([request]);
+      await loader.whenRequested(request.source);
+      var ready = false;
+      final preparing = preloader.prepare(request).then((_) => ready = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(ready, isFalse);
+      bytes.complete(_png);
+      await preparing;
+      expect(ready, isTrue);
+      expect(loader.calls, hasLength(1));
+    });
+
+    bool? synchronousFrame;
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Image(
+          image: _provider(loader, request),
+          frameBuilder: (context, child, frame, synchronous) {
+            if (frame != null) synchronousFrame = synchronous;
+            return child;
+          },
+        ),
+      ),
+    );
+    expect(synchronousFrame, isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('prepared covers remain pinned when background shuffle windows change', (tester) async {
+    final loader = _Loader();
+    final preloader = DecodedArtworkPreloader(loader: loader);
+    addTearDown(preloader.dispose);
+    final request = ArtworkRequest(source: 'prepared-cover');
+    await tester.runAsync(() async {
+      expect(await preloader.prepare(request), ArtworkPreparation.ready);
+      preloader.update([ArtworkRequest(source: 'background-cover')]);
+      await _firstFrame(_provider(loader, request));
+    });
+    expect(PaintingBinding.instance.imageCache.statusForKey(_provider(loader, request)).live, isTrue);
+    expect(loader.calls.where((call) => call.endsWith('prepared-cover')), hasLength(1));
+  });
+
+  for (final clear in [false, true]) {
+    testWidgets('${clear ? 'clearing' : 'missing'} artwork releases readiness waiters', (tester) async {
+      final loader = _Loader();
+      final preloader = DecodedArtworkPreloader(loader: loader);
+      addTearDown(preloader.dispose);
+      final request = ArtworkRequest(source: 'optional-cover');
+      await tester.runAsync(() async {
+        final bytes = Completer<Uint8List>();
+        loader.pending[request.source] = bytes;
+        final preparing = preloader.prepare(request);
+        await loader.whenRequested(request.source);
+        if (clear) {
+          preloader.clear();
+        }
+        bytes.completeError(const ArtworkLoadException(statusCode: 404));
+        expect(await preparing, clear ? ArtworkPreparation.cancelled : ArtworkPreparation.unavailable);
+        await Future<void>.delayed(Duration.zero);
+      });
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('Windows artwork renders its first frame synchronously from the warmed key', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;

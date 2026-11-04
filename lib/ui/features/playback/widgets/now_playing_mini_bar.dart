@@ -167,6 +167,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                         child: PlaybackHudPlayButton(
                           icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
                           onPressed: playEnabled ? onPlayPause : null,
+                          isLoading: state.isLoading,
                           size: playSize,
                         ),
                       ),
