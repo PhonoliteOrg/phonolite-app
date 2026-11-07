@@ -55,6 +55,10 @@ class _PlaybackSession
   final List<String> queueTrackIds;
   final bool quickStart;
   final Duration transportProgressTimeout;
+  final AudioNetworkHistory? networkHistory;
+  final AudioAutoQualityHistory? autoQualityHistory;
+  int _networkRouteGeneration;
+  late AudioAutoQualityScope _autoQualityScope = _qualityScope();
   final String? localFilePath;
   final void Function(QuicClient)? _releaseConnection;
   final QuicClient Function()? _connectionFactory;
@@ -62,6 +66,8 @@ class _PlaybackSession
   final AudioFileDecoder Function(Uri url, Duration startOffset)? _fileDecoderFactory;
   final AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? _outputFactory;
   final _GaplessSourceOutput? _gaplessSource;
+  final Duration Function()? _autoOriginalNow;
+  late final _AutoOriginalSource _ownerOriginal = _AutoOriginalSource(this);
   double _volume;
   int _outputDeviceId;
   int _outputEpoch = 0;
@@ -95,6 +101,9 @@ class _PlaybackSession
     required bool initialPaused,
     required double volume,
     required int outputDeviceId,
+    this.networkHistory,
+    this.autoQualityHistory,
+    this._networkRouteGeneration = 0,
     QuicClient? reusableConnection,
     QuicClient Function()? connectionFactory,
     this.serverPin = '',
@@ -103,6 +112,7 @@ class _PlaybackSession
     AudioFileDecoder Function(Uri url, Duration startOffset)? fileDecoderFactory,
     AudioPcmOutput Function(int sampleRate, int channels, int deviceId)? outputFactory,
     _GaplessSourceOutput? gaplessSource,
+    this._autoOriginalNow,
   }) : _send = send,
        _playbackId = playbackId,
        _getPlaybackId = getPlaybackId,
@@ -159,11 +169,15 @@ class _PlaybackSession
        serverPin = '',
        quicPort = null,
        settings = const StreamSettings(mode: 'local', quality: 'source'),
+       _autoOriginalNow = null,
        queueTrackIds = const <String>[],
        quickStart = true,
        _volume = volume,
        _outputDeviceId = outputDeviceId,
        localFilePath = filePath,
+       networkHistory = null,
+       autoQualityHistory = null,
+       _networkRouteGeneration = 0,
        transportProgressTimeout = const Duration(seconds: 15),
        _decoderFactory = null,
        _fileDecoderFactory = fileDecoderFactory,
@@ -197,12 +211,28 @@ class _PlaybackSession
 
   bool get _isActive => !_stopRequested && _playbackId == _getPlaybackId();
 
+  AudioAutoQualityScope _qualityScope() => AudioAutoQualityHistory.scope(
+    endpoint: '$baseUrl|$quicPort',
+    token: token,
+    serverPin: serverPin,
+    routeGeneration: _networkRouteGeneration,
+  );
+
   void notifyNetworkChange(int generation) {
-    if (!_isActive || _isLocalFile) return;
+    if (!_isActive || _isLocalFile) {
+      return;
+    }
+
+    if (generation > _networkRouteGeneration) {
+      _networkRouteGeneration = generation;
+      _autoQualityScope = _qualityScope();
+    }
+
     if (settings.isOriginal) {
       _ownerFile.notifyNetworkChange(generation);
     } else {
       _ownerRemote.notifyNetworkChange(generation);
+      _ownerOriginal.notifyNetworkChange(generation);
     }
   }
 
@@ -251,16 +281,20 @@ class _PlaybackSession
     _userPaused = false;
     _reportBuffer(force: true);
 
+    if (_autoPaused) {
+      _maybeRebuffer(_ownerBuffer._bufferedAudioSamples());
+
+      return;
+    }
+
     if (!_paused) {
       return;
     }
 
     _paused = false;
-    _userPaused = false;
-    _autoPaused = false;
     final player = _player;
 
-    if (player != null) {
+    if (player != null && _startedPlayback) {
       player.resume();
       _sendPlaybackMessage({'type': 'state', 'active': true, 'paused': false});
     }
@@ -313,6 +347,7 @@ class _PlaybackSession
       } finally {
         _listening.flush(endReason: completed ? 'finished' : 'interrupted');
         _stopStats();
+        await _ownerOriginal.close();
         _encodedCache.clear();
 
         try {
@@ -408,6 +443,7 @@ class _PlaybackSession
 
       await _fileDecoder?.close();
       _fileDecoder = null;
+      await _ownerOriginal.close();
     }
   }
 
@@ -453,6 +489,7 @@ class _PlaybackSession
     var quic = _quic ?? _ownerRemote.connect();
 
     _quic = quic;
+    quic.setAdaptiveRangesEnabled(settings.mode == 'auto');
 
     try {
       _transportRequestId = quic.openTrack(

@@ -25,6 +25,7 @@ class _RemoteAudioSource {
   bool _repairRequested = false;
   bool _repairing = false;
   bool _acceptedAudio = false;
+  bool _adaptiveRanges = false;
   int _acceptedThroughMs = 0;
   int? _explicitTargetMs;
 
@@ -73,9 +74,10 @@ class _RemoteAudioSource {
     try {
       if (_host._quic?.notifyNetworkChange(generation) == true) return;
     } catch (_) {
-      // Unsupported native adapters use the same-session reconnect fallback.
+      // Unsupported migration adapters retain delivery-based recovery.
     }
-    _repairRequested = true;
+    // A path observation does not establish that this socket stopped working.
+    // Retain accepted audio and let delivery failure/progress trigger repair.
   }
 
   QuicClient connect() {
@@ -90,6 +92,7 @@ class _RemoteAudioSource {
       token: _host.token,
       serverPin: _host.serverPin,
     );
+    client.setAdaptiveRangesEnabled(_host.settings.mode == 'auto');
     client.setMigrationEnabled(const bool.fromEnvironment('PHONOLITE_QUIC_MIGRATION'));
     return client;
   }
@@ -112,6 +115,9 @@ class _RemoteAudioSource {
     _recovery.begin(_missingPositionMs);
     _recovery.interrupted();
     try {
+      if (_recovery.remaining == Duration.zero || _recovery.attempts >= AudioRecoveryPolicy.maximumAttempts) {
+        throw TimeoutException('Audio connection recovery exhausted.', AudioRecoveryPolicy.budget);
+      }
       final delay = _policy.retryDelay(_recovery.attempts);
       if (delay > Duration.zero) {
         await Future<void>.delayed(delay < _recovery.remaining ? delay : _recovery.remaining);
@@ -246,6 +252,8 @@ class _RemoteAudioSource {
         throw AudioSourceRejected('The audio source changed during playback.');
       }
 
+      _adaptiveRanges = _host.settings.mode == 'auto' && event['adaptive_ranges'] == true;
+      if (_adaptiveRanges) _host._ownerOriginal.describe(event['original']);
       _sourceVersion = version;
       _incomingStartMs = (event['position_ms'] as num?)?.toInt() ?? _incomingStartMs;
       _incomingRangeEndMs = (event['range_end_ms'] as num?)?.toInt();
@@ -296,10 +304,15 @@ class _RemoteAudioSource {
         final coverage = _playableMs;
         if (_host._userPaused ||
             coverage >= _host._encodedReadAheadTargetMs ||
-            _clock.elapsed - lastProgress < _policy.stallTimeout(playableMilliseconds: coverage)) {
+            _clock.elapsed - lastProgress <
+                _policy.stallTimeout(
+                  playableMilliseconds: coverage,
+                  rttMilliseconds: _host._ownerBuffer._lastObservedRttMs,
+                )) {
           _recovery.observe(
             acceptedThrough: _acceptedThroughMs,
             playableMilliseconds: coverage,
+            requiredReserveMilliseconds: _host._ownerBuffer.healthyReserveMilliseconds,
             endOfTrack: _host._incomingSegment?.hasAllFrames == true && _host._incomingSegment?.endOfTrack == true,
           );
         }
@@ -327,7 +340,7 @@ class _RemoteAudioSource {
             segment.complete &&
             !segment.endOfTrack &&
             cursor != null &&
-            segment.rangeEndMs - _host._positionMs <= (_host._userPaused ? 2000 : 8000)) {
+            segment.rangeEndMs - _host._positionMs <= _host._encodedReadAheadTargetMs) {
           final next = _host._encodedCache.seek(segment.rangeEndMs);
 
           if (next == null) {
@@ -368,7 +381,11 @@ class _RemoteAudioSource {
           if (!waiting) lastProgress = _clock.elapsed;
           if (waiting &&
               _acceptedAudio &&
-              _clock.elapsed - lastProgress >= _policy.stallTimeout(playableMilliseconds: _playableMs)) {
+              _clock.elapsed - lastProgress >=
+                  _policy.stallTimeout(
+                    playableMilliseconds: _playableMs,
+                    rttMilliseconds: _host._ownerBuffer._lastObservedRttMs,
+                  )) {
             _repairRequested = true;
             continue;
           }
@@ -401,11 +418,14 @@ class _RemoteAudioSource {
             }
 
             final header = event.header;
+            if (_adaptiveRanges && !const {48000, 96000, 160000}.contains(header.bitrateBps)) {
+              throw AudioSourceRejected('Auto range did not use a supported fixed quality.');
+            }
             final oldHeader = _host._decodeCursor?.segment.header;
             if (oldHeader != null &&
                 (oldHeader.sampleRate != header.sampleRate ||
                     oldHeader.channels != header.channels ||
-                    oldHeader.bitrateBps != header.bitrateBps ||
+                    (!_adaptiveRanges && oldHeader.bitrateBps != header.bitrateBps) ||
                     oldHeader.frameMs != header.frameMs)) {
               throw AudioSourceRejected('The audio rendition changed during recovery.');
             }
@@ -457,6 +477,7 @@ class _RemoteAudioSource {
         _recovery.observe(
           acceptedThrough: _acceptedThroughMs,
           playableMilliseconds: _playableMs,
+          requiredReserveMilliseconds: _host._ownerBuffer.healthyReserveMilliseconds,
           endOfTrack: _host._incomingSegment?.hasAllFrames == true && _host._incomingSegment?.endOfTrack == true,
         );
       } on _RemoteTransportFailure {
@@ -489,12 +510,24 @@ class _RemoteAudioSource {
     }
 
     _host._sampleRate = header.sampleRate;
+    if (_host.settings.mode == 'auto' && !_host._ownerOriginal._disabled) {
+      _host._pcmBitsPerSample = 32;
+      _host._sourceBitDepth = 32;
+    }
     _host._channels = header.channels;
     _host._frameSamples = _host._sampleRate * header.frameMs ~/ 1000;
     _host._pumpChunkSamples = _host._sampleRate * _host._channels * _PlaybackSession._pumpChunkMs ~/ 1000;
+    try {
+      _host._updateAdaptiveBufferProfile(bufferedMs: 0, rttMs: _host._quic?.pollRttMs());
+    } catch (_) {
+      // A missing latency observation cannot reject an accepted source header.
+    }
     _host._refreshBufferTargets();
 
-    _host._buffer ??= PcmRingBuffer(math.max(_host._sampleRate * _host._channels, _host._rebufferTargetSamples * 2));
+    _host._buffer ??= PcmRingBuffer(
+      math.max(_host._sampleRate * _host._channels, _host._rebufferTargetSamples * 2),
+      bitsPerSample: _host._pcmBitsPerSample,
+    );
     _host._ensureBufferCapacity();
 
     await _host._configurePcmOutput();

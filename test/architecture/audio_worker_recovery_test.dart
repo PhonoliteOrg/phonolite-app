@@ -3,6 +3,7 @@ import 'dart:isolate';
 import 'dart:ui' show RootIsolateToken;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
@@ -28,6 +29,45 @@ void main() {
     factory.acknowledgeStops();
     await engine.dispose();
     factory.close();
+  });
+
+  test('stats expose actual quality before callbacks and reject stale track updates', () async {
+    final factory = _Workers();
+    final qualities = <AudioStreamQuality?>[];
+    late AudioEngine engine;
+    engine = AudioEngine(
+      workerSpawner: factory.spawn,
+      onStats: (_, __, ___, ____, _____) => qualities.add(engine.streamQuality),
+    );
+    addTearDown(() async {
+      factory.acknowledgeStops();
+      await engine.dispose();
+      factory.close();
+    });
+    await _play(engine, 'first');
+    await waitUntil(() => factory.latest.commands.any((command) => command['cmd'] == 'play'));
+    final worker = factory.latest;
+    final firstId = worker.commands.lastWhere((command) => command['cmd'] == 'play')['playback_id'];
+    worker.emit({'type': 'stats', 'playback_id': firstId, 'stream_quality': 'medium', 'bitrate_kbps': 9000});
+    await waitUntil(() => qualities.isNotEmpty);
+    expect(qualities.single, AudioStreamQuality.medium);
+
+    await _play(engine, 'second');
+    expect(engine.streamQuality, isNull);
+    worker.emit({'type': 'stats', 'playback_id': firstId, 'stream_quality': 'high'});
+    await Future<void>.delayed(Duration.zero);
+    expect(qualities, hasLength(1));
+    expect(engine.streamQuality, isNull);
+    await waitUntil(() => worker.commands.where((command) => command['cmd'] == 'play').length == 2);
+    final secondId = worker.commands.lastWhere((command) => command['cmd'] == 'play')['playback_id'];
+    worker.emit({'type': 'stats', 'playback_id': secondId, 'stream_quality': 'low'});
+    await waitUntil(() => qualities.length == 2);
+    expect(qualities.last, AudioStreamQuality.low);
+    worker.emit({'type': 'stats', 'playback_id': secondId, 'stream_quality': 'unexpected'});
+    await waitUntil(() => qualities.length == 3);
+    expect(qualities.last, isNull);
+    await engine.stop();
+    expect(engine.streamQuality, isNull);
   });
 
   test('shutdown waits for output release and worker retirement without listening statistics', () async {

@@ -488,6 +488,7 @@ class _SessionCoordinator {
       duration: Duration.zero,
       bufferRatio: 0.0,
       bitrateKbps: null,
+      streamQuality: null,
       streamConnected: false,
       streamRttMs: null,
       isLocalPlayback: false,

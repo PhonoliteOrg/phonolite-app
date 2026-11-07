@@ -51,15 +51,41 @@ class _AudioOutputConfiguration {
       // Startup is owned immediately: stop must be able to await a device whose
       // native open is still pending, before the worker acknowledges release.
       _host._player = player;
+      var released = false;
 
       try {
-        await player.initialize();
+        try {
+          await player.initialize();
+        } catch (_) {
+          if (!_host._isActive ||
+              epoch != _host._outputEpoch ||
+              _host.settings.mode != 'auto' ||
+              _host._pcmBitsPerSample != 32) {
+            rethrow;
+          }
+
+          _host._ownerOriginal._disabled = true;
+          _host._pcmBitsPerSample = 16;
+          _host._sourceBitDepth = 16;
+          _host._buffer = PcmRingBuffer(_host._buffer!.capacity);
+          _host._log('Auto Original unavailable on this output; compressed Auto retained.');
+          if (gapless != null) {
+            // Keep the source lease live while retrying its output format.
+            gapless.configure(sampleRate, channels, deviceId, 16, 16);
+            await player.initialize();
+          } else {
+            if (identical(_host._player, player)) _host._player = null;
+            await player.dispose();
+            released = true;
+            return await _configurePcmOutput();
+          }
+        }
       } catch (_) {
         if (identical(_host._player, player)) {
           _host._player = null;
         }
 
-        await player.dispose();
+        if (!released) await player.dispose();
 
         rethrow;
       }

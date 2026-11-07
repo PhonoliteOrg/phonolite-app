@@ -1,5 +1,13 @@
 part of '../audio_engine.dart';
 
+typedef _GaplessPreparation = ({
+  int playbackId,
+  int startGeneration,
+  int generation,
+  bool following,
+  _GaplessOutputTimeline timeline,
+});
+
 class _GaplessOccurrence {
   final _PlaybackSession session;
   final _GaplessSourceOutput output;
@@ -20,9 +28,12 @@ class _AudioWorkerEngine {
   final QuicClient Function(String)? transportFactory;
   final Duration outputProgressTimeout;
   final Duration transportProgressTimeout;
+  final AudioNetworkHistory _networkHistory = AudioNetworkHistory();
+  final AudioAutoQualityHistory _autoQualityHistory = AudioAutoQualityHistory();
   final Set<_GaplessOccurrence> _occurrences = {};
   final Set<Future<void>> _runs = {};
   final Map<int, Future<void>> _cancellations = {};
+  final Set<_GaplessPreparation> _preparing = {};
   _GaplessOccurrence? _current, _prepared, _following;
   _GaplessOccurrence? _seekingOccurrence;
   int _seekGeneration = 0;
@@ -54,6 +65,8 @@ class _AudioWorkerEngine {
     this.outputProgressTimeout = const Duration(seconds: 5),
     this.transportProgressTimeout = const Duration(seconds: 15),
   }) : _send = send;
+
+  bool get _hasPendingPreparation => _preparing.any(_isCurrentPreparation);
 
   Future<void> stop({bool notify = true}) {
     if (notify) _startGeneration++;
@@ -250,6 +263,7 @@ class _AudioWorkerEngine {
       progressTimeout: outputProgressTimeout,
     )..setVolume(_volume);
     if (_paused) _timeline!.pause();
+    _preparing.clear();
   }
 
   Future<void> prepareNext(Map message) async {
@@ -266,14 +280,40 @@ class _AudioWorkerEngine {
     if (message['playback_id'] != _playbackId || _current == null || _timeline == null) return;
     final after = (message['after_preparation_id'] as num?)?.toInt();
     final generation = after == null ? ++_preparationGeneration : ++_tailGeneration;
+    final preparation = (
+      playbackId: _playbackId,
+      startGeneration: _startGeneration,
+      generation: generation,
+      following: after != null,
+      timeline: _timeline!,
+    );
+    _preparing.add(preparation);
+    try {
+      await _installPreparation(message, preparation);
+    } finally {
+      _preparing.remove(preparation);
+      final current = _current;
+      if (!_stopping && current != null && identical(preparation.timeline, _timeline)) {
+        _maybeComplete(current);
+      }
+    }
+  }
+
+  bool _isCurrentPreparation(_GaplessPreparation preparation) =>
+      !_stopping &&
+      preparation.playbackId == _playbackId &&
+      preparation.startGeneration == _startGeneration &&
+      preparation.generation == (preparation.following ? _tailGeneration : _preparationGeneration) &&
+      identical(preparation.timeline, _timeline);
+
+  Future<void> _installPreparation(Map message, _GaplessPreparation preparation) async {
+    final after = (message['after_preparation_id'] as num?)?.toInt();
     if (after == null) {
       await cancelPreparedNext(invalidate: false);
     } else if (_following != null) {
       await cancelPreparedNext(invalidate: false, preparationId: _following!.preparationId);
     }
-    if (generation != (after == null ? _preparationGeneration : _tailGeneration) ||
-        _current == null ||
-        _timeline == null) {
+    if (!_isCurrentPreparation(preparation) || _current == null) {
       return;
     }
     if (after != null &&
@@ -385,6 +425,9 @@ class _AudioWorkerEngine {
             gaplessSource: output,
             decoderFactory: decoderFactory,
             fileDecoderFactory: fileDecoderFactory == null ? null : makeDecoder,
+            networkHistory: _networkHistory,
+            autoQualityHistory: _autoQualityHistory,
+            networkRouteGeneration: _routeGeneration,
             reusableConnection: settings.isOriginal ? null : transportFactory?.call(trackId),
             connectionFactory: transportFactory == null ? null : () => transportFactory!(trackId),
           );
@@ -470,7 +513,7 @@ class _AudioWorkerEngine {
 
   void _maybeComplete(_GaplessOccurrence entry) {
     if (!entry.ended || entry.completeReported || !identical(entry, _current)) return;
-    if (_prepared != null || _following != null) {
+    if (_prepared != null || _following != null || _hasPendingPreparation) {
       _setBuffering(true);
       return;
     }

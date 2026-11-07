@@ -31,15 +31,23 @@ class _VehicleLibraryCoordinator {
         VehicleOperation.getAlbums => _carPlayGetAlbums(request.scope, request.artistId ?? ''),
         VehicleOperation.getPlaylists => _carPlayGetPlaylists(request.scope),
         VehicleOperation.getLibraryStatus => _carPlayGetLibraryStatus(request.scope),
-        VehicleOperation.playAlbum => _carPlayPlayAlbum(request.scope, request.albumId ?? ''),
-        VehicleOperation.playPlaylist => _carPlayPlayPlaylist(request.scope, request.playlistId ?? ''),
-        VehicleOperation.playLiked => _carPlayPlayLiked(request.scope),
-        VehicleOperation.startShuffle => _carPlayStartShuffle(
-          request.scope,
-          request.shuffleKind,
-          artistId: request.artistId,
-          albumId: request.albumId,
-          playlistId: request.playlistId,
+        VehicleOperation.playAlbum => _host._nativeCoordinator._runPlaybackSelection(
+          () => _carPlayPlayAlbum(request.scope, request.albumId ?? ''),
+        ),
+        VehicleOperation.playPlaylist => _host._nativeCoordinator._runPlaybackSelection(
+          () => _carPlayPlayPlaylist(request.scope, request.playlistId ?? ''),
+        ),
+        VehicleOperation.playLiked => _host._nativeCoordinator._runPlaybackSelection(
+          () => _carPlayPlayLiked(request.scope),
+        ),
+        VehicleOperation.startShuffle => _host._nativeCoordinator._runPlaybackSelection(
+          () => _carPlayStartShuffle(
+            request.scope,
+            request.shuffleKind,
+            artistId: request.artistId,
+            albumId: request.albumId,
+            playlistId: request.playlistId,
+          ),
         ),
         VehicleOperation.unknown => null,
       };

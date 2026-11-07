@@ -42,7 +42,7 @@ def main():
     contents = args.app.resolve() / 'Contents'
     with (contents / 'Info.plist').open('rb') as source:
         info = plistlib.load(source)
-    if info['CFBundleIdentifier'] != 'com.adamuremek.phonolite':
+    if info['CFBundleIdentifier'] != 'com.phonoliteorg.phonolite':
         raise RuntimeError('The Mac bundle ID must match the shared Apple App Store identity')
     if info.get('LSApplicationCategoryType') != 'public.app-category.music':
         raise RuntimeError('The Mac App Store Music category is missing')

@@ -279,7 +279,7 @@ Swift folder organization is a project choice. XIB class/module identity, source
 
 Runner declares macOS 13.0, covering Flutter 3.47 and the native tray dependency's deployment target. Runner uses Swift language mode 5.0 and GNU C11. Flutter build hooks compile and bundle the three FFI frameworks; the other plugins use Flutter-managed Swift Package Manager integration. macOS no longer requires CocoaPods. Keep the generated Swift package resolution with the project. Swift language mode does not identify the compiler or formatter version.
 
-The application product is `Phonolite.app`, with `Phonolite` as its executable and bundle name. The internal target, scheme and Swift module remain `Runner`, preserving the nib and native test identities. The app bundle identifier is `com.adamuremek.phonolite`, matching the existing Phonolite App Store Connect record, with `.RunnerTests` appended for the test bundle.
+The application product is `Phonolite.app`, with `Phonolite` as its executable and bundle name. The internal target, scheme and Swift module remain `Runner`, preserving the nib and native test identities. The app bundle identifier is `com.phonoliteorg.phonolite`, shared with iOS, with `.RunnerTests` appended for the test bundle.
 
 Archive stripping uses `non-global` so the exported audio functions remain available to Dart's runtime symbol lookup. Verify the completed archive as well as regular Release builds; archive postprocessing can otherwise remove these entry points.
 
@@ -301,7 +301,7 @@ The [shared native build package](../packages/phonolite_native_build/README.md) 
 
 The [secure-storage packaging fork](../packages/flutter_secure_storage_macos/README.md) adds Swift Package Manager support to version 3.1.3 while preserving its Dart API, method channel, Keychain queries and Swift implementation. Keep its upstream license and privacy manifest. Review the override when upgrading the parent secure-storage package.
 
-App Store distribution uses the shared iOS/macOS bundle ID `com.adamuremek.phonolite`, the existing Apple team and the Music application category. Keep app updates managed by the store. Add macOS to the existing Phonolite App Store Connect record before validating or uploading. The archive must use that record's bundle ID; an existing app record tied to a different ID cannot be reassigned after a build has been uploaded.
+App Store distribution uses the shared iOS/macOS bundle ID `com.phonoliteorg.phonolite`, the existing Apple team and the Music application category. Keep app updates managed by the store. Configure one Phonolite App Store Connect record with both iOS and macOS before validating or uploading. The archive must use that record's bundle ID; an existing app record tied to a different ID cannot be reassigned after a build has been uploaded.
 
 ## Formatter configuration
 

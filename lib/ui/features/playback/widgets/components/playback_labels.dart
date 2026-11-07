@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 
 String playbackStreamLabel(StreamMode mode) {
   switch (mode) {
@@ -53,20 +54,18 @@ String playbackShuffleLabel(ShuffleMode mode) {
   }
 }
 
-String? playbackBitrateLabel(PlaybackState state) {
-  if (state.isLocalPlayback || state.streamMode == StreamMode.original) {
+String? playbackActiveQualityLabel(PlaybackState state) {
+  if (state.track == null || state.isLocalPlayback || state.streamMode != StreamMode.auto || !state.streamConnected) {
     return null;
   }
 
-  final bitrate = state.bitrateKbps;
-
-  if (bitrate == null || bitrate.isNaN || bitrate.isInfinite || bitrate <= 0) {
-    return null;
-  }
-
-  final rounded = bitrate.round();
-
-  return '$rounded KBPS';
+  return switch (state.streamQuality) {
+    AudioStreamQuality.original => 'OG',
+    AudioStreamQuality.high => 'HQ',
+    AudioStreamQuality.medium => 'MQ',
+    AudioStreamQuality.low => 'LQ',
+    null => null,
+  };
 }
 
 String? playbackRttLabel(PlaybackState state) {

@@ -10,15 +10,16 @@ import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_imag
 
 /// Retains a small upcoming window in Flutter's live image cache. Matching
 /// artwork widgets can receive their first decoded frame synchronously.
-/// Recently prepared covers take priority over background window changes.
+/// The selected cover takes priority over the current upcoming window.
 class DecodedArtworkPreloader implements ArtworkPreloader {
   final ArtworkLoader loader;
   final int maximumEntries;
   final int maximumBytes;
+  final Duration preparationTimeout;
   final Map<ImageProvider, _PreloadedArtwork> _entries = {};
   final Set<ImageProvider> _skipped = {};
   final Set<ImageProvider> _capacitySkipped = {};
-  List<ArtworkRequest> _prepared = [];
+  ArtworkRequest? _selected;
   List<ImageProvider> _order = [];
   _PreloadedArtwork? _loading;
   String? _scope;
@@ -26,9 +27,13 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
   bool _draining = false;
   bool _disposed = false;
 
-  DecodedArtworkPreloader({required this.loader, this.maximumEntries = 3, this.maximumBytes = 32 * 1024 * 1024})
-    : assert(maximumEntries > 0),
-      assert(maximumBytes > 0);
+  DecodedArtworkPreloader({
+    required this.loader,
+    this.maximumEntries = 3,
+    this.maximumBytes = 32 * 1024 * 1024,
+    this.preparationTimeout = const Duration(seconds: 10),
+  }) : assert(maximumEntries > 0),
+       assert(maximumBytes > 0);
 
   void dispose() {
     if (_disposed) {
@@ -51,7 +56,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
 
     final desired = <ImageProvider, ArtworkRequest>{};
 
-    for (final request in [..._prepared, ...requests]) {
+    for (final request in [if (_selected case final selected?) selected, ...requests]) {
       if (request.source.trim().isEmpty) {
         continue;
       }
@@ -86,6 +91,12 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
       }
     }
 
+    final loading = _loading;
+    final selected = _selected == null ? null : _entries[_provider(_selected!)];
+    if (loading != null && selected != null && selected.stream == null && loading.provider != selected.provider) {
+      _release(loading);
+    }
+
     _drain();
   }
 
@@ -104,10 +115,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
         if (_entries[key] case final entry?) entry.request,
     ];
     final provider = _provider(request);
-    _prepared = [
-      request,
-      ..._prepared.where((previous) => _provider(previous) != provider),
-    ].take(maximumEntries).toList();
+    _selected = request;
     update(upcoming);
     final entry = _entries[provider];
 
@@ -132,7 +140,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
     }
 
     _order = [];
-    _prepared = [];
+    _selected = null;
     _skipped.clear();
     _capacitySkipped.clear();
   }
@@ -185,6 +193,13 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
         _loading = entry;
 
         try {
+          entry.timeout = Timer(preparationTimeout, () {
+            if (!_isCurrent(entry)) return;
+            _skipped.add(entry.provider);
+            if (!entry.ready.isCompleted) entry.ready.complete(ArtworkPreparation.unavailable);
+            _release(entry);
+            _drain();
+          });
           entry.stream = entry.provider.resolve(ImageConfiguration.empty);
           entry.listener = ImageStreamListener(
             (info, _) => _loaded(entry, info),
@@ -217,6 +232,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
       }
 
       entry.bytes = info.image.width * info.image.height * 4;
+      entry.timeout?.cancel();
       if (!entry.ready.isCompleted) {
         entry.ready.complete(ArtworkPreparation.ready);
       }
@@ -265,6 +281,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
   }
 
   void _release(_PreloadedArtwork entry) {
+    entry.timeout?.cancel();
     if (!entry.ready.isCompleted) {
       entry.ready.complete(ArtworkPreparation.cancelled);
     }
@@ -300,6 +317,7 @@ class _PreloadedArtwork {
   final Completer<ArtworkPreparation> ready = Completer<ArtworkPreparation>();
   ImageStream? stream;
   ImageStreamListener? listener;
+  Timer? timeout;
   int? bytes;
 
   _PreloadedArtwork(this.provider, this.request, this.generation);

@@ -271,6 +271,22 @@ class QuicOwnerLease implements ffi.Finalizable {
         int Function(int, ffi.Pointer<Utf8>, int)
       >('phonolite_quic_owner_expect_source');
 
+  static final _rttMilliseconds = _loadLibrary()
+      .lookupFunction<ffi.Uint64 Function(ffi.Uint64), int Function(int)>(
+        'phonolite_quic_owner_rtt_ms',
+      );
+  static final _receivedBytes = _loadLibrary()
+      .lookupFunction<ffi.Uint64 Function(ffi.Uint64), int Function(int)>(
+        'phonolite_quic_owner_received_bytes',
+      );
+
+  int? get rttMilliseconds {
+    final value = _id == 0 ? 0 : _rttMilliseconds(_id);
+    return value == 0 ? null : value;
+  }
+
+  int get receivedBytes => _id == 0 ? 0 : _receivedBytes(_id);
+
   /// Hints a route change without interrupting or freeing the borrowed decoder.
   void notifyNetworkChange(int generation) {
     if (_id != 0) _routeChanged(_id, generation);
@@ -278,7 +294,7 @@ class QuicOwnerLease implements ffi.Finalizable {
 
   /// Tightens an existing episode; a hint never renews its native deadline.
   void beginRecovery({
-    Duration remaining = const Duration(seconds: 15),
+    Duration remaining = const Duration(seconds: 30),
     int attemptsRemaining = 3,
   }) {
     if (_id != 0)
@@ -484,6 +500,12 @@ class QuicClient implements ffi.Finalizable {
   static final ffi.NativeFinalizer _bufferFinalizer = ffi.NativeFinalizer(
     calloc.nativeFree,
   );
+  static final _setAdaptiveRanges = _loadLibrary()
+      .lookupFunction<
+        ffi.Void Function(ffi.Pointer<_QuicHandle>, ffi.Int32),
+        void Function(ffi.Pointer<_QuicHandle>, int)
+      >('phonolite_quic_set_adaptive_ranges');
+
   final Object _bufferDetach = Object();
   Timer? _heartbeat;
 
@@ -547,6 +569,12 @@ class QuicClient implements ffi.Finalizable {
     return code >= 0 && code < QuicFailureKind.values.length
         ? QuicFailureKind.values[code]
         : QuicFailureKind.transport;
+  }
+
+  /// Opts in to range-boundary bitrate changes; legacy native callers stay fixed.
+  void setAdaptiveRangesEnabled(bool enabled) {
+    _ensureActive();
+    _setAdaptiveRanges(_handle, enabled ? 1 : 0);
   }
 
   /// Migration is opt-in until client/server and device validation are complete.

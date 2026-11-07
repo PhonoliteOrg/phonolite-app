@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
@@ -21,6 +22,8 @@ void main() {
     owner.notifyNetworkChange(1);
     owner.setMigrationEnabled(true);
     owner.reportPlayableMilliseconds(3000);
+    expect(owner.rttMilliseconds, isNull);
+    expect(owner.receivedBytes, 0);
     expect(owner.isAlive, isTrue);
     expect(QuicOwnerLease.beginOperation(owner.id, 0), isTrue);
     expect(owner.expectSource('fixed-version', 12345), isTrue);
@@ -35,6 +38,21 @@ void main() {
     expect(owner.recoveryAttempts, 0);
     expect(owner.recoveryRemaining, Duration.zero);
   }, skip: enabled ? false : 'Set PHONOLITE_QUIC_LIBRARY to the rebuilt native client DLL.');
+
+  test('a valid slow read can finish within the native decoder budget', () async {
+    final decoder = AudioFileDecoder.quic(
+      host: 'unused.test',
+      port: 4321,
+      trackId: 'memory',
+      token: 'unused',
+      serverPin: 'unused',
+      workerSpawner: (configuration, errors, exit) =>
+          Isolate.spawn(_slowDecoder, configuration, onError: errors, onExit: exit, errorsAreFatal: true),
+    );
+    addTearDown(decoder.close);
+    await decoder.initialize();
+    expect(await decoder.read32(2), [17, 19]);
+  }, skip: enabled ? false : 'Set PHONOLITE_QUIC_LIBRARY to the rebuilt native client library.');
 
   for (final scenario in [
     (duringOpen: false, silentExit: false),
@@ -170,6 +188,35 @@ Future<void> _memoryDecoder(Map<String, dynamic> configuration) async {
       });
     } else if (command['command'] == 'seek') {
       reply.send({'id': command['id'], 'position_ms': command['position_ms']});
+    } else if (command['command'] == 'close') {
+      reply.send({'id': command['id']});
+      break;
+    }
+  }
+  commands.close();
+}
+
+Future<void> _slowDecoder(Map<String, dynamic> configuration) async {
+  final reply = configuration['reply'] as SendPort;
+  final commands = ReceivePort();
+  reply.send({'type': 'commands', 'port': commands.sendPort});
+  await for (final raw in commands) {
+    if (raw == 'heartbeat') continue;
+    if (raw == 'owner_exit') break;
+    final command = raw as Map;
+    if (command['command'] == 'open') {
+      reply.send({
+        'type': 'ready',
+        'format': const AudioFileFormat(sampleRate: 48000, channels: 2, bitDepth: 16, duration: Duration(seconds: 1)),
+      });
+    } else if (command['command'] == 'read') {
+      await Future<void>.delayed(const Duration(seconds: 8));
+      reply.send({
+        'id': command['id'],
+        'samples': TransferableTypedData.fromList([
+          Int32List.fromList([17, 19]),
+        ]),
+      });
     } else if (command['command'] == 'close') {
       reply.send({'id': command['id']});
       break;

@@ -140,9 +140,9 @@ Then repeat the Flutter build. Flutter's macOS build command does not pass
 create a missing profile during that build. Keep certificate-based signing and
 the Keychain entitlements enabled so secure credential storage remains available.
 
-The iOS and macOS bundle ID is `com.adamuremek.phonolite`, matching the existing
-Phonolite App Store Connect record. Add macOS to that record for the shared
-listing. Select the correct Apple development team in `macos/Runner.xcworkspace`,
+The iOS and macOS bundle ID is `com.phonoliteorg.phonolite`. Use one Phonolite
+App Store Connect record with both iOS and macOS enabled for the shared listing.
+Select the correct Apple development team in `macos/Runner.xcworkspace`,
 then archive, validate and upload through Xcode. The Mac App Store manages app
 updates.
 See the [macOS native specification](docs/macos-native-specification.md) for

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/application/controllers/playlists/playlist_detail_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_event.dart';
@@ -1378,6 +1379,9 @@ class _Harness {
 }
 
 class _Audio extends Fake implements AudioEngine {
+  @override
+  AudioStreamQuality? streamQuality;
+
   @override
   void Function(int)? onGaplessTransition;
   @override

@@ -355,7 +355,7 @@ void main() {
         final device = controlRect(PhonoliteIcons.speaker);
         expect(shuffle.center.dy, device.center.dy);
         final quality = tester.getRect(
-          find.ancestor(of: find.text('OG'), matching: find.byType(AnimatedContainer)).first,
+          find.ancestor(of: find.text('AUTO'), matching: find.byType(AnimatedContainer)).first,
         );
         expect(quality.width, lessThan(60));
         expect(quality.height, lessThanOrEqualTo(36));
@@ -426,7 +426,7 @@ void main() {
         expect(find.text(playlistName), findsOneWidget);
         expect(find.text('SOURCE: LOCAL PLAYLIST'), findsNothing);
         expect(find.text('SOURCE: PLAYLIST'), findsNothing);
-        expect(find.textContaining('KBPS'), isLocal ? findsNothing : findsOneWidget);
+        expect(find.textContaining('KBPS'), findsNothing);
         expect(find.text(isLocal ? 'LOCAL' : 'SERVER'), findsOneWidget);
         expect(find.text(isLocal ? 'SERVER' : 'LOCAL'), findsNothing);
         expect(find.text('IDLE'), findsNothing);

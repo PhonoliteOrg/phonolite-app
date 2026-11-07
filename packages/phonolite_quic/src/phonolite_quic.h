@@ -44,6 +44,7 @@ char* phonolite_quic_poll_event(QuicHandle* handle);
 char* phonolite_quic_last_error(QuicHandle* handle);
 /* 0 none, 1 transient transport, 2 identity/TLS, 3 source rejection, 4 cancelled. */
 int32_t phonolite_quic_error_code(const QuicHandle* handle);
+void phonolite_quic_set_adaptive_ranges(QuicHandle* handle, int enabled);
 void phonolite_quic_set_migration_enabled(QuicHandle* handle, int32_t enabled);
 /* 1 queues a bounded same-server migration; 0 requires reconnect/resume. */
 int32_t phonolite_quic_network_changed(QuicHandle* handle, uint64_t route_generation);
@@ -67,6 +68,8 @@ void phonolite_quic_owner_recovery_finish(uint64_t owner_id);
 void phonolite_quic_owner_playable_ms(uint64_t owner_id, uint64_t playable_ms);
 void phonolite_quic_owner_set_migration_enabled(uint64_t owner_id, int32_t enabled);
 size_t phonolite_quic_owner_copy_source_metadata(uint64_t owner_id, uint8_t* output, size_t capacity);
+uint64_t phonolite_quic_owner_rtt_ms(uint64_t owner_id);
+uint64_t phonolite_quic_owner_received_bytes(uint64_t owner_id);
 int32_t phonolite_quic_owner_expect_source(uint64_t owner_id, const char* source_version, uint64_t total_length);
 void phonolite_quic_owner_release(void* owner_id);
 void phonolite_quic_owner_release_finalizer(void* owner_id);

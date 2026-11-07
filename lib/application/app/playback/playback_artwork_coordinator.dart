@@ -1,19 +1,22 @@
 part of '../app_controller.dart';
 
-/// Resolves the selected cover and waits for the same decoded key used by the UI.
-/// Missing artwork is optional; stale work cannot install track metadata.
+/// Warms optional covers independently of the audio source and Flutter rendering.
 class _PlaybackArtworkCoordinator {
   final AppController _host;
 
   _PlaybackArtworkCoordinator(this._host);
 
-  Future<Track> prepare(Track track, {required bool local, required bool Function() isCurrent}) async {
+  void warm(Track track, {required bool local, required bool Function() isCurrent}) {
+    unawaited(_warm(track, local: local, isCurrent: isCurrent));
+  }
+
+  Future<void> _warm(Track track, {required bool local, required bool Function() isCurrent}) async {
     final preloader = _host._shuffleArtworkPreloader;
-    if (preloader == null) {
-      return track;
+    if (preloader == null || !isCurrent()) {
+      return;
     }
 
-    while (isCurrent()) {
+    try {
       final metadataRevision = _host._metadataReadRevision;
       var resolved = track;
       if (!local && _host._needsTrackHydration(track)) {
@@ -27,49 +30,33 @@ class _PlaybackArtworkCoordinator {
         }
       }
 
-      if (!isCurrent()) {
-        return track;
-      }
-      if (metadataRevision != _host._metadataReadRevision) {
-        track = _latestTrack(track);
-        continue;
+      if (!isCurrent() || metadataRevision != _host._metadataReadRevision) {
+        return;
       }
 
+      _host._playQueue = _host._playQueue
+          .map(
+            (item) =>
+                item.id == resolved.id ? resolved.copyWith(liked: item.liked, inPlaylists: item.inPlaylists) : item,
+          )
+          .toList();
+      final current = _host._playbackState.track;
+      if (current?.id == resolved.id) {
+        _host._updatePlayback(
+          track: resolved.copyWith(liked: current!.liked, inPlaylists: current.inPlaylists),
+        );
+      }
       final request = _coverRequest(resolved, local: local);
       if (request == null) {
-        return resolved;
+        return;
       }
 
-      var result = ArtworkPreparation.unavailable;
-      try {
-        result = await preloader.prepare(request);
-      } catch (error) {
+      await preloader.prepare(request);
+    } catch (error) {
+      if (isCurrent()) {
         _host._pushMessage('Playback artwork unavailable: $error', level: LogLevel.debug);
       }
-      if (!isCurrent()) {
-        return track;
-      }
-      if (metadataRevision != _host._metadataReadRevision) {
-        track = _latestTrack(track);
-        continue;
-      }
-      if (result == ArtworkPreparation.cancelled) {
-        track = resolved;
-        continue;
-      }
-
-      return resolved;
     }
-
-    return track;
-  }
-
-  Track _latestTrack(Track fallback) {
-    final current = _host._playbackState.track;
-
-    return current?.id == fallback.id
-        ? current!
-        : _host._playQueue.where((item) => item.id == fallback.id).firstOrNull ?? fallback;
   }
 
   ArtworkRequest? _coverRequest(Track track, {required bool local}) {

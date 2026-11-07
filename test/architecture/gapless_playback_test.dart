@@ -14,6 +14,36 @@ import '../support/streaming_test_helpers.dart';
 /// All audio, clocks and decoders are memory objects. These checks exercise the
 /// production worker without launching a device, isolate, socket or server.
 void main() {
+  test('Play cannot resume the shared device while its source is refilling', () async {
+    final transport = MemoryQuic();
+    transport.onRequest = (start, seekId) =>
+        transport.deliverRange(startMs: start, endMs: 10000, packetCount: 60, complete: false);
+    final output = _Output();
+    final harness = GaplessPlaybackHarness(
+      transportFactory: (_) => transport,
+      decoderFactory: MemoryOpusDecoder.new,
+      outputFactory: (_, __, ___, ____, _____) => output,
+    );
+    addTearDown(harness.close);
+    await harness.playOpus('track');
+    await _wait(
+      () => harness.messages.any((event) => event['text']?.toString().contains('Buffer low:') == true),
+      tick: () => output.advance(4800),
+    );
+    expect(output.paused, isTrue);
+    harness.resume();
+    expect(output.paused, isTrue);
+    await harness.pause();
+    harness.resume();
+    expect(output.paused, isTrue);
+    transport.chunks.add(
+      Uint8List.fromList([
+        for (var i = 0; i < 120; i++) ...[1, 0, 1],
+      ]),
+    );
+    await _wait(() => !output.paused);
+  });
+
   test('a seek joining a tail cancellation still releases the submitted head', () async {
     final closingC = Completer<void>();
     final a = _Decoder(List.generate(4800, (i) => i));
@@ -1001,6 +1031,43 @@ void main() {
     expect(fixture.outputs.length, greaterThanOrEqualTo(3));
     expect(fixture.outputs[1].disposed, isTrue);
     expect(fixture.outputs[1].submitted, isEmpty);
+    expect(fixture.outputs.expand((output) => output.rendered), orderedEquals([...a.samples, ...c.samples]));
+    expect(_events(fixture.harness, 'gapless_transition').single['preparation_id'], 33);
+  });
+
+  test('an accepted replacement prevents completion while the prior preparation is closing', () async {
+    final opening = Completer<void>();
+    final closing = Completer<void>();
+    final a = _Decoder(List.generate(137, (i) => i + 1), opening: opening.future);
+    final b = _Decoder(List.filled(193, -1), closeGate: closing);
+    final c = _Decoder(List.generate(257, (i) => i + 2001));
+    final fixture = _Fixture({
+      'a': [a],
+      'b': [b],
+      'c': [c],
+    });
+    addTearDown(fixture.harness.close);
+    addTearDown(() {
+      if (!closing.isCompleted) closing.complete();
+    });
+    await fixture.harness.playOriginal('a');
+    await fixture.harness.prepareOriginal('b', 32);
+    await _wait(() => b.reads > 0);
+    final cancelling = fixture.harness.cancel(preparationId: 32);
+    await _wait(() => b.closeRequested);
+    final replacing = fixture.harness.prepareOriginal('c', 33);
+    opening.complete();
+    await fixture.driveUntil(() => fixture.outputs.isNotEmpty && fixture.output.rendered.length == a.samples.length);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(
+      _events(fixture.harness, 'complete'),
+      isEmpty,
+      reason: 'An admitted replacement still owns next-track intent.',
+    );
+    closing.complete();
+    await cancelling;
+    await replacing;
+    await fixture.driveUntil(() => _events(fixture.harness, 'complete').isNotEmpty);
     expect(fixture.outputs.expand((output) => output.rendered), orderedEquals([...a.samples, ...c.samples]));
     expect(_events(fixture.harness, 'gapless_transition').single['preparation_id'], 33);
   });

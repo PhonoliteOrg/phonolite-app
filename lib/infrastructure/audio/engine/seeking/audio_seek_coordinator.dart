@@ -39,6 +39,13 @@ class _AudioSeekCoordinator {
     _seekReadyRequestId = requestId;
 
     final ms = math.max(0, position.inMilliseconds);
+    if (_host.settings.mode == 'auto') {
+      _host._decodeCursor = null;
+      _host._decodedThroughSample = null;
+      _pumpSuspended = true;
+      await _host._ownerOriginal.reset();
+      if (generation != _seekRequestGeneration || !_host._isActive) return;
+    }
     _host._ownerRemote.onSeek(ms);
 
     _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
@@ -167,6 +174,7 @@ class _AudioSeekCoordinator {
     _baseOffsetMs = ms;
     _host._queuedToPlayerSamples = 0;
     _host._playedSamples = 0;
+    _host._ownerTelemetry._qualityTimeline.reset();
     _host._startedPlayback = false;
     _host._reportedStart = false;
     _host._startupBufferFilled = false;

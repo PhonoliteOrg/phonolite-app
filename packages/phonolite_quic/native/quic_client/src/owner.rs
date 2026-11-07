@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const LEASE_TIMEOUT: Duration = Duration::from_secs(10);
-const RECOVERY_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const RECOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const RECOVERY_ATTEMPTS: u32 = 3;
 
 #[derive(Clone)]
@@ -32,6 +32,8 @@ pub(crate) struct OwnerLease {
     recovery: Mutex<Option<RecoveryEpisode>>,
     source_metadata: Mutex<Option<SourceMetadata>>,
     playable_ms: AtomicU64,
+    rtt_ms: AtomicU64,
+    pub received_bytes: AtomicU64,
     migration_enabled: AtomicBool,
 }
 
@@ -46,6 +48,8 @@ impl OwnerLease {
             recovery: Mutex::new(None),
             source_metadata: Mutex::new(None),
             playable_ms: AtomicU64::new(8000),
+            rtt_ms: AtomicU64::new(0),
+            received_bytes: AtomicU64::new(0),
             migration_enabled: AtomicBool::new(false),
         }
     }
@@ -81,7 +85,13 @@ impl OwnerLease {
     }
 
     pub fn stall_timeout(&self) -> Duration {
-        Duration::from_secs(if self.playable_ms.load(Ordering::Acquire) <= 4000 { 1 } else { 2 })
+        let minimum = if self.playable_ms.load(Ordering::Acquire) <= 4000 { 5000 } else { 8000 };
+        Duration::from_millis(self.rtt_ms.load(Ordering::Acquire).saturating_mul(6).clamp(minimum, 12000))
+    }
+
+    pub fn observe_transport(&self, rtt_ms: u64, received: u64) {
+        self.rtt_ms.store(rtt_ms, Ordering::Release);
+        self.received_bytes.fetch_add(received, Ordering::AcqRel);
     }
 
     pub fn migration_enabled(&self) -> bool {
@@ -218,6 +228,16 @@ pub extern "C" fn phonolite_quic_owner_route_changed(id: u64, generation: u64) {
 #[no_mangle]
 pub extern "C" fn phonolite_quic_owner_playable_ms(id: u64, playable_ms: u64) {
     if let Some(owner) = get(id) { owner.playable_ms.store(playable_ms, Ordering::Release); }
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_rtt_ms(id: u64) -> u64 {
+    get(id).map_or(0, |owner| owner.rtt_ms.load(Ordering::Acquire))
+}
+
+#[no_mangle]
+pub extern "C" fn phonolite_quic_owner_received_bytes(id: u64) -> u64 {
+    get(id).map_or(0, |owner| owner.received_bytes.load(Ordering::Acquire))
 }
 
 #[no_mangle]
@@ -390,4 +410,17 @@ mod tests {
         assert!(owner.accept_source(SourceMetadata { source_version: "version".into(), total_length: 124 }).is_err());
         assert_eq!(owner.source_metadata().unwrap().total_length, 123);
     }
+    #[test]
+    fn stall_detection_allows_loss_recovery_and_accounts_for_path_latency() {
+        let owner = OwnerLease::new();
+        owner.playable_ms.store(800, Ordering::Release);
+        assert_eq!(owner.stall_timeout(), Duration::from_secs(5));
+        owner.observe_transport(1500, 123);
+        assert_eq!(owner.stall_timeout(), Duration::from_secs(9));
+        owner.observe_transport(10000, 321);
+        assert_eq!(owner.stall_timeout(), Duration::from_secs(12));
+        assert_eq!(owner.received_bytes.load(Ordering::Acquire), 444);
+        assert_eq!(owner.recovery_attempts(), 0);
+    }
+
 }

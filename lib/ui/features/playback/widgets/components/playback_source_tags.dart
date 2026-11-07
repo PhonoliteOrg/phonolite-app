@@ -24,10 +24,10 @@ List<Widget> playbackBuildTechTags(PlaybackState state) {
     tags.add(PlaybackTechTag(label: state.isLocalPlayback ? 'LOCAL' : 'SERVER', highlight: true));
   }
 
-  final bitrate = playbackBitrateLabel(state);
+  final quality = playbackActiveQualityLabel(state);
 
-  if (bitrate != null) {
-    tags.add(PlaybackTechTag(label: bitrate));
+  if (quality != null) {
+    tags.add(PlaybackTechTag(label: quality));
   }
 
   final rtt = playbackRttLabel(state);

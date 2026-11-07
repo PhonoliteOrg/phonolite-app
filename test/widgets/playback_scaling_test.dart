@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
@@ -534,7 +535,7 @@ Map<String, Rect> _playerMeasurements(WidgetTester tester, String playback) {
               ? 'IDLE'
               : local
               ? 'LOCAL'
-              : '320 KBPS',
+              : 'HQ',
         )
         .last,
     'play icon': find.byIcon(Icons.play_arrow),
@@ -602,6 +603,8 @@ class _PlayerProbe {
       volume: 0.5,
       streamMode: StreamMode.auto,
       bitrateKbps: playback == 'server' ? 320 : null,
+      streamQuality: playback == 'server' ? AudioStreamQuality.high : null,
+      streamConnected: playback == 'server',
       streamRttMs: playback == 'server' ? 28 : null,
       queueSource: playback == 'local'
           ? PlaybackQueueSource.offline

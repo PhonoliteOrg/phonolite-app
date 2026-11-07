@@ -252,7 +252,7 @@ class _GaplessCoordinator {
               ? revision == _revision
               : _preparingLookahead == after.id &&
                     (identical(_candidate, after) || (_lastTransitionedId == after.id && _candidate == null)));
-      track = await _host._playbackArtworkCoordinator.prepare(track, local: local, isCurrent: isCurrent);
+      _host._playbackArtworkCoordinator.warm(track, local: local, isCurrent: isCurrent);
       if (isCurrent()) {
         final resolved = track;
         _host._playQueue = _host._playQueue.map((item) => item.id == resolved.id ? resolved : item).toList();
@@ -423,6 +423,7 @@ class _GaplessCoordinator {
     _host._updatePlayback(
       track: track,
       isPlaying: wantsPlayback && !_host._audioSessionSuspended,
+      streamQuality: null,
       isLoading: false,
       position: Duration.zero,
       duration: Duration(milliseconds: track.durationMs),

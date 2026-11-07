@@ -7,6 +7,8 @@ import 'package:phonolite_quic/phonolite_quic.dart';
 
 import 'package:phonolite_app/data/models/audio/audio_file_format.dart';
 import 'package:phonolite_app/data/models/audio/audio_source_rejected.dart';
+import 'package:phonolite_app/data/rules/audio/audio_recovery_policy.dart';
+import 'package:phonolite_app/data/structures/audio/pcm_stream_converter.dart';
 
 typedef AudioFileDecoderWorkerSpawner = Future<Isolate> Function(
   Map<String, dynamic> configuration,
@@ -86,6 +88,7 @@ class AudioFileDecoder {
     required String serverPin,
     Duration startOffset = Duration.zero,
     AudioFileDecoderWorkerSpawner? workerSpawner,
+    Map<String, dynamic>? expectedSourceMetadata,
   }) : _filePath = null,
        _url = null,
        _quicHost = host,
@@ -94,7 +97,8 @@ class AudioFileDecoder {
        _token = token,
        _serverPin = serverPin,
        _workerSpawner = workerSpawner,
-       _startOffset = startOffset;
+       _startOffset = startOffset,
+       _expectedSourceMetadata = expectedSourceMetadata == null ? null : Map.unmodifiable(expectedSourceMetadata);
 
   AudioFileFormat get format => _format ?? (throw StateError('Audio decoder is not initialized.'));
 
@@ -103,6 +107,10 @@ class AudioFileDecoder {
   Duration get recoveryRemaining => _quicOwner?.recoveryRemaining ?? Duration.zero;
 
   int get recoveryAttempts => _quicOwner?.recoveryAttempts ?? 0;
+
+  int? get transportRttMilliseconds => _quicOwner?.rttMilliseconds;
+
+  int get transportReceivedBytes => _quicOwner?.receivedBytes ?? 0;
 
   Future<void> initialize() => _initialization ??= _initialize();
 
@@ -121,7 +129,7 @@ class AudioFileDecoder {
     _quicOwner?.notifyNetworkChange(routeGeneration);
   }
 
-  void beginRecovery({Duration remaining = const Duration(seconds: 15), int attemptsRemaining = 3}) {
+  void beginRecovery({Duration remaining = AudioRecoveryPolicy.budget, int attemptsRemaining = 3}) {
     _quicOwner?.beginRecovery(remaining: remaining, attemptsRemaining: attemptsRemaining);
   }
 
@@ -170,6 +178,15 @@ class AudioFileDecoder {
 
   Future<Int32List> read32(int maxSamples) async {
     final response = await _request('read', {'max_samples': maxSamples});
+    final transferred = response['samples'] as TransferableTypedData;
+
+    return transferred.materialize().asInt32List();
+  }
+
+  /// Converts bounded source blocks on the decoder isolate. A seek resets the
+  /// converter; raw and normalized reads must not be interleaved between seeks.
+  Future<Int32List> readNormalized32({required int outputRate, required int outputChannels}) async {
+    final response = await _request('read_normalized', {'output_rate': outputRate, 'output_channels': outputChannels});
     final transferred = response['samples'] as TransferableTypedData;
 
     return transferred.materialize().asInt32List();
@@ -297,7 +314,9 @@ class AudioFileDecoder {
     }
 
     return result.future.timeout(
-      const Duration(seconds: 7),
+      // Native reads/seeks can use fifteen seconds. Leave time for isolate IPC
+      // after that deadline; this watchdog only retires an unresponsive worker.
+      const Duration(seconds: 20),
       onTimeout: () {
         _requests.remove(requestId);
         _quicOwner?.cancel();
@@ -400,6 +419,8 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
   // be processed after a slow but successful open before the lease expires.
   final incoming = StreamIterator<dynamic>(commands.timeout(const Duration(seconds: 30)));
   LocalAudioDecoder? decoder;
+  PcmStreamConverter? normalizer;
+  bool normalizedEnd = false;
 
   try {
     // Do not acquire a native handle until the owner acknowledges the command
@@ -494,21 +515,46 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
 
         final ownerId = configuration['quic_owner_id'] as int?;
         if (ownerId != null &&
-            (message['command'] == 'read' || message['command'] == 'seek') &&
+            (message['command'] == 'read' || message['command'] == 'read_normalized' || message['command'] == 'seek') &&
             !QuicOwnerLease.beginOperation(ownerId, message['operation_epoch'] as int)) {
           throw StateError('Original decoder operation was superseded.');
         }
 
         switch (message['command']) {
           case 'read':
+            if (normalizer != null) throw StateError('Raw and normalized reads cannot be interleaved.');
             final samples = activeDecoder.read32(message['max_samples'] as int);
 
             reply.send({
               'id': requestId,
               'samples': TransferableTypedData.fromList([samples]),
             });
+          case 'read_normalized':
+            final rate = message['output_rate'] as int;
+            final channels = message['output_channels'] as int;
+            normalizer ??= PcmStreamConverter(
+              inputRate: activeDecoder.sampleRate,
+              inputChannels: activeDecoder.channels,
+              outputRate: rate,
+              outputChannels: channels,
+            );
+            if (normalizer.outputRate != rate || normalizer.outputChannels != channels) {
+              throw StateError('Normalized output format cannot change between seeks.');
+            }
+            var converted = Int32List(0);
+            while (!normalizedEnd && converted.isEmpty) {
+              final input = activeDecoder.read32(activeDecoder.sampleRate * activeDecoder.channels ~/ 5);
+              normalizedEnd = input.isEmpty;
+              converted = normalizer.process(input, endOfInput: normalizedEnd) as Int32List;
+            }
+            reply.send({
+              'id': requestId,
+              'samples': TransferableTypedData.fromList([converted]),
+            });
           case 'seek':
             final position = activeDecoder.seek(Duration(milliseconds: message['position_ms'] as int));
+            normalizer = null;
+            normalizedEnd = false;
 
             reply.send({'id': requestId, 'position_ms': position.inMilliseconds});
           case 'close':

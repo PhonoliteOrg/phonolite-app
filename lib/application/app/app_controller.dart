@@ -324,8 +324,9 @@ class AppController
       shuffleMode: ShuffleMode.off,
       shuffleScope: ActionScope.server,
       repeatMode: PlaybackRepeatMode.off,
-      streamMode: StreamMode.original,
+      streamMode: StreamMode.auto,
       bitrateKbps: null,
+      streamQuality: null,
       streamConnected: false,
       streamRttMs: null,
       queueSource: PlaybackQueueSource.none,
@@ -578,7 +579,7 @@ class AppController
     int? rttMs,
     bool isLocalPlayback,
   ) {
-    if (_disposed || _playbackCoordinator._waitingForArtwork) {
+    if (_disposed) {
       return;
     }
 
@@ -615,17 +616,19 @@ class AppController
       position: Duration(milliseconds: _displayPositionMs),
       bufferRatio: displayBufferRatio,
       bitrateKbps: isLocalPlayback ? null : bitrateKbps,
+      streamQuality: isLocalPlayback ? null : _audioEngine.streamQuality,
       streamConnected: !isLocalPlayback,
       streamRttMs: isLocalPlayback ? null : nextRtt,
       isLocalPlayback: isLocalPlayback,
     );
+    _recoveryCoordinator.noteHealthyPlayback(clamped, bufferedAhead);
     _maybeAutoAdvance(clamped, bufferedAhead);
     _resumeCoordinator.progress();
     _gaplessCoordinator.prepare();
   }
 
   void _handleAudioStarted() {
-    if (_disposed || _playbackCoordinator._waitingForArtwork) {
+    if (_disposed) {
       return;
     }
 

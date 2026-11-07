@@ -133,7 +133,8 @@ void main() {
     final transport = MemoryQuic();
     transport.onRequest = (start, seekId) => transport.deliverRange(
       startMs: start,
-      endMs: start + 200,
+      endMs: start + 10000,
+      packetCount: 60,
       seekId: seekId,
       complete: false,
     );

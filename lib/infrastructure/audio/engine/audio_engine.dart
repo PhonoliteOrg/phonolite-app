@@ -11,13 +11,22 @@ import 'package:flutter/services.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
 
+import 'package:phonolite_app/data/models/audio/audio_original_descriptor.dart';
 import 'package:phonolite_app/data/models/audio/audio_source_rejected.dart';
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/data/models/audio/audio_worker_init.dart';
 import 'package:phonolite_app/data/models/audio/stream_settings.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/data/rules/audio/audio_recovery_policy.dart';
+import 'package:phonolite_app/data/rules/audio/auto_original_policy.dart';
 import 'package:phonolite_app/data/rules/listening_stats/listening_recorder.dart';
+import 'package:phonolite_app/data/structures/audio/aligned_pcm_buffer.dart';
+import 'package:phonolite_app/data/structures/audio/audio_auto_quality_history.dart';
+import 'package:phonolite_app/data/structures/audio/audio_network_history.dart';
+import 'package:phonolite_app/data/structures/audio/audio_network_recovery_window.dart';
+import 'package:phonolite_app/data/structures/audio/audio_quality_timeline.dart';
+import 'package:phonolite_app/data/structures/audio/audio_rendition_mixer.dart';
 import 'package:phonolite_app/data/structures/audio/encoded_audio_cache.dart';
 import 'package:phonolite_app/data/structures/audio/pcm_ring_buffer.dart';
 import 'package:phonolite_app/data/structures/audio/pcm_stream_converter.dart';
@@ -42,6 +51,7 @@ part 'session/audio_listening_session.dart';
 part 'session/audio_output_configuration.dart';
 part 'session/playback_session.dart';
 part 'sources/file_audio_source.dart';
+part 'sources/auto_original_source.dart';
 part 'sources/remote_audio_source.dart';
 part 'telemetry/audio_telemetry.dart';
 part 'testing/audio_playback_harness.dart';
@@ -93,6 +103,7 @@ class AudioEngine {
   bool _active = false;
   bool _paused = false;
   bool _sourceRejected = false;
+  AudioStreamQuality? _streamQuality;
   int _playbackId = 0;
   Map<String, dynamic>? _listeningContext;
   void Function(Map<String, dynamic>)? onListeningSegment;
@@ -135,6 +146,8 @@ class AudioEngine {
   bool get hasActivePlayer => _active;
 
   bool get isPaused => _paused;
+
+  AudioStreamQuality? get streamQuality => _streamQuality;
 
   /// Repairs remote delivery without replacing the current playback occurrence.
   void notifyNetworkChange() {
@@ -303,6 +316,7 @@ class AudioEngine {
     }
 
     _sourceRejected = false;
+    _streamQuality = null;
     _cancelPendingSeeks();
     _ensureWorkerForPlayback();
 
@@ -443,6 +457,7 @@ class AudioEngine {
     }
 
     _sourceRejected = false;
+    _streamQuality = null;
     _cancelPendingSeeks();
     _ensureWorkerForPlayback();
     _sendCmd({'cmd': 'stop'});
@@ -565,6 +580,7 @@ class AudioEngine {
     }
 
     _cancelPendingSeeks();
+    _streamQuality = null;
     _active = false;
     _paused = false;
 
@@ -678,6 +694,7 @@ class AudioEngine {
 
     switch (type) {
       case 'gapless_transition':
+        _streamQuality = null;
         final id = (message['preparation_id'] as num?)?.toInt();
         if (id != null) onGaplessTransition?.call(id);
         break;
@@ -711,6 +728,9 @@ class AudioEngine {
 
         break;
       case 'stats':
+        _streamQuality = !_active || message['local'] == true
+            ? null
+            : AudioStreamQuality.tryParse(message['stream_quality']);
         final positionMs = (message['position_ms'] as num?)?.toInt() ?? 0;
         final bufferedMs = (message['buffered_ms'] as num?)?.toInt() ?? 0;
         final rttMs = (message['rtt_ms'] as num?)?.toInt();
@@ -728,6 +748,7 @@ class AudioEngine {
 
         break;
       case 'complete':
+        _streamQuality = null;
         _active = false;
         _paused = false;
         final handler = _onComplete;
@@ -752,6 +773,9 @@ class AudioEngine {
         _active = active;
         _paused = paused;
         _sourceRejected = message['source_rejected'] == true;
+        if (!active) {
+          _streamQuality = null;
+        }
         _onState?.call(active, paused);
 
         if (_sourceRejected) {
@@ -767,6 +791,7 @@ class AudioEngine {
   Future<void> _stopAndFlush({bool waitForRelease = false}) async {
     _cancelPendingSeeks();
     _playbackId++;
+    _streamQuality = null;
     _active = false;
     _paused = false;
     // The worker acknowledges only after closing its decoder/file. Deletion

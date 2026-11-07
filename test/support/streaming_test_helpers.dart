@@ -5,7 +5,7 @@ import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 import 'package:phonolite_opus/phonolite_opus.dart';
 import 'package:phonolite_quic/phonolite_quic.dart';
 
-Uint8List rawHeader({int durationMs = 60000, int preSkip = 312}) {
+Uint8List rawHeader({int durationMs = 60000, int preSkip = 312, int bitrateBps = 160000}) {
   final bytes = Uint8List(45);
   bytes.setRange(0, 8, 'OPUSR01\u0000'.codeUnits);
   bytes[8] = 1;
@@ -14,7 +14,7 @@ Uint8List rawHeader({int durationMs = 60000, int preSkip = 312}) {
   view.setUint32(12, 48000, Endian.little);
   bytes[16] = 2;
   bytes[17] = 20;
-  view.setUint32(18, 160000, Endian.little);
+  view.setUint32(18, bitrateBps, Endian.little);
   view.setUint32(22, durationMs, Endian.little);
   view.setUint16(26, preSkip, Endian.little);
   view.setUint16(28, 5, Endian.little);
@@ -38,6 +38,9 @@ class MemoryQuic implements QuicClient {
   bool notifyNetworkChange(int routeGeneration) => false;
   @override
   void setMigrationEnabled(bool enabled) {}
+
+  @override
+  void setAdaptiveRangesEnabled(bool enabled) {}
 
   @override
   int get requestId => _generation;
@@ -79,6 +82,8 @@ class MemoryQuic implements QuicClient {
     bool endOfTrack = false,
     int preSkip = 312,
     int? packetCount,
+    int bitrateBps = 160000,
+    bool adaptiveRanges = false,
   }) {
     events.add({
       'type': 'stream',
@@ -87,6 +92,7 @@ class MemoryQuic implements QuicClient {
       'range_end_ms': endMs,
       'end_of_track': endOfTrack,
       'source_version': 'source-v1',
+      'adaptive_ranges': adaptiveRanges,
     });
     final first = BytesBuilder();
     if (seekId != null) {
@@ -96,7 +102,7 @@ class MemoryQuic implements QuicClient {
       ByteData.sublistView(marker).setUint32(2, seekId, Endian.little);
       first.add(marker);
     }
-    first.add(rawHeader(durationMs: durationMs, preSkip: preSkip));
+    first.add(rawHeader(durationMs: durationMs, preSkip: preSkip, bitrateBps: bitrateBps));
     chunks.add(first.takeBytes());
     final frames = packetCount ?? (((endMs - startMs) * 48 + preSkip) / 960).ceil();
     for (var i = 0; i < frames; i += 10) {

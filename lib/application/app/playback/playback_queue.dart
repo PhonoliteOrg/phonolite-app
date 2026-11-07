@@ -538,7 +538,7 @@ class _PlaybackQueue {
   }
 
   void _handleTrackFinished() {
-    if (_host._disposed || _host._playbackCoordinator._waitingForArtwork) {
+    if (_host._disposed) {
       return;
     }
 

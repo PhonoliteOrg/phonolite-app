@@ -37,10 +37,10 @@ class _NativeMediaCoordinator {
           await _host.pause(true);
           break;
         case NativeRemoteAction.next:
-          await _host.nextTrack();
+          await _runPlaybackSelection(_host.nextTrack);
           break;
         case NativeRemoteAction.previous:
-          await _host.prevTrack();
+          await _runPlaybackSelection(_host.prevTrack);
           break;
         case NativeRemoteAction.toggleLike:
           final track = _host._playbackState.track;
@@ -95,6 +95,27 @@ class _NativeMediaCoordinator {
     _pushNowPlayingUpdate(force: true);
   }
 
+  /// Selecting a track is an explicit playback request, just like pressing Play.
+  Future<T> _runPlaybackSelection<T>(Future<T> Function() select) async {
+    final playback = _host._playbackCoordinator;
+    final previousStart = playback._playbackStarts.current;
+    final intent = playback._playbackIntents.current;
+    final result = await select();
+
+    // iOS may never send interruption end. Recover only after a selection
+    // actually starts, and preserve any newer user Pause received while loading.
+    if (!_host._disposed &&
+        _audioInterrupted &&
+        _host._wantsPlayback &&
+        playback._playbackIntents.isCurrent(intent) &&
+        playback._playbackStarts.current != previousStart) {
+      AppLogger.debug('Explicit track selection is retrying interrupted audio for ${_host._playbackState.track?.id}.');
+      await _host.pause(false);
+    }
+
+    return result;
+  }
+
   Future<void> _reactivateInterruptedSession() async {
     if (!_audioInterrupted) {
       return;
@@ -106,6 +127,8 @@ class _NativeMediaCoordinator {
       if (activated && !_host._disposed && revision == _interruptionRevision) {
         _audioInterrupted = false;
         AppLogger.debug('Audio session reactivated after explicit Play.');
+      } else if (!activated) {
+        AppLogger.debug('Audio session activation declined; playback remains interrupted until another Play request.');
       }
     } catch (error) {
       AppLogger.debug('Audio session reactivation was not accepted: $error');

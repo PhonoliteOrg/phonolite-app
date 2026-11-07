@@ -2,17 +2,18 @@ part of '../audio_engine.dart';
 
 class _AdaptiveAudioBufferPolicy {
   final _PlaybackSession _host;
+  final AudioNetworkRecoveryWindow _recoveryWindow = AudioNetworkRecoveryWindow();
+  final Stopwatch _clock = Stopwatch()..start();
   bool _quickStart = false;
   bool _startupBufferFilled = false;
   bool _isLoopbackHost = false;
   int _networkProfileLevel = 0;
-  int _stableBufferTicks = 0;
   int? _lastObservedRttMs;
   bool _startedPlayback = false;
   int _sampleRate = 48000;
   double _prebufferSeconds = 0.3;
-  double _rebufferMinSeconds = 0.08;
-  double _rebufferTargetSeconds = 0.3;
+  double _rebufferMinSeconds = 0.12;
+  double _rebufferTargetSeconds = 0.6;
   int _prebufferTargetSamples = 0;
   int _rebufferMinSamples = 0;
   int _rebufferTargetSamples = 0;
@@ -20,20 +21,50 @@ class _AdaptiveAudioBufferPolicy {
 
   _AdaptiveAudioBufferPolicy(this._host);
 
+  String get _networkKey => '${_host.baseUrl}|${_host.quicPort}|${_host.serverPin}';
+
+  int get healthyReserveMilliseconds {
+    final samplesPerSecond = _sampleRate * _host._channels;
+    if (samplesPerSecond <= 0) {
+      return 500;
+    }
+    final refillMs = _rebufferTargetSamples * 1000 ~/ samplesPerSecond;
+    final capacityMs = (_host._buffer?.capacity ?? _rebufferTargetSamples) * 1000 ~/ samplesPerSecond;
+
+    return math.max(1, math.min(capacityMs, const AudioRecoveryPolicy().healthyReserveMilliseconds(refillMs)));
+  }
+
   int get _encodedReadAheadTargetMs {
     final prepared = _host._gaplessSource;
-    if (prepared != null && prepared._isPrepared && !prepared._announced) return 2000;
+    if (prepared != null && prepared._isPrepared && !prepared._announced) {
+      return _networkProfileLevel >= 1 ? 5000 : 2000;
+    }
+
     if (_host._userPaused) {
       return 2000;
     }
 
-    return _isLoopbackHost ? 3000 : 8000;
+    if (_isLoopbackHost) {
+      // The server recognizes shorter targets as paused/prepared playback.
+      // Active Auto still needs its ordinary horizon on a local connection.
+      return _host.settings.mode == 'auto' ? 8000 : 3000;
+    }
+
+    if (_host.settings.isOriginal) {
+      return 8000;
+    }
+
+    return switch (_networkProfileLevel) {
+      0 => 8000,
+      1 => 12000,
+      _ => 20000,
+    };
   }
 
   void _configureBufferProfile(String host) {
     _isLoopbackHost = host == 'localhost' || host == '127.0.0.1' || host == '::1';
-    _networkProfileLevel = 0;
-    _stableBufferTicks = 0;
+    _networkProfileLevel = _isLoopbackHost ? 0 : (_host.networkHistory?.levelFor(_networkKey) ?? 0);
+    _recoveryWindow.reset();
     _lastObservedRttMs = null;
     _applyBufferProfile(log: true);
   }
@@ -41,7 +72,7 @@ class _AdaptiveAudioBufferPolicy {
   void _configureLocalBufferProfile() {
     _isLoopbackHost = true;
     _networkProfileLevel = 0;
-    _stableBufferTicks = 0;
+    _recoveryWindow.reset();
     _lastObservedRttMs = null;
     _applyBufferProfile(log: true);
   }
@@ -56,20 +87,20 @@ class _AdaptiveAudioBufferPolicy {
       rebufferMinSeconds = _PlaybackSession._rebufferMinSecondsLocal;
       rebufferTargetSeconds = _PlaybackSession._rebufferTargetSecondsLocal;
     } else {
-      prebufferSeconds = 0.12;
-      rebufferMinSeconds = 0.08;
-      rebufferTargetSeconds = 0.3;
+      prebufferSeconds = 0.4;
+      rebufferMinSeconds = 0.12;
+      rebufferTargetSeconds = 0.6;
 
       if (_networkProfileLevel >= 1) {
-        prebufferSeconds = math.max(prebufferSeconds, 0.2);
-        rebufferMinSeconds = math.max(rebufferMinSeconds, 0.12);
-        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 0.5);
+        prebufferSeconds = math.max(prebufferSeconds, 0.8);
+        rebufferMinSeconds = math.max(rebufferMinSeconds, 0.25);
+        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 1.5);
       }
 
       if (_networkProfileLevel >= 2) {
-        prebufferSeconds = math.max(prebufferSeconds, 0.3);
-        rebufferMinSeconds = math.max(rebufferMinSeconds, 0.2);
-        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 0.8);
+        prebufferSeconds = math.max(prebufferSeconds, 2.0);
+        rebufferMinSeconds = math.max(rebufferMinSeconds, 0.5);
+        rebufferTargetSeconds = math.max(rebufferTargetSeconds, 3.0);
       }
     }
 
@@ -82,6 +113,9 @@ class _AdaptiveAudioBufferPolicy {
     _rebufferMinSeconds = rebufferMinSeconds;
     _rebufferTargetSeconds = rebufferTargetSeconds;
     _refreshBufferTargets();
+    if (!_isLoopbackHost) {
+      _host.networkHistory?.remember(_networkKey, _networkProfileLevel);
+    }
 
     if (log || changed) {
       _host._log(
@@ -160,6 +194,8 @@ class _AdaptiveAudioBufferPolicy {
     _lastObservedRttMs = rttMs;
 
     if (_isLoopbackHost || _quickStart) {
+      _recoveryWindow.reset();
+
       return;
     }
 
@@ -173,24 +209,38 @@ class _AdaptiveAudioBufferPolicy {
       }
     }
 
-    final stableEnough =
-        !_host._autoPaused && (rttMs == null || rttMs <= 120) && bufferedMs >= (_rebufferTargetSeconds * 2000).round();
-
-    if (stableEnough) {
-      _stableBufferTicks += 1;
-
-      if (_stableBufferTicks >= 20 && desiredLevel > 0) {
-        desiredLevel -= 1;
-        _stableBufferTicks = 0;
-      }
-    } else {
-      _stableBufferTicks = 0;
+    if (desiredLevel > _networkProfileLevel) {
+      _recoveryWindow.reset();
+    } else if (_recoveryWindow.observe(
+      now: _clock.elapsed,
+      level: _networkProfileLevel,
+      rttMs: rttMs,
+      bufferedMs: bufferedMs,
+      minimumReserveMs: math.min(
+        _networkProfileLevel >= 2 ? 1500 : 600,
+        _rebufferTargetSamples * 1000 ~/ math.max(1, _sampleRate * _host._channels),
+      ),
+      acceptedThroughMs: _host._positionMs + bufferedMs,
+      readAheadSatisfied: _readAheadSatisfied,
+      userPaused: _host._userPaused || !_startedPlayback,
+    )) {
+      desiredLevel = math.max(0, desiredLevel - 1);
     }
 
     if (desiredLevel != _networkProfileLevel) {
       _networkProfileLevel = desiredLevel;
       _applyBufferProfile(log: true);
     }
+  }
+
+  bool get _readAheadSatisfied {
+    if (_host.settings.isOriginal) {
+      final target = _host._ownerFile._remoteReadAheadSamples();
+
+      return (_host._buffer?.length ?? 0) >= target - _pumpChunkSamples;
+    }
+
+    return _host._encodedCache.bufferedAheadMs(_host._positionMs) >= _encodedReadAheadTargetMs - 250;
   }
 
   void _maybeRebuffer(int bufferedSamples) {
@@ -217,7 +267,7 @@ class _AdaptiveAudioBufferPolicy {
     }
 
     if (!_host._autoPaused && bufferedSamples <= _rebufferMinSamples) {
-      _stableBufferTicks = 0;
+      _recoveryWindow.reset();
 
       if (!_quickStart && !_isLoopbackHost && _networkProfileLevel < 2) {
         _networkProfileLevel += 1;
@@ -229,28 +279,24 @@ class _AdaptiveAudioBufferPolicy {
       return;
     }
 
-    final resumeThresholdSamples = _host._reportedStart && _host._playedSamples == 0
-        ? _rebufferMinSamples
-        : _rebufferTargetSamples;
-
-    if (_host._autoPaused && bufferedSamples >= resumeThresholdSamples) {
+    if (_host._autoPaused && bufferedSamples >= _rebufferTargetSamples) {
       _resumeFromAutoPause();
     }
   }
 
-  int _bufferedAudioMs() {
-    final samplesPerSecond = _sampleRate * _host._channels;
-
-    if (samplesPerSecond <= 0) {
-      return 0;
-    }
-
+  int _bufferedAudioSamples() {
     final bufferSamples = _host._buffer?.length ?? 0;
     final queuedInPlayer = _host._queuedToPlayerSamples > _host._playedSamples
         ? (_host._queuedToPlayerSamples - _host._playedSamples)
         : 0;
 
-    return ((bufferSamples + queuedInPlayer) * 1000 ~/ samplesPerSecond);
+    return bufferSamples + queuedInPlayer;
+  }
+
+  int _bufferedAudioMs() {
+    final samplesPerSecond = _sampleRate * _host._channels;
+
+    return samplesPerSecond <= 0 ? 0 : _bufferedAudioSamples() * 1000 ~/ samplesPerSecond;
   }
 
   void _pauseForBuffer(int bufferedSamples) {

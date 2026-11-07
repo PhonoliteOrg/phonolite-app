@@ -212,10 +212,10 @@ class NowPlayingBar extends StatelessWidget {
       techTags.add(PlaybackTechTag(label: state.isLocalPlayback ? 'LOCAL' : 'SERVER', highlight: true));
     }
 
-    final bitrate = playbackBitrateLabel(state);
+    final quality = playbackActiveQualityLabel(state);
 
-    if (bitrate != null) {
-      techTags.add(PlaybackTechTag(label: bitrate));
+    if (quality != null) {
+      techTags.add(PlaybackTechTag(label: quality));
     }
 
     final rtt = playbackRttLabel(state);

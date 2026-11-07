@@ -111,7 +111,7 @@ impl SourceHandle {
             {
                 return Err(error);
             }
-            self.inner.owner.begin_recovery(Duration::from_secs(15), 3);
+            self.inner.owner.begin_recovery(super::owner::RECOVERY_TIMEOUT, 3);
             self.reconnect()?;
             resumed = true;
         }
@@ -195,12 +195,10 @@ impl SourceHandle {
             }
             if self.inner.owner.route_generation() != self.route_generation {
                 let generation = self.inner.owner.route_generation();
-                self.inner.owner.begin_recovery(Duration::from_secs(15), 3);
+                self.route_generation = generation;
                 if self.inner.try_migrate(generation) {
-                    self.route_generation = generation;
+                    self.inner.owner.begin_recovery(super::owner::RECOVERY_TIMEOUT, 3);
                     last_progress = Instant::now();
-                } else {
-                    return Err("Original source route changed".into());
                 }
             }
             loop {
@@ -1367,4 +1365,33 @@ mod tests {
         assert!(source.stream.is_none());
         assert!(source.inner.delivery.lock().unwrap().suspended);
     }
+    #[test]
+    fn a_short_delivery_gap_preserves_the_source_and_connection() {
+        let (mut source, commands) = source();
+        let id = super::super::owner::phonolite_quic_owner_create();
+        super::super::owner::phonolite_quic_owner_playable_ms(id, 800);
+        Arc::get_mut(&mut source.inner).unwrap().owner = super::super::owner::get(id).unwrap();
+        source.connect = Some(Box::new(|| panic!("a brief stall must not reconnect")));
+        let inner = Arc::clone(&source.inner);
+        let (release, resume) = std::sync::mpsc::channel();
+        let worker = thread::spawn(move || {
+            let ControlCommand::SourceOpen { generation, .. } = commands.recv().unwrap() else {
+                panic!("source open expected")
+            };
+            let tx = announce(&inner, generation, 0, 1024 * 1024);
+            tx.send(vec![7; 4096]);
+            resume.recv().unwrap();
+            thread::sleep(Duration::from_millis(1200));
+            tx.send(vec![8; 4096]);
+        });
+        assert_eq!(source.read_range(0, 4096, Duration::from_secs(5)).unwrap(), vec![7; 4096]);
+        let generation = source.stream.as_ref().unwrap().generation;
+        release.send(()).unwrap();
+        assert_eq!(source.read_range(4096, 4096, Duration::from_secs(5)).unwrap(), vec![8; 4096]);
+        assert_eq!(source.stream.as_ref().unwrap().generation, generation);
+        assert_eq!(source.inner.owner.recovery_attempts(), 0);
+        worker.join().unwrap();
+        super::super::owner::phonolite_quic_owner_release(id as usize as *mut c_void);
+    }
+
 }

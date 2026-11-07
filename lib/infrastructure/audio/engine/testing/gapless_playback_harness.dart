@@ -76,13 +76,14 @@ class GaplessPlaybackHarness {
     bool initialPaused = false,
     Map<String, dynamic>? context,
     String quality = 'high',
+    String mode = 'fixed',
   }) => _engine.playTrack(
     playbackId: ++_playbackId,
     trackId: trackId,
     trackTitle: trackId,
     baseUrl: 'https://source.test/api',
     token: '',
-    settings: StreamSettings(mode: 'fixed', quality: quality),
+    settings: StreamSettings(mode: mode, quality: quality),
     initialPaused: initialPaused,
     listeningContext: context,
   );

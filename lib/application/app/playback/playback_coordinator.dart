@@ -8,7 +8,6 @@ class _PlaybackCoordinator {
   bool _audioOutputStarted = false;
   bool _isAudioLoading = false;
   Object? _shuffleSelection;
-  int? _preparingArtworkStart;
   final _playbackController = StreamController<PlaybackState>.broadcast();
   late PlaybackState _playbackState;
   List<OutputDevice> _outputDevices = <OutputDevice>[];
@@ -21,8 +20,6 @@ class _PlaybackCoordinator {
   Stream<PlaybackState> get playbackStream => _playbackController.stream;
 
   PlaybackState get playbackState => _playbackState;
-
-  bool get _waitingForArtwork => _preparingArtworkStart == _playbackStarts.current;
 
   List<OutputDevice> get outputDevices => List.unmodifiable(_outputDevices);
 
@@ -243,7 +240,7 @@ class _PlaybackCoordinator {
 
       if (paused || suspended) {
         _host._audioEngine.pause();
-      } else if (_playbackState.track != null && !_waitingForArtwork) {
+      } else if (_playbackState.track != null) {
         if (!_host._audioEngine.hasActivePlayer) {
           _host._lastInterruptedStreamRestartAt = null;
           _startPlayback(_playbackState.track!, startOffset: _playbackState.position);
@@ -398,6 +395,7 @@ class _PlaybackCoordinator {
         duration: Duration.zero,
         bufferRatio: 0.0,
         bitrateKbps: null,
+        streamQuality: null,
         isLocalPlayback: false,
         shuffleMode: shouldDisableShuffle ? ShuffleMode.off : null,
         queueSource: PlaybackQueueSource.none,
@@ -571,6 +569,7 @@ class _PlaybackCoordinator {
     ActionScope? shuffleScope,
     PlaybackRepeatMode? repeatMode,
     StreamMode? streamMode,
+    Object? streamQuality = _unset,
     double? bitrateKbps,
     bool? streamConnected,
     int? streamRttMs,
@@ -594,7 +593,7 @@ class _PlaybackCoordinator {
     _playbackState = _playbackState.copyWith(
       track: track == _unset ? _playbackState.track : track,
       isPlaying: isPlaying,
-      isLoading: _isAudioLoading || _shuffleSelection != null || _waitingForArtwork,
+      isLoading: _isAudioLoading || _shuffleSelection != null,
       position: position,
       duration: duration,
       bufferRatio: bufferRatio,
@@ -603,6 +602,7 @@ class _PlaybackCoordinator {
       shuffleScope: shuffleScope,
       repeatMode: repeatMode,
       streamMode: streamMode,
+      streamQuality: streamQuality == _unset ? _playbackState.streamQuality : streamQuality,
       bitrateKbps: bitrateKbps ?? _playbackState.bitrateKbps,
       streamConnected: streamConnected,
       streamRttMs: streamRttMs ?? _playbackState.streamRttMs,
@@ -659,38 +659,20 @@ class _PlaybackCoordinator {
           return;
         }
       }
-      if (_host._shuffleArtworkPreloader != null) {
-        _preparingArtworkStart = startGeneration;
-        _audioOutputStarted = false;
-        _host._audioEngine.pause();
-        _updatePlayback(isLoading: true);
-        bool isCurrent() =>
+      _host._playbackArtworkCoordinator.warm(
+        track,
+        local: shouldUseLocal,
+        isCurrent: () =>
             !_host._disposed &&
             _host._shutdown == null &&
             _playbackStarts.isCurrent(startGeneration) &&
-            _playbackState.track?.id == track.id;
-        try {
-          final ready = await _host._playbackArtworkCoordinator.prepare(
-            track,
-            local: shouldUseLocal,
-            isCurrent: isCurrent,
-          );
-          if (!isCurrent()) {
-            return;
-          }
-          track = ready.copyWith(liked: _playbackState.track!.liked, inPlaylists: _playbackState.track!.inPlaylists);
-          _host._playQueue = _host._playQueue.map((item) => item.id == track.id ? track : item).toList();
-          _updatePlayback(
-            track: track,
-            duration: Duration(milliseconds: track.durationMs),
-          );
-        } finally {
-          if (_preparingArtworkStart == startGeneration) {
-            _preparingArtworkStart = null;
-          }
-        }
-      }
+            _playbackState.track?.id == track.id,
+      );
       final initialPaused = !_wantsPlayback || _host._audioSessionSuspended;
+      AppLogger.debug(
+        'Playback output requested: track=${track.id} paused=$initialPaused '
+        'interrupted=${_host._nativeCoordinator._audioInterrupted}',
+      );
       if (shouldUseLocal) {
         if (offlineDownload == null) {
           _host._pushMessage('No downloaded file available for ${track.title}.', level: LogLevel.warning);
@@ -715,6 +697,7 @@ class _PlaybackCoordinator {
         _updatePlayback(
           isPlaying: !initialPaused,
           bitrateKbps: null,
+          streamQuality: null,
           bufferRatio: 0.0,
           streamConnected: false,
           streamRttMs: null,
@@ -792,6 +775,7 @@ class _PlaybackCoordinator {
       _updatePlayback(
         isPlaying: !initialPaused,
         bitrateKbps: null,
+        streamQuality: null,
         bufferRatio: 0.0,
         streamConnected: false,
         streamRttMs: null,
@@ -941,6 +925,7 @@ mixin _PlaybackFacade {
     ActionScope? shuffleScope,
     PlaybackRepeatMode? repeatMode,
     StreamMode? streamMode,
+    Object? streamQuality = _unset,
     double? bitrateKbps,
     bool? streamConnected,
     int? streamRttMs,
@@ -961,6 +946,7 @@ mixin _PlaybackFacade {
     shuffleScope: shuffleScope,
     repeatMode: repeatMode,
     streamMode: streamMode,
+    streamQuality: streamQuality,
     bitrateKbps: bitrateKbps,
     streamConnected: streamConnected,
     streamRttMs: streamRttMs,

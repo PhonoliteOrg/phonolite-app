@@ -14,6 +14,7 @@ mod security;
 mod source;
 mod owner;
 mod migration;
+mod delivery_rate;
 use owner::OwnerLease;
 pub use source::SourceHandle;
 
@@ -43,6 +44,7 @@ fn test_handle(generation: u64) -> (QuicHandle, mpsc::Receiver<ControlCommand>) 
                 last_error_code: Arc::new(AtomicI32::new(0)),
                 migration_enabled: Arc::new(AtomicBool::new(false)),
                 migration_available: Arc::new(AtomicBool::new(false)),
+                adaptive_ranges: AtomicBool::new(false),
                 last_stats: Arc::new(Mutex::new(None)),
                 last_rtt_ms: Arc::new(Mutex::new(None)),
             }),
@@ -54,6 +56,32 @@ fn test_handle(generation: u64) -> (QuicHandle, mpsc::Receiver<ControlCommand>) 
 #[cfg(test)]
 mod transition_tests {
     use super::*;
+
+    #[test]
+    fn adaptive_ranges_are_explicitly_opted_in_and_forwarded_per_stream() {
+        let (mut handle, _) = test_handle(5);
+        assert!(!handle.inner.adaptive_ranges.load(Ordering::Acquire));
+        phonolite_quic_set_adaptive_ranges(&mut handle, 1);
+        assert!(handle.inner.adaptive_ranges.load(Ordering::Acquire));
+        for negotiated in [false, true] {
+            let mut state = ClientState::new();
+            state.active_track = Some("track".into());
+            let sender = AudioSender {
+                delivery: Arc::clone(&handle.inner.delivery),
+                events: Arc::clone(&handle.inner.events),
+                generation: 5,
+            };
+            let response = serde_json::json!({
+                "type":"stream", "request_id":5, "track_id":"track", "stream_id":3,
+                "role":"active", "frame_ms":20, "adaptive_ranges":negotiated,
+            }).to_string() + "\n";
+            handle_control_bytes(&mut state, response.as_bytes(), &sender,
+                &handle.inner.last_error, &handle.inner.last_rtt_ms);
+            let event: serde_json::Value = serde_json::from_str(
+                &handle.inner.events.lock().unwrap().pop_front().unwrap()).unwrap();
+            assert_eq!(event["adaptive_ranges"], negotiated);
+        }
+    }
 
     #[test]
     fn open_acknowledgements_still_require_a_string_track_id() {
@@ -237,6 +265,33 @@ mod transition_tests {
     }
 
     #[test]
+    fn original_descriptor_follows_only_the_current_auto_announcement() {
+        let (handle, _) = test_handle(3);
+        let sender = AudioSender {
+            delivery: Arc::clone(&handle.inner.delivery),
+            events: Arc::clone(&handle.inner.events),
+            generation: 3,
+        };
+        let mut state = ClientState::new();
+        state.active_track = Some("track".into());
+        for request_id in [2, 3] {
+            let message = format!("{{\"type\":\"stream\",\"request_id\":{request_id},\"track_id\":\"track\",\"stream_id\":11,\"role\":\"active\",\"frame_ms\":20,\"adaptive_ranges\":true,\"original\":{{\"source_version\":\"pinned\",\"total_length\":1234,\"duration_ms\":20000}}}}\n");
+            handle_control_bytes(
+                &mut state,
+                message.as_bytes(),
+                &sender,
+                &handle.inner.last_error,
+                &handle.inner.last_rtt_ms,
+            );
+        }
+        let events = handle.inner.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        let event: serde_json::Value = serde_json::from_str(&events[0]).unwrap();
+        assert_eq!(event["original"]["source_version"], "pinned");
+        assert_eq!(event["original"]["total_length"], 1234);
+    }
+
+    #[test]
     fn telemetry_coalescing_preserves_partial_message_and_essential_seek() {
         let mut state = ClientState::new();
         enqueue_control(
@@ -245,6 +300,8 @@ mod transition_tests {
                 request_id: 1,
                 buffer_ms: 100,
                 target_ms: None,
+                delivery_metrics: false,
+                delivery_bps: None,
             },
         );
         state.control_offset = 1;
@@ -254,6 +311,8 @@ mod transition_tests {
                 request_id: 1,
                 buffer_ms: 200,
                 target_ms: None,
+                delivery_metrics: false,
+                delivery_bps: None,
             },
         );
         enqueue_control(
@@ -271,6 +330,8 @@ mod transition_tests {
                 request_id: 1,
                 buffer_ms: 300,
                 target_ms: None,
+                delivery_metrics: false,
+                delivery_bps: None,
             },
         );
         assert_eq!(state.pending_control.len(), 3);
@@ -281,6 +342,23 @@ mod transition_tests {
         assert!(std::str::from_utf8(&state.pending_control[2].1)
             .unwrap()
             .contains("300"));
+    }
+
+    #[test]
+    fn delivery_telemetry_preserves_unknown_and_stalled_measurements() {
+        for rate in [None, Some(0), Some(240_000)] {
+            let message = ClientMessage::Buffer {
+                request_id: 9,
+                buffer_ms: 8000,
+                target_ms: Some(12_000),
+                delivery_metrics: true,
+                delivery_bps: rate,
+            };
+            let json = serde_json::to_value(message).unwrap();
+            assert_eq!(json["request_id"], 9);
+            assert_eq!(json["delivery_metrics"], true);
+            assert_eq!(json.get("delivery_bps").and_then(|rate| rate.as_u64()), rate);
+        }
     }
 }
 
@@ -480,6 +558,7 @@ struct ClientHandle {
     last_error_code: Arc<AtomicI32>,
     migration_enabled: Arc<AtomicBool>,
     migration_available: Arc<AtomicBool>,
+    adaptive_ranges: AtomicBool,
     last_stats: Arc<Mutex<Option<String>>>,
     last_rtt_ms: Arc<Mutex<Option<i64>>>,
 }
@@ -670,6 +749,8 @@ enum ClientMessage<'a> {
         request_id: u64,
         track_id: &'a str,
         mode: Option<&'a str>,
+        adaptive_ranges: bool,
+        adaptive_original: bool,
         quality: Option<&'a str>,
         frame_ms: u32,
         queue: Option<&'a [String]>,
@@ -680,6 +761,9 @@ enum ClientMessage<'a> {
         request_id: u64,
         buffer_ms: u32,
         target_ms: Option<u32>,
+        delivery_metrics: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        delivery_bps: Option<u64>,
     },
     #[serde(rename = "playback")]
     Playback {
@@ -735,6 +819,10 @@ enum ServerMessage {
         source_version: Option<String>,
         range_end_ms: Option<u32>,
         end_of_track: Option<bool>,
+        #[serde(default)]
+        adaptive_ranges: bool,
+        #[serde(default)]
+        original: Option<serde_json::Value>,
     },
     #[serde(rename = "open_ok")]
     OpenOk {
@@ -754,6 +842,16 @@ struct ClientState {
     active_stream: Option<u64>,
     source_stream: bool,
     retired_streams: HashSet<u64>,
+    delivery_rate: delivery_rate::DeliveryRate,
+    delivery_suspended: bool,
+    last_buffer_report: Option<DeliveryReport>,
+}
+
+struct DeliveryReport {
+    buffer_ms: u32,
+    target_ms: Option<u32>,
+    delivery_bps: Option<u64>,
+    at: Instant,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -775,6 +873,9 @@ impl ClientState {
             active_stream: None,
             source_stream: false,
             retired_streams: HashSet::new(),
+            delivery_rate: delivery_rate::DeliveryRate::default(),
+            delivery_suspended: false,
+            last_buffer_report: None,
         }
     }
 }
@@ -850,6 +951,7 @@ fn connect_client(
         last_error_code: Arc::new(AtomicI32::new(0)),
         migration_enabled: Arc::new(AtomicBool::new(false)),
         migration_available: Arc::new(AtomicBool::new(false)),
+        adaptive_ranges: AtomicBool::new(false),
         last_stats: Arc::clone(&last_stats),
         last_rtt_ms: Arc::clone(&last_rtt_ms),
     });
@@ -1191,6 +1293,13 @@ pub extern "C" fn phonolite_quic_error_code(handle: *const QuicHandle) -> c_int 
 }
 
 #[no_mangle]
+pub extern "C" fn phonolite_quic_set_adaptive_ranges(handle: *mut QuicHandle, enabled: c_int) {
+    if !handle.is_null() {
+        unsafe { &*handle }.inner.adaptive_ranges.store(enabled != 0, Ordering::Release);
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn phonolite_quic_set_migration_enabled(handle: *mut QuicHandle, enabled: c_int) {
     if let Some(handle) = unsafe { handle.as_ref() } {
         handle.inner.migration_enabled.store(enabled != 0, Ordering::Release);
@@ -1295,6 +1404,7 @@ fn run_client(
     let mut next_timeout = conn.timeout().map(|t| Instant::now() + t);
     let mut last_stats_log = Instant::now();
     let mut last_ping = Instant::now();
+    let mut observed_received_bytes = 0;
     let mut pending_datagrams = VecDeque::new();
     let mut confirmation = migration::HandshakeConfirmation::default();
     let mut pending_migration: Option<migration::PendingMigration> = None;
@@ -1362,12 +1472,17 @@ fn run_client(
                     } else {
                         Some(queue.as_slice())
                     };
+                    state.delivery_rate = delivery_rate::DeliveryRate::default();
+                    state.delivery_suspended = false;
+                    state.last_buffer_report = None;
                     enqueue_control(
                         &mut state,
                         ClientMessage::Open {
                             request_id: generation,
                             track_id: &track_id,
                             mode: mode.as_deref(),
+                            adaptive_ranges: mode.as_deref() == Some("auto") && handle.adaptive_ranges.load(Ordering::Acquire),
+                            adaptive_original: mode.as_deref() == Some("auto") && handle.adaptive_ranges.load(Ordering::Acquire),
                             quality: quality.as_deref(),
                             frame_ms,
                             queue: queue_opt,
@@ -1417,12 +1532,20 @@ fn run_client(
                     if generation != tx_bytes.generation {
                         continue;
                     }
+                    let now = Instant::now();
+                    state.delivery_suspended = target_ms.is_some_and(|target| target < 8000 || buffer_ms >= target);
+                    state.delivery_rate.suspend(state.delivery_suspended, now);
+                    let delivery_metrics = handle.adaptive_ranges.load(Ordering::Acquire);
+                    let delivery_bps = delivery_metrics.then(|| state.delivery_rate.estimate(now)).flatten();
+                    state.last_buffer_report = Some(DeliveryReport { buffer_ms, target_ms, delivery_bps, at: now });
                     enqueue_control(
                         &mut state,
                         ClientMessage::Buffer {
                             request_id: generation,
                             buffer_ms,
                             target_ms,
+                            delivery_metrics,
+                            delivery_bps,
                         },
                     );
                 }
@@ -1557,7 +1680,11 @@ fn run_client(
             return Ok(());
         }
 
-        maybe_log_stats(&conn, &mut last_stats_log, &last_stats);
+        let received = conn.stats().recv_bytes;
+        let rtt = conn.path_stats().find(|path| path.active).map_or(0, |path| path.rtt.as_millis() as u64);
+        owner.observe_transport(rtt, received.saturating_sub(observed_received_bytes));
+        observed_received_bytes = received;
+        maybe_log_stats(&conn, &state, &mut last_stats_log, &last_stats);
 
         let mut sleep_for = match next_timeout {
             Some(deadline) => deadline
@@ -1803,14 +1930,20 @@ fn handle_readable(
         while conn.stream_readable(stream_id) {
             let capacity = tx_bytes.available().min(buf.len());
             if capacity == 0 {
+                state.delivery_rate.suspend(true, Instant::now());
                 break;
             }
+            state.delivery_rate.suspend(state.delivery_suspended, Instant::now());
             match conn.stream_recv(stream_id, &mut buf[..capacity]) {
                 Ok((len, fin)) => {
                     if len > 0 {
+                        if !state.source_stream {
+                            state.delivery_rate.received(len, Instant::now());
+                        }
                         tx_bytes.send(buf[..len].to_vec());
                     }
                     if fin {
+                        state.delivery_rate.end_range();
                         if state.source_stream {
                             tx_bytes.event(serde_json::json!({
                                 "type": "source_fin", "request_id": tx_bytes.generation,
@@ -1841,6 +1974,7 @@ fn handle_readable(
 }
 
 fn retire_active_stream(state: &mut ClientState) {
+    state.delivery_rate.end_range();
     if let Some(stream_id) = state.active_stream.take() {
         retire_stream(state, stream_id);
     }
@@ -1928,6 +2062,8 @@ fn handle_control_bytes(
                     source_version,
                     range_end_ms,
                     end_of_track,
+                    adaptive_ranges,
+                    original,
                 } => {
                     if state.source_stream || request_id != Some(tx.generation)
                         || !tx.current()
@@ -1942,12 +2078,14 @@ fn handle_control_bytes(
                             retire_stream(state, previous);
                         }
                     }
+                    state.delivery_rate.begin(Instant::now());
                     tx.event(serde_json::json!({
                         "type": "stream", "request_id": request_id, "track_id": track_id,
                         "stream_id": stream_id, "role": role, "frame_ms": frame_ms,
                         "seek_id": seek_id, "position_ms": position_ms,
                         "source_version": source_version, "range_end_ms": range_end_ms,
-                        "end_of_track": end_of_track,
+                        "end_of_track": end_of_track, "adaptive_ranges": adaptive_ranges,
+                        "original": original,
                     }));
                 }
                 ServerMessage::Error {
@@ -2035,24 +2173,30 @@ fn connection_close_detail(conn: &quiche::Connection) -> Option<String> {
 
 fn maybe_log_stats(
     conn: &quiche::Connection,
+    state: &ClientState,
     last_log: &mut Instant,
     last_stats: &Arc<Mutex<Option<String>>>,
 ) {
     let now = Instant::now();
-    if now.duration_since(*last_log) < Duration::from_secs(5) {
+    if now.duration_since(*last_log) < Duration::from_secs(10) {
         return;
     }
     *last_log = now;
     let stats = conn.stats();
     let path = conn.path_stats().next();
     let message = format!(
-        "QUIC client stats: sent_pkts={} recv_pkts={} sent_bytes={} recv_bytes={} established={} timed_out={} path={:?}",
+        "QUIC client stats: diagnostics_revision=2 sent_pkts={} recv_pkts={} sent_bytes={} recv_bytes={} established={} timed_out={} {} reported_buffer_ms={:?} reported_target_ms={:?} reported_delivery_bps={:?} report_age_ms={:?} path={:?}",
         stats.sent,
         stats.recv,
         stats.sent_bytes,
         stats.recv_bytes,
         conn.is_established(),
         conn.is_timed_out(),
+        state.delivery_rate.diagnostic(now),
+        state.last_buffer_report.as_ref().map(|report| report.buffer_ms),
+        state.last_buffer_report.as_ref().and_then(|report| report.target_ms),
+        state.last_buffer_report.as_ref().and_then(|report| report.delivery_bps),
+        state.last_buffer_report.as_ref().map(|report| now.saturating_duration_since(report.at).as_millis()),
         path,
     );
     if let Ok(mut guard) = last_stats.lock() {

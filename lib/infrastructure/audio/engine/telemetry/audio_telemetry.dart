@@ -2,6 +2,8 @@ part of '../audio_engine.dart';
 
 class _AudioTelemetry {
   final _PlaybackSession _host;
+  final Stopwatch _deliveryClock = Stopwatch()..start();
+  final AudioQualityTimeline _qualityTimeline = AudioQualityTimeline();
   int _lastBufferReportAtMs = 0;
   int _lastReportedBufferMs = -1;
   int _lastReportedTargetMs = -1;
@@ -14,6 +16,12 @@ class _AudioTelemetry {
   int _bytesReceived = 0;
   int _lastBitrateBytes = 0;
   DateTime? _lastBitrateAt;
+  AudioFileDecoder? _fileStatsDecoder;
+  int _lastOriginalRecoveryAttempts = 0;
+  Duration? _lastOriginalDeliveryAt;
+  int _originalDeliveryEpoch = -1;
+  int _lastOriginalDeliveryBytes = 0;
+  int _lastOriginalAcceptedMs = 0;
 
   _AudioTelemetry(this._host);
 
@@ -36,10 +44,13 @@ class _AudioTelemetry {
 
     if (suspended) {
       bufferedMs = targetMs;
-    } else if (_host._waitingForHeader) {
+    } else if (_host._waitingForHeader && !_host._ownerRemote._remoteContinuation) {
       bufferedMs = 0;
     } else {
-      bufferedMs = _host._encodedCache.bufferedAheadMs(_positionMs);
+      // A continuation/reconnect can wait for its next header while accepted
+      // PCM and encoded audio still play. Reporting zero would falsely lower
+      // Auto quality and restart its healthy-connection window every range.
+      bufferedMs = _host._ownerRemote._playableMs;
     }
 
     // Refresh below the server's stale-report deadline; avoid per-tick chatter.
@@ -139,13 +150,35 @@ class _AudioTelemetry {
           if (stats != null && nowMs - _lastQuicStatsLogAtMs >= _PlaybackSession._quicStatsLogIntervalMs) {
             _lastQuicStatsLogAtMs = nowMs;
             _host._log(stats);
+            if (_host.settings.mode == 'auto' && !_host._isLocalFile) {
+              _logAutoPlayback(bufferedMs: bufferedMs);
+            }
           }
         } catch (_) {
           // Ignore stats poll failures.
         }
       }
 
-      int? rttMs;
+      int? rttMs = _host._isLocalFile ? null : _host._fileDecoder?.transportRttMilliseconds;
+      if (_host.settings.isOriginal) {
+        final decoderChanged = !identical(_fileStatsDecoder, _host._fileDecoder);
+        if (decoderChanged) {
+          _fileStatsDecoder = _host._fileDecoder;
+          _lastBitrateAt = null;
+          _lastBitrateBytes = 0;
+        }
+        _bytesReceived = _host._fileDecoder?.transportReceivedBytes ?? _bytesReceived;
+        _logOriginalDelivery(bufferedMs: bufferedMs, rttMs: rttMs, reset: decoderChanged);
+        final attempts = _host._fileDecoder?.recoveryAttempts ?? 0;
+        if (attempts != _lastOriginalRecoveryAttempts) {
+          _lastOriginalRecoveryAttempts = attempts;
+          _host._log(
+            'Original transport repair: attempts=$attempts '
+            'remaining_ms=${_host._fileDecoder?.recoveryRemaining.inMilliseconds ?? 0} '
+            'buffered_ms=$bufferedMs rtt_ms=$rttMs.',
+          );
+        }
+      }
 
       if (quic != null) {
         try {
@@ -168,19 +201,67 @@ class _AudioTelemetry {
 
       _host._maybeRebuffer(bufferedSamples);
 
+      final audibleQuality = _qualityTimeline.qualityAt(_playedSamples);
+      _host._ownerOriginal.rememberAudible(audibleQuality);
+
       _host._sendPlaybackMessage({
         'type': 'stats',
         'position_ms': position.inMilliseconds,
         'buffered_ms': _host._isFileSource
             ? bufferedMs
             : math.max(bufferedMs, _host._encodedCache.bufferedAheadMs(position.inMilliseconds)),
-        'bitrate_kbps': _host._isFileSource ? null : _currentBitrateKbps(),
-        'rtt_ms': _host._isFileSource ? null : rttMs,
+        'bitrate_kbps': _host._isLocalFile ? null : _currentBitrateKbps(),
+        'stream_quality': !_host._startedPlayback || _host._isLocalFile
+            ? null
+            : (_host.settings.isOriginal ? AudioStreamQuality.original : _qualityTimeline.qualityAt(_playedSamples))
+                  ?.name,
+        'rtt_ms': _host._isLocalFile ? null : rttMs,
         'local': _host._isLocalFile,
       });
     } finally {
       _statsCollectionInFlight = false;
     }
+  }
+
+  void _logOriginalDelivery({required int bufferedMs, required int? rttMs, required bool reset}) {
+    final now = _deliveryClock.elapsed;
+    final previous = _lastOriginalDeliveryAt;
+    final acceptedThroughMs = _positionMs + bufferedMs;
+    final epochChanged = _originalDeliveryEpoch != _host._outputEpoch;
+    if (!reset && !epochChanged && previous != null && now - previous < const Duration(seconds: 5)) {
+      return;
+    }
+
+    if (!reset && !epochChanged && previous != null) {
+      _host._log(
+        'Original delivery: interval_ms=${(now - previous).inMilliseconds} '
+        'received_bytes=${math.max(0, _bytesReceived - _lastOriginalDeliveryBytes)} '
+        'playable_ms=${math.max(0, acceptedThroughMs - _lastOriginalAcceptedMs)} '
+        'buffered_ms=$bufferedMs rtt_ms=$rttMs '
+        'paused=${_host._userPaused} refilling=${_host._autoPaused}.',
+      );
+    }
+
+    _lastOriginalDeliveryAt = now;
+    _originalDeliveryEpoch = _host._outputEpoch;
+    _lastOriginalDeliveryBytes = _bytesReceived;
+    _lastOriginalAcceptedMs = acceptedThroughMs;
+  }
+
+  void _logAutoPlayback({required int bufferedMs}) {
+    final remote = _host._ownerRemote;
+    final audible = _qualityTimeline.qualityAt(_playedSamples)?.name;
+
+    _host._log(
+      'Auto playback sample: diagnostics_revision=2 '
+      'audible_quality=$audible position_ms=$_positionMs '
+      'playable_ms=${remote._playableMs} pcm_ms=$bufferedMs '
+      'target_ms=${_host._encodedReadAheadTargetMs} '
+      'original_reserve_ms=${_host._ownerOriginal.reserveMs} '
+      'paused=${_host._userPaused} refilling=${_host._autoPaused} '
+      'waiting_header=${_host._waitingForHeader} continuation=${remote._remoteContinuation} '
+      'repairing=${remote._repairing} repair_requested=${remote._repairRequested}.',
+    );
   }
 
   double? _currentBitrateKbps() {
@@ -216,8 +297,6 @@ class _AudioTelemetry {
 // Forwarding preserves the existing library entry point and virtual dispatch.
 mixin _AudioTelemetryFacade {
   _AudioTelemetry get _ownerTelemetry;
-
-  bool get _reportedStart => _ownerTelemetry._reportedStart;
 
   set _reportedStart(bool value) => _ownerTelemetry._reportedStart = value;
 

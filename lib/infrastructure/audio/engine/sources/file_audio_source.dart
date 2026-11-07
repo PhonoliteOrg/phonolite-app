@@ -87,6 +87,7 @@ class _FileAudioSource {
 
     _host._baseOffsetMs = _host.startOffset.inMilliseconds;
     _host._quickStart = _host.quickStart && _host.startOffset.inMilliseconds > 0;
+    _host._updateAdaptiveBufferProfile(bufferedMs: 0, rttMs: decoder.transportRttMilliseconds);
 
     _host._log(
       'Source decoder: ${format.sampleRate} Hz, ${format.bitDepth}-bit, ${_channels}ch, '
@@ -259,6 +260,7 @@ class _FileAudioSource {
     }
     final remaining = resetBudget ? AudioRecoveryPolicy.budget : previous.recoveryRemaining;
     final attempts = resetBudget ? 0 : previous.recoveryAttempts;
+    _host._log('Original source repair: frame=$frame attempts=$attempts remaining_ms=${remaining.inMilliseconds}.');
     if (remaining <= Duration.zero || attempts >= AudioRecoveryPolicy.maximumAttempts) {
       throw TimeoutException('Original audio connection recovery exhausted.', AudioRecoveryPolicy.budget);
     }
@@ -298,7 +300,7 @@ class _FileAudioSource {
     if (checkpoint == null || _nextPresentationFrame <= checkpoint) {
       return;
     }
-    if (_host._bufferedAudioMs() < 2000) {
+    if (_host._bufferedAudioMs() < _host._ownerBuffer.healthyReserveMilliseconds) {
       _healthySince = null;
       return;
     }

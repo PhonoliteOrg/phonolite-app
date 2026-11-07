@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
@@ -596,6 +597,9 @@ class _History extends ListeningStatsService {
 }
 
 class _Audio extends Fake implements AudioEngine {
+  @override
+  AudioStreamQuality? streamQuality;
+
   @override
   void Function(int)? onGaplessTransition;
   @override

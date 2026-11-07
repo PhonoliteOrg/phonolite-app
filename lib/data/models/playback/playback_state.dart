@@ -1,3 +1,4 @@
+import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 
 const Object _unset = Object();
@@ -28,6 +29,7 @@ class PlaybackState {
   final ActionScope shuffleScope;
   final PlaybackRepeatMode repeatMode;
   final StreamMode streamMode;
+  final AudioStreamQuality? streamQuality;
   final double? bitrateKbps;
   final bool streamConnected;
   final int? streamRttMs;
@@ -55,6 +57,7 @@ class PlaybackState {
     required this.queueSourcePlaylistId,
     required this.localPlaybackSource,
     required this.isLocalPlayback,
+    this.streamQuality,
     ShuffleMode? localShuffleMode,
     ShuffleMode? serverShuffleMode,
   }) : localShuffleMode = shuffleScope == ActionScope.local ? shuffleMode : localShuffleMode ?? ShuffleMode.off,
@@ -101,6 +104,7 @@ class PlaybackState {
     ActionScope? shuffleScope,
     PlaybackRepeatMode? repeatMode,
     StreamMode? streamMode,
+    Object? streamQuality = _unset,
     Object? bitrateKbps = _unset,
     bool? streamConnected,
     Object? streamRttMs = _unset,
@@ -125,6 +129,7 @@ class PlaybackState {
       serverShuffleMode: serverShuffleMode,
       repeatMode: repeatMode ?? this.repeatMode,
       streamMode: streamMode ?? this.streamMode,
+      streamQuality: identical(streamQuality, _unset) ? this.streamQuality : streamQuality as AudioStreamQuality?,
       bitrateKbps: identical(bitrateKbps, _unset) ? this.bitrateKbps : (bitrateKbps as num?)?.toDouble(),
       streamConnected: streamConnected ?? this.streamConnected,
       streamRttMs: identical(streamRttMs, _unset) ? this.streamRttMs : streamRttMs as int?,

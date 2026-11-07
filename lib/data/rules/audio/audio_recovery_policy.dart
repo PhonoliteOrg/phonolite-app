@@ -1,17 +1,23 @@
 /// Bounds a source repair episode independently of individual socket attempts.
 class AudioRecoveryPolicy {
-  static const budget = Duration(seconds: 15);
+  static const budget = Duration(seconds: 30);
   static const maximumAttempts = 3;
   static const healthyPeriod = Duration(seconds: 2);
 
   const AudioRecoveryPolicy();
 
-  Duration stallTimeout({required int playableMilliseconds}) => Duration(seconds: playableMilliseconds <= 4000 ? 1 : 2);
+  Duration stallTimeout({required int playableMilliseconds, int? rttMilliseconds}) {
+    final minimum = playableMilliseconds <= 4000 ? 5000 : 8000;
+
+    return Duration(milliseconds: (6 * (rttMilliseconds ?? 0)).clamp(minimum, 12000));
+  }
+
+  int healthyReserveMilliseconds(int refillTargetMilliseconds) => refillTargetMilliseconds.clamp(500, 2000);
 
   Duration retryDelay(int attempts) => switch (attempts) {
     0 => Duration.zero,
-    1 => const Duration(milliseconds: 250),
-    _ => const Duration(seconds: 1),
+    1 => const Duration(seconds: 1),
+    _ => const Duration(seconds: 2),
   };
 }
 
@@ -57,7 +63,12 @@ class AudioRecoveryEpisode {
 
   void interrupted() => _healthySince = null;
 
-  void observe({required int acceptedThrough, required int playableMilliseconds, bool endOfTrack = false}) {
+  void observe({
+    required int acceptedThrough,
+    required int playableMilliseconds,
+    int requiredReserveMilliseconds = 2000,
+    bool endOfTrack = false,
+  }) {
     if (!active || acceptedThrough <= _checkpoint) {
       return;
     }
@@ -65,7 +76,7 @@ class AudioRecoveryEpisode {
       reset();
       return;
     }
-    if (playableMilliseconds < 2000) {
+    if (playableMilliseconds < requiredReserveMilliseconds) {
       _healthySince = null;
       return;
     }

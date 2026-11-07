@@ -12,7 +12,7 @@ void main() {
       final project = readProjectModule('ios/Runner.xcodeproj/project.pbxproj');
       final configurations = RegExp(r'/\* (Debug|Release|Profile) \*/ = \{([\s\S]*?)\n\t\t\};')
           .allMatches(project)
-          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.adamuremek.phonolite;'));
+          .where((match) => match[2]!.contains('PRODUCT_BUNDLE_IDENTIFIER = com.phonoliteorg.phonolite;'));
       expect(configurations.map((match) => match[1]), unorderedEquals(['Debug', 'Release', 'Profile']));
       for (final configuration in configurations) {
         for (final symbol in symbols) {
@@ -327,7 +327,8 @@ void main() {
       expect(source, isNot(contains('setValue(visible, forKey: "showsNowPlayingButton")')));
 
       expectContainsAll(controller, const [
-        'VehicleOperation.startShuffle => _carPlayStartShuffle(',
+        'VehicleOperation.startShuffle =>',
+        '() => _carPlayStartShuffle(',
         'artistId: request.artistId',
         'albumId: request.albumId',
         'playlistId: request.playlistId',

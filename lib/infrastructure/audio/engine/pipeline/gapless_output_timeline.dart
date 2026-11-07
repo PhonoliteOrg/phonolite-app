@@ -280,7 +280,8 @@ class _GaplessOutputTimeline {
 
   void resume() {
     _userPaused = false;
-    resumeOutput();
+    // The source opens the device gate after its startup/refill reserve is ready.
+    // Clearing user intent must not bypass an automatic buffering pause.
   }
 
   void pauseOutput() {

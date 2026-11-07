@@ -136,7 +136,7 @@ fn bounded_source_ranges_seek_by_byte_offset_and_close_once() {
     assert!(observed
         .requests
         .iter()
-        .all(|(_, length, timeout)| *length <= WINDOW && *timeout > 0 && *timeout <= 5000));
+        .all(|(_, length, timeout)| *length <= WINDOW && *timeout > 0 && *timeout <= 15000));
     assert_eq!(observed.requests[0].1, 16 * 1024);
 }
 

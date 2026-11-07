@@ -47,6 +47,60 @@ class _BlockedPcmOutput extends _PrecisePcmOutput {
 }
 
 void main() {
+  test('Original applies cold RTT before startup and recovers within the same track as LTE improves', () async {
+    final decoder = _RecoveringNetworkDecoder();
+    final output = _PacedPcmOutput();
+    var outputs = 0;
+    final session = AudioPlaybackHarness.original(
+      decoderFactory: (_, __) => decoder,
+      outputFactory: (_, __, ___) {
+        outputs++;
+
+        return output;
+      },
+    );
+    addTearDown(session.close);
+    bool hasProfile(int level) =>
+        session.messages.any((event) => event['text']?.toString().contains('Buffer profile: level=$level') == true);
+    Future<void> waitForProfile(int level, Duration timeout) async {
+      final deadline = Stopwatch()..start();
+      while (!hasProfile(level)) {
+        if (deadline.elapsed > timeout) {
+          fail('No level $level recovery within $timeout. ${session.messages}');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    }
+
+    session.start();
+    await waitUntil(() => decoder.readSamples >= 48000);
+    expect(hasProfile(2), isTrue);
+    expect(
+      output.samplesWritten,
+      0,
+      reason: 'Known slow RTT must protect the first startup, before the first stats tick.',
+    );
+
+    decoder.improve();
+    await waitForProfile(1, const Duration(seconds: 6));
+    expect(output.samplesWritten, greaterThan(0));
+    decoder.rttMs = 80;
+    // The initial default-profile log is not a recovery observation.
+    final recovered = session.events.firstWhere(
+      (event) => event['text']?.toString().contains('Buffer profile: level=0') == true,
+    );
+    await recovered.timeout(const Duration(seconds: 7));
+    final writes = output.writes;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(output.writes, greaterThan(writes));
+    expect(outputs, 1);
+    expect(output.flushes, 0);
+    expect(session.autoPaused, isFalse);
+    expect(session.messages.where((event) => event['type'] == 'started'), hasLength(1));
+    expect(session.messages.any((event) => event['type'] == 'complete'), isFalse);
+    expect(session.messages.any((event) => event['text']?.toString().contains('Original delivery:') == true), isTrue);
+  });
+
   test('Original replaces a failed decoder at the last accepted frame without replacing output', () async {
     final samples = Int32List.fromList(List.generate(5000, (index) => index * 17031));
     final output = _PrecisePcmOutput();
@@ -398,6 +452,50 @@ void main() {
     await expectLater(decoder.initialize(), throwsA(isA<StateError>()));
     await expectLater(decoder.read32(1), throwsA(isA<StateError>()));
   });
+}
+
+class _PacedPcmOutput extends _PrecisePcmOutput {
+  @override
+  Future<void> writePcm32(Int32List samples) async {
+    await Future<void>.delayed(Duration(microseconds: samples.length * 1000000 ~/ 48000));
+    if (!disposed) {
+      await super.writePcm32(samples);
+    }
+  }
+}
+
+class _RecoveringNetworkDecoder extends _MemorySourceDecoder {
+  final _improved = Completer<void>();
+  int rttMs = 650;
+  bool _closed = false;
+
+  _RecoveringNetworkDecoder() : super(Int32List(48000 * 120), sampleRate: 48000);
+
+  @override
+  int? get transportRttMilliseconds => rttMs;
+
+  void improve() {
+    rttMs = 220;
+    _improved.complete();
+  }
+
+  @override
+  Future<Int32List> read32(int maxSamples) async {
+    if (readSamples >= 48000) {
+      await _improved.future;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+
+    return _closed ? Int32List(0) : super.read32(maxSamples);
+  }
+
+  @override
+  Future<void> close() async {
+    _closed = true;
+    if (!_improved.isCompleted) {
+      _improved.complete();
+    }
+  }
 }
 
 class _MemorySourceDecoder extends AudioFileDecoder {

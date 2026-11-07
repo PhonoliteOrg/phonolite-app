@@ -17,6 +17,13 @@ class _OpusDecodePipeline {
 
     try {
       while (_host._isActive) {
+        if (_host._ownerOriginal.finishedAt(_decodedThroughSample ?? 0)) {
+          // Original EOF is authoritative for the selected source. A delayed
+          // safety-stream tail must not hold up output drain or the next song.
+          _host._streamEnded = true;
+          _host._remotePlaybackComplete = true;
+          break;
+        }
         final cachedSeek = _host._cachedSeek;
 
         if (cachedSeek != null) {
@@ -34,6 +41,7 @@ class _OpusDecodePipeline {
         final generation = _host._seekRequestGeneration;
 
         if (!identical(cursor, configured) || generation != configuredGeneration) {
+          final previousHeader = configured?.segment.header;
           _host._decoder?.dispose();
           _host._decoder = null;
 
@@ -43,10 +51,27 @@ class _OpusDecodePipeline {
             continue;
           }
 
+          if (_host._ownerRemote._adaptiveRanges &&
+              previousHeader != null &&
+              previousHeader.bitrateBps != cursor.segment.header.bitrateBps) {
+            _host._log(
+              'Auto audio rendition: ${previousHeader.bitrateBps} -> ${cursor.segment.header.bitrateBps} bps '
+              'at ${cursor.segment.startMs}ms.',
+            );
+          }
+
           if (generation != configuredGeneration) {
             // Use the server's accepted position (including endpoint clamping).
             _host._baseOffsetMs = cursor.positionMs;
             _decodedThroughSample = cursor.positionMs * _host._sampleRate ~/ 1000;
+          }
+
+          if (configured == null && _host.settings.mode == 'auto') {
+            await _host._ownerOriginal.prepareWarmStartup(cursor.positionMs);
+
+            if (!_host._isActive || generation != _host._seekRequestGeneration || !identical(cursor, _decodeCursor)) {
+              continue;
+            }
           }
 
           _host._decoder =
@@ -116,6 +141,20 @@ class _OpusDecodePipeline {
             continue;
           }
 
+          // Original delivery is independent of the safety stream. Accepted
+          // Original PCM can keep playing while compressed packets recover.
+          final original = _host._ownerOriginal.continueWithoutFallback(_decodedThroughSample ?? 0);
+          if (original != null) {
+            final accepted = await _host._writeToBuffer(
+              original,
+              onAccepted: (count) => _host._ownerTelemetry._qualityTimeline.append(count, AudioStreamQuality.original),
+            );
+            if (generation == _host._seekRequestGeneration) {
+              _decodedThroughSample = (_decodedThroughSample ?? 0) + accepted ~/ _host._channels;
+            }
+            continue;
+          }
+
           final incoming = _incomingSegment;
           // A retained partial range may have been abandoned by an earlier seek.
           // Wait only for its live producer or a replacement covering the gap;
@@ -157,13 +196,32 @@ class _OpusDecodePipeline {
           samples = samples.sublist(0, math.max(0, samples.length - excessSamples));
         }
 
+        final int packetThrough =
+            segment.startMs * _host._sampleRate ~/ 1000 + math.min(math.max(0, packetEndSamples), endSamples);
+        final packetStart = packetThrough - samples.length ~/ _host._channels;
+        final alreadyRendered = math.max(0, (_decodedThroughSample ?? packetStart) - packetStart);
+        if (alreadyRendered > 0) {
+          samples = samples.sublist(math.min(samples.length, alreadyRendered * _host._channels));
+        }
+
         cursor.positionMs = math.min(
           segment.rangeEndMs,
           segment.startMs + math.max(0, packetEndSamples) * 1000 ~/ _host._sampleRate,
         );
 
         if (samples.isNotEmpty) {
-          await _host._writeToBuffer(samples);
+          final fallback = AudioStreamQuality.fromBitrate(segment.header.bitrateBps);
+          final selected = _host.settings.mode == 'auto' && _host._pcmBitsPerSample == 32
+              ? _host._ownerOriginal.render(
+                  samples,
+                  frame: _decodedThroughSample ?? segment.startMs * _host._sampleRate ~/ 1000,
+                  fallbackQuality: fallback,
+                )
+              : null;
+          await _host._writeToBuffer(
+            selected?.samples ?? samples,
+            onAccepted: (count) => _host._ownerTelemetry._qualityTimeline.append(count, selected?.quality ?? fallback),
+          );
         }
 
         if (generation != _host._seekRequestGeneration) {

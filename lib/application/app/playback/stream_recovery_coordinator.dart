@@ -1,9 +1,12 @@
 part of '../app_controller.dart';
 
 class _StreamRecoveryCoordinator {
+  static const _retryBackoffSeconds = [2, 5, 10, 20, 30];
   final AppController _host;
   bool _awaitingStreamReconnect = false;
   Timer? _streamRecoveryTimer;
+  DateTime? _nextStreamRetryAt;
+  int _streamRetryAttempt = 0;
   DateTime? _lastInterruptedStreamRestartAt;
   String? _lastInterruptedStreamRestartTrackId;
   int? _lastInterruptedStreamRestartPositionMs;
@@ -29,6 +32,8 @@ class _StreamRecoveryCoordinator {
     _lastInterruptedStreamRestartPositionMs = null;
     _streamRecoveryTimer?.cancel();
     _streamRecoveryTimer = null;
+    _nextStreamRetryAt = null;
+    _streamRetryAttempt = 0;
 
     if (_host._audioEngine.hasActivePlayer) {
       _awaitingStreamReconnect = false;
@@ -114,6 +119,10 @@ class _StreamRecoveryCoordinator {
         : max(_host._actualPositionMs, _host._displayPositionMs);
 
     _retireInterruptedSeek(restartPositionMs);
+    if (interruptedSeek) {
+      _host._actualPositionMs = restartPositionMs;
+      _host._updateDisplayPosition(restartPositionMs);
+    }
 
     if (!_host._wantsPlayback || _host._isScrubbing || _host._audioSessionSuspended) {
       _host._updatePlayback(isLoading: false, streamConnected: false, streamRttMs: null);
@@ -133,34 +142,49 @@ class _StreamRecoveryCoordinator {
       return;
     }
 
-    if (_recentlyRetriedInterruptedStream(track, restartPositionMs)) {
-      _host._pushMessage('Stream interrupted again; waiting for server reconnect.', level: LogLevel.warning);
-      _awaitingStreamReconnect = true;
-      _host._updatePlayback(
-        isPlaying: _host._wantsPlayback,
-        isLoading: false,
-        streamConnected: false,
-        streamRttMs: null,
-      );
-      unawaited(_host._refreshServerAvailability(reconnectAttempt: true));
-
-      return;
-    }
-
-    _lastInterruptedStreamRestartAt = _host._playbackClock();
-    _lastInterruptedStreamRestartTrackId = track.id;
-    _lastInterruptedStreamRestartPositionMs = restartPositionMs;
-    _awaitingStreamReconnect = false;
-
-    _host._pushMessage(
-      interruptedSeek
-          ? 'Stream interrupted during seek; reconnecting from the requested position.'
-          : 'Stream interrupted; reconnecting from current position.',
-      level: LogLevel.warning,
-    );
+    _awaitingStreamReconnect = true;
+    if (_lastInterruptedStreamRestartTrackId != track.id) _streamRetryAttempt = 0;
+    final delay = _nextRetryDelay();
+    _nextStreamRetryAt = _host._playbackClock().add(delay);
+    _host._pushMessage('Stream interrupted; waiting for connection before retrying.', level: LogLevel.warning);
     _host._updatePlayback(isLoading: true, streamConnected: false, streamRttMs: null);
+    _scheduleStreamRetry(delay);
+  }
 
-    _host._startPlayback(track, startOffset: Duration(milliseconds: restartPositionMs), quickStart: false);
+  Duration _nextRetryDelay() {
+    final delay = Duration(seconds: _retryBackoffSeconds[_streamRetryAttempt]);
+    _streamRetryAttempt = min(_streamRetryAttempt + 1, _retryBackoffSeconds.length - 1);
+    return delay;
+  }
+
+  void _scheduleStreamRetry(Duration delay) {
+    _streamRecoveryTimer?.cancel();
+    final occurrence = _host._playbackStarts.current;
+    bool canRetry() =>
+        !_host._disposed &&
+        _host._wantsPlayback &&
+        !_host._audioSessionSuspended &&
+        _awaitingStreamReconnect &&
+        _host._playbackStarts.isCurrent(occurrence);
+
+    _streamRecoveryTimer = Timer(delay, () async {
+      _streamRecoveryTimer = null;
+      if (canRetry()) {
+        await _host._refreshServerAvailability(reconnectAttempt: true);
+        if (canRetry() && !_host._audioEngine.hasActivePlayer && _streamRecoveryTimer == null) {
+          final next = _nextRetryDelay();
+          _nextStreamRetryAt = _host._playbackClock().add(next);
+          _scheduleStreamRetry(next);
+        }
+      }
+    });
+  }
+
+  void noteHealthyPlayback(Duration position, Duration bufferedAhead) {
+    final last = _lastInterruptedStreamRestartPositionMs;
+    if (last != null && position.inMilliseconds >= last + 2000 && bufferedAhead >= const Duration(seconds: 2)) {
+      _streamRetryAttempt = 0;
+    }
   }
 
   void _retireInterruptedSeek(int positionMs) {
@@ -193,25 +217,12 @@ class _StreamRecoveryCoordinator {
 
     final positionMs = max(_host._actualPositionMs, _host._displayPositionMs);
 
-    if (_recentlyRetriedInterruptedStream(track, positionMs)) {
-      if (_streamRecoveryTimer == null) {
-        final delay =
-            AppController._interruptedStreamRestartCooldown -
-            _host._playbackClock().difference(_lastInterruptedStreamRestartAt!);
-
-        void retryAfterCooldown() {
-          _streamRecoveryTimer = null;
-
-          if (!_host._disposed && _host._wantsPlayback && _awaitingStreamReconnect) {
-            unawaited(_host._refreshServerAvailability(reconnectAttempt: true));
-          }
-        }
-
-        _streamRecoveryTimer = Timer(delay, retryAfterCooldown);
-      }
-
+    final due = _nextStreamRetryAt;
+    if (due != null && _host._playbackClock().isBefore(due)) {
+      if (_streamRecoveryTimer == null) _scheduleStreamRetry(due.difference(_host._playbackClock()));
       return;
     }
+    _nextStreamRetryAt = null;
 
     _streamRecoveryTimer?.cancel();
     _streamRecoveryTimer = null;

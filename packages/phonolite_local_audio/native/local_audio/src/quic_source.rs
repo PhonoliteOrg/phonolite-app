@@ -13,8 +13,8 @@ use crate::set_failure_code;
 
 const CACHE_BYTES: usize = 256 * 1024;
 const INITIAL_CACHE_BYTES: usize = 16 * 1024;
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-const OPEN_TIMEOUT: Duration = Duration::from_secs(15);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 
 thread_local! {
     static OPERATION_DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };

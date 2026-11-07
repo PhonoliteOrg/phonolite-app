@@ -424,6 +424,14 @@ AudioQueue buffer reuse does not establish audible completion. The native adapte
 
 An interruption-end notification is not guaranteed. Explicit Play asks AudioSessionService to reactivate through the engine-bound Now Playing channel when Dart still considers audio interrupted. Only a successful native activation clears that interruption; denial keeps playback paused. A newer interruption, track selection or Play/Pause intent invalidates an outstanding activation so a delayed reply cannot resume stale playback.
 
+CarPlay album, playlist, liked-track and shuffle selections, plus remote Next and
+Previous, also count as explicit playback requests. The native media coordinator
+applies the same Play recovery after a selection starts a new occurrence; browsing
+and rejected selections do not reactivate audio. A newer user Pause while the
+selection loads prevents that recovery. Playback diagnostics record whether a new
+output was requested paused by interruption and whether activation was declined,
+so metadata loading can be distinguished from suspended audio in device logs.
+
 Audio route changes also rebuild output through that barrier, preserving the track,
 confirmed position, shuffle deck and current playback intent. A Bluetooth-to-wired
 CarPlay handoff keeps playback intent when the resulting route is car audio;
@@ -499,4 +507,6 @@ Do not launch apps, simulators, servers or background services during agent work
 
 ## Shared Apple media sources
 
-`native/apple` owns the playback update/state/command models, artwork-source values, Flutter channel transport and Now Playing codec, MediaPlayer publication and remote-command registration used by both Apple targets. Both Xcode projects compile those common sources directly into Runner. iOS retains its UIKit artwork loading, AVAudioSession, scenes and CarPlay capabilities; macOS supplies its own AppKit artwork and engine lifetime. The common bundle ID is `com.adamuremek.phonolite`.
+`native/apple` owns the playback update/state/command models, artwork-source values, Flutter channel transport and Now Playing codec, MediaPlayer publication and remote-command registration used by both Apple targets. Both Xcode projects compile those common sources directly into Runner. iOS retains its UIKit artwork loading, AVAudioSession, scenes and CarPlay capabilities; macOS supplies its own AppKit artwork and engine lifetime. The common bundle ID is `com.phonoliteorg.phonolite`.
+
+Poor-network buffering and source recovery remain owned by the audio worker/native transport and do not depend on Flutter image frames or CarPlay focus. The QUIC link anchor uses the shared C header and retains the owner telemetry, recovery, migration and adaptive-range functions used by Dart lookup. Artwork may arrive after audio and metadata publication. Physical locked-phone and wired-CarPlay validation is still required for network outages and route changes.

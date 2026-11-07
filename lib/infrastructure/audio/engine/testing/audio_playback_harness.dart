@@ -17,8 +17,16 @@ class AudioPlaybackHarness {
     required AudioPcmOutput Function(int sampleRate, int channels, int deviceId) outputFactory,
     bool initialPaused = false,
     Duration startOffset = Duration.zero,
+    String baseUrl = 'http://test.local:3000',
     Map<String, dynamic>? listeningContext,
     Duration transportProgressTimeout = const Duration(seconds: 15),
+    AudioNetworkHistory? networkHistory,
+    AudioAutoQualityHistory? autoQualityHistory,
+    String token = '',
+    int networkRouteGeneration = 0,
+    StreamSettings settings = const StreamSettings(mode: 'fixed', quality: 'high'),
+    AudioFileDecoder Function(Uri url, Duration startOffset)? originalDecoderFactory,
+    Duration Function()? autoOriginalNow,
   }) {
     _session = _PlaybackSession.remote(
       reusableConnection: transport,
@@ -29,10 +37,13 @@ class AudioPlaybackHarness {
       getPlaybackId: () => 1,
       trackId: 'track',
       trackTitle: 'Test',
-      baseUrl: 'http://test.local:3000',
-      token: '',
+      baseUrl: baseUrl,
+      token: token,
       quicPort: null,
-      settings: const StreamSettings(mode: 'fixed', quality: 'high'),
+      settings: settings,
+      networkHistory: networkHistory,
+      autoQualityHistory: autoQualityHistory,
+      networkRouteGeneration: networkRouteGeneration,
       startOffset: startOffset,
       queueTrackIds: const [],
       quickStart: true,
@@ -42,6 +53,8 @@ class AudioPlaybackHarness {
       outputDeviceId: -1,
       decoderFactory: decoderFactory,
       outputFactory: outputFactory,
+      fileDecoderFactory: originalDecoderFactory,
+      autoOriginalNow: autoOriginalNow,
       listeningContext: listeningContext,
     );
   }
@@ -128,7 +141,11 @@ class AudioPlaybackHarness {
 
   int cachedAheadMilliseconds(int positionMs) => _session._encodedCache.bufferedAheadMs(positionMs);
 
+  int get originalReserveMilliseconds => _session._ownerOriginal.reserveMs;
+
   Future<void> pause() => _session.pause();
+
+  Future<void> collectStats() => _session._ownerTelemetry._collectAndSendStats();
 
   Future<void> configureListening(Map<String, dynamic>? context, {bool discardPending = true}) =>
       _session.configureListening(context, discardPending: discardPending);

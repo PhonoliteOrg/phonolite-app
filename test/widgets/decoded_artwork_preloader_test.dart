@@ -134,6 +134,51 @@ void main() {
     expect(loader.calls.where((call) => call.endsWith('prepared-cover')), hasLength(1));
   });
 
+  testWidgets('previous selections leave room for the upcoming window', (tester) async {
+    final loader = _Loader();
+    final preloader = DecodedArtworkPreloader(loader: loader);
+    addTearDown(preloader.dispose);
+    await tester.runAsync(() async {
+      for (final name in ['a', 'b', 'c']) {
+        await preloader.prepare(ArtworkRequest(source: name));
+      }
+      preloader.update([
+        for (final name in ['c', 'd', 'e']) ArtworkRequest(source: name),
+      ]);
+      await loader.whenRequested('e');
+      expect(loader.calls, containsAll(['account-a:d', 'account-a:e']));
+    });
+  });
+
+  testWidgets('a new selection preempts an older stalled cover', (tester) async {
+    final loader = _Loader();
+    final preloader = DecodedArtworkPreloader(loader: loader);
+    addTearDown(preloader.dispose);
+    await tester.runAsync(() async {
+      final stalled = Completer<Uint8List>();
+      loader.pending['previous'] = stalled;
+      final previous = preloader.prepare(ArtworkRequest(source: 'previous'));
+      await loader.whenRequested('previous');
+      final selected = preloader.prepare(ArtworkRequest(source: 'selected'));
+      expect(await selected, ArtworkPreparation.ready);
+      expect(await previous, ArtworkPreparation.cancelled);
+      stalled.complete(_png);
+    });
+  });
+
+  testWidgets('a stalled decoded frame cannot pin the preloader forever', (tester) async {
+    final loader = _Loader();
+    final stalled = Completer<Uint8List>();
+    loader.pending['stalled'] = stalled;
+    final preloader = DecodedArtworkPreloader(loader: loader, preparationTimeout: const Duration(seconds: 1));
+    addTearDown(preloader.dispose);
+    final preparing = preloader.prepare(ArtworkRequest(source: 'stalled'));
+    await tester.pump(const Duration(seconds: 2));
+    expect(await preparing, ArtworkPreparation.unavailable);
+    stalled.complete(_png);
+    await tester.pump();
+  });
+
   for (final clear in [false, true]) {
     testWidgets('${clear ? 'clearing' : 'missing'} artwork releases readiness waiters', (tester) async {
       final loader = _Loader();
