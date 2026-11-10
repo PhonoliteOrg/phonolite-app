@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class ObsidianGlassSurface extends StatelessWidget {
@@ -37,9 +38,10 @@ class ObsidianGlassSurface extends StatelessWidget {
       child: child,
     );
 
+    final blur = !BackdropBlurResizeSuspension.isSuspended(context);
     final surface = grouped
-        ? BackdropFilter.grouped(filter: _backdropBlur, child: decoration)
-        : BackdropFilter(filter: _backdropBlur, child: decoration);
+        ? BackdropFilter.grouped(filter: _backdropBlur, enabled: blur, child: decoration)
+        : BackdropFilter(filter: _backdropBlur, enabled: blur, child: decoration);
     final shape = this.shape;
 
     return shape == null

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 
 /// Common catalog card arrangement, title design and compact size boost.
 class MediaCardBody extends StatelessWidget {
@@ -23,7 +24,7 @@ class MediaCardBody extends StatelessWidget {
   });
 
   static double textSize(BuildContext context, double value) =>
-      value * ObsidianScale.of(context) * (MediaQuery.sizeOf(context).width < 640 ? 1.2 : 1);
+      value * ObsidianScale.of(context) * (isCompactListWidth(context) ? 1.2 : 1);
 
   @override
   Widget build(BuildContext context) {

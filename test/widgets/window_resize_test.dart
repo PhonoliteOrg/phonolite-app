@@ -6,6 +6,9 @@ import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
+import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 import '../support/widget_test_helpers.dart';
@@ -355,6 +358,99 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'breakpoint dependents rebuild only when a breakpoint is crossed',
+    (tester) async {
+      _configureView(tester);
+      var builds = 0;
+      var compact = false;
+      var mode = ObsidianLayoutMode.compact;
+      await tester.pumpWidget(
+        _app(
+          Builder(
+            builder: (context) {
+              builds++;
+              compact = isCompactListWidth(context);
+              mode = obsidianLayoutModeOf(context);
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(mode, ObsidianLayoutMode.expanded);
+
+      for (final width in const [1100.0, 990.0, 970.0, 950.0, 880.0, 700.0, 630.0, 610.0]) {
+        final before = builds;
+        final expectedMode = obsidianLayoutModeFor(Size(width, 720), TargetPlatform.windows);
+        final expectedCompact = width < obsidianCompactListBreakpoint;
+        final crossed = expectedMode != mode || expectedCompact != compact;
+        tester.view.physicalSize = Size(width, 720);
+        await tester.pump();
+        expect(mode, expectedMode, reason: 'width $width');
+        expect(compact, expectedCompact, reason: 'width $width');
+        expect(builds, crossed ? before + 1 : before, reason: 'width $width');
+      }
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets(
+    'desktop resizing pauses backdrop blur until the size settles',
+    (tester) async {
+      _configureView(tester);
+      final probe = GlobalKey<_TabProbeState>();
+      await tester.pumpWidget(
+        _app(
+          Column(
+            children: [
+              Expanded(
+                child: ObsidianGlassSurface(
+                  child: maybeBlur(
+                    sigma: 12,
+                    child: _TabProbe(key: probe, onLayout: () {}),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final state = probe.currentState;
+      List<bool> enabled() =>
+          tester.widgetList<BackdropFilter>(find.byType(BackdropFilter)).map((filter) => filter.enabled).toList();
+      expect(enabled(), [true, true]);
+
+      tester.view.physicalSize = const Size(1200, 720);
+      await tester.pump();
+      expect(enabled(), [false, false]);
+      await tester.pump(const Duration(milliseconds: 150));
+      tester.view.physicalSize = const Size(1150, 720);
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(enabled(), [false, false], reason: 'each resize step restarts the settle delay');
+      await tester.pump(BackdropBlurResizeSuspension.defaultSettle);
+      expect(enabled(), [true, true]);
+      expect(probe.currentState, same(state));
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testWidgets(
+    'mobile size changes keep backdrop blur',
+    (tester) async {
+      _configureView(tester);
+      await tester.pumpWidget(_app(const ObsidianGlassSurface(child: SizedBox.expand())));
+      await tester.pumpAndSettle();
+      tester.view.physicalSize = const Size(720, 1280);
+      await tester.pump();
+      expect(tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled, isTrue);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 }
 
 Widget _app(Widget child) => MaterialApp(

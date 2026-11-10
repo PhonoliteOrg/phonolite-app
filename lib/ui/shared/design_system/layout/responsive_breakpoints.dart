@@ -23,11 +23,37 @@ ObsidianLayoutMode obsidianLayoutModeFor(Size size, TargetPlatform platform) {
   return size.width < obsidianExpandedLayoutBreakpoint ? ObsidianLayoutMode.narrow : ObsidianLayoutMode.expanded;
 }
 
+/// Breakpoint answers for the surrounding viewport.
+///
+/// Dependents rebuild only when a breakpoint is crossed, not on every window
+/// resize frame the way a [MediaQuery.sizeOf] dependency would.
+class ObsidianBreakpoints extends InheritedWidget {
+  final ObsidianLayoutMode layoutMode;
+  final bool compactList;
+
+  const ObsidianBreakpoints({super.key, required this.layoutMode, required this.compactList, required super.child});
+
+  ObsidianBreakpoints.resolve(BuildContext context, {Key? key, required Widget child})
+    : this._fromSize(key: key, size: MediaQuery.sizeOf(context), platform: Theme.of(context).platform, child: child);
+
+  ObsidianBreakpoints._fromSize({super.key, required Size size, required TargetPlatform platform, required super.child})
+    : layoutMode = obsidianLayoutModeFor(size, platform),
+      compactList = size.width < obsidianCompactListBreakpoint;
+
+  static ObsidianBreakpoints? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ObsidianBreakpoints>();
+
+  @override
+  bool updateShouldNotify(ObsidianBreakpoints oldWidget) =>
+      oldWidget.layoutMode != layoutMode || oldWidget.compactList != compactList;
+}
+
 ObsidianLayoutMode obsidianLayoutModeOf(BuildContext context) =>
+    ObsidianBreakpoints.maybeOf(context)?.layoutMode ??
     obsidianLayoutModeFor(MediaQuery.sizeOf(context), Theme.of(context).platform);
 
 bool usesSideNavigation(BuildContext context) => obsidianLayoutModeOf(context) != ObsidianLayoutMode.compact;
 
-bool isCompactListWidth(BuildContext context) {
-  return MediaQuery.sizeOf(context).width < obsidianCompactListBreakpoint;
-}
+bool isCompactListWidth(BuildContext context) =>
+    ObsidianBreakpoints.maybeOf(context)?.compactList ??
+    MediaQuery.sizeOf(context).width < obsidianCompactListBreakpoint;

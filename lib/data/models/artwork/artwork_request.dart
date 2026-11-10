@@ -8,6 +8,16 @@ class ArtworkRequest {
 
   ArtworkRequest({required this.source, Map<String, String> headers = const {}, this.decodeSize})
     : headers = Map.unmodifiable(headers);
+
+  /// Rounds a thumbnail's physical pixel size up to the server rendition sizes.
+  ///
+  /// Decoding at the bucket rather than the exact layout size keeps one cached
+  /// image per artwork while a window resize changes card sizes every frame.
+  static int thumbnailBucket(int pixels) => pixels <= 128
+      ? 128
+      : pixels <= 256
+      ? 256
+      : 512;
 }
 
 /// A borrowed loading capability. The application composition owns shutdown.

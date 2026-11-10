@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class ObsidianSectionHeader extends StatelessWidget {
-  static const double _compactWidth = 640;
-
   final String title;
   final String? subtitle;
   final Widget? trailing;
@@ -14,7 +13,7 @@ class ObsidianSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final isCompact = MediaQuery.sizeOf(context).width < _compactWidth;
+    final isCompact = isCompactListWidth(context);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,

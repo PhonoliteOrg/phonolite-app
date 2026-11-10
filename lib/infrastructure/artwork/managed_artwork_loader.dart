@@ -345,11 +345,7 @@ class ManagedArtworkLoader implements ArtworkLoader {
       return source;
     }
 
-    final bucket = size <= 128
-        ? 128
-        : size <= 256
-        ? 256
-        : 512;
+    final bucket = ArtworkRequest.thumbnailBucket(size);
 
     return uri.replace(queryParameters: {...uri.queryParameters, 'size': '$bucket', 'rendition': '1'}).toString();
   }

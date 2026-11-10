@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/dismissible_selection_area.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_background.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
@@ -25,7 +27,12 @@ class ObsidianViewport extends StatelessWidget {
             value: SystemUiOverlayStyle.light,
             child: SelectionDismissLayer(
               child: ObsidianBackground(
-                child: ObsidianScale(scale: scale, child: child),
+                child: ObsidianScale(
+                  scale: scale,
+                  child: BackdropBlurResizeSuspension(
+                    child: Builder(builder: (context) => ObsidianBreakpoints.resolve(context, child: child)),
+                  ),
+                ),
               ),
             ),
           ),

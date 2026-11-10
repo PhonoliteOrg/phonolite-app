@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/navigation/obsidian_page_transitions.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 
-typedef _TabViewport = ({MediaQueryData media, ThemeData theme, double scale, double topInset, double playbackInset});
+typedef _TabViewport = ({
+  MediaQueryData media,
+  ThemeData theme,
+  double scale,
+  ObsidianLayoutMode? layoutMode,
+  bool? compactList,
+  double topInset,
+  double playbackInset,
+});
 
 /// Keeps each tab mounted, but only lays out and paints the active tab.
 /// Replacing a stack briefly retains the outgoing content for its transition.
@@ -134,6 +143,18 @@ class _RetainedTabViewState extends State<RetainedTabView> with SingleTickerProv
     }
   }
 
+  /// Covered tabs keep the breakpoints captured with their frozen viewport.
+  static Widget _breakpoints(_TabViewport viewport, Widget child) {
+    final layoutMode = viewport.layoutMode;
+    final compactList = viewport.compactList;
+
+    if (layoutMode == null || compactList == null) {
+      return child;
+    }
+
+    return ObsidianBreakpoints(layoutMode: layoutMode, compactList: compactList, child: child);
+  }
+
   _RetainedTab _createTab(Widget child) {
     final tab = _RetainedTab(child);
     tab.entry = OverlayEntry(
@@ -150,14 +171,17 @@ class _RetainedTabViewState extends State<RetainedTabView> with SingleTickerProv
             data: viewport.theme,
             child: ObsidianScale(
               scale: viewport.scale,
-              child: PlaybackContentInset(
-                top: viewport.topInset,
-                bottom: viewport.playbackInset,
-                child: ExcludeFocus(
-                  excluding: !active,
-                  child: IgnorePointer(
-                    ignoring: !active,
-                    child: RepaintBoundary(child: tab.child),
+              child: _breakpoints(
+                viewport,
+                PlaybackContentInset(
+                  top: viewport.topInset,
+                  bottom: viewport.playbackInset,
+                  child: ExcludeFocus(
+                    excluding: !active,
+                    child: IgnorePointer(
+                      ignoring: !active,
+                      child: RepaintBoundary(child: tab.child),
+                    ),
                   ),
                 ),
               ),
@@ -207,10 +231,13 @@ class _RetainedTabViewState extends State<RetainedTabView> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final breakpoints = ObsidianBreakpoints.maybeOf(context);
     final viewport = (
       media: MediaQuery.of(context),
       theme: Theme.of(context),
       scale: ObsidianScale.of(context),
+      layoutMode: breakpoints?.layoutMode,
+      compactList: breakpoints?.compactList,
       topInset: PlaybackContentInset.topOf(context),
       playbackInset: PlaybackContentInset.bottomOf(context),
     );

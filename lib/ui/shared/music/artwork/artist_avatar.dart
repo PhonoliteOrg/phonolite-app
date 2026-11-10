@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_image.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_placeholder.dart';
@@ -48,7 +49,9 @@ class ArtistAvatar extends StatelessWidget {
           height: size,
           fit: fit,
           placeholder: placeholder,
-          decodeSize: thumbnail ? (size * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(1, 512) : null,
+          decodeSize: thumbnail
+              ? ArtworkRequest.thumbnailBucket((size * MediaQuery.devicePixelRatioOf(context)).ceil())
+              : null,
           retryOnError: thumbnail,
         ),
       ),

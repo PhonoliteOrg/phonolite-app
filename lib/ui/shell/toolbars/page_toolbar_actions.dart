@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
+
 /// Wrapping page actions share alignment while their owners supply the actions.
 class PageToolbarActions extends StatelessWidget {
   final List<Widget> children;
@@ -26,8 +28,7 @@ class PageToolbarActionLayout {
 
   const PageToolbarActionLayout._(this.compact);
 
-  factory PageToolbarActionLayout.of(BuildContext context) =>
-      PageToolbarActionLayout._(MediaQuery.sizeOf(context).width < 640);
+  factory PageToolbarActionLayout.of(BuildContext context) => PageToolbarActionLayout._(isCompactListWidth(context));
 
   double get iconSize => compact ? 22 : regularIconSize;
 

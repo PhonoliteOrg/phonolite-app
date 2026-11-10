@@ -4,11 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class DownloadSelectionToolbar extends StatelessWidget {
-  static const double _compactWidth = 640;
-
   final int selectedCount;
   final int totalCount;
   final VoidCallback onCancel;
@@ -28,7 +27,7 @@ class DownloadSelectionToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.sizeOf(context).width < _compactWidth;
+    final isCompact = isCompactListWidth(context);
     final allSelected = totalCount > 0 && selectedCount == totalCount;
     final toggleLabel = allSelected ? 'Deselect all' : 'Select all';
     final toggleEnabled = totalCount > 0;
