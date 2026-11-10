@@ -40,6 +40,7 @@
 		A1C0F4E57B1D4A5E9B2C3D4E /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C0F4E37B1D4A5E9B2C3D4E /* AudioToolbox.framework */; };
 		A1C0F4E67B1D4A5E9B2C3D4E /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C0F4E47B1D4A5E9B2C3D4E /* CoreAudio.framework */; };
 		A2010001A2010001A2010001 /* FlutterEngineBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2020001A2020001A2020001 /* FlutterEngineBinding.swift */; };
+		A2019001A2019001A2019001 /* RendererSelectingDartProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2029001A2029001A2029001 /* RendererSelectingDartProject.swift */; };
 		A2010002A2010002A2010002 /* DirectoriesChannelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2020002A2020002A2020002 /* DirectoriesChannelAdapter.swift */; };
 		A2010003A2010003A2010003 /* DirectoryLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2020003A2020003A2020003 /* DirectoryLauncher.swift */; };
 		A2010004A2010004A2010004 /* audio_queue_player.c in Sources */ = {isa = PBXBuildFile; fileRef = A2020004A2020004A2020004 /* audio_queue_player.c */; };
@@ -125,6 +126,7 @@
 		A1C0F4E37B1D4A5E9B2C3D4E /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		A1C0F4E47B1D4A5E9B2C3D4E /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		A2020001A2020001A2020001 /* FlutterEngineBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlutterEngineBinding.swift; sourceTree = "<group>"; };
+		A2029001A2029001A2029001 /* RendererSelectingDartProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RendererSelectingDartProject.swift; sourceTree = "<group>"; };
 		A2020002A2020002A2020002 /* DirectoriesChannelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoriesChannelAdapter.swift; sourceTree = "<group>"; };
 		A2020003A2020003A2020003 /* DirectoryLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryLauncher.swift; sourceTree = "<group>"; };
 		A2020004A2020004A2020004 /* audio_queue_player.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = audio_queue_player.c; sourceTree = "<group>"; };
@@ -338,6 +340,7 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				A2020001A2020001A2020001 /* FlutterEngineBinding.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+				A2029001A2029001A2029001 /* RendererSelectingDartProject.swift */,
 			);
 			path = Bootstrap;
 			sourceTree = "<group>";
@@ -621,6 +624,7 @@
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 				A1C0F4E27B1D4A5E9B2C3D4E /* phonolite_audio.c in Sources */,
 				A2010001A2010001A2010001 /* FlutterEngineBinding.swift in Sources */,
+				A2019001A2019001A2019001 /* RendererSelectingDartProject.swift in Sources */,
 				A2010002A2010002A2010002 /* DirectoriesChannelAdapter.swift in Sources */,
 				A2010003A2010003A2010003 /* DirectoryLauncher.swift in Sources */,
 				A2010004A2010004A2010004 /* audio_queue_player.c in Sources */,

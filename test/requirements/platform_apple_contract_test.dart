@@ -373,7 +373,7 @@ void main() {
       ]);
       expectContainsAll(infoPlist, const ['NSAllowsArbitraryLoads']);
       expectContainsAll(windowSource, const [
-        'FlutterViewController()',
+        'FlutterViewController(project: RendererSelectingDartProject())',
         'RegisterGeneratedPlugins(registry: flutterViewController)',
       ]);
       expectContainsAll(audioHeader, const [

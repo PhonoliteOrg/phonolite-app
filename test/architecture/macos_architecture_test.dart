@@ -67,7 +67,7 @@ void main() {
   test('macOS preserves nib identities and the Flutter startup and teardown order', () {
     final window = readProjectFile('$_runner/Bootstrap/MainFlutterWindow.swift');
     final startup = [
-      'FlutterViewController()',
+      'FlutterViewController(project: RendererSelectingDartProject())',
       'let windowFrame = frame',
       'contentViewController = flutterViewController',
       'setFrame(windowFrame, display: true)',

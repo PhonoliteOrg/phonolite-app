@@ -20,7 +20,7 @@ final class MainFlutterWindow: NSWindow {
     engineBinding?.detach()
     configureTitlebar()
 
-    let flutterViewController = FlutterViewController()
+    let flutterViewController = FlutterViewController(project: RendererSelectingDartProject())
     flutterViewController.backgroundColor = backgroundColor
     let windowFrame = frame
     contentViewController = flutterViewController

@@ -166,3 +166,21 @@ private final class Fixture {
     return try XCTUnwrap(replies.first)
   }
 }
+
+final class RendererSelectingDartProjectTests: XCTestCase {
+  func testIntelHostsUseSkiaAndAppleSiliconKeepsImpeller() {
+    XCTAssertFalse(RendererSelectingDartProject.impellerEnabled(infoValue: nil, hostIsAppleSilicon: false))
+    XCTAssertTrue(RendererSelectingDartProject.impellerEnabled(infoValue: nil, hostIsAppleSilicon: true))
+  }
+
+  func testExplicitInfoPlistValueTakesPrecedence() {
+    XCTAssertTrue(RendererSelectingDartProject.impellerEnabled(infoValue: true, hostIsAppleSilicon: false))
+    XCTAssertFalse(RendererSelectingDartProject.impellerEnabled(infoValue: false, hostIsAppleSilicon: true))
+  }
+
+  func testProjectReportsTheSelectionToTheEngine() {
+    let project = RendererSelectingDartProject(infoValue: nil, hostIsAppleSilicon: false)
+
+    XCTAssertEqual(project.value(forKey: "enableImpeller") as? Bool, false)
+  }
+}
