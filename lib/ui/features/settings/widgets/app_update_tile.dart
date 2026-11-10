@@ -27,7 +27,7 @@ class AppUpdateTile extends StatelessWidget {
         case AppUpdatePhase.preparing:
           return 'Saving application state before restart…';
         case AppUpdatePhase.installing:
-          return 'Installing update. Follow progress in the updater window.';
+          return progress.message ?? 'Installing update. Follow progress in the updater window.';
         case AppUpdatePhase.recoveryRequired:
         case AppUpdatePhase.restartRequired:
           return progress.message ?? 'Check the updater window for recovery details.';
@@ -38,14 +38,14 @@ class AppUpdateTile extends StatelessWidget {
       }
     }
     if (controller.openingUpdater) {
-      return 'Opening updater…';
+      return 'Starting update…';
     }
     if (controller.busy) {
       return 'Checking for updates…';
     }
     if (controller.error != null) {
       return controller.latestRelease != null
-          ? 'Could not open the updater. Select to try again.'
+          ? 'Could not update the app. Select to try again.'
           : controller.canCheckForUpdates
           ? 'Could not check for updates. Select to try again.'
           : 'Update checks are unavailable in this build.';
@@ -58,31 +58,78 @@ class AppUpdateTile extends StatelessWidget {
         : 'Updates are checked on startup and every 2 hours.';
   }
 
+  Widget? _progressBorder() {
+    final progress = controller.progress;
+    if (progress == null) {
+      return null;
+    }
+
+    final visible = switch (progress.phase) {
+      AppUpdatePhase.downloading ||
+      AppUpdatePhase.verifying ||
+      AppUpdatePhase.authorizing ||
+      AppUpdatePhase.preparing ||
+      AppUpdatePhase.installing => true,
+      AppUpdatePhase.idle ||
+      AppUpdatePhase.failed ||
+      AppUpdatePhase.recoveryRequired ||
+      AppUpdatePhase.restartRequired => false,
+    };
+
+    if (!visible) {
+      return null;
+    }
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: LinearProgressIndicator(
+          value: progress.phase == AppUpdatePhase.downloading ? progress.fraction : null,
+          minHeight: 2,
+          color: ObsidianPalette.gold,
+          backgroundColor: ObsidianPalette.border,
+          borderRadius: BorderRadius.zero,
+          stopIndicatorRadius: 0,
+          trackGap: 0,
+          semanticsLabel: 'App update progress',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
       final enabled = controller.canCheckForUpdates || controller.canCancelDownload;
       final color = controller.latestRelease != null ? ObsidianPalette.gold : ObsidianPalette.textMuted;
+      final progressBorder = _progressBorder();
 
       return Semantics(
         button: true,
         enabled: enabled,
         child: IconTheme.merge(
           data: IconThemeData(color: color),
-          child: buildSettingsRow(
-            context,
-            leading: const Icon(PhonoliteIcons.refreshCw),
-            title: 'App updates',
-            subtitle: _subtitle,
-            titleColor: enabled ? null : color,
-            onTap: controller.canCancelDownload
-                ? controller.cancelDownload
-                : enabled
-                ? controller.canInstall
-                      ? controller.installLatestUpdate
-                      : controller.checkForUpdates
-                : null,
+          child: Stack(
+            children: [
+              buildSettingsRow(
+                context,
+                leading: const Icon(PhonoliteIcons.refreshCw),
+                title: 'App updates',
+                subtitle: _subtitle,
+                titleColor: enabled ? null : color,
+                onTap: controller.canCancelDownload
+                    ? controller.cancelDownload
+                    : enabled
+                    ? controller.canInstall
+                          ? controller.installLatestUpdate
+                          : controller.checkForUpdates
+                    : null,
+              ),
+              if (progressBorder != null) progressBorder,
+            ],
           ),
         ),
       );

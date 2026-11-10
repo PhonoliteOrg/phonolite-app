@@ -54,7 +54,6 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/identity.cmake")
 configure_phonolite_identity(${BINARY_NAME})
 include("${CMAKE_CURRENT_SOURCE_DIR}/updates.cmake")
 configure_phonolite_updates(${BINARY_NAME})
-set(PHONOLITE_WINSPARKLE_SDK "${PHONOLITE_WINSPARKLE_SDK}" PARENT_SCOPE)
 
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
@@ -72,6 +71,7 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib" "shell32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "windowsapp.lib" "runtimeobject.lib" "shcore.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "propsys.lib" "advapi32.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "version.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

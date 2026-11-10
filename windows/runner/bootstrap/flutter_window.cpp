@@ -42,7 +42,7 @@ bool FlutterWindow::on_create() {
   now_playing_channel_ = std::make_unique<NowPlayingChannelAdapter>(*media_transport_);
   now_playing_channel_->attach(*flutter_controller_->engine()->messenger());
 
-  update_service_ = std::make_unique<WindowsUpdateService>(get_handle());
+  update_service_ = std::make_unique<WindowsUpdateService>();
   updates_channel_ = std::make_unique<UpdatesChannelAdapter>(*update_service_);
   updates_channel_->attach(*flutter_controller_->engine()->messenger());
 
@@ -80,11 +80,6 @@ void FlutterWindow::on_destroy() {
 }
 
 LRESULT FlutterWindow::message_handler(HWND window, UINT message, WPARAM wparam, LPARAM lparam) noexcept {
-  if (update_service_ && update_service_->is_shutdown_message(message)) {
-    updates_channel_->request_shutdown();
-    return 0;
-  }
-
   if (media_transport_ && media_transport_->is_command_message(message)) {
     now_playing_channel_->dispatch_pending_commands();
 

@@ -76,7 +76,9 @@ try {
     $stage = Join-Path $output 'package'
     $compilerDirectory = Join-Path $output 'nsis'
     $null = New-Item -ItemType Directory -Path $stage, $compilerDirectory -Force
-    Get-ChildItem -LiteralPath $bundle -Force | Where-Object { $_.Extension -notin @('.pdb', '.exp', '.lib') } |
+    # Exclude the obsolete updater DLL when reusing a pre-migration build folder.
+    Get-ChildItem -LiteralPath $bundle -Force |
+        Where-Object { $_.Extension -notin @('.pdb', '.exp', '.lib') -and $_.Name -ine 'WinSparkle.dll' } |
         Copy-Item -Destination $stage -Recurse
     Copy-VisualCppRuntime $stage
     Assert-ReleaseBundle $stage $config.executable

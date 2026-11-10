@@ -7,7 +7,7 @@
 
 class WindowsUpdateService final : public UpdateService {
  public:
-  explicit WindowsUpdateService(HWND owner_window);
+  WindowsUpdateService() = default;
   ~WindowsUpdateService() override;
 
   WindowsUpdateService(const WindowsUpdateService&) = delete;
@@ -16,12 +16,16 @@ class WindowsUpdateService final : public UpdateService {
   bool initialize() override;
   std::string feed_url() const override;
   std::string current_version() const override;
-  bool is_shutdown_message(UINT message) const;
-  void show_update() override;
+  std::string public_key() const override;
+  unsigned long stage_update(const std::wstring& path, const std::string& version) override;
+  unsigned long install_update() override;
+  void release_update() override;
   void cleanup() override;
 
  private:
-  HWND owner_window_; // Borrowed; teardown stops callbacks before the window is destroyed.
+  std::wstring install_directory_;
+  std::wstring candidate_path_;
+  HANDLE candidate_file_ = INVALID_HANDLE_VALUE;
   bool initialized_ = false;
 };
 

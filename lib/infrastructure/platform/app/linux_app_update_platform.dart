@@ -12,12 +12,12 @@ import 'package:phonolite_app/data/models/updates/linux_update_asset.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_platform.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
 import 'package:phonolite_app/infrastructure/updates/linux_update_process.dart';
-import 'package:phonolite_app/infrastructure/updates/linux_update_transport.dart';
+import 'package:phonolite_app/infrastructure/updates/app_update_transport.dart';
 
 class LinuxAppUpdatePlatform
     implements AppUpdatePlatform, AppUpdateFeed, AppUpdateProgressSource, AppUpdatePreparationPlatform {
   final LinuxUpdateProcess _process;
-  final LinuxUpdateTransport _transport;
+  final AppUpdateTransport _transport;
   final ValueNotifier<AppUpdateProgress> _progress = ValueNotifier(const AppUpdateProgress());
   AppUpdateConfiguration? _configuration;
   Future<void> Function()? _onInstall;
@@ -29,8 +29,8 @@ class LinuxAppUpdatePlatform
   bool _closed = false;
   int _generation = 0;
 
-  LinuxAppUpdatePlatform({this._process = const LinuxUpdateProcess(), LinuxUpdateTransport? transport})
-    : _transport = transport ?? LinuxUpdateTransport();
+  LinuxAppUpdatePlatform({this._process = const LinuxUpdateProcess(), AppUpdateTransport? transport})
+    : _transport = transport ?? AppUpdateTransport();
 
   @override
   ValueListenable<AppUpdateProgress> get progress => _progress;

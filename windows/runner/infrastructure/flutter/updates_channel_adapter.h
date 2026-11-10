@@ -18,7 +18,6 @@ class UpdatesChannelAdapter final {
 
   void attach(flutter::BinaryMessenger& messenger);
   void detach();
-  void request_shutdown();
 
  private:
   UpdateService& service_;

@@ -5,13 +5,13 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
-class LinuxUpdateTransport {
+class AppUpdateTransport {
   final http.Client Function() _createClient;
   http.Client? _client;
   int _generation = 0;
   void Function()? _interrupt;
 
-  LinuxUpdateTransport({http.Client Function()? createClient})
+  AppUpdateTransport({http.Client Function()? createClient})
     : _createClient = createClient ?? (() => IOClient(_PublicUpdateHttpOverrides().createHttpClient(null)));
 
   void cancel() {
@@ -31,7 +31,7 @@ class LinuxUpdateTransport {
     Uri url,
     File destination, {
     required int length,
-    required String digest,
+    String? digest,
     required void Function(double) onProgress,
   }) async {
     final output = destination.openWrite();
@@ -54,7 +54,7 @@ class LinuxUpdateTransport {
       hashing.close();
       await output.flush();
       await output.close();
-      if (received != length || hash.value?.toString() != digest) {
+      if (received != length || (digest != null && hash.value?.toString() != digest)) {
         throw const FormatException('The package does not match its signed length and digest.');
       }
     } catch (_) {

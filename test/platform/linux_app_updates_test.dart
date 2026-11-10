@@ -13,7 +13,7 @@ import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_backend.dart';
 import 'package:phonolite_app/infrastructure/platform/app/linux_app_update_platform.dart';
 import 'package:phonolite_app/infrastructure/updates/linux_update_process.dart';
-import 'package:phonolite_app/infrastructure/updates/linux_update_transport.dart';
+import 'package:phonolite_app/infrastructure/updates/app_update_transport.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -151,7 +151,7 @@ void main() {
   test('downloads reject changed bytes and remove incomplete files', () async {
     final directory = await Directory.systemTemp.createTemp('phonolite-download-test-');
     final path = File('${directory.path}/candidate');
-    final transport = LinuxUpdateTransport(createClient: () => MockClient((_) async => http.Response('altered', 200)));
+    final transport = AppUpdateTransport(createClient: () => MockClient((_) async => http.Response('altered', 200)));
     try {
       await expectLater(
         transport.download(
@@ -171,18 +171,18 @@ void main() {
   });
 
   test('bounded HTTPS transport rejects insecure redirects and oversized metadata', () async {
-    final transport = LinuxUpdateTransport(
+    final transport = AppUpdateTransport(
       createClient: () =>
           MockClient((_) async => http.Response('', 302, headers: {'location': 'http://example.com/unsafe'})),
     );
     await expectLater(transport.metadata(Uri.parse('https://example.com/feed')), throwsFormatException);
-    final oversized = LinuxUpdateTransport(createClient: () => MockClient((_) async => http.Response('12345', 200)));
+    final oversized = AppUpdateTransport(createClient: () => MockClient((_) async => http.Response('12345', 200)));
     await expectLater(oversized.metadata(Uri.parse('https://example.com/feed'), maximum: 4), throwsFormatException);
   });
 
   test('cancellation retires the active generation', () async {
     final body = StreamController<List<int>>();
-    final transport = LinuxUpdateTransport(
+    final transport = AppUpdateTransport(
       createClient: () => MockClient.streaming((_, _) async => http.StreamedResponse(body.stream, 200)),
     );
     final reading = transport.metadata(Uri.parse('https://example.com/feed'));
@@ -195,7 +195,7 @@ void main() {
   });
 }
 
-LinuxUpdateTransport _transport() => LinuxUpdateTransport(
+AppUpdateTransport _transport() => AppUpdateTransport(
   createClient: () =>
       MockClient((request) async => http.Response(request.url.path == '/pkg.deb' ? 'package bytes' : '{}', 200)),
 );

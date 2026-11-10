@@ -69,7 +69,7 @@ void main() {
       platform.pendingShow = Completer<void>();
       await tester.tap(find.text('App updates'));
       await tester.pump();
-      expect(find.text('Opening updater…'), findsOneWidget);
+      expect(find.text('Starting update…'), findsOneWidget);
       expect(updateRow(tester).onTap, isNull);
       expect(platform.opens, 1);
       expect(feed.checks, 2);
@@ -186,7 +186,7 @@ void main() {
       expect(find.text('Waiting for administrator authorization…'), findsOneWidget);
       expect(updateRow(tester).onTap, isNull);
       platform.pendingShow!.complete();
-      await tester.pumpAndSettle();
+      await tester.pump();
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.shutdown();

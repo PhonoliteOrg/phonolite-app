@@ -54,7 +54,7 @@ Function SkipUpdatePage
 FunctionEnd
 
 Function WaitForUpdateShutdown
-  # WinSparkle launches the verified installer before requesting graceful app shutdown.
+  # The app launches the verified silent installer before exiting gracefully.
   # Wait for the executable lock without killing playback or deleting any files.
   StrCpy $R2 0
   update_wait:
@@ -273,7 +273,7 @@ Function un.onInit
 FunctionEnd
 
 Function un.RemoveAppData
-  # Both manual reinstalls and WinSparkle updates run the previous uninstaller.
+  # Both manual reinstalls and in-app updates run the previous uninstaller.
   ${If} $UpgradeMode == 1
     Return
   ${EndIf}

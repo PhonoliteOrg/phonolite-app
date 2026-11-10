@@ -225,7 +225,7 @@ Use `-SkipBuild` only when the existing release bundle matches the package versi
 Windows publisher signing (Authenticode) is optional. If used, pass the certificate
 options to `build_nsis.ps1` so signing happens before preparing the update feed.
 
-Prepare the WinSparkle update feed with the existing Ed25519 private key that
+Prepare the Windows appcast feed with the existing Ed25519 private key that
 matches the app's configured public key. Keep this key outside the repository
 and reuse it across releases. Replace `<version>` below with the Windows package
 version from the build output:
@@ -264,9 +264,23 @@ The scripts prepare files; they do not create or upload a GitHub Release.
 
 Windows release builds check the feed on startup and every two hours. Select
 **Settings > Miscellaneous > App updates** to check immediately or retry a failed
-check. When a newer version is found, the tile offers **Download and install**;
-select it again to open the signed WinSparkle update flow. Debug builds disable
-update checks.
+check. When a newer version is found, the tile offers **Download and install**.
+Selecting it downloads the package inside Phonolite, with progress and cancellation
+in that tile. The app verifies the Ed25519 signature against its compiled public
+key and checks that the installer's embedded version matches the offered update
+and is newer than the running build. It then saves application state, runs the
+per-user installer silently, exits and reopens after installation. No WinSparkle
+prompt or installer wizard is shown. A first-time manual installation still uses
+the regular installer. Debug and unpacked release builds disable automatic updates;
+the running executable must match the registered per-user installation directory.
+
+The download uses the system HTTPS certificate authorities independently of
+music-server pins. Failed and cancelled downloads are removed. After handoff,
+the installer retains its staging directory; stages older than one day are cleaned
+on a later launch. The checksum-pinned WinSparkle SDK remains release signing
+tooling only; it is no longer linked or shipped as an app runtime dependency.
+Already installed versions retain their old update interface until upgraded to
+a release containing this behavior.
 
 Versions 0.2.0 and 0.3.0 inherit the music-server HTTP certificate pins for feed
 requests, which reject GitHub before update discovery. They also disable the

@@ -124,7 +124,7 @@ class AppUpdatesController extends ChangeNotifier {
       await _platform.showUpdate();
     } catch (error) {
       if (generation == _generation) {
-        _report('Could not open the app updater', error);
+        _report('Could not update the app', error);
       }
     } finally {
       if (generation == _generation) {

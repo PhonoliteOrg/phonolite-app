@@ -350,36 +350,44 @@ Verify explicit CMake source membership, resources, generated registration, DLL 
 
 ## 13. Windows application updates
 
-`infrastructure/updates/windows_update_service` owns WinSparkle configuration and
-lifetime; `infrastructure/flutter/updates_channel_adapter` transports explicit
-initialize/configuration/show calls. The Flutter window assembles them and forwards
-a registered shutdown message to the channel on the platform thread. WinSparkle's
-worker callback only posts that message and never touches a Flutter messenger.
-Teardown clears the borrowed HWND and callbacks and joins updater work before
-destroying the messenger. Debug builds do not initialize the updater.
+`infrastructure/updates/windows_update_service` owns compiled configuration,
+installed-directory validation, the candidate file lock, embedded version checks
+and silent installer process creation. `infrastructure/flutter/updates_channel_adapter`
+transports initialize, stage, install, release and dispose calls. The Flutter window
+assembles them; there are no native updater windows or shutdown callbacks. Debug
+builds and executable directories that do not match the per-user installation
+registry entry cannot install updates.
 
-The Dart `AppUpdatesController` owns settings actions and hands installation
-shutdown to the existing `DesktopSettingsController.quit` workflow so tray mode
-cannot intercept it. Shared updater settings remain independent of music-server
-authentication and local library resets. A separate HTTPS feed probe checks
-at startup and every two hours without WinSparkle UI. Selecting the single
-Miscellaneous tile runs the same quiet check immediately, including after a failed
-feed request. The feed uses a dedicated system-CA HTTPS client so the global
-music-server certificate pins cannot reject GitHub or its asset redirects.
-Music-server trust and authentication are unchanged. When a newer Windows
-version is known, the tile switches to a
-download and install action that opens WinSparkle. Checks and updater actions
-disable the tile while pending. WinSparkle's own automatic checks are disabled
-so its dialog opens only from that tile. WinSparkle
-verifies every installer against the compiled Ed25519 key.
-The controller owns the polling timer, skips overlapping checks and cancels it
-on shutdown. The tile and updater are Windows-only; mobile platforms neither
-show the tile nor initialize or schedule the desktop updater.
+The Dart `WindowsAppUpdatePlatform` shares discovery and installation state. It
+composes the existing appcast feed, shared bounded HTTPS `AppUpdateTransport`,
+data-owned staging and an isolated Ed25519 verifier. Windows appcast enclosures
+must provide an HTTPS URL, bounded positive length and a 64-byte signature.
+The native stage command locks the downloaded file against writes and replacement
+and verifies its embedded version against the offered version and running build.
+Dart verifies its raw-file signature against the compiled public key while that
+lock is held. Failed or cancelled candidates are unlocked and removed; they never
+reach application shutdown. Stages retained after handoff are pruned on later
+launches once they are more than one day old.
 
-`updates.cmake` generates the feed URL and public key from the distribution
-configuration, prepares the checksum-pinned SDK and installs its DLL and license.
-The private signing key remains outside the app repository. See
-[Windows packaging](../README.md#windows-installer-and-updates)
-for the manual build/sign/upload sequence.
-The native updater contract test injects a fake service and never starts
-WinSparkle, contacts GitHub or executes an installer.
+`AppUpdatesController` keeps its startup/two-hour polling and explicit check action.
+The Miscellaneous tile shows download percentage, cancellation, verification and
+state preparation. Once verified, the backend awaits
+`DesktopSettingsController.prepareForUpdate`, starts the installed package with
+fixed `/S /UPDATE /D=<running installation>` arguments through `CreateProcessW`
+without a shell, then calls `quitForUpdate`. The installer waits for the executable
+to close, preserves user data through `/UPGRADE`, replaces files and reopens the app.
+Process creation or preparation errors remain visible in Settings; a preparation
+failure requires restarting the app before retrying. The package runs silently,
+without the WinSparkle confirmation or NSIS wizard. Fresh manual installations
+retain their wizard. Music-server authentication and certificate pins remain
+independent of the updater's normal system-CA HTTPS validation.
+
+`updates.cmake` generates the feed URL and public key. WinSparkle is no longer an
+app runtime dependency; its checksum-pinned SDK is retained only for release
+signing and verification tooling. Existing appcasts and signing keys remain
+compatible. The private key stays outside the repository. See
+[Windows packaging](../README.md#windows-installer-and-updates) for release operations.
+Native contract tests inject a fake updater and never execute an installer.
+Headless Dart tests verify signatures, cancellation, cleanup, state-saving order
+and failure behavior with fixture downloads and a mocked native channel. Real
+installation and relaunch verification remains user-controlled.

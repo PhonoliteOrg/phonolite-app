@@ -114,10 +114,11 @@ configure_phonolite_identity(phonolite_identity_contract_tests)
 target_link_libraries(phonolite_identity_contract_tests PRIVATE shell32.lib ole32.lib propsys.lib advapi32.lib)
 add_test(NAME phonolite_identity_contracts COMMAND phonolite_identity_contract_tests)
 
-# Only a fake updater is used. No WinSparkle UI, network check or installer runs.
+# Only a fake updater is used. No network check or installer runs.
 add_executable(phonolite_updates_contract_tests
   "updates_contract_test.cpp"
   "${APP_ROOT}/windows/runner/infrastructure/flutter/updates_channel_adapter.cpp"
+  "${APP_ROOT}/windows/runner/infrastructure/text/text_encoding.cpp"
   "${WRAPPER_ROOT}/core_implementations.cc"
   "${WRAPPER_ROOT}/standard_codec.cc"
 )

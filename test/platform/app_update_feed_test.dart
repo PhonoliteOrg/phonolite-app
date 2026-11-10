@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +19,7 @@ String _item(String version, {String os = 'windows-x64', String scheme = 'https'
     '''
 <item><sparkle:version>$version</sparkle:version>
 <enclosure url="$scheme://github.com/PhonoliteOrg/phonolite-app/releases/download/v$version/setup.exe"
-sparkle:os="$os"/></item>''';
+length="123" sparkle:edSignature="${base64.encode(List.filled(64, 1))}" sparkle:os="$os"/></item>''';
 
 String _appcast(List<String> items) => '''
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
@@ -71,6 +72,8 @@ void main() {
       currentVersion: '0.2.0.0',
     );
     expect(release?.version, '0.2.10.2');
+    expect(release?.windowsAsset?.length, 123);
+    expect(release?.windowsAsset?.url.scheme, 'https');
   });
 
   test('equal and older releases do not offer updates or downgrades', () {
@@ -79,6 +82,17 @@ void main() {
       isNull,
     );
     expect(const AppUpdateRelease(version: '0.2.1.0').displayVersion, '0.2.1');
+  });
+
+  test('unsigned, oversized and fragmented Windows packages cannot be offered', () {
+    for (final item in [
+      _item('0.3.0.0').replaceAll(RegExp(r'sparkle:edSignature="[^"]*"'), ''),
+      _item('0.3.0.0').replaceAll('length="123"', 'length="0"'),
+      _item('0.3.0.0').replaceAll('length="123"', 'length="536870913"'),
+      _item('0.3.0.0').replaceAll('setup.exe', 'setup.exe#fragment'),
+    ]) {
+      expect(AppUpdateRelease.latestFromAppcast(_appcast([item]), currentVersion: '0.2.0.0'), isNull);
+    }
   });
 
   test('rejects non-appcast content and invalid running versions', () {

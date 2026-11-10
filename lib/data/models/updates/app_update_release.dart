@@ -1,11 +1,14 @@
 import 'package:xml/xml.dart';
 
+import 'package:phonolite_app/data/models/updates/windows_update_asset.dart';
+
 class AppUpdateRelease {
   static const _sparkleNamespace = 'http://www.andymatuschak.org/xml-namespaces/sparkle';
 
   final String version;
+  final WindowsUpdateAsset? windowsAsset;
 
-  const AppUpdateRelease({required this.version});
+  const AppUpdateRelease({required this.version, this.windowsAsset});
 
   String get displayVersion =>
       version.endsWith('.0') && version.split('.').length == 4 ? version.substring(0, version.length - 2) : version;
@@ -35,12 +38,16 @@ class AppUpdateRelease {
                     enclosure.getAttribute('version', namespace: _sparkleNamespace))
                 ?.trim();
         final parts = version == null ? null : _versionParts(version);
-        final download = Uri.tryParse(enclosure.getAttribute('url') ?? '');
-        if (parts == null || download?.scheme != 'https' || download!.host.isEmpty || download.userInfo.isNotEmpty) {
+        final asset = WindowsUpdateAsset.tryParse(
+          url: enclosure.getAttribute('url') ?? '',
+          length: enclosure.getAttribute('length') ?? '',
+          signature: enclosure.getAttribute('edSignature', namespace: _sparkleNamespace) ?? '',
+        );
+        if (parts == null || asset == null) {
           continue;
         }
         if (_compare(parts, newest) > 0) {
-          latest = AppUpdateRelease(version: version!);
+          latest = AppUpdateRelease(version: version!, windowsAsset: asset);
           newest = parts;
         }
       }

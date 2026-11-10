@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:phonolite_app/infrastructure/platform/app/app_update_platform.dart';
 import 'package:phonolite_app/infrastructure/platform/app/linux_app_update_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/windows_app_update_platform.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
 
 class AppUpdateBackend {
@@ -15,6 +16,7 @@ class AppUpdateBackend {
       final linux = LinuxAppUpdatePlatform();
       return AppUpdateBackend(linux, linux);
     }
-    return AppUpdateBackend(WindowsAppUpdatePlatform(), HttpAppUpdateFeed());
+    final windows = WindowsAppUpdatePlatform();
+    return AppUpdateBackend(windows, windows);
   }
 }
