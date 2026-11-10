@@ -7,8 +7,12 @@ import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart'
 import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_bindings.dart';
 
 const MethodChannel androidAudioOutputChannel = MethodChannel('phonolite/audio_output');
+const Duration _queueFullRetryDelay = Duration(milliseconds: 20);
 
-class AndroidChannelPlayer implements AudioPcmOutput, AudioPcm32Output {
+/// Writes wait for native queue capacity (`-3` retries), and flush or disposal
+/// advances [_writeEpoch] to cancel a waiting write, satisfying the bounded
+/// contract. Without it the gapless timeline caps Android at ~125 ms in flight.
+class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
   final int _sampleRate;
   final int _channels;
   final int _deviceId;
@@ -178,7 +182,10 @@ class AndroidChannelPlayer implements AudioPcmOutput, AudioPcm32Output {
       }
 
       if (result == coreAudioQueueFull) {
-        await Future<void>.delayed(const Duration(milliseconds: 2));
+        // Each retry resends the chunk over the platform channel. The native
+        // side holds about a second of audio, so a coarse wait loses nothing
+        // and keeps the shared UI/platform thread free for rendering.
+        await Future<void>.delayed(_queueFullRetryDelay);
         continue;
       }
 

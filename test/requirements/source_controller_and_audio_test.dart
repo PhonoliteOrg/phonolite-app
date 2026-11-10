@@ -368,7 +368,7 @@ void main() {
       expectContainsAll(source, const [
         "const MethodChannel androidAudioOutputChannel = MethodChannel(",
         "'phonolite/audio_output'",
-        "class AndroidChannelPlayer implements AudioPcmOutput, AudioPcm32Output {",
+        "class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {",
         "class XAudio2Player implements AudioPcmOutput, AudioPcm32Output {",
         "class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {",
         'const int kDefaultOutputDeviceId = -1;',

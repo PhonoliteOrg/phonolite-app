@@ -300,7 +300,8 @@ The [Dart Android output adapter](../lib/infrastructure/platform/audio/android_c
 | Contract | Behavior to preserve |
 | --- | --- |
 | PCM | Signed 16- or 32-bit interleaved mono/stereo with validated valid-bit counts; channel PCM is ByteArray; 32-bit output can use the existing float fallback; progress is interleaved sample count, not bytes or frames |
-| Admission | Queue capacity is five waiting chunks, with a separate pending-frame limit; the writer can hold an already dequeued chunk |
+| Admission | Queue capacity is five waiting chunks, with a separate one-second pending-frame limit; the writer can hold an already dequeued chunk. The Dart adapter is a `BoundedAudioPcmOutput`, so this native backpressure, not the timeline's 125 ms software cap, governs refill; queue-full writes retry every 20 ms |
+| Track | Default performance mode on the normal (deep-buffer) mixer with a 500 ms AudioTrack buffer; Android 12+ starts after 100 ms. Low-latency mode selected the fast mixer, whose small buffer underran on a Pixel 3 XL |
 | Status | Zero write success, `-3` backpressure, existing invalid-session/PCM failures and propagated AudioTrack failures |
 | Writer | Nonblocking AudioTrack writes, partial-write progress and existing retry/sleep behavior outside the channel handler |
 | Progress | Polling/estimation capped by submitted frames; retain completed samples until collection, including polls from write/pause/isIdle |

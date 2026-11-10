@@ -68,8 +68,10 @@ void main() {
         'fun flush()',
         'audioTrack.flush()',
         'AudioTrack.Builder()',
-        'setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)',
+        'MAX_PENDING_SECONDS',
       ]);
+      // Music output stays on the normal mixer; the fast mixer underran on older devices.
+      expect(output, isNot(contains('PERFORMANCE_MODE_LOW_LATENCY')));
       expectContainsAll(focus, const ['fun requestFocus()', 'ACTION_AUDIO_BECOMING_NOISY']);
       expectContainsAll(devices, const ['fun listOutputDevices(): List<OutputDevice>', '"System Default"']);
     });

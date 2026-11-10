@@ -21,6 +21,12 @@ internal class AudioOutputSession(
     const val MAX_QUEUED_CHUNKS = 5
     const val MIN_BUFFER_BYTES = 4096
     const val WRITE_RETRY_DELAY_MS = 2L
+
+    // Music output tolerates added latency but not gaps. These windows absorb
+    // Dart/platform-thread stalls on slower phones before the device underruns.
+    const val TRACK_BUFFER_DIVISOR = 2 // 500 ms inside the AudioTrack
+    const val MAX_PENDING_SECONDS = 1 // admission limit across queue and track
+    const val START_THRESHOLD_DIVISOR = 10 // start after 100 ms instead of a full buffer
   }
 
   private data class QueuedChunk(val data: ByteArray, val generation: Int)
@@ -57,7 +63,7 @@ internal class AudioOutputSession(
         channelMask,
         encoding
       ).coerceAtLeast(MIN_BUFFER_BYTES)
-    val targetBufferBytes = max(minBufferBytes, configuration.sampleRate * bytesPerFrame / 10)
+    val targetBufferBytes = max(minBufferBytes, configuration.sampleRate * bytesPerFrame / TRACK_BUFFER_DIVISOR)
     val format =
       AudioFormat.Builder()
         .setEncoding(encoding)
@@ -71,15 +77,21 @@ internal class AudioOutputSession(
         .setBufferSizeInBytes(targetBufferBytes)
         .setTransferMode(AudioTrack.MODE_STREAM)
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      builder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-    }
-
+    // The default performance mode keeps music on the normal mixer. Low-latency
+    // mode selects the fast mixer, which caps buffering and underran on older devices.
     audioTrack = builder.build()
 
     if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
       audioTrack.release()
       throw IllegalArgumentException("The audio device does not support the original PCM format")
+    }
+
+    // A normal-mixer track otherwise waits for its whole buffer before starting,
+    // delaying starts and seeks. Older releases keep the full-buffer start.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      runCatching {
+        audioTrack.setStartThresholdInFrames(configuration.sampleRate / START_THRESHOLD_DIVISOR)
+      }
     }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && configuration.deviceId > 0) {
@@ -93,7 +105,8 @@ internal class AudioOutputSession(
       }
     }
 
-    maxBufferedFrames = max(targetBufferBytes / bytesPerFrame, configuration.sampleRate / 5).toLong()
+    maxBufferedFrames =
+      max(targetBufferBytes / bytesPerFrame, configuration.sampleRate * MAX_PENDING_SECONDS).toLong()
     progress =
       AudioPlaybackProgress(AudioTrackPlaybackProbe(audioTrack), configuration.sampleRate, bytesPerFrame, bytesPerSample)
     audioTrack.play()
