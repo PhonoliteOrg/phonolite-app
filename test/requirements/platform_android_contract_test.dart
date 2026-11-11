@@ -50,7 +50,13 @@ void main() {
       expectContainsAll(engine, const [
         'private var session: EngineSession? = null',
         'fun getOrCreateEngine(): FlutterEngine',
+        'ensureInitializationComplete(appContext, rendererSelector.engineArguments())',
         'executeDartEntrypoint(',
+      ]);
+      expectContainsAll(_native('bootstrap/RendererSelector.kt'), const [
+        '"io.flutter.embedding.android.EnableImpeller"',
+        '"--enable-impeller=false"',
+        'NEWEST_OPENGL_FALLBACK_ADRENO = 650',
       ]);
       expectContainsAll(binding, const ['"phonolite/now_playing"', '"phonolite/carplay"', '"phonolite/audio_output"']);
       expectContainsAll(vehicle, const ['media.updateAuthorization(', 'media.updateSourceState(', '"carPlayState"']);

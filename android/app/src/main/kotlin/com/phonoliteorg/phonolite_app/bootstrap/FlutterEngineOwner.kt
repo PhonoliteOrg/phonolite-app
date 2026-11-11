@@ -9,6 +9,7 @@ import io.flutter.plugin.common.BinaryMessenger
 
 class FlutterEngineOwner(context: Context, private val createBinding: (BinaryMessenger) -> FlutterEngineBinding) {
   private val appContext = context.applicationContext
+  private val rendererSelector = RendererSelector(appContext)
 
   @Volatile
   private var session: EngineSession? = null
@@ -29,7 +30,8 @@ class FlutterEngineOwner(context: Context, private val createBinding: (BinaryMes
       session?.let { return@synchronized it }
 
       val loader = FlutterInjector.instance().flutterLoader()
-      loader.ensureInitializationComplete(appContext, null)
+      // Renderer arguments must reach the loader's first and only shell configuration.
+      loader.ensureInitializationComplete(appContext, rendererSelector.engineArguments())
 
       // Registration remains explicit and runs once before channel binding and Dart startup.
       val engine = FlutterEngine(appContext, null, false)

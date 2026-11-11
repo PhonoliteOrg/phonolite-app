@@ -21,6 +21,7 @@ import zipfile
 APP_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = APP_ROOT / "android/app/src"
 TEST_MAINS = (
+    "com.phonoliteorg.phonolite_app.bootstrap.RendererSelectorTest",
     "com.phonoliteorg.phonolite_app.infrastructure.audio.AudioPlaybackProgressTest",
     "com.phonoliteorg.phonolite_app.application.controllers.media.NativeMediaControllerTest",
     "com.phonoliteorg.phonolite_app.application.controllers.vehicle.VehicleBrowseControllerTest",
@@ -148,8 +149,12 @@ def main() -> None:
     flutter_jar = next(engine_root.glob("android-*/flutter.jar"))
 
     compiler = [cached_jar(cache, "org.jetbrains.kotlin", artifact, kotlin_version) for artifact in (
-        "kotlin-compiler-embeddable", "kotlin-stdlib", "kotlin-script-runtime", "kotlin-reflect", "kotlin-daemon-embeddable",
+        "kotlin-compiler-embeddable", "kotlin-stdlib", "kotlin-script-runtime", "kotlin-daemon-embeddable",
     )]
+    # Gradle builds with Kotlin 2.2 no longer fetch the matching kotlin-reflect, so use the newest cached one.
+    reflect_root = cache / "org.jetbrains.kotlin/kotlin-reflect" / kotlin_version
+    reflect_version = kotlin_version if reflect_root.is_dir() else None
+    compiler.insert(-1, cached_jar(cache, "org.jetbrains.kotlin", "kotlin-reflect", reflect_version))
     compiler.extend([
         cached_jar(cache, "org.jetbrains.intellij.deps", "trove4j"),
         cached_jar(cache, "org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"),
