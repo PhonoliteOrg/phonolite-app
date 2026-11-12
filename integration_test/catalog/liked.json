@@ -52,6 +52,16 @@
       "journeys": []
     },
     {
+      "id": "liked.create_playlist",
+      "action": "Tap Create playlist from liked tracks",
+      "expected": "Open the create-playlist editor; saving creates a local or server playlist with the liked tracks in shown order",
+      "availability": "Liked tracks",
+      "risk": "mutation",
+      "journeys": [
+        "liked.create_playlist"
+      ]
+    },
+    {
       "id": "liked.edit",
       "action": "Tap Edit tracks",
       "expected": "Enter downloaded-track selection",

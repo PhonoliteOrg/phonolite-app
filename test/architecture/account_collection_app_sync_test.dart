@@ -17,6 +17,7 @@ import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/library/artist_summary.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/network/network_connectivity.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
@@ -850,6 +851,52 @@ void main() {
       },
     );
   }
+  for (final supportsSync in [true, false]) {
+    test('creating a server playlist with tracks keeps their order (sync: $supportsSync)', () async {
+      final server = _AccountServer();
+      final harness = _Harness(_Connection(server, supportsSync: supportsSync));
+      addTearDown(harness.close);
+      await harness.start();
+      if (!supportsSync) {
+        await harness.app.loadPlaylists();
+      }
+
+      await harness.app.createPlaylist(
+        'Liked',
+        description: 'From likes',
+        tracks: [_track('c'), _track('a'), _track('b')],
+      );
+
+      final created = server.account('alice').playlists.singleWhere((playlist) => playlist.name == 'Liked');
+      expect(created.trackIds, ['c', 'a', 'b']);
+      expect(created.description, 'From likes');
+      expect(server.atomicAdds, supportsSync ? 1 : 0);
+      expect(harness.connection.legacyReplacements, supportsSync ? 0 : 1);
+      await _until(
+        () => harness.app.playlists.any((playlist) => playlist.id == created.id && playlist.trackIds.length == 3),
+        'created playlist tracks',
+      );
+    });
+  }
+
+  test('creating a local playlist with tracks saves each by local id or source in order', () async {
+    final harness = _Harness(_Connection(_AccountServer()));
+    addTearDown(harness.close);
+    await harness.start();
+    final localOnly = _track('first-local').copyWith(localId: 'first-local');
+    final downloaded = _track('downloaded')
+        .copyWith(localId: 'downloaded-local', serverBaseUrl: 'https://music.test/api', serverTrackId: 'downloaded');
+    final secondLocal = _track('second-local').copyWith(localId: 'second-local');
+
+    await harness.app.createLocalPlaylist('Liked', tracks: [localOnly, downloaded, secondLocal]);
+
+    expect(harness.downloads.createdLocalPlaylists, ['Liked']);
+    expect(harness.downloads.localPlaylistSaves, [
+      'Liked:local:first-local',
+      'Liked:source:downloaded',
+      'Liked:local:second-local',
+    ]);
+  });
 }
 
 Future<void> _until(bool Function() predicate, String operation) async {
@@ -1251,6 +1298,23 @@ class _Connection extends ServerConnection {
   }
 
   @override
+  Future<Playlist> createPlaylist(String name, {String? description}) async {
+    final account = server.account(_userId);
+    final created = Playlist(
+      id: 'created-${account.playlists.length}',
+      name: name,
+      description: description,
+      trackIds: const [],
+      revision: supportsSync ? 1 : null,
+    );
+    account.playlists = [...account.playlists, created];
+    account.revision++;
+    server.notify(_userId);
+
+    return created;
+  }
+
+  @override
   Future<Playlist> addPlaylistTracks(String playlistId, List<String> trackIds) async {
     server.atomicAdds++;
     final current = server.account(_userId).playlists.singleWhere((playlist) => playlist.id == playlistId);
@@ -1493,8 +1557,29 @@ class _Audio extends Fake implements AudioEngine {
 class _Downloads extends Fake implements OfflineDownloadManager {
   final _local = _track('local').copyWith(localId: 'local', liked: true);
   final String? localFilePath;
+  final createdLocalPlaylists = <String>[];
+  final localPlaylistSaves = <String>[];
 
   _Downloads([this.localFilePath]);
+
+  @override
+  Future<Playlist> createLocalPlaylist(String name, {String? description}) async {
+    createdLocalPlaylists.add(name);
+
+    return Playlist(id: name, name: name, description: description, trackIds: const []);
+  }
+
+  @override
+  Future<Playlist?> addLocalTrackToPlaylist(Playlist playlist, Track track) async {
+    localPlaylistSaves.add('${playlist.id}:local:${track.localId}');
+
+    return playlist;
+  }
+
+  @override
+  Future<void> addSourceToLocalPlaylist(String playlistId, Track track, SourceTrackRef source) async {
+    localPlaylistSaves.add('$playlistId:source:${source.serverTrackId}');
+  }
 
   @override
   List<OfflineTrackDownload> get downloads => [

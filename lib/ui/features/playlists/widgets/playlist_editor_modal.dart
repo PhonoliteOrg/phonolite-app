@@ -30,6 +30,9 @@ class PlaylistEditorModal extends StatefulWidget {
   final bool showTargetSelector;
   final PlaylistEditorTarget initialTarget;
 
+  /// Optional explanation shown above the fields, recomputed when the target changes.
+  final String Function(PlaylistEditorTarget target)? messageFor;
+
   const PlaylistEditorModal({
     super.key,
     required this.title,
@@ -40,6 +43,7 @@ class PlaylistEditorModal extends StatefulWidget {
     this.imageHeaders = const <String, String>{},
     this.showTargetSelector = false,
     this.initialTarget = PlaylistEditorTarget.local,
+    this.messageFor,
   });
 
   @override
@@ -225,10 +229,16 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
             ],
           );
 
+    final message = widget.messageFor?.call(_feature.target);
+
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (message != null) ...[
+          Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: ObsidianPalette.textMuted, height: 1.4)),
+          const SizedBox(height: 16),
+        ],
         editor,
         if (imageError != null) ...[const SizedBox(height: 10), imageError],
       ],
@@ -325,10 +335,8 @@ class _PlaylistImagePicker extends StatelessWidget {
                           const SizedBox(height: 8),
                           Text(
                             'Choose image',
-                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: ObsidianPalette.textMuted,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: ObsidianPalette.textMuted, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),

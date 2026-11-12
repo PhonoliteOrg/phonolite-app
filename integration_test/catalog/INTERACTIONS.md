@@ -1,6 +1,6 @@
 # On-screen interaction inventory
 
-253 source-audited interaction patterns across 12 feature catalogs. 65 patterns have a device journey; that is implementation coverage, not proof that they ran on a phone.
+254 source-audited interaction patterns across 12 feature catalogs. 67 patterns have a device journey; that is implementation coverage, not proof that they ran on a phone.
 
 23 patterns also link to the separate opt-in playback-changing suite. Run it with `bash tools/ui_tests/run_player_controls.sh DEVICE_ID`; those actions do not run in the ordinary UI suite.
 
@@ -125,6 +125,7 @@ Sources: [lib/pages/favorites/liked_page.dart](../../lib/pages/favorites/liked_p
 | liked.unlike | Tap Unlike | Remove track from appropriate liked list | Liked track | mutation | Pending / prerequisite-specific |
 | liked.add_to_playlist | Tap Add to playlist | Open scoped chooser | Liked track | browse | Pending / prerequisite-specific |
 | liked.download | Use track download action | Queue track download | Server liked track | mutation | Pending / prerequisite-specific |
+| liked.create_playlist | Tap Create playlist from liked tracks | Open the create-playlist editor; saving creates a local or server playlist with the liked tracks in shown order | Liked tracks | mutation | liked.create_playlist |
 | liked.edit | Tap Edit tracks | Enter downloaded-track selection | Downloaded liked tracks | browse | Pending / prerequisite-specific |
 | liked.long_press | Long-press downloaded liked track | Select it and enter edit mode | Downloaded liked track | browse | Pending / prerequisite-specific |
 | liked.select | Toggle a track checkbox | Change removal selection | Selection mode | browse | Pending / prerequisite-specific |
@@ -216,11 +217,11 @@ Sources: [lib/pages/playlists/playlists_page.dart](../../lib/pages/playlists/pla
 | playlist.download_open | Tap Download playlist | Show download destination/confirmation | Server playlist | browse | Pending / prerequisite-specific |
 | playlist.download_confirm | Confirm download | Queue playlist downloads | Server playlist | mutation | Pending / prerequisite-specific |
 | playlist.remove_tracks | Remove selected downloads | Confirm removal of downloaded tracks | Selected downloaded tracks | mutation | Pending / prerequisite-specific |
-| playlist_editor.name | Enter playlist name | Update unsaved name and enforce length limit | Editor open | browse | playlists.create_cancel |
+| playlist_editor.name | Enter playlist name | Update unsaved name and enforce length limit | Editor open | browse | playlists.create_cancel, liked.create_playlist |
 | playlist_editor.description | Enter description | Update unsaved description and enforce length limit | Editor open | browse | playlists.create_cancel |
 | playlist_editor.target | Select Local or Server | Change new playlist destination | Signed in editor | browse | Pending / prerequisite-specific |
 | playlist_editor.image | Tap Choose image | Open native image/file picker | Editor open | native | Pending / prerequisite-specific |
-| playlist_editor.save | Tap Save or submit name | Create/update playlist and dismiss on success | Valid draft | mutation | Pending / prerequisite-specific |
+| playlist_editor.save | Tap Save or submit name | Create/update playlist and dismiss on success | Valid draft | mutation | liked.create_playlist |
 | playlist_editor.close | Tap Close or dismiss draft | Discard unsaved draft | Editor open | browse | playlists.create_cancel, playlists.detail_navigation |
 
 ## Settings

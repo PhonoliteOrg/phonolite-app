@@ -4,6 +4,8 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
 import 'package:phonolite_app/application/downloads/downloaded_track_selection.dart';
+import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_editor_values.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/rules/library/track_identity.dart' as identity;
 
@@ -47,6 +49,59 @@ class LikedController extends FeatureController {
     _requestedServerRevision = revision;
 
     return app.loadLikedTracks();
+  }
+
+  /// The source a new liked-tracks playlist defaults to: the only one with tracks, otherwise the one shown first.
+  PlaylistEditorTarget playlistTargetFor({
+    required List<Track> localTracks,
+    required List<Track> serverTracks,
+    required bool localFirst,
+  }) {
+    if (serverTracks.isEmpty) {
+      return PlaylistEditorTarget.local;
+    }
+
+    if (localTracks.isEmpty) {
+      return PlaylistEditorTarget.server;
+    }
+
+    return localFirst ? PlaylistEditorTarget.local : PlaylistEditorTarget.server;
+  }
+
+  /// Describes what [createPlaylistFromLiked] will add for [target], using the current liked tracks.
+  String playlistMessageFor(PlaylistEditorTarget target) {
+    final (count, source) = switch (target) {
+      PlaylistEditorTarget.local => (app.localLiked.length, 'local'),
+      PlaylistEditorTarget.server => (app.liked.length, 'server'),
+    };
+    final tracks = count == 1 ? 'track' : 'tracks';
+
+    return 'Your $count $source liked $tracks will be added to this new $source playlist, in the order shown.';
+  }
+
+  /// Creates a playlist on [target] holding that source's current liked tracks in their shown order.
+  ///
+  /// Local liked tracks become a local playlist and server liked tracks a server playlist.
+  Future<void> createPlaylistFromLiked(
+    String name, {
+    required String description,
+    required PlaylistImageEdit imageEdit,
+    required PlaylistEditorTarget target,
+  }) {
+    return switch (target) {
+      PlaylistEditorTarget.local => app.createLocalPlaylist(
+        name,
+        description: description,
+        imageEdit: imageEdit,
+        tracks: List.of(app.localLiked),
+      ),
+      PlaylistEditorTarget.server => app.createPlaylist(
+        name,
+        description: description,
+        imageEdit: imageEdit,
+        tracks: List.of(app.liked),
+      ),
+    };
   }
 
   Future<void> removeDownloads(List<Track> tracks, {required String label}) async {

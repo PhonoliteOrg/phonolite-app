@@ -211,7 +211,8 @@
       "availability": "Editor open",
       "risk": "browse",
       "journeys": [
-        "playlists.create_cancel"
+        "playlists.create_cancel",
+        "liked.create_playlist"
       ]
     },
     {
@@ -246,7 +247,9 @@
       "expected": "Create/update playlist and dismiss on success",
       "availability": "Valid draft",
       "risk": "mutation",
-      "journeys": []
+      "journeys": [
+        "liked.create_playlist"
+      ]
     },
     {
       "id": "playlist_editor.close",

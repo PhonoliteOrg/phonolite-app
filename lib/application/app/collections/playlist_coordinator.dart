@@ -141,10 +141,12 @@ class _PlaylistCoordinator {
     await _host._offlineDownloadManager.loadLocalPlaylistTracks(playlistId);
   }
 
+  /// Creates a server playlist, then appends [tracks] in their given order.
   Future<void> createPlaylist(
     String name, {
     String? description,
     PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+    List<Track> tracks = const <Track>[],
   }) async {
     if (!_host._requireServer('creating playlists')) {
       throw StateError('Connect to a server before creating playlists.');
@@ -161,6 +163,16 @@ class _PlaylistCoordinator {
       _playlists = [..._playlists, playlist];
       _host.connection.recordServerPlaylist(playlist);
       _playlistsController.add(List.unmodifiable(_playlists));
+
+      if (tracks.isNotEmpty) {
+        final trackIds = [for (final track in tracks) track.id];
+
+        playlist = playlist.revision != null
+            ? await _host.connection.addPlaylistTracks(playlist.id, trackIds)
+            : await _host.connection.updatePlaylistTracks(playlist.id, trackIds);
+        if (!isCurrent()) return;
+        _replaceServerPlaylist(playlist);
+      }
 
       playlist = await _applyServerPlaylistImageEdit(playlist, imageEdit);
       if (!isCurrent()) return;
@@ -180,13 +192,20 @@ class _PlaylistCoordinator {
     }
   }
 
+  /// Creates a local playlist, then appends [tracks] in their given order.
   Future<void> createLocalPlaylist(
     String name, {
     String? description,
     PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+    List<Track> tracks = const <Track>[],
   }) async {
     try {
       final playlist = await _host._offlineDownloadManager.createLocalPlaylist(name, description: description);
+
+      // Sequential saves keep the playlist positions in the given track order.
+      for (final track in tracks) {
+        await _saveTrackToLocalPlaylist(playlist, track);
+      }
 
       if (imageEdit.kind != PlaylistImageEditKind.keep) {
         await _host._offlineDownloadManager.updateLocalPlaylistImage(playlist.id, imageEdit);
@@ -382,15 +401,7 @@ class _PlaylistCoordinator {
 
   Future<void> addTrackToLocalPlaylist(Playlist playlist, Track track) async {
     try {
-      final source = _host.localPlaylistSourceForTrack(track);
-
-      if (source != null) {
-        await _host._offlineDownloadManager.addSourceToLocalPlaylist(playlist.id, track, source);
-
-        return;
-      }
-
-      final updated = await _host._offlineDownloadManager.addLocalTrackToPlaylist(playlist, track);
+      final updated = await _saveTrackToLocalPlaylist(playlist, track);
 
       if (updated != null) {
         _host._pushMessage('Added to local playlist: ${updated.name}');
@@ -463,6 +474,21 @@ class _PlaylistCoordinator {
 
       rethrow;
     }
+  }
+
+  /// Saves [track] by its server source when it has one, otherwise by its local id.
+  ///
+  /// Returns the updated playlist only for a local-id save; source saves report no playlist.
+  Future<Playlist?> _saveTrackToLocalPlaylist(Playlist playlist, Track track) async {
+    final source = _host.localPlaylistSourceForTrack(track);
+
+    if (source != null) {
+      await _host._offlineDownloadManager.addSourceToLocalPlaylist(playlist.id, track, source);
+
+      return null;
+    }
+
+    return _host._offlineDownloadManager.addLocalTrackToPlaylist(playlist, track);
   }
 
   Future<Playlist> _applyServerPlaylistImageEdit(Playlist playlist, PlaylistImageEdit imageEdit) {
@@ -566,13 +592,15 @@ mixin _PlaylistFacade {
     String name, {
     String? description,
     PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
-  }) => _playlistsCoordinator.createPlaylist(name, description: description, imageEdit: imageEdit);
+    List<Track> tracks = const <Track>[],
+  }) => _playlistsCoordinator.createPlaylist(name, description: description, imageEdit: imageEdit, tracks: tracks);
 
   Future<void> createLocalPlaylist(
     String name, {
     String? description,
     PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
-  }) => _playlistsCoordinator.createLocalPlaylist(name, description: description, imageEdit: imageEdit);
+    List<Track> tracks = const <Track>[],
+  }) => _playlistsCoordinator.createLocalPlaylist(name, description: description, imageEdit: imageEdit, tracks: tracks);
 
   Future<void> renamePlaylist(
     String playlistId,

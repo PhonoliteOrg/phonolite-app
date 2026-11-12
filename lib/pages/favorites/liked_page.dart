@@ -11,7 +11,9 @@ import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_t
 import 'package:phonolite_app/ui/features/downloads/widgets/remove_download_modal.dart';
 import 'package:phonolite_app/ui/features/favorites/widgets/liked_section.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
+import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_edit_icon.dart';
 import 'package:phonolite_app/ui/shared/music/source_section_slivers.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
@@ -50,7 +52,59 @@ class _LikedPageState extends BasePageState<LikedPage> {
     }
   }
 
-  double _headerActionIconSize(BuildContext context) => PageToolbarActionLayout.of(context).iconSize;
+  void _openCreatePlaylist({required List<Track> localTracks, required List<Track> serverTracks}) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => PlaylistEditorModal(
+        title: 'Create playlist from liked tracks',
+        initialValue: '',
+        messageFor: (target) => _feature.playlistMessageFor(target),
+        showTargetSelector: localTracks.isNotEmpty && serverTracks.isNotEmpty,
+        initialTarget: _feature.playlistTargetFor(
+          localTracks: localTracks,
+          serverTracks: serverTracks,
+          localFirst: _displaySettings.settings.likesLocalFirst,
+        ),
+        onSubmit: (name, description, imageEdit, target) =>
+            _feature.createPlaylistFromLiked(name, description: description, imageEdit: imageEdit, target: target),
+      ),
+    );
+  }
+
+  Widget _headerActions(
+    BuildContext context, {
+    required List<Track> localTracks,
+    required List<Track> serverTracks,
+    required int removableCount,
+  }) {
+    final layout = PageToolbarActionLayout.of(context);
+    final hasLikedTracks = localTracks.isNotEmpty || serverTracks.isNotEmpty;
+
+    return PageToolbarActions(
+      spacing: layout.spacing,
+      runSpacing: layout.compact ? 4 : 8,
+      children: [
+        Tooltip(
+          message: 'Create playlist from liked tracks',
+          child: ObsidianHudIconButton(
+            iconWidget: const PlaylistAddIcon(),
+            size: layout.iconSize,
+            onPressed: hasLikedTracks
+                ? () => _openCreatePlaylist(localTracks: localTracks, serverTracks: serverTracks)
+                : null,
+          ),
+        ),
+        Tooltip(
+          message: 'Edit tracks',
+          child: ObsidianHudIconButton(
+            iconWidget: const PlaylistEditIcon(),
+            size: layout.iconSize,
+            onPressed: removableCount > 0 ? _feature.startSelection : null,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _trackSection(
     BuildContext context,
@@ -117,13 +171,11 @@ class _LikedPageState extends BasePageState<LikedPage> {
                   onDeselectAll: _feature.deselectAll,
                   onRemove: selectedTracks.isEmpty ? null : () => _removeDownloads(selectedTracks, 'liked tracks'),
                 )
-              : Tooltip(
-                  message: 'Edit tracks',
-                  child: ObsidianHudIconButton(
-                    iconWidget: const PlaylistEditIcon(),
-                    size: _headerActionIconSize(context),
-                    onPressed: removableCount > 0 ? _feature.startSelection : null,
-                  ),
+              : _headerActions(
+                  context,
+                  localTracks: localTracks,
+                  serverTracks: serverTracks,
+                  removableCount: removableCount,
                 ),
         ),
         body: PageBody.slivers(
