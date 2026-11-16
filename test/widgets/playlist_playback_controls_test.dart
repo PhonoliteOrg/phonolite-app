@@ -24,6 +24,7 @@ import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/banner_playback_button.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
+import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -62,6 +63,24 @@ void main() {
       await _dispose(tester, controller);
     }
   });
+
+  for (final width in [430.0, 1280.0]) {
+    testWidgets('deleted server playlist shows its notice under the back header at width $width', (tester) async {
+      final controller = (await tester.runAsync(() async => _PlaylistController()))!;
+      controller.server = [];
+      controller.collectionsLoaded = true;
+
+      try {
+        await _pump(tester, controller, const PlaylistDetailView(playlistId: 'shared-id'), width: width);
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('This playlist was deleted.'), findsOneWidget);
+        expect(find.byType(DetailActionHeader), findsOneWidget);
+      } finally {
+        await _dispose(tester, controller);
+      }
+    });
+  }
 
   for (final width in [430.0, 1280.0]) {
     testWidgets('server playlist download editor is prefilled at width $width', (tester) async {
@@ -594,6 +613,7 @@ class _PlaylistController extends AppController {
   bool? playedLocally;
   String? playedPlaylistId;
   Completer<void>? trackLoad;
+  bool collectionsLoaded = false;
   Playlist? downloadedPlaylist;
   List<Track>? downloadedTracks;
   String? downloadName;
@@ -643,6 +663,8 @@ class _PlaylistController extends AppController {
   List<Playlist> get localPlaylists => local;
   @override
   Stream<List<Playlist>> get localPlaylistsStream => playlistUpdates.stream;
+  @override
+  bool get serverCollectionsLoaded => collectionsLoaded;
   @override
   List<Playlist> get playlists => server;
   @override

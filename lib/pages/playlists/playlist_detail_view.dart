@@ -260,7 +260,11 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
           return assemble(
             context,
             navbar: DetailActionHeader(backLabel: 'Back to playlists', onBack: () => Navigator.of(context).pop()),
-            body: const PageBody.box(child: Center(child: Text('This playlist was deleted.'))),
+            body: const PageBody.slivers(
+              slivers: [
+                SliverFillRemaining(hasScrollBody: false, child: Center(child: Text('This playlist was deleted.'))),
+              ],
+            ),
           );
         }
 
