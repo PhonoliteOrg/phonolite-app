@@ -1,18 +1,18 @@
-# Phonolite engineering standards
+# Engineering standards
 
-This is the single standard for how Phonolite source is structured and written. It covers the Flutter application under `lib/` and the handwritten native hosts for iOS, macOS, Android, Windows and Linux. It describes how code should be organized and how it should read. It does not describe what the app does.
+This document is a portable standard for how a project's source is structured and written. It covers application code and any native or platform hosts embedding it. It describes how code is organized and how it reads, not what the software does.
 
-The standard applies to new code and to code being materially refactored. Existing source does not all conform yet. Apply the standard within the responsibility you are changing, preserve behavior, and keep unrelated formatting or renaming out of a functional change.
+It contains no facts about any particular project. Each project that adopts it keeps those facts in a separate [project profile](project-profile.md): its source directories, hosts, tools, limits and commit vocabulary ([2.11](#211-project-profile)). To adopt the standard in another project, copy this file unchanged, remove language sections the project does not use, and write a new profile.
 
-**What does not belong here:** feature behavior, protocol details, thresholds, timings, current class inventories, migration notes and change history. Those belong in feature or protocol documents under `docs/`, in Dart/Swift/Kotlin/C++ documentation comments, or in version control. If a paragraph would become wrong when a feature changes, it belongs somewhere else. Examples in this document are illustrative and self-contained; they do not name real application types.
+The standard applies to new code and code being materially refactored. Existing source may not conform yet. Apply the standard within the responsibility you are changing, preserve behavior, and keep unrelated formatting or renaming out of a functional change.
 
-The document has five parts:
+**What does not belong here:** feature behavior, protocol details, thresholds, timings, class inventories, migration notes and change history. Those belong in feature or protocol documents, in documentation comments, or in version control. If a paragraph would become wrong when a feature changes, it belongs somewhere else. Examples are illustrative and self-contained.
 
 1. [Principles](#part-1-principles): the rule everything else follows.
 2. [Structure](#part-2-structure): where responsibilities live and what they may depend on.
 3. [Code](#part-3-code): how files, types and operations read, in any language.
-4. [Language conventions](#part-4-language-conventions): Dart, Swift, Kotlin, C++ and C specifics.
-5. [Process](#part-5-process): applying, reviewing and verifying changes.
+4. [Language conventions](#part-4-language-conventions): per-language specifics.
+5. [Process](#part-5-process): applying, reviewing, verifying and committing changes.
 
 ---
 
@@ -20,7 +20,7 @@ The document has five parts:
 
 ### 1.1 Abstraction, specialization and assembly
 
-**Shared abstractions define the general structure, design and behavior. Specialized implementations supply the parts that vary. Composition assembles those pieces into larger responsibilities.** This applies everywhere: UI, controllers, workflows, data operations, storage, runtime integration and native hosts.
+**Shared abstractions define the general structure, design and behavior. Specialized implementations supply the parts that vary. Composition assembles those pieces into larger responsibilities.** This applies everywhere: UI, controllers, workflows, data operations, storage, runtime integration and platform hosts.
 
 | Role | Owns | Consumers supply |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ The document has five parts:
 | Specialized implementation | A particular responsibility within that structure | Its content, actions, data rules or platform-specific operations |
 | Assembly | Selection, wiring and composition of pieces into a larger component or workflow | Explicit dependencies, values, children and callbacks |
 
-These roles repeat at every scale. A section assembles controls, a page assembles sections, and the shell assembles pages, the player and app navigation. A controller assembles workflows and data capabilities. A connection assembles endpoint clients around one shared transport. An assembled component can itself become a building block.
+These roles repeat at every scale. A section assembles controls, a page assembles sections, and the shell assembles pages and app-wide surfaces. A controller assembles workflows and data capabilities. A connection assembles endpoint clients around one shared transport. An assembled component can itself become a building block.
 
 Consistency must come from shared code. Copying a layout, algorithm or lifecycle and keeping the copies aligned by convention does not satisfy this standard. A common interface alone does not remove duplicated policy; behavior that implementations must share needs a shared implementation owner.
 
@@ -46,7 +46,7 @@ A reader sees the contract first, follows a readable operation or composition, a
 
 ### 2.1 Source areas
 
-Every codebase in the app, Dart and native, uses the same responsibility areas. A directory identifies an owner or kind of work; a file identifies a coherent component within it. Inheritance, file size and a helper's first consumer do not decide where it lives.
+Source is divided into responsibility areas. A directory identifies an owner or kind of work; a file identifies a coherent component within it. Inheritance, file size and a helper's first consumer do not decide where it lives.
 
 | Area | Owns | Boundary |
 | --- | --- | --- |
@@ -57,7 +57,9 @@ Every codebase in the app, Dart and native, uses the same responsibility areas. 
 | Data | Data definitions and the operations that naturally belong to them | One silo, independent of application and presentation |
 | Infrastructure | Runtime execution, protocols, workers, native resources, platform adapters and transport | Implements technical capabilities using standalone data definitions |
 
-Create a directory only when it has a meaningful responsibility and real contents. A feature needs only the subdirectories it uses. Abstraction, specialization and assembly happen within these areas; they are not extra top-level directories.
+A project without a user interface (a server, CLI or library) omits Pages and UI and keeps the other four. Its request handlers, commands or public API surface play the assembly role that pages play in an app.
+
+Create a directory only when it has a meaningful responsibility and real contents. A feature needs only the subdirectories it uses. Abstraction, specialization and assembly happen within these areas; they are not extra top-level directories. The profile maps each area to its directory.
 
 ### 2.2 Dependency direction
 
@@ -67,28 +69,19 @@ Create a directory only when it has a meaningful responsibility and real content
 | Pages | UI, application APIs, data values/projections, destination pages | Infrastructure, concrete data I/O |
 | UI | Other UI, application APIs, data values/projections | Pages, bootstrap, infrastructure, concrete stores, repositories, file operations or storage configuration |
 | Shared frames, toolbars, navigation | Generic UI and configuration supplied by consumers | Concrete feature controllers or widgets; toolbar and app-navigation families stay independent of each other |
-| Application | Other application modules, data, infrastructure capabilities | Pages, widgets, routes, dialogs, `BuildContext`, `Navigator`, `setState`, visual controllers |
+| Application | Other application modules, data, infrastructure capabilities | Pages, widgets, routes, dialogs, view contexts, navigation, visual controllers |
 | Data | Other data modules and necessary technical libraries; repositories may use infrastructure clients | Application, pages, UI, bootstrap |
 | Infrastructure | Data definitions, technical libraries, other technical adapters | Application, pages, UI |
 
-Avoid cycles between concrete libraries. A client that a facade constructs receives narrow callbacks for the facade's capabilities rather than importing the facade. Bind those callbacks to the facade's methods so overrides still dispatch normally. Controllers may use `package:flutter/foundation.dart` for notifications and nothing else from Flutter.
+Avoid cycles between concrete libraries. A client that a facade constructs receives narrow callbacks for the facade's capabilities rather than importing the facade. Bind those callbacks to the facade's methods so overrides still dispatch normally.
 
-### 2.3 Flutter application layout
+### 2.3 Subdividing the areas
 
-Every Dart source file except `lib/main.dart` belongs to one of these area directories:
-
-| Directory | Area |
-| --- | --- |
-| `lib/bootstrap/` | Bootstrap |
-| `lib/pages/` | Pages |
-| `lib/ui/` | UI |
-| `lib/application/` | Application |
-| `lib/data/` | Data |
-| `lib/infrastructure/` | Infrastructure |
+Within each area, group by subject or feature, then by role where it helps. A typical shape:
 
 ```text
-lib/
-  main.dart                    # Thin entry point; delegates to bootstrap
+<source root>/
+  <entry point>                # Thin; delegates to bootstrap
   bootstrap/
   pages/<feature>/
   application/
@@ -97,7 +90,6 @@ lib/
     app/                       # Application facade and its private workflows
     workflows/                 # Reusable workflow mechanisms
     <subject>/                 # Named application modules
-    presentation/              # Application-facing labels and helpers
   data/
     models/<subject>/          # Definitions, enums, parsing, copying, small value helpers
     projections/<subject>/     # Prepared or grouped snapshots and their construction
@@ -109,7 +101,7 @@ lib/
     files/                     # Reusable file-data operations
     repositories/              # Shared data access, scoped caches, reconciliation
   ui/
-    shell/                     # Page frames, page body/scroll contracts, adaptive scaffold
+    shell/                     # Page frames, body/scroll contracts, adaptive layout
       toolbars/                # Page-level toolbars and actions
       navigation/              # App-wide destination surfaces
     structures/                # Modal, section and collection frames
@@ -119,29 +111,20 @@ lib/
       <domain>/                # Shared domain presentation
     navigation/                # History, transitions and input helpers
   infrastructure/
-    <capability>/              # audio, downloads, server, platform, security, ...
+    <capability>/              # Transport, storage engines, platform adapters, workers
 ```
 
-### 2.4 Native host layout
+### 2.4 Platform hosts
 
-Native hosts use the same areas inside each platform's required project structure. Folder naming follows the platform's language conventions.
+When the application runs inside native hosts (mobile, desktop or embedded), each host uses the same areas inside the platform's required project structure. Folder naming follows the host language's conventions (Part 4). The profile lists the hosts and their folders.
 
-| Host | Area folders | Example path |
-| --- | --- | --- |
-| iOS, macOS (Swift) | PascalCase: `Bootstrap/`, `Data/Models/`, `Application/Controllers/`, `Infrastructure/`, `Pages/`, `UI/` | `Runner/Infrastructure/Flutter/<Name>ChannelAdapter.swift` |
-| Shared Apple sources | The same PascalCase areas under `native/apple/` | `native/apple/Data/Models/<Subject>/<Name>.swift` |
-| Android (Kotlin) | Lowercase subpackages under the app package: `bootstrap`, `data.models`, `application.controllers`, `infrastructure`, `pages`, `ui` | `.../infrastructure/flutter/<Name>ChannelAdapter.kt` |
-| Windows, Linux (C++) | `lower_snake_case` under `runner/`: `bootstrap/`, `data/models/`, `infrastructure/`, `ui/shell/`, `application/`, `pages/` | `runner/infrastructure/shell/<name>_launcher.cpp` |
-
-Rules shared by every host:
-
-- **Native code supports the Dart application.** Flutter owns application pages, navigation and domain workflows. A native action requests work through the existing Flutter boundary. It does not reimplement queue selection, library filtering, authentication or other Dart business rules. A native controller may own the loading, cancellation and selection state its native view needs.
-- **Application and Pages exist only when real native work exists.** Calling a platform API does not need a controller. A system-rendered surface such as a media notification or a vehicle browse tree is UI presentation, not a page. Do not create a native copy of a Dart controller to fill the tree.
-- **Framework entry points stay thin.** Application delegates, activities, services, scene delegates and window procedures forward lifecycle events to composed owners. Dependencies are passed in at assembly, never located by searching windows or reaching through a global application delegate from feature code.
+- **Hosts support the application; they do not duplicate it.** The application owns its pages, navigation and domain workflows. A native action requests work through the existing boundary. It does not reimplement business rules. A native controller may own the loading, cancellation and selection state its native view needs.
+- **Application and Pages exist only when real native work exists.** Calling a platform API does not need a controller. A system-rendered surface such as a notification, widget or vehicle browse tree is UI presentation, not a page. Do not create native copies of application controllers to fill the tree.
+- **Framework entry points stay thin.** Application delegates, activities, services, scene delegates and window procedures forward lifecycle events to composed owners. Dependencies are passed in at assembly, never located by searching windows or reaching through a global application object from feature code.
 - **Data has no resources.** A native data value holds no window, view, channel, messenger, queue, mutex, callback, COM interface or independently released handle. A `struct` that holds those is a resource implementation and lives with its infrastructure or UI owner.
-- **Tool-owned files stay tool-owned.** Generated registrants, Flutter-managed build glue, ephemeral output, package caches and vendored sources keep their tool or upstream ownership and style.
-- **Build membership is explicit.** Xcode file references and build phases, CMake source lists, Gradle source sets and Android manifests are executable contracts. A file move updates its build registration, include paths, component names and resource references together.
-- **Native packages keep their boundary.** FFI packages keep their C ABI, exported symbol names, calling conventions, integer widths, units, opaque handles and matching release functions. Shared native implementation stays in its package rather than being moved into a host.
+- **Tool-owned files stay tool-owned.** Generated registrants, framework-managed build glue, ephemeral output, package caches and vendored sources keep their tool or upstream ownership and style.
+- **Build membership is explicit.** IDE project file references and build phases, build-system source lists, source sets and manifests are executable contracts. A file move updates its build registration, include paths, component names and resource references together.
+- **Native packages keep their boundary.** Packages exposing a C ABI keep their exported symbol names, calling conventions, integer widths, units, opaque handles and matching release functions. Shared native implementation stays in its package rather than being moved into a host.
 
 ### 2.5 Pages, presentation and functionality
 
@@ -150,15 +133,15 @@ Rules shared by every host:
 | Read field text, manage focus, animate, track drag or scroll position | Page or UI component |
 | Validate input, filter results, decide which items are selected | Feature controller |
 | Present a confirmation and display its result | Page or UI component |
-| Execute the approved deletion, save or playback action | Application controller or workflow |
+| Execute the approved deletion, save or other action | Application controller or workflow |
 | Describe an action result, destination or data snapshot | Data model or projection |
 | Construct a route to a concrete page | Page |
 
 **Pages** assemble complete views. Every tab root, detail screen, settings subpage, home view and splash view is a page, whatever its class-name suffix. A page selects components, binds their data and callbacks, presents confirmations and chooses concrete destinations. Components it uses do not know which page implements a destination; the page supplies callbacks.
 
-**UI components** receive values, state, children and typed callbacks. They own layout, animation, hover, focus, Flutter text/scroll/animation controllers, drag state, modal presentation and dismissal. A component may deserve its own file even when one page uses it, if it has a recognizable responsibility.
+**UI components** receive values, state, children and typed callbacks. They own layout, animation, hover, focus, framework text/scroll/animation controllers, drag state, modal presentation and dismissal. A component may deserve its own file even when one page uses it, if it has a recognizable responsibility.
 
-**Controllers** own validation, loading and errors, functional selection, filtering, pagination, debouncing, asynchronous commands, request generations and stale-result guards. For example, a widget owns its scroll controller and reports the remaining extent; the controller decides whether to load more. Controller results describe values or destinations, never widgets or routes. A page controller must not create another instance of an application-wide runtime such as an engine, library or download manager.
+**Controllers** own validation, loading and errors, functional selection, filtering, pagination, debouncing, asynchronous commands, request generations and stale-result guards. For example, a widget owns its scroll controller and reports the remaining extent; the controller decides whether to load more. Controller results describe values or destinations, never widgets or routes. A page controller must not create another instance of an application-wide runtime such as an engine, cache or job manager.
 
 An event handler may collect input, present a confirmation, call a controller, check that it is still mounted and perform a visual response. It delegates data access and the functional operation.
 
@@ -191,9 +174,9 @@ Do not wait for several copies before sharing: a known family can start with its
 
 **Shared design has levels.** Theme and tokens define visual values. Controls own consistent rendering and interaction. Section, modal and shell structures own common arrangements. Use every applicable level. Passing the same colors to several separately rebuilt controls does not make their structure or interaction shared. A design change should flow from its owning abstraction to every member of the family.
 
-**The shell owns the page frame.** `ui/shell` provides the shared page base. Pages supply their toolbar and body through its assembly hook and choose a body form (bounded box, scrolling box or slivers) and a toolbar placement (scrolling or fixed). The base owns page-level scaffolding, scroll views, padding, safe areas and overlay clearance. A page does not build its own page-level scaffold or scroll view and does not override the base's `build`. Scrollable regions inside a content component remain legitimate. Page toolbars (`ui/shell/toolbars`) and app-wide destination navigation (`ui/shell/navigation`) are separate families that do not import each other.
+**The shell owns the page frame.** The shell provides the shared page base. Pages supply their toolbar and body through its assembly hook and choose a body form (bounded box, scrolling box or lazy list) and a toolbar placement (scrolling or fixed). The base owns page-level scaffolding, scroll views, padding, safe areas and overlay clearance. A page does not build its own page-level scaffold or scroll view and does not override the base's assembly. Scrollable regions inside a content component remain legitimate. Page toolbars and app-wide destination navigation are separate families that do not import each other.
 
-Reactive pages keep their stream or listenable builder around the assembly call and produce both toolbar and body from one snapshot, instead of subscribing twice.
+Reactive pages keep their stream or observable builder around the assembly call and produce both toolbar and body from one snapshot, instead of subscribing twice.
 
 ### 2.7 Data and its operations
 
@@ -201,34 +184,34 @@ All application and technical data definitions live in the data silo: entities, 
 
 Data may construct, parse, serialize, copy, validate, derive, query, mutate, open and save itself. Keep a small helper on its data type; give substantial persistence or shared access a named store or repository. Application-dependent preparation stays in a controller, which supplies the values to a result or snapshot constructor. A result model never reaches back into the controller or runtime that consumes it. A data method never acquires a UI context, navigates or assembles widgets.
 
-Related stores share persistence and transaction mechanisms. Recurring parsing, comparison and mutation rules with the same meaning have one shared helper or container. Each definition has one physical source home; a facade may re-export a type but not duplicate it. Necessary technical dependencies are explicit: ABI records may use `dart:ffi`, and worker messages may carry ports.
+Related stores share persistence and transaction mechanisms. Recurring parsing, comparison and mutation rules with the same meaning have one shared helper or container. Each definition has one physical source home; a facade may re-export a type but not duplicate it. Necessary technical dependencies are explicit: ABI records may use FFI types, and worker messages may carry ports or channels.
 
 ### 2.8 Independent components and private component trees
 
-A file boundary represents a responsibility someone can name. Independent models, parsers, buffers, adapters, controls and helpers are ordinary libraries with normal imports. A component's first consumer does not own the modules it uses.
+A file boundary represents a responsibility someone can name. Independent models, parsers, buffers, adapters, controls and helpers are ordinary modules with normal imports. A component's first consumer does not own the modules it uses.
 
-A private component tree exists when one cohesive library deliberately shares private scope (Dart `part` files). Such a component has an exclusive directory holding its entry point and only its own private parts. Independent source stays outside that entire tree.
+A private component tree exists when one cohesive module deliberately shares private scope across several files (for example Dart `part` files). Such a component has an exclusive directory holding its entry point and only its own private parts. Independent source stays outside that entire tree.
 
 ```text
-data/models/<subject>/<value>.dart          # Standalone data
-data/structures/<subject>/<buffer>.dart     # Standalone container
-infrastructure/<capability>/protocol/       # Standalone parsing
+data/models/<subject>/<value>                 # Standalone data
+data/structures/<subject>/<buffer>            # Standalone container
+infrastructure/<capability>/protocol/         # Standalone parsing
 infrastructure/<capability>/engine/
-  <engine>.dart                             # Component entry point
-  <responsibility>/                         # Its private parts only
+  <engine entry point>                        # Component entry point
+  <responsibility>/                           # Its private parts only
 ```
 
-Splitting a file into parts only separates text. It does not create a reusable abstraction or remove duplication. A reusable policy needs its own responsibility and contract outside the private tree. A policy shared only by private parts of one library may stay a private owner there. Forwarding mixins that preserve a facade's calls carry no behavior of their own.
+Splitting a file into private parts only separates text. It does not create a reusable abstraction or remove duplication. A reusable policy needs its own responsibility and contract outside the private tree. A policy shared only by private parts of one module may stay a private owner there. Forwarding layers that preserve a facade's calls carry no behavior of their own.
 
 ### 2.9 Runtime and resource ownership
 
 | Boundary | Ownership |
 | --- | --- |
-| Server access | Endpoint clients share one transport that owns session, authentication, trust, retry and request policy; payload records live in data |
-| Workers | The parent owns communication and recovery; the worker owns its active session; the session owns its output handles and cancellation |
+| Remote services | Endpoint clients share one transport that owns session, authentication, trust, retry and request policy; payload records live in data |
+| Workers | The parent owns communication and recovery; the worker owns its active session; the session owns its handles and cancellation |
 | Persistence | Stores share their database connection and transaction boundary; splitting source never opens extra connections or splits an atomic operation |
 | Views | Pages and components own their visual controllers and the feature controllers they bind; application-wide state keeps its application owner |
-| Native host | The process host owns process-wide services; an engine binding owns channels for one messenger; a scene or window owns its presentation; a request owns its cancellation and completion |
+| Platform host | The process host owns process-wide services; an engine or runtime binding owns its channels; a scene or window owns its presentation; a request owns its cancellation and completion |
 
 - Constructors establish local invariants synchronously and perform no externally visible I/O. Explicit initialization starts workers and I/O.
 - Create private state owners with their parent before subscriptions when scheduling order depends on construction.
@@ -238,9 +221,9 @@ Splitting a file into parts only separates text. It does not create a reusable a
 - Sharing an abstraction does not mean sharing a mutable instance. Bootstrap or the parent assembly decides lifetime and instance count.
 - Reorganization preserves initialization order, request generations, stale-result guards, serialized writes, scoping, migrations, cancellation and worker command ordering.
 
-### 2.10 Platform boundaries
+### 2.10 Cross-language boundaries
 
-Channels between Dart and native code follow one pattern on every host:
+Message channels between the application and native code (platform channels, IPC, bridges) follow one pattern on every side:
 
 - **The adapter owns the wire.** Channel and method names, codec values, untyped maps, result objects, error envelopes and unknown-method handling live in the channel adapter. It decodes once into typed values and delegates to typed capabilities. Capabilities never construct codec values or reply objects.
 - **Wire names stay exact.** Channel names, method names, keys and discriminator values are contracts. A native method may be named idiomatically while its wire method keeps its spelling.
@@ -249,9 +232,31 @@ Channels between Dart and native code follow one pattern on every host:
 - **Attachment is idempotent per binding.** Handlers are unregistered explicitly while their messenger is still valid, before the captured owner is destroyed. Replacing an engine is an explicit detach and rebind.
 - **Threads have owners.** UI mutation and outbound channel calls happen on the platform main thread. Work from other threads is delivered through an explicit dispatcher with defined lifetime and relevance rules. A reply callback's threading permission is not permission to mutate UI.
 - **Shared mechanics are extracted when a family exists.** Once several adapters share registration, invocation, reply and teardown decisions, a shared channel collaborator owns them. Each adapter keeps its own methods and decoding.
-- **Realtime paths stay lean.** Audio callbacks and render paths receive no logging, main-thread hops, channel messages or general task scheduling.
+- **Realtime paths stay lean.** Audio, video and render callbacks receive no logging, main-thread hops, channel messages or general task scheduling.
 
-Dart platform adapters mirror this: they decode channel methods into typed requests, encode typed responses, and keep method strings out of application workflows. Their contracts live in data.
+Adapters on the application side mirror this: they decode channel methods into typed requests, encode typed responses, and keep method strings out of application workflows. Their contracts live in data.
+
+### 2.11 Project profile
+
+The same separation of general rules from specific values applies to the project's own documentation. **This standard is the shared abstraction; the project profile is the specialization.** Every project keeps one profile document, `docs/project-profile.md`. The profile states how the project instantiates the standard and adds no new rules.
+
+The profile has these sections, in this order. Omit a section only when it does not apply.
+
+| Section | Contents |
+| --- | --- |
+| Project | What the project is, its targets (apps, hosts, services, libraries), the languages in use, and any neighboring projects outside the standard |
+| Source areas | A table mapping each source area ([2.1](#21-source-areas)) to its directory, plus any project-specific subdivisions |
+| Native hosts | Each host's location, source extensions and the area folders it currently uses |
+| Tools and configuration | Formatter, analyzer and linter for each language, with the location of each configuration file and any documented rule exceptions |
+| Limits and enforcement | File-size limits and other measurable limits, and where structural checks and test indexes live |
+| Commit vocabulary | The `Changelog:` categories and `Platforms:` values that commits use ([5.4](#54-commits)) |
+
+Rules for keeping the two documents apart:
+
+- A statement that would stay true in another project belongs in the standard. A statement that names this project's paths, hosts, tools, versions or vocabulary belongs in the profile.
+- When the profile would need a rule, generalize it into the standard first. The profile then records only the value.
+- Tools that read project structure, such as structural tests, read the profile's tables rather than the standard.
+- Feature behavior and protocol contracts belong in neither document.
 
 ---
 
@@ -264,7 +269,7 @@ These rules apply in every language. Part 4 states how each language expresses t
 - Name files for their responsibility or primary type. A file has one primary public concept. Its small private state class, adapters and tightly coupled helpers may sit beside it.
 - File boundaries follow responsibilities, not one-function-per-file. Extract a piece when it has a meaningful contract, independent reuse, its own state or lifecycle, or a substantial responsibility that obscures its owner.
 - No dumping grounds: no `helpers`, `common`, `utils` or `misc` files or folders.
-- Approaching 1,000 lines is a signal to inspect responsibilities, not a target. A short file can still hold too many responsibilities. The limit is enforced automatically for Dart files in `lib`.
+- File length is a signal to inspect responsibilities, not a target. The profile sets the review limit. A short file can still hold too many responsibilities.
 - Order a file as: documentation and annotations, imports (grouped and sorted), exports, part/inclusion directives, closely related constants and type aliases, the primary declaration, then its private helpers in reading order.
 
 ### 3.2 Member order
@@ -313,17 +318,17 @@ The formatter does not find changes of purpose, so paragraphs are a deliberate p
 | Local functions | One blank line before and after each local function declaration |
 
 ```text
-label(rawTitle, rawArtist):
-  title  = trim(rawTitle)
-  artist = trim(rawArtist)
+label(rawTitle, rawOwner):
+  title = trim(rawTitle)
+  owner = trim(rawOwner)
 
   if title is empty:
     return "Untitled"
 
-  if artist is missing or empty:
+  if owner is missing or empty:
     return title
 
-  return artist + " — " + title
+  return owner + " — " + title
 ```
 
 Do not put a blank line after every statement, inside braces or in stacks. Comments sit directly above the paragraph they explain. Documentation and annotations stay attached to their declaration. If a method has many substantial paragraphs, some of them probably deserve named operations.
@@ -338,7 +343,7 @@ Other layout rules:
 
 ### 3.4 Naming and visible contracts
 
-- Names describe domain concepts and operations: `StreamSettings`, `renamePlaylist`, `cancelDownload`, `selectedTrackIds`. Avoid `manager`, `data`, `obj`, `handle`, `process` and invented abbreviations when a specific responsibility is known. Short loop variables are fine when local.
+- Names describe domain concepts and operations: `ExportSettings`, `renameProject`, `cancelUpload`, `selectedItemIds`. Avoid `manager`, `data`, `obj`, `handle`, `process` and invented abbreviations when a specific responsibility is known. Short loop variables are fine when local.
 - Booleans read as questions: `is`, `has`, `can`, `should`, or a conventional framework name such as `enabled`.
 - Intent callbacks are named for the request (`onSelect`, `onRename`). Change notifications are named for the result (`onTitleChanged`). A callback name never implies completed work when it only requests it.
 - A private state or helper type is named for its owner, not for a copied predecessor.
@@ -383,11 +388,11 @@ Other layout rules:
 - **Actively reduce excessive nesting through encapsulation and reuse.** When a subtree obscures the outline, mixes regions or embeds decisions and handlers inside layout, extract a named region or component. There is no fixed depth limit; responsibility and clarity decide. Avoid helpers that only rename one obvious expression.
 - Keep multi-step callbacks in named handlers on the right owner. Use an awaitable callback contract when the consumer must wait for completion.
 - Use shared controls, theme tokens, surfaces and layout structures. Recurring spacing, typography, interaction states and responsive rules live in the shared design owner. Specializations pick supported variants rather than restating colors, borders, dimensions or disabled behavior. Read responsive breakpoints through the shared layout owner rather than comparing raw window sizes.
-- Enabled click targets use the hand cursor on desktop; disabled controls keep the arrow, text inputs the text cursor, and passive surfaces advertise no action. Shared controls own this.
+- On pointer-driven platforms, enabled click targets use the hand cursor; disabled controls keep the arrow, text inputs the text cursor, and passive surfaces advertise no action. Shared controls own this.
 
 ### 3.9 Async work, errors and resource lifetime
 
-- An API states what completion means. Await what an operation promises to finish, return its future, or document that it only schedules work and provide a way to observe the result. A save is not complete before its write finishes.
+- An API states what completion means. Await what an operation promises to finish, return its future or promise, or document that it only schedules work and provide a way to observe the result. A save is not complete before its write finishes.
 - Asynchronous commands return an awaitable type. Fire-and-forget work is deliberate, named as such, and has handled errors and lifetime; it never replaces required cleanup or persistence.
 - For genuinely streamed state, expose a read-only current snapshot plus a typed change stream. State whether it supports multiple listeners, replays, which errors it emits and who closes it. One-off commands stay awaitable operations.
 - Choose sequential, latest-result or concurrent event processing explicitly. Asynchronous listener callbacks do not serialize events by themselves. Cancellation, generation invalidation and timeouts are different things; ignoring a stale result or timing out does not stop the underlying work.
@@ -402,19 +407,21 @@ Other layout rules:
 - Document public contracts whose meaning is not obvious from the signature: invariants, units, ownership, completion guarantees, errors, defaults and extension hooks. Link related declarations with the language's documentation references.
 - Comment consequential implementation decisions with a short *why*.
 - Do not narrate syntax, keep commented-out code, label a component as new, use decorative banners, or accumulate change history in comments.
-- No README files in source trees (`lib/`, native runner folders). Project-wide expectations live in this document; feature and protocol contracts live in their own documents under `docs/`.
+- No README files inside source trees. Project-wide expectations live in this document; feature and protocol contracts live in their own documents.
 
 ---
 
 ## Part 4. Language conventions
 
-### 4.1 Dart
+Keep the sections for languages the project uses and add sections for others it adopts. Each section restates Parts 1–3 only where the language needs a specific form.
+
+### 4.1 Dart and Flutter
 
 **Files and imports**
 
-- Files and directories are `lower_snake_case`, matching the primary type: `stream_settings.dart`.
-- Import groups, separated by one blank line and alphabetized within each: `dart:` libraries; Flutter and third-party packages; this app's packages. Test-harness relative imports, when needed, form a final group.
-- Every import and export of a file under a package's `lib/` uses a `package:` URI, including same-directory files, conditional imports and imports from tests. The analyzer's `always_use_package_imports` rule enforces this for imports; review exports and conditional targets explicitly.
+- Files and directories are `lower_snake_case`, matching the primary type: `export_settings.dart`.
+- Import groups, separated by one blank line and alphabetized within each: `dart:` libraries; Flutter and third-party packages; this package's own libraries. Test-harness relative imports, when needed, form a final group.
+- Every import and export of a file under a package's `lib/` uses a `package:` URI, including same-directory files, conditional imports and imports from tests. Enable the analyzer's `always_use_package_imports` rule; review exports and conditional targets explicitly.
 - Exports have their own sorted section after imports. Prefer importing a role-specific owner over a broad export facade.
 - `part` and `part of` directives are relative to their owning library. A part file starts with `part of`; imports belong to the owner. `part` is used only for an intentional shared private implementation (see [2.8](#28-independent-components-and-private-component-trees)).
 - Production source never imports test harnesses or another package's `src/` implementation.
@@ -422,7 +429,7 @@ Other layout rules:
 **Language rules**
 
 - A leading underscore is **library-private**, not class-private: a library and its parts share it. Choose library boundaries with that in mind.
-- `lowerCamelCase` for members, variables, enum values and constants; acronyms as words (`albumId`, `httpClient`).
+- `lowerCamelCase` for members, variables, enum values and constants; acronyms as words (`itemId`, `httpClient`).
 - Prefer `final` locals and `const` constructors and values. `late` only for a real delayed-initialization invariant. Do not use `!` to bypass uncertainty.
 - Avoid `dynamic`; accept `Object?` at untyped boundaries and decode there.
 - Prefer `VoidCallback`, `ValueChanged<T>` or a descriptive `typedef` over `Function`.
@@ -432,6 +439,7 @@ Other layout rules:
 - Implement the nullable tri-state in `copyWith` with an omission sentinel compared by `identical`.
 - Widget helpers need not use a `_build` prefix; `_renameButton` and `_emptyState` describe their pieces. Be consistent within a family.
 - Extension methods give focused conveniences to external types (`Duration`, `BuildContext`). Shared extensible structures use real inheritance or composition.
+- Application-area code may import `package:flutter/foundation.dart` for notifications and nothing else from Flutter.
 
 **Modifiers and annotations**
 
@@ -448,13 +456,13 @@ Hooks for subclasses in other libraries use non-underscore names with `@protecte
 **Flutter lifecycle**
 
 - Pages extend the shared page frame and supply content through its assembly hook; they never override its `build`.
-- Feature controllers extend the shared controller base, keep construction inert and put startup in its initialization hook. The shared view binding initializes, observes and disposes controllers a view owns.
+- Feature controllers extend a shared controller base, keep construction inert and put startup in its initialization hook. A shared view binding initializes, observes and disposes controllers a view owns.
 - `State.dispose()` is synchronous. Asynchronous shutdown happens at an owner boundary that can be awaited.
 - After an async gap, check `BuildContext.mounted` before using that context, or `State.mounted` before updating that state. A guard on a different owner does not protect the context in use.
 
 **Formatter**
 
-Configured in `analysis_options.yaml`:
+In `analysis_options.yaml`:
 
 ```yaml
 formatter:
@@ -464,19 +472,19 @@ formatter:
 
 Run from the package root: `dart format lib` to apply, `dart format --output=none --set-exit-if-changed lib` to check. Do not switch to trailing-comma preservation or add per-file width overrides. The one permitted suppression is paired `// dart format off` and `// dart format on` around a fluent builder chain, so each configuration call keeps its own line.
 
-### 4.2 Swift (iOS and macOS)
+### 4.2 Swift
 
 **Files and modules**
 
 - `UpperCamelCase.swift` filenames matching the primary type; PascalCase responsibility folders that match Xcode groups.
 - File order: imports, tightly related contract declarations, primary type, then focused same-file conformance extensions and tightly coupled supporting types.
-- Imports name modules, not paths. Group Apple and standard modules, then Flutter and other dependencies, then project modules; sort within groups; import only what the file uses. A folder inside a target is not a module. Introduce a separate framework or package only when reuse or a compiler-enforced boundary justifies it.
+- Imports name modules, not paths. Group Apple and standard modules, then third-party dependencies, then project modules; sort within groups; import only what the file uses. A folder inside a target is not a module. Introduce a separate framework or package only when reuse or a compiler-enforced boundary justifies it.
 - Moving a file updates its Xcode target membership, build phases, and any plist, entitlement, storyboard, nib or bridging-header references. Nib and storyboard class and module names are contracts.
 
 **Types and access**
 
 - Member order is the shared order in [3.2](#32-member-order). Superclass lifecycle overrides stay on the primary declaration. Keep equality, hashing and description together near the end.
-- `lowerCamelCase` members with meaningful argument labels: `loadArtists(scope:)`, `openDirectory(at:)`. Swift initialisms are fine (`artworkURL`, `deviceID`); wire keys keep their exact spelling.
+- `lowerCamelCase` members with meaningful argument labels: `loadItems(scope:)`, `openDirectory(at:)`. Swift initialisms are fine (`imageURL`, `deviceID`); wire keys keep their exact spelling.
 - `private` for implementation state, `private(set)` for owner-controlled observable state, default `internal` within a target. `public` and `open` only for a real module boundary. Swift has no protected level.
 - Mark concrete owners `final` unless subclassing is intended. Use `@objc`, `NSObject` inheritance and selectors only where the framework requires them.
 - Ordinary behavior lives on the owning type. Extensions are mainly for protocol conformance and external-type conveniences. A `Type+Feature.swift` file does not provide shared private scope and cannot add stored properties; extract a composed owner instead of widening state.
@@ -493,15 +501,15 @@ Run from the package root: `dart format lib` to apply, `dart format --output=non
 
 **Concurrency and lifetime**
 
-- Give every mutable owner one documented isolation domain. UIKit, AppKit and CarPlay presentation and outbound Flutter calls run on the main thread.
+- Give every mutable owner one documented isolation domain. UIKit and AppKit presentation and outbound bridge calls run on the main thread.
 - Prefer explicit `@MainActor` and actors within a deliberate concurrency change, against the verified toolchain and language mode. Do not add `Task` wrappers to every callback, unchecked `Sendable` conformances or a language-mode change to reorganize source.
 - `await` allows interleaving: re-check generation, identity and cancellation afterwards.
 - Use `defer` for synchronous scope cleanup and an explicit awaitable stop for asynchronous shutdown; `deinit` cannot await.
-- Keep timing-sensitive C or Objective-C audio paths separate from Swift orchestration.
+- Keep timing-sensitive C or Objective-C media paths separate from Swift orchestration.
 
 **Formatter**
 
-`swift-format` with `.swift-format` in each Apple host folder:
+`swift-format` with a `.swift-format` file per Swift project:
 
 ```json
 {
@@ -516,13 +524,13 @@ Run from the package root: `dart format lib` to apply, `dart format --output=non
 }
 ```
 
-Format handwritten Swift only, including shared Apple sources. Pin the formatter version on the Apple build environment before enforcing it.
+Format handwritten Swift only. Pin the formatter version on the build environment before enforcing it.
 
-### 4.3 Kotlin (Android)
+### 4.3 Kotlin
 
 **Packages and files**
 
-- Lowercase dot-separated packages matching folders; PascalCase files and types; `lowerCamelCase` members; `UPPER_SNAKE_CASE` constants. XML resources keep Android's lowercase underscore names and qualifier folders.
+- Lowercase dot-separated packages matching folders; PascalCase files and types; `lowerCamelCase` members; `UPPER_SNAKE_CASE` constants. Android XML resources keep lowercase underscore names and qualifier folders.
 - File order: package, imports, related contract declarations, primary type, tightly coupled private helpers. Explicit imports, no wildcards, alphabetical as the formatter orders them. Avoid fully qualified names in bodies.
 - Subpackages organize but do not isolate: `internal` is module-wide and there is no package-private level. Use private state and review; add a Gradle module only for a real reuse, build or enforcement need.
 - Keep Android's source sets and resource layout. Moving a manifest-declared component updates the manifest, explicit `Intent` and class references together. The namespace and application ID do not change with folder moves.
@@ -558,7 +566,7 @@ Member order adapts [3.2](#32-member-order):
 
 **Formatter**
 
-ktlint with `android/.editorconfig`:
+ktlint with an `.editorconfig`:
 
 ```editorconfig
 root = true
@@ -572,18 +580,16 @@ insert_final_newline = true
 ktlint_code_style = android_studio
 ```
 
-The established app package keeps its underscore through a scoped `package-name` exception; new package segments are lowercase words.
-
-### 4.4 C++ (Windows and Linux)
+### 4.4 C++
 
 **Naming**
 
 | Item | Convention | Example |
 | --- | --- | --- |
-| Files and directories | `lower_snake_case` (`.h` with `.cpp` on Windows, `.cc` on Linux) | `infrastructure/shell/directory_launcher.cpp` |
+| Files and directories | `lower_snake_case`, with the host's established source extension (`.cpp` or `.cc`) | `infrastructure/shell/directory_launcher.cpp` |
 | Types and aliases | `PascalCase` | `DirectoryLauncher` |
 | Functions, methods, parameters, locals | `snake_case` | `open_directory`, `folder_path` |
-| Namespaces, scoped enum values | `snake_case` | `phonolite`, `Status::accepted` |
+| Namespaces, scoped enum values | `snake_case` | `app`, `Status::accepted` |
 | Private members | `snake_case_` | `owner_window_` |
 | Constants | Descriptive `snake_case`, `constexpr` where suitable | `default_window_width` |
 
@@ -594,9 +600,9 @@ External API names, generated entry points, framework override names, callback s
 - Headers are self-contained, guarded and include what they use; prefer forward declarations where an incomplete type suffices.
 - A class holding `std::unique_ptr` to a forward-declared type defines its destructor, and constructors where cleanup paths require it, out of line.
 - Substantial implementation goes in the source file; short value operations may be inline.
-- Include order in a source file: its own header, then standard library, platform SDK, Flutter and third-party, then app headers, each group sorted. Document any required ordering exception.
-- App headers are included from the configured project include root (`"runner/data/models/..."`), never through `../../` chains or absolute paths. Flutter headers use their published names.
-- No `using namespace` in headers; keep aliases local. Small private helpers go in an unnamed namespace. Never include `.cpp` files to share private scope.
+- Include order in a source file: its own header, then standard library, platform SDK, framework and third-party, then project headers, each group sorted. Document any required ordering exception.
+- Project headers are included from a configured include root (`"runner/data/models/..."`), never through `../../` chains or absolute paths. Framework headers use their published names.
+- No `using namespace` in headers; keep aliases local. Small private helpers go in an unnamed namespace. Never include source files to share private scope.
 
 **Types and layout**
 
@@ -612,23 +618,23 @@ External API names, generated entry points, framework override names, callback s
 - `nullptr`, scoped enums and typed constants. `static_cast` for ordinary conversions; `reinterpret_cast` only for real API or ABI conversions, commented when consequential. Narrowing and text-encoding conversions are explicit.
 - A string view is borrowed and may not be null-terminated: do not retain it across callbacks or pass its data to an API that needs a terminator.
 - Plain `struct`s with direct fields for simple values; classes when invariants need controlled mutation. Define only the comparisons a concept needs. Resource owners are non-copyable unless copying has a defined meaning.
-- Use named result types for shared outcomes, and `std::optional` or `std::variant` where the host's language standard provides them. Use the host's configured language standard; changing it is a separate build change.
+- Use named result types for shared outcomes, and `std::optional` or `std::variant` where the configured language standard provides them. Changing the language standard is a separate build change.
 - Keep platform status families distinct (`HRESULT`, last-error codes, Shell results, `GError`). Preserve native error values that callers need.
-- Exceptions never cross C callbacks, Flutter boundaries or exported C ABI functions. Keep the host's exception configuration.
+- Exceptions never cross C callbacks, framework boundaries or exported C ABI functions. Keep the configured exception policy.
 
 **Resources**
 
 - Value members and `std::unique_ptr` for sole ownership, created with `std::make_unique`. `std::shared_ptr` only for real shared lifetime, never to make asynchronous captures convenient. Follow the rule of zero; define or delete copy and move deliberately for resource owners.
 - RAII pairs a resource with its matching release, invalid value, thread and transfer rules. A raw handle value does not establish ownership. Release every allocation with its matching function and never across allocators.
-- Explicit lambda captures. Capturing `this` does not extend its lifetime. No detached threads, broad `[&]` captures or work that outlives the engine.
+- Explicit lambda captures. Capturing `this` does not extend its lifetime. No detached threads, broad `[&]` captures or work that outlives the engine or runtime.
 - Destroying a channel object does not necessarily unregister its handler; unregister explicitly while the messenger is valid.
 
-**Windows specifics**
+**Win32 and COM**
 
 - COM initialization belongs to a thread and apartment; balance every successful initialization, including `S_FALSE`, on the same thread, and keep COM-dependent objects inside that lifetime.
 - The native frame owns its top-level window lifecycle; a hosted child window is borrowed.
 
-**GTK and GObject specifics (Linux)**
+**GTK and GObject**
 
 - GObject types keep GObject naming and registration conventions (`MyType`, `my_type`, `MY_TYPE`, `parent_instance`). Do not place macro-generated declarations in a C++ namespace without checking linkage.
 - A GObject instance is allocated through GType, not C++ construction. Do not embed non-trivial C++ members in an instance struct; hold a pointer to an explicitly constructed C++ owner and destroy it through the GObject lifecycle.
@@ -639,7 +645,7 @@ External API names, generated entry points, framework override names, callback s
 
 **Formatter**
 
-clang-format with `.clang-format` in each C++ host folder:
+clang-format with a `.clang-format` file per C++ project:
 
 ```yaml
 BasedOnStyle: LLVM
@@ -653,32 +659,24 @@ MaxEmptyLinesToKeep: 1
 AllowShortFunctionsOnASingleLine: Empty
 ```
 
-Format an explicit list of handwritten host and test files. Exclude generated, Flutter-managed, vendored and package code.
+Format an explicit list of handwritten files. Exclude generated, framework-managed, vendored and package code.
 
-### 4.5 C (native audio facades)
+### 4.5 C
 
 - `lower_snake_case` files, functions, fields and locals; PascalCase named types. Header guards and ABI macros keep their established form.
 - A public header presents includes, C-linkage guards, opaque and value declarations, then operations in lifecycle order. Implementation-only declarations stay as local `static` helpers or in a focused internal header.
-- The exported facade is a stable ABI: function names, integer widths, pointer types, opaque handles, visibility and retention do not change during reorganization.
+- An exported facade is a stable ABI: function names, integer widths, pointer types, opaque handles, visibility and retention do not change during reorganization.
 - Resource internals (buffers, queues, mutexes) stay with their owning module. An independently meaningful capability gets its own header and source pair. Never include `.c` files to share scope.
-- Allocation pairs, CoreFoundation ownership and buffer ownership are explicit. A borrowed pointer does not escape the call that received it. A callback context is not freed until its callback boundary has finished.
+- Allocation pairs, platform reference-counting ownership and buffer ownership are explicit. A borrowed pointer does not escape the call that received it. A callback context is not freed until its callback boundary has finished.
 - Format with clang-format: LLVM style, two-space indentation, 120 columns, attached braces and right-aligned pointers.
 
 ### 4.6 Other languages
 
-Rust in native packages and the server, build scripts, CMake, Gradle and XML follow their own language conventions and formatters (for example `rustfmt`). The principles in Parts 1–3 still apply: named owners, shared abstractions, explicit lifetimes and readable assembly. Vendored code keeps its upstream style.
+Languages without a section here (for example Rust, build scripts, CMake, Gradle and XML) follow their own conventions and formatters. Parts 1–3 still apply: named owners, shared abstractions, explicit lifetimes and readable assembly. Vendored code keeps its upstream style. Add a section here when a language becomes a significant part of the project.
 
-### 4.7 Formatter summary
+### 4.7 Formatter baseline
 
-| Language | Tool | Configuration |
-| --- | --- | --- |
-| Dart | `dart format` from the repository's Flutter SDK | `analysis_options.yaml` |
-| Swift | `swift-format` | `ios/.swift-format`, `macos/.swift-format` |
-| Kotlin | ktlint | `android/.editorconfig` |
-| C++ | clang-format | `windows/.clang-format`, `linux/.clang-format` |
-| C | clang-format | `macos/.clang-format` |
-
-Every configuration targets two-space indentation, 120 columns and at most one blank line. Pin each tool version where it runs, and upgrade tools as their own change.
+Every formatter configuration targets two-space indentation, 120 columns and at most one blank line. Pin each tool version where it runs and upgrade tools as their own change. The profile lists where each configuration lives.
 
 ---
 
@@ -704,21 +702,21 @@ Keep established public names when a source move alone is enough. Do not move in
 4. The shared implementation holds the actual common decisions; it is not a base, interface or wrapper that leaves them duplicated.
 5. Final assembly reads through named pieces and narrow contracts, without rebuilding the internals of what it composes.
 6. Mutable state and collections have deliberate access rules. Async completion, error handling and resource ownership are clear.
-7. Platform boundaries decode once, keep wire names exact and answer every call exactly once.
+7. Cross-language boundaries decode once, keep wire names exact and answer every call exactly once.
 8. Formatting and static analysis pass for affected files, and behavioral checks cover material changes.
 
 ### 5.3 Verification
 
 - Format and analyze affected files with each language's configured tools.
-- Run focused tests for the changed behavior and the structural checks under `test/architecture`. The [test index](../test/README.md) lists the suites. Tests verify behavior and contracts, not helper extraction or member order. Structural checks enforce only part of this standard; passing them does not show the abstractions are right.
-- The analyzer and formatters do not enforce naming, contract boundaries, assembly quality or member grouping; those need review. Change lint policy separately when there is a concrete enforcement benefit, and never suppress a warning without understanding and documenting why.
+- Run focused tests for the changed behavior and the project's structural checks (see the profile). Tests verify behavior and contracts, not helper extraction or member order. Structural checks enforce only part of this standard; passing them does not show the abstractions are right.
+- Analyzers and formatters do not enforce naming, contract boundaries, assembly quality or member grouping; those need review. Change lint policy separately when there is a concrete enforcement benefit, and never suppress a warning without understanding and documenting why.
 - Native hosts are verified by compilation and headless contract checks with injected capabilities. These do not exercise rendered windows, devices or system services.
-- **Do not start the application, simulators, emulators, servers or background services for verification.** Compilation, static analysis and headless tests are allowed. The user owns launching software and device checks.
+- **Do not start the application, simulators, emulators, servers or background services for verification.** Compilation, static analysis and headless tests are allowed. The developer owns launching software and device checks.
 - Documentation-only changes need link, example and consistency checks, not a build.
 
 ### 5.4 Commits
 
-Commit history is the source for release changelogs under `changelog/`, so every commit should explain itself to someone writing release notes.
+Commit history is the source for release changelogs, so every commit should explain itself to someone writing release notes.
 
 **Scope**
 
@@ -737,14 +735,14 @@ Commit history is the source for release changelogs under `changelog/`, so every
 <Notable details: affected platforms, migrations, compatibility,
 follow-up work or known limits.>
 
-Changelog: <Added | Changed | Fixed | Compatibility | Maintenance | None>
-Platforms: <all | android, ios, macos, windows, linux, server>
+Changelog: <category from the profile, or None>
+Platforms: <scope from the profile>
 ```
 
-- **Summary line:** imperative mood, sentence case, no trailing period, at most 72 characters. Name the effect, not the activity: `Fix crash on deleted playlist detail page`, not `fixed stuff` or `playlist changes`.
+- **Summary line:** imperative mood, sentence case, no trailing period, at most 72 characters. Name the effect, not the activity: `Fix crash when opening a deleted item`, not `fixed stuff` or `item changes`.
 - **Body:** wrap at 72 columns. Describe what changed and why in plain language that could be adapted into a changelog entry. Mention user-visible behavior first, then the important technical points. Omit the body only for trivial changes such as typo fixes.
-- **`Changelog:` trailer:** the release-note section the change belongs to. These match the `changelog/` headings: `Added` for new capabilities, `Changed` for altered behavior, `Fixed` for bug fixes, `Compatibility` for platform, format or migration impact, and `Maintenance` for internal work worth noting. Use `None` for changes that should not appear in release notes.
-- **`Platforms:` trailer:** where the change applies, so platform-specific notes can be grouped. Use `all` for shared Dart behavior.
+- **`Changelog:` trailer:** the release-note section the change belongs to, using the categories listed in the profile. Use `None` for changes that should not appear in release notes. Projects without their own categories use `Added`, `Changed`, `Fixed`, `Removed`, `Compatibility` and `Maintenance`.
+- **`Platforms:` trailer:** where the change applies, using the values listed in the profile, so platform-specific notes can be grouped. Projects with one target may omit it.
 - Call out breaking changes, data migrations and changed defaults explicitly in the body.
 
 **Authorship**
@@ -754,7 +752,7 @@ Platforms: <all | android, ios, macos, windows, linux, server>
 
 **Coding agents and LLM tools**
 
-When a coding agent or LLM tool makes changes in this repository:
+When a coding agent or LLM tool makes changes in the repository:
 
 - After completing a coherent set of changes, offer to commit them and wait for explicit approval. Never commit, amend, rebase, force-push or push without that approval.
 - When approved, commit with the configured git identity and a message that follows the structure above. Do not set or change `user.name` or `user.email`. If no identity is configured, stop and ask the developer to configure one rather than inventing one.
@@ -763,6 +761,6 @@ When a coding agent or LLM tool makes changes in this repository:
 
 ### 5.5 Keeping this document healthy
 
-- This is the only document that defines structure and coding standards. Do not maintain a parallel architecture guide, a per-platform style guide or a file-by-file catalog.
-- Add a rule here only when it holds regardless of which feature is being built. Feature behavior, protocol contracts and platform integration details go in their own documents under `docs/` and link here.
+- This standard and the project profile are the only documents that define structure and coding standards. Do not maintain a parallel architecture guide, a per-platform style guide or a file-by-file catalog.
+- This document contains only rules that hold for any project adopting it. Project facts belong in the profile ([2.11](#211-project-profile)). Feature behavior, protocol contracts and platform integration details go in their own documents.
 - When a rule changes, change it here and update the code that it governs in the same piece of work, or note that adoption is incremental.
