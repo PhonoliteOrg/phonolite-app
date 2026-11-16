@@ -14,7 +14,7 @@ class PlaybackPreferencesStorage {
 
   final SettingsFiles _files;
 
-  const PlaybackPreferencesStorage({SettingsFiles files = const SettingsFiles()}) : _files = files;
+  const PlaybackPreferencesStorage({this._files = const SettingsFiles()});
 
   JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files);
 

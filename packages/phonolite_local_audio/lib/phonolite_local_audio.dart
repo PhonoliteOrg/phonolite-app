@@ -190,8 +190,9 @@ class LocalAudioDecoder {
 
       return LocalAudioDecoder._opened(bindings, handle);
     } finally {
-      if (!transferred)
+      if (!transferred) {
         close.asFunction<void Function(ffi.Pointer<ffi.Void>)>()(source);
+      }
     }
   }
 

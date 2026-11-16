@@ -18,9 +18,8 @@ class AddToPlaylistController extends FeatureController {
   StreamSubscription<List<Playlist>>? _playlistSubscription;
   int _sourceRevision = 0;
 
-  AddToPlaylistController({Iterable<Playlist> playlists = const [], Stream<List<Playlist>>? playlistChanges})
-    : _playlists = List.unmodifiable(playlists),
-      _playlistChanges = playlistChanges;
+  AddToPlaylistController({Iterable<Playlist> playlists = const [], this._playlistChanges})
+    : _playlists = List.unmodifiable(playlists);
 
   String get query => _query;
 

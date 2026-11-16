@@ -33,10 +33,9 @@ class ServerShuffleDeck {
   ServerShuffleReservation? _lastCommittedReservation;
   int _navigationRevision = 0;
 
-  ServerShuffleDeck(ShuffleSessionPage first, {required ShufflePageLoader load})
+  ServerShuffleDeck(ShuffleSessionPage first, {required this._load})
     : sessionId = first.sessionId,
-      total = first.total,
-      _load = load {
+      total = first.total {
     _validate(first, first.offset);
     _pages[first.offset] = first;
   }

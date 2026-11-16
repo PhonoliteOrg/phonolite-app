@@ -15,18 +15,20 @@ class SettingsDivider extends StatelessWidget {
 }
 
 class SettingsTrailing extends StatelessWidget {
+  static const double slotWidth = 60;
+
   final Widget child;
 
   const SettingsTrailing({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context) {
-    if (!isCompactListWidth(context)) {
-      return child;
-    }
-
-    return SizedBox(width: 60, child: Center(heightFactor: 1, child: child));
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsetsDirectional.only(start: isCompactListWidth(context) ? 32 : 20),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: slotWidth),
+      child: Center(widthFactor: 1, heightFactor: 1, child: child),
+    ),
+  );
 }
 
 class SettingsIconAction extends StatelessWidget {
@@ -93,24 +95,17 @@ Widget buildSettingsRow(
   Color? titleColor,
 }) {
   final isCompact = isCompactListWidth(context);
-  final double trailingGap;
-
-  if (trailing == null) {
-    trailingGap = 0;
-  } else {
-    trailingGap = isCompact ? 6 : 8;
-  }
 
   return ObsidianListRow(
     title: title,
+    titleMaxLines: null,
     subtitle: subtitle?.trim().isNotEmpty == true ? subtitle : null,
-    subtitleMaxLines: subtitleMaxLines,
+    subtitleMaxLines: isCompact ? null : subtitleMaxLines,
     titleColor: titleColor,
     onTap: onTap,
     enabled: onTap != null,
     showHover: onTap != null,
     leadingGap: isCompact ? 8 : 12,
-    trailingGap: trailingGap,
     leading: SizedBox(
       width: isCompact ? 28 : 32,
       child: Center(

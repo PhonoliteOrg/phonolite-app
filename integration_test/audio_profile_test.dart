@@ -185,8 +185,14 @@ void main() {
           uiLoad: true,
           prerequisite: streamPrerequisite,
           action: () async {
-            await controller.queueAlbum(fixture!.albumId, startTrackId: fixture.track.id);
-            expect(controller.playbackState.track?.id, fixture.track.id);
+            final selected = fixture;
+
+            if (selected == null) {
+              throw const MissingPrerequisite('No suitable streamed track');
+            }
+
+            await controller.queueAlbum(selected.albumId, startTrackId: selected.track.id);
+            expect(controller.playbackState.track?.id, selected.track.id);
           },
         );
         final dependentPrerequisite =

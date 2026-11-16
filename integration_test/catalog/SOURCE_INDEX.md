@@ -10,16 +10,16 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 - [onSubmitted, line 130](../../lib/pages/auth/login_page.dart#L130)
 - [onTap, line 135](../../lib/pages/auth/login_page.dart#L135)
 - [onChanged, line 144](../../lib/pages/auth/login_page.dart#L144)
-- [onSubmitted, line 185](../../lib/pages/auth/login_page.dart#L185)
-- [onPressed, line 214](../../lib/pages/auth/login_page.dart#L214)
-- [onPressed, line 318](../../lib/pages/auth/login_page.dart#L318)
-- [onPressed, line 329](../../lib/pages/auth/login_page.dart#L329)
+- [onSubmitted, line 184](../../lib/pages/auth/login_page.dart#L184)
+- [onPressed, line 213](../../lib/pages/auth/login_page.dart#L213)
+- [onPressed, line 317](../../lib/pages/auth/login_page.dart#L317)
+- [onPressed, line 328](../../lib/pages/auth/login_page.dart#L328)
 
 ## lib/pages/auth/reset_user_password_page.dart
 
-- [onSubmitted, line 87](../../lib/pages/auth/reset_user_password_page.dart#L87)
-- [onPressed, line 143](../../lib/pages/auth/reset_user_password_page.dart#L143)
-- [onPressed, line 206](../../lib/pages/auth/reset_user_password_page.dart#L206)
+- [onSubmitted, line 86](../../lib/pages/auth/reset_user_password_page.dart#L86)
+- [onPressed, line 142](../../lib/pages/auth/reset_user_password_page.dart#L142)
+- [onPressed, line 205](../../lib/pages/auth/reset_user_password_page.dart#L205)
 
 ## lib/pages/favorites/liked_page.dart
 
@@ -33,13 +33,13 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 ## lib/pages/library/album_detail_screen.dart
 
-- [onTap, line 119](../../lib/pages/library/album_detail_screen.dart#L119)
-- [onPressed, line 138](../../lib/pages/library/album_detail_screen.dart#L138)
+- [onTap, line 118](../../lib/pages/library/album_detail_screen.dart#L118)
+- [onPressed, line 137](../../lib/pages/library/album_detail_screen.dart#L137)
 
 ## lib/pages/library/artist_detail_screen.dart
 
-- [onTap, line 159](../../lib/pages/library/artist_detail_screen.dart#L159)
-- [onPressed, line 165](../../lib/pages/library/artist_detail_screen.dart#L165)
+- [onTap, line 157](../../lib/pages/library/artist_detail_screen.dart#L157)
+- [onPressed, line 163](../../lib/pages/library/artist_detail_screen.dart#L163)
 
 ## lib/pages/library/library_page.dart
 
@@ -79,39 +79,30 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 ## lib/pages/playlists/playlist_detail_view.dart
 
 - [onPressed, line 75](../../lib/pages/playlists/playlist_detail_view.dart#L75)
-- [onTap, line 171](../../lib/pages/playlists/playlist_detail_view.dart#L171)
-- [onPressed, line 179](../../lib/pages/playlists/playlist_detail_view.dart#L179)
-- [onPressed, line 186](../../lib/pages/playlists/playlist_detail_view.dart#L186)
+- [onTap, line 170](../../lib/pages/playlists/playlist_detail_view.dart#L170)
+- [onPressed, line 178](../../lib/pages/playlists/playlist_detail_view.dart#L178)
+- [onPressed, line 185](../../lib/pages/playlists/playlist_detail_view.dart#L185)
 
 ## lib/pages/playlists/playlists_page.dart
 
-- [onPressed, line 188](../../lib/pages/playlists/playlists_page.dart#L188)
-- [onPressed, line 196](../../lib/pages/playlists/playlists_page.dart#L196)
-- [onPressed, line 203](../../lib/pages/playlists/playlists_page.dart#L203)
-
-## lib/pages/search/search_page.dart
-
-- [onChanged, line 70](../../lib/pages/search/search_page.dart#L70)
-- [onTap, line 98](../../lib/pages/search/search_page.dart#L98)
+- [onPressed, line 186](../../lib/pages/playlists/playlists_page.dart#L186)
+- [onPressed, line 194](../../lib/pages/playlists/playlists_page.dart#L194)
+- [onPressed, line 201](../../lib/pages/playlists/playlists_page.dart#L201)
 
 ## lib/pages/settings/download_quality_page.dart
 
-- [onTap, line 106](../../lib/pages/settings/download_quality_page.dart#L106)
-
-## lib/pages/splash/splash_page.dart
-
-- [onPressed, line 60](../../lib/pages/splash/splash_page.dart#L60)
+- [onPressed, line 107](../../lib/pages/settings/download_quality_page.dart#L107)
 
 ## lib/ui/features/downloads/widgets/download_manager_panel.dart
 
-- [onTap, line 121](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L121)
-- [onTap, line 133](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L133)
-- [onTap, line 145](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L145)
-- [onPressed, line 363](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L363)
-- [onPressed, line 372](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L372)
-- [onTap, line 640](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L640)
-- [onPressed, line 650](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L650)
-- [onPressed, line 678](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L678)
+- [onTap, line 120](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L120)
+- [onTap, line 131](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L131)
+- [onTap, line 142](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L142)
+- [onPressed, line 359](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L359)
+- [onPressed, line 368](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L368)
+- [onTap, line 636](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L636)
+- [onPressed, line 646](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L646)
+- [onPressed, line 674](../../lib/ui/features/downloads/widgets/download_manager_panel.dart#L674)
 
 ## lib/ui/features/downloads/widgets/download_selection_toolbar.dart
 
@@ -278,11 +269,11 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 ## lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart
 
-- [onSubmitted, line 98](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L98)
-- [onPressed, line 131](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L131)
-- [onPressed, line 135](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L135)
+- [onSubmitted, line 100](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L100)
+- [onPressed, line 133](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L133)
 - [onPressed, line 137](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L137)
-- [onPressed, line 141](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L141)
+- [onPressed, line 139](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L139)
+- [onPressed, line 143](../../lib/ui/features/playback/widgets/shuffle_preset_editor_modal.dart#L143)
 
 ## lib/ui/features/playlists/widgets/add_to_playlist_modal.dart
 
@@ -296,11 +287,11 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 - [onTap, line 155](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L155)
 - [onChanged, line 169](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L169)
-- [onSubmitted, line 187](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L187)
-- [onSubmitted, line 204](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L204)
-- [onPressed, line 252](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L252)
-- [onPressed, line 255](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L255)
-- [onTap, line 316](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L316)
+- [onSubmitted, line 186](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L186)
+- [onSubmitted, line 202](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L202)
+- [onPressed, line 250](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L250)
+- [onPressed, line 253](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L253)
+- [onTap, line 314](../../lib/ui/features/playlists/widgets/playlist_editor_modal.dart#L314)
 
 ## lib/ui/features/playlists/widgets/playlist_section.dart
 
@@ -323,10 +314,10 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 ## lib/ui/features/settings/dialogs/storage_path_dialog.dart
 
-- [onSubmitted, line 90](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L90)
-- [onPressed, line 106](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L106)
+- [onSubmitted, line 89](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L89)
+- [onPressed, line 105](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L105)
+- [onPressed, line 107](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L107)
 - [onPressed, line 108](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L108)
-- [onPressed, line 109](../../lib/ui/features/settings/dialogs/storage_path_dialog.dart#L109)
 
 ## lib/ui/features/settings/sections/desktop_settings_section.dart
 
@@ -385,15 +376,15 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 ## lib/ui/features/settings/widgets/offline_storage_section.dart
 
 - [onPressed, line 70](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L70)
-- [onTap, line 80](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L80)
-- [onTap, line 110](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L110)
-- [onTap, line 205](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L205)
-- [onTap, line 232](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L232)
-- [onTap, line 233](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L233)
-- [onTap, line 234](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L234)
-- [onTap, line 248](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L248)
-- [onTap, line 255](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L255)
-- [onTap, line 263](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L263)
+- [onTap, line 79](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L79)
+- [onTap, line 106](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L106)
+- [onTap, line 201](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L201)
+- [onTap, line 228](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L228)
+- [onTap, line 229](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L229)
+- [onTap, line 230](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L230)
+- [onTap, line 239](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L239)
+- [onTap, line 244](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L244)
+- [onTap, line 251](../../lib/ui/features/settings/widgets/offline_storage_section.dart#L251)
 
 ## lib/ui/features/settings/widgets/server_connection_setting.dart
 
@@ -401,9 +392,9 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 - [onTap, line 47](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L47)
 - [onTap, line 52](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L52)
 - [onPressed, line 61](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L61)
-- [onTap, line 75](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L75)
-- [onTap, line 82](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L82)
-- [onTap, line 91](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L91)
+- [onTap, line 74](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L74)
+- [onTap, line 80](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L80)
+- [onTap, line 88](../../lib/ui/features/settings/widgets/server_connection_setting.dart#L88)
 
 ## lib/ui/features/settings/widgets/settings_row.dart
 
@@ -445,10 +436,6 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 - [onPressed, line 31](../../lib/ui/shared/design_system/controls/obsidian_hud_icon_button.dart#L31)
 - [onTap, line 78](../../lib/ui/shared/design_system/controls/obsidian_hud_icon_button.dart#L78)
 
-## lib/ui/shared/design_system/controls/obsidian_icon_button.dart
-
-- [onTap, line 36](../../lib/ui/shared/design_system/controls/obsidian_icon_button.dart#L36)
-
 ## lib/ui/shared/design_system/controls/obsidian_list_row.dart
 
 - [onTap, line 54](../../lib/ui/shared/design_system/controls/obsidian_list_row.dart#L54)
@@ -464,10 +451,6 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 - [onTap, line 106](../../lib/ui/shared/design_system/controls/obsidian_overflow_action_button.dart#L106)
 - [onPressed, line 184](../../lib/ui/shared/design_system/controls/obsidian_overflow_action_button.dart#L184)
 
-## lib/ui/shared/design_system/controls/obsidian_play_button.dart
-
-- [onTap, line 36](../../lib/ui/shared/design_system/controls/obsidian_play_button.dart#L36)
-
 ## lib/ui/shared/design_system/controls/obsidian_radio_row.dart
 
 - [onTap, line 36](../../lib/ui/shared/design_system/controls/obsidian_radio_row.dart#L36)
@@ -479,9 +462,9 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 ## lib/ui/shared/design_system/controls/obsidian_text_field.dart
 
-- [onTap, line 96](../../lib/ui/shared/design_system/controls/obsidian_text_field.dart#L96)
-- [onSubmitted, line 153](../../lib/ui/shared/design_system/controls/obsidian_text_field.dart#L153)
-- [onChanged, line 154](../../lib/ui/shared/design_system/controls/obsidian_text_field.dart#L154)
+- [onTap, line 92](../../lib/ui/shared/design_system/controls/obsidian_text_field.dart#L92)
+- [onSubmitted, line 149](../../lib/ui/shared/design_system/controls/obsidian_text_field.dart#L149)
+- [onChanged, line 150](../../lib/ui/shared/design_system/controls/obsidian_text_field.dart#L150)
 
 ## lib/ui/shared/design_system/controls/obsidian_toggle_option.dart
 
@@ -491,13 +474,12 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 ## lib/ui/shared/design_system/controls/search_hud.dart
 
 - [onPressed, line 39](../../lib/ui/shared/design_system/controls/search_hud.dart#L39)
-- [onSubmitted, line 58](../../lib/ui/shared/design_system/controls/search_hud.dart#L58)
-- [onChanged, line 59](../../lib/ui/shared/design_system/controls/search_hud.dart#L59)
+- [onSubmitted, line 57](../../lib/ui/shared/design_system/controls/search_hud.dart#L57)
+- [onChanged, line 58](../../lib/ui/shared/design_system/controls/search_hud.dart#L58)
 
 ## lib/ui/shared/design_system/controls/tech_button.dart
 
-- [onTap, line 140](../../lib/ui/shared/design_system/controls/tech_button.dart#L140)
-- [onTap, line 166](../../lib/ui/shared/design_system/controls/tech_button.dart#L166)
+- [onTap, line 131](../../lib/ui/shared/design_system/controls/tech_button.dart#L131)
 
 ## lib/ui/shared/design_system/interaction/hover_row.dart
 
@@ -516,10 +498,8 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 ## lib/ui/shared/design_system/modals/confirmation_modal.dart
 
-- [onPressed, line 67](../../lib/ui/shared/design_system/modals/confirmation_modal.dart#L67)
-- [onPressed, line 71](../../lib/ui/shared/design_system/modals/confirmation_modal.dart#L71)
-- [onPressed, line 74](../../lib/ui/shared/design_system/modals/confirmation_modal.dart#L74)
-- [onTap, line 80](../../lib/ui/shared/design_system/modals/confirmation_modal.dart#L80)
+- [onPressed, line 61](../../lib/ui/shared/design_system/modals/confirmation_modal.dart#L61)
+- [onPressed, line 65](../../lib/ui/shared/design_system/modals/confirmation_modal.dart#L65)
 
 ## lib/ui/shared/design_system/modals/modal_action_button.dart
 
@@ -629,6 +609,6 @@ Candidate callback bindings in pages and widgets, including reusable wrappers. U
 
 ## lib/ui/structures/sections/selection_sliver_section.dart
 
-- [onTap, line 79](../../lib/ui/structures/sections/selection_sliver_section.dart#L79)
-- [onTap, line 85](../../lib/ui/structures/sections/selection_sliver_section.dart#L85)
+- [onTap, line 75](../../lib/ui/structures/sections/selection_sliver_section.dart#L75)
+- [onTap, line 76](../../lib/ui/structures/sections/selection_sliver_section.dart#L76)
 

@@ -115,7 +115,6 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
                     icon: downloadSummary.isComplete ? PhonoliteIcons.circleCheck : PhonoliteIcons.download,
                     iconOnly: compactHeaderActions,
                     tooltip: downloadSummary.label,
-                    chrome: TechButtonChrome.borderless,
                     onTap: !isLoading && downloadSummary.canStart
                         ? () => controller.downloadAlbum(_feature.album, tracks)
                         : null,

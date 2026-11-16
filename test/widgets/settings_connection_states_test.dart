@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
@@ -13,13 +14,71 @@ import 'package:phonolite_app/pages/settings/settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shell/navigation/app_side_navigation.dart';
 
 import '../support/widget_test_helpers.dart';
 
 // These are isolated UI fixtures, not evidence of a real network outage.
 void main() {
   setUpAll(configureTestFonts);
+
+  testWidgets('compact settings show full descriptions across multiple lines', (tester) async {
+    final controller = _Controller(SessionStatus.offline);
+    await _pump(tester, controller, 320, platform: TargetPlatform.linux);
+
+    for (final subtitle in [
+      'Your server provides access to your music library.',
+      'Delete local tracks, artwork, metadata, local databases, and logs',
+    ]) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(subtitle));
+      final boxes = paragraph.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: subtitle.length));
+
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(boxes.last.top, greaterThan(boxes.first.top));
+    }
+
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [390.0, 640.0, 1280.0]) {
+    testWidgets('settings trailing controls share a center at $width', (tester) async {
+      final controller = _Controller(SessionStatus.serverUnavailable);
+      await _pump(tester, controller, width, platform: TargetPlatform.linux);
+      final compact = width < obsidianCompactListBreakpoint;
+      final chevrons = find.byIcon(PhonoliteIcons.chevronRight);
+      final center = tester.getCenter(chevrons.first).dx;
+      final statisticsSwitch = find.byKey(const ValueKey('listening-statistics-switch'));
+
+      for (final control in [
+        for (var i = 1; i < chevrons.evaluate().length; i++) chevrons.at(i),
+        find.byKey(const ValueKey('gapless-resampling')),
+        statisticsSwitch,
+        find.byIcon(PhonoliteIcons.trash2),
+        if (compact) ...[
+          find.byTooltip('Server actions'),
+          for (var i = 0; i < 3; i++) find.byTooltip('Storage actions').at(i),
+          find.byTooltip('Full reset'),
+        ] else ...[
+          _buttonIcon('Disconnect', PhonoliteIcons.logOut),
+          for (var i = 0; i < 3; i++) _buttonIcon('Open folder', PhonoliteIcons.folder).at(i),
+          _buttonIcon('Full reset', PhonoliteIcons.trash),
+        ],
+      ]) {
+        expect(tester.getCenter(control).dx, closeTo(center, 0.01), reason: '$control');
+      }
+
+      if (!compact) {
+        final statisticsRow = find.ancestor(of: statisticsSwitch, matching: find.byType(ObsidianHoverRow));
+        expect(tester.getCenter(statisticsSwitch).dy, closeTo(tester.getCenter(statisticsRow).dy, 0.01));
+      }
+
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final width in [320.0, 390.0, 1280.0]) {
     for (final status in SessionStatus.values) {
@@ -106,6 +165,8 @@ void main() {
 
 Finder _button(String label) => find.byWidgetPredicate((widget) => widget is TechButton && widget.label == label);
 
+Finder _buttonIcon(String label, IconData icon) => find.descendant(of: _button(label), matching: find.byIcon(icon));
+
 Finder _popup(String label) => find.ancestor(of: find.text(label), matching: find.byType(PopupMenuItem<int>));
 
 Future<void> _action(WidgetTester tester, double width, String label) async {
@@ -119,7 +180,12 @@ Future<void> _action(WidgetTester tester, double width, String label) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _pump(WidgetTester tester, _Controller controller, double width) async {
+Future<void> _pump(
+  WidgetTester tester,
+  _Controller controller,
+  double width, {
+  TargetPlatform platform = TargetPlatform.iOS,
+}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, 1000);
   addTearDown(() async {
@@ -132,8 +198,15 @@ Future<void> _pump(WidgetTester tester, _Controller controller, double width) as
     AppScope(
       controller: controller,
       child: MaterialApp(
-        theme: ObsidianTheme.build().copyWith(platform: TargetPlatform.iOS),
-        home: const Scaffold(body: SettingsPage()),
+        theme: ObsidianTheme.build().copyWith(platform: platform),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Padding(
+              padding: EdgeInsets.only(left: usesSideNavigation(context) ? AppSideNavigation.widthFor(context) : 0),
+              child: const SettingsPage(),
+            ),
+          ),
+        ),
       ),
     ),
   );

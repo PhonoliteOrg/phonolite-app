@@ -22,6 +22,23 @@ import '../support/widget_test_helpers.dart';
 void main() {
   setUpAll(configureTestFonts);
 
+  testWidgets('retry restores download quality choices after a storage read error', (tester) async {
+    final storage = _MemoryStorage()..failRead = true;
+    final controller = DownloadSettingsController(storage: storage);
+    await _pump(tester, DownloadQualityPage(controller: controller), controller);
+
+    expect(find.textContaining('Could not load download settings'), findsOneWidget);
+    final retry = find.widgetWithText(TextButton, 'Retry');
+    expect(retry, findsOneWidget);
+    await tester.ensureVisible(retry);
+    storage.failRead = false;
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+
+    expect(controller.ready, isTrue);
+    expect(retry, findsNothing);
+  });
+
   for (final width in [320.0, 390.0, 1280.0]) {
     testWidgets('quality choices remain usable at width $width', (tester) async {
       final storage = _MemoryStorage();
@@ -146,10 +163,17 @@ Future<void> _pump(
 
 class _MemoryStorage extends DownloadSettingsStorage {
   DownloadSettings saved = const DownloadSettings(quality: DownloadQuality.high);
+  bool failRead = false;
   bool failWrite = false;
 
   @override
-  Future<DownloadSettings> read() async => saved;
+  Future<DownloadSettings> read() async {
+    if (failRead) {
+      throw StateError('Storage is unavailable');
+    }
+
+    return saved;
+  }
 
   @override
   Future<void> write(DownloadSettings settings) async {

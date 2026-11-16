@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_play_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/command_link_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hover_card.dart';
@@ -30,12 +31,10 @@ void main() {
       final pulses = _capture(tester);
       final cases =
           <({Widget Function(VoidCallback?) build, Finder Function() target})>[
-            for (final chrome in TechButtonChrome.values)
-              (
-                build: (action) =>
-                    TechButton(label: 'Action', onTap: action, chrome: chrome),
-                target: () => find.byType(TechButton),
-              ),
+            (
+              build: (action) => TechButton(label: 'Action', onTap: action),
+              target: () => find.byType(TechButton),
+            ),
             (
               build: (action) => ObsidianHudIconButton(
                 icon: PhonoliteIcons.download,
@@ -44,16 +43,8 @@ void main() {
               target: () => find.byType(ObsidianHudIconButton),
             ),
             (
-              build: (action) => ObsidianIconButton(
-                icon: PhonoliteIcons.download,
-                onPressed: action,
-              ),
-              target: () => find.byType(ObsidianIconButton),
-            ),
-            (
-              build: (action) =>
-                  ObsidianPlayButton(icon: Icons.play_arrow, onPressed: action),
-              target: () => find.byType(ObsidianPlayButton),
+              build: (action) => PlaybackHudPlayButton(icon: Icons.play_arrow, onPressed: action),
+              target: () => find.byType(PlaybackHudPlayButton),
             ),
             (
               build: (action) =>

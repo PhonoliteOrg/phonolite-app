@@ -11,7 +11,7 @@ class NowPlayingArtwork {
   final _requests = RequestGeneration();
   bool _loading = false;
 
-  NowPlayingArtwork({required NowPlayingArtworkLoader loader}) : _loader = loader;
+  NowPlayingArtwork({required this._loader});
 
   String? get key => _source?.key;
 

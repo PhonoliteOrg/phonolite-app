@@ -6,8 +6,8 @@ import 'package:http/testing.dart';
 
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
-import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
+import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
@@ -22,13 +22,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory directory;
-  late OfflineLibraryStorage storage;
+  late _Storage storage;
   late _Connection connection;
   late OfflineDownloadManager manager;
 
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('phonolite_playlist_workflow_');
-    storage = OfflineLibraryStorage(baseDirectory: directory);
+    storage = _Storage(directory);
     connection = _Connection();
     manager = OfflineDownloadManager(connection: connection, storage: storage);
   });
@@ -84,6 +84,21 @@ void main() {
     await manager.loadLocalPlaylistTracks(playlist.id);
     expect(manager.localPlaylistEntries.single.entryKey, failed.entryKey);
     expect(manager.localPlaylistTracks, isEmpty);
+  });
+
+  test('fallback metadata staging reports the original storage failure', () async {
+    final stagingError = StateError('Could not write download staging data');
+    connection.offlineMetadata = offlineTestOfflineMetadata(trackId: 'song');
+    storage.stagingError = stagingError;
+    final playlist = await manager.createLocalPlaylist('Mix');
+
+    connection.setToken('token');
+    await manager.addSourceToLocalPlaylist(playlist.id, offlineTestTrack(id: 'song'), _source);
+    final failed = await waitForStatus(playlist.id, OfflineDownloadStatus.failed);
+
+    expect(connection.batchCalls, 1);
+    expect(failed.error, stagingError.toString());
+    expect(await storage.readDownloads(), isEmpty);
   });
 
   test('deleting during metadata staging prevents a late response creating a download', () async {
@@ -230,6 +245,7 @@ DownloadBatchManifest _manifest() => DownloadBatchManifest(
 class _Connection extends ServerConnection {
   final batchStarted = Completer<void>();
   Completer<DownloadBatchManifest>? batchGate;
+  OfflineTrackMetadata? offlineMetadata;
   int batchCalls = 0;
 
   _Connection() : super(baseUrl: _origin, client: MockClient((_) async => throw StateError('Unexpected network')));
@@ -254,7 +270,23 @@ class _Connection extends ServerConnection {
   }
 
   @override
-  Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) async => throw StateError('offline metadata');
+  Future<OfflineTrackMetadata> fetchOfflineMetadata(String trackId) async =>
+      offlineMetadata ?? (throw StateError('offline metadata'));
+}
+
+class _Storage extends OfflineLibraryStorage {
+  StateError? stagingError;
+
+  _Storage(Directory directory) : super(baseDirectory: directory);
+
+  @override
+  Future<OfflineTrackDownload> prepareDownload(OfflineTrackDownload download) async {
+    if (stagingError case final error?) {
+      throw error;
+    }
+
+    return super.prepareDownload(download);
+  }
 }
 
 extension on Completer<DownloadBatchManifest> {

@@ -283,9 +283,8 @@ class _LocalPlaylistIntentStore {
         final json = jsonDecode(snapshot);
 
         if (json is Map) {
-          return Track.fromJson(
-            Map<String, dynamic>.from(json),
-          ).copyWith(serverBaseUrl: source.serverBaseUrl, serverTrackId: source.serverTrackId);
+          return Track.fromJson(Map<String, dynamic>.from(json))
+              .copyWith(serverBaseUrl: source.serverBaseUrl, serverTrackId: source.serverTrackId);
         }
       } catch (err) {
         AppLogger.warning('Failed to restore pending playlist metadata: $err');

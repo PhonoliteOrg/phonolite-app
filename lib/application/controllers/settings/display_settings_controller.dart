@@ -20,7 +20,7 @@ class DisplaySettingsController extends ChangeNotifier {
   bool _disposed = false;
   String? _error;
 
-  DisplaySettingsController({DisplaySettingsStorage storage = const DisplaySettingsStorage()}) : _storage = storage;
+  DisplaySettingsController({this._storage = const DisplaySettingsStorage()});
 
   DisplaySettings get settings => _settings;
 

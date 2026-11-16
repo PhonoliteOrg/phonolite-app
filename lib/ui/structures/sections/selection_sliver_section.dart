@@ -72,18 +72,8 @@ class SelectionSummaryActions extends StatelessWidget {
       spacing: 8,
       runSpacing: 4,
       children: [
-        TechButton(
-          label: 'Select all',
-          density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
-          onTap: onSelectAll,
-        ),
-        TechButton(
-          label: 'Clear',
-          density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
-          onTap: onClear,
-        ),
+        TechButton(label: 'Select all', density: TechButtonDensity.compact, onTap: onSelectAll),
+        TechButton(label: 'Clear', density: TechButtonDensity.compact, onTap: onClear),
       ],
     );
 

@@ -57,14 +57,14 @@ class _AudioWorkerEngine {
   Future<void>? _stopInFlight;
 
   _AudioWorkerEngine({
-    required void Function(Map<String, dynamic>) send,
+    required this._send,
     this.outputFactory,
     this.fileDecoderFactory,
     this.decoderFactory,
     this.transportFactory,
     this.outputProgressTimeout = const Duration(seconds: 5),
     this.transportProgressTimeout = const Duration(seconds: 15),
-  }) : _send = send;
+  });
 
   bool get _hasPendingPreparation => _preparing.any(_isCurrentPreparation);
 

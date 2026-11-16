@@ -2,31 +2,47 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:phonolite_app/data/rules/audio/audio_recovery_policy.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 
 import '../support/streaming_test_helpers.dart';
 
 void main() {
-  AudioPlaybackHarness session(MemoryQuic transport, {bool paused = false}) => AudioPlaybackHarness(
-    transport: transport,
-    decoderFactory: MemoryOpusDecoder.new,
-    outputFactory: (_, __, ___) => MemoryPcmOutput(),
-    initialPaused: paused,
-    transportProgressTimeout: const Duration(milliseconds: 150),
-  );
+  AudioPlaybackHarness session(MemoryQuic transport, {bool paused = false, MemoryQuic Function()? reconnect}) =>
+      AudioPlaybackHarness(
+        transport: transport,
+        connectionFactory: reconnect,
+        decoderFactory: MemoryOpusDecoder.new,
+        outputFactory: (_, __, ___) => MemoryPcmOutput(),
+        initialPaused: paused,
+        transportProgressTimeout: const Duration(milliseconds: 150),
+      );
 
-  bool stopped(AudioPlaybackHarness player) =>
-      player.messages.any((event) => event['type'] == 'state' && event['active'] == false);
+  bool isStopped(Map<String, dynamic> event) => event['type'] == 'state' && event['active'] == false;
+
+  bool stopped(AudioPlaybackHarness player) => player.messages.any(isStopped);
+
+  Future<void> expectRecoverableStop(AudioPlaybackHarness player) async {
+    final event =
+        player.messages.where(isStopped).firstOrNull ??
+        await player.events.firstWhere(isStopped).timeout(AudioRecoveryPolicy.budget);
+
+    expect(event['source_rejected'], isNot(true));
+    expect(player.messages.where((event) => event['type'] == 'complete'), isEmpty);
+  }
 
   test('a connected Opus source without bytes fails recoverably', () async {
     final transport = MemoryQuic();
-    final player = session(transport);
+    final replacement = MemoryQuic();
+    final player = session(transport, reconnect: () => replacement);
     addTearDown(player.close);
     player.start();
-    await waitUntil(() => stopped(player));
+
+    await expectRecoverableStop(player);
+
     expect(transport.closed, isTrue);
-    expect(player.messages.any((event) => event['source_rejected'] == true), isFalse);
-    expect(player.messages.where((event) => event['type'] == 'complete'), isEmpty);
+    expect(replacement.requestedPositions, [0]);
   });
 
   for (final failure in [
@@ -35,18 +51,29 @@ void main() {
     'stream capacity unavailable: StreamLimit',
   ]) {
     test('Opus server admission failure is recoverable: $failure', () async {
-      final transport = MemoryQuic();
-      transport.onRequest = (_, __) => transport.events.add({
-        'type': 'error',
-        'origin': 'server',
-        'request_id': transport.requestId,
-        'message': failure,
-      });
-      final player = session(transport);
+      final transports = <MemoryQuic>[];
+
+      MemoryQuic rejectAdmission() {
+        final transport = MemoryQuic();
+        transport.onRequest = (_, __) => transport.events.add({
+          'type': 'error',
+          'origin': 'server',
+          'request_id': transport.requestId,
+          'message': failure,
+        });
+        transports.add(transport);
+
+        return transport;
+      }
+
+      final player = session(rejectAdmission(), reconnect: rejectAdmission);
       addTearDown(player.close);
       player.start();
-      await waitUntil(() => stopped(player));
-      expect(player.messages.any((event) => event['source_rejected'] == true), isFalse);
+
+      await expectRecoverableStop(player);
+
+      expect(transports, hasLength(1 + AudioRecoveryPolicy.maximumAttempts));
+      expect(transports.map((transport) => transport.requestedPositions), everyElement([0]));
     });
   }
 
@@ -86,20 +113,25 @@ void main() {
 
   test('paused Opus does not expire and a resumed silent source does', () async {
     final transport = MemoryQuic();
-    final player = session(transport, paused: true);
+    final replacement = MemoryQuic();
+    final player = session(transport, paused: true, reconnect: () => replacement);
     addTearDown(player.close);
     player.start();
     await Future<void>.delayed(const Duration(milliseconds: 350));
     expect(stopped(player), isFalse);
     expect(transport.closed, isFalse);
+    expect(replacement.requestedPositions, isEmpty);
     player.resume();
-    await waitUntil(() => stopped(player));
+
+    await expectRecoverableStop(player);
+    expect(replacement.requestedPositions, [0]);
   });
 
   test('ongoing Opus byte progress renews the delivery deadline', () async {
     final transport = MemoryQuic();
     transport.onRequest = (_, __) => transport.deliverRange(startMs: 0, endMs: 10000, complete: false, packetCount: 0);
-    final player = session(transport);
+    final replacement = MemoryQuic();
+    final player = session(transport, reconnect: () => replacement);
     addTearDown(player.close);
     player.start();
     final producer = Timer.periodic(
@@ -110,7 +142,10 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 450));
     expect(stopped(player), isFalse);
     expect(player.cachedBytes, greaterThan(5));
+    expect(replacement.requestedPositions, isEmpty);
     producer.cancel();
-    await waitUntil(() => stopped(player));
+
+    await expectRecoverableStop(player);
+    expect(replacement.requestedPositions, hasLength(1));
   });
 }

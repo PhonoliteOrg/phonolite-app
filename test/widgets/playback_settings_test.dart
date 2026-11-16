@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/ui/features/settings/sections/playback_settings_section.dart';
 
@@ -9,6 +11,34 @@ import '../support/widget_test_helpers.dart';
 
 void main() {
   setUpAll(configureTestFonts);
+
+  for (final width in [320.0, 1280.0]) {
+    testWidgets('the playback setting title wraps when space is limited at viewport width $width', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 900);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = _Controller();
+      addTearDown(controller.changes.close);
+
+      await tester.pumpWidget(
+        wrapInTestApp(
+          Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(width: 280, child: PlaybackSettingsSection(controller: controller)),
+          ),
+        ),
+      );
+
+      const title = 'Seamless mixed-format playback';
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(title));
+      final boxes = paragraph.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: title.length));
+
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(boxes.last.top, greaterThan(boxes.first.top));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final width in [320.0, 390.0, 1280.0]) {
     testWidgets('mixed-format playback setting explains native output and applies conversion at $width', (

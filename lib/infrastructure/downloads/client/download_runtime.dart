@@ -83,8 +83,7 @@ class _OfflineDownloadActorCore
   final ServerConnection connection;
   final OfflineLibraryStorage _storage;
 
-  _OfflineDownloadActorCore({required this.connection, OfflineLibraryStorage storage = const OfflineLibraryStorage()})
-    : _storage = storage {
+  _OfflineDownloadActorCore({required this.connection, this._storage = const OfflineLibraryStorage()}) {
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _compressedJobs = _CompressedDownloadJobs(this);
     _ownerRecovery = _InterruptedDownloadRecovery(this);

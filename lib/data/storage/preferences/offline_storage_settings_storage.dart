@@ -15,11 +15,7 @@ class OfflineStorageSettingsStorage {
   final bool Function()? _usesManagedStoragePaths;
   final SettingsFiles _files;
 
-  const OfflineStorageSettingsStorage({
-    SettingsFiles files = const SettingsFiles(),
-    bool Function()? usesManagedStoragePaths,
-  }) : _usesManagedStoragePaths = usesManagedStoragePaths,
-       _files = files;
+  const OfflineStorageSettingsStorage({this._files = const SettingsFiles(), this._usesManagedStoragePaths});
 
   bool get usesManagedStoragePaths => _usesManagedStoragePaths?.call() ?? (!kIsWeb && Platform.isIOS);
 

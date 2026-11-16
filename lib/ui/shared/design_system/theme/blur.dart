@@ -22,14 +22,11 @@ Widget maybeBlur({required double sigma, required Widget child}) {
   );
 }
 
-/// Pauses backdrop blur while a desktop window is being resized.
+/// Pauses backdrop blur while a Windows or Linux window is being resized.
 ///
-/// Every resize step must render a complete frame before the window can take
-/// the next size. On an Intel Mac with Skia, backdrop blur pushed those frames
-/// from about 17 ms to 29 ms, so resizing ran at half the display rate. Blur
-/// returns once the size has been stable for [settle]; resting frames are
-/// unaffected. Filters stay mounted and are only disabled, so descendants keep
-/// their state.
+/// Blur returns once the size has been stable for [settle]. Filters stay
+/// mounted so descendants keep their state. macOS keeps blur active for a
+/// consistent glass appearance throughout the resize.
 class BackdropBlurResizeSuspension extends StatefulWidget {
   static const Duration defaultSettle = Duration(milliseconds: 200);
 
@@ -58,7 +55,7 @@ class _BackdropBlurResizeSuspensionState extends State<BackdropBlurResizeSuspens
     final previous = _size;
     _size = size;
 
-    if (previous == null || previous == size || !_isDesktop(Theme.of(context).platform)) {
+    if (previous == null || previous == size || !_suspendsOnResize(Theme.of(context).platform)) {
       return;
     }
 
@@ -81,9 +78,9 @@ class _BackdropBlurResizeSuspensionState extends State<BackdropBlurResizeSuspens
     }
   }
 
-  static bool _isDesktop(TargetPlatform platform) => switch (platform) {
-    TargetPlatform.macOS || TargetPlatform.windows || TargetPlatform.linux => true,
-    TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia => false,
+  static bool _suspendsOnResize(TargetPlatform platform) => switch (platform) {
+    TargetPlatform.windows || TargetPlatform.linux => true,
+    TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia || TargetPlatform.macOS => false,
   };
 
   @override

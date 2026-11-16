@@ -8,9 +8,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class OfflineStorageSection extends StatelessWidget {
   final OfflineStorageLocations? locations;
@@ -76,78 +74,8 @@ class OfflineStorageSection extends StatelessWidget {
       icon: PhonoliteIcons.trash,
       variant: TechButtonVariant.danger,
       density: TechButtonDensity.compact,
-      chrome: TechButtonChrome.borderless,
+      trailingIconWidth: SettingsTrailing.slotWidth,
       onTap: onTap,
-    );
-  }
-
-  Widget settingsSectionRow(
-    BuildContext context, {
-    required Widget leading,
-    required String title,
-    String? subtitle,
-    Widget? trailing,
-    VoidCallback? onTap,
-    Color? titleColor,
-  }) {
-    final showHover = onTap != null;
-    final isCompact = isCompactListWidth(context);
-    final leadingWidth = isCompact ? 28.0 : 32.0;
-    final contentGap = isCompact ? 8.0 : 12.0;
-    final trailingGap = isCompact ? 6.0 : 8.0;
-    final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
-      fontSize: isCompact ? 14.5 : null,
-      letterSpacing: isCompact ? 0.2 : 0.6,
-      color: titleColor,
-    );
-    final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-      fontSize: isCompact ? 12 : null,
-      letterSpacing: isCompact ? 0 : null,
-      color: ObsidianPalette.textMuted,
-    );
-
-    return ObsidianHoverRow(
-      onTap: onTap,
-      enabled: showHover,
-      padding: isCompact
-          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
-          : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      borderColor: showHover ? ObsidianPalette.gold : Colors.transparent,
-      hoverGradient: showHover ? null : const LinearGradient(colors: [Colors.transparent, Colors.transparent]),
-      hoverColor: showHover ? null : Colors.transparent,
-      child: Row(
-        children: [
-          SizedBox(
-            width: leadingWidth,
-            child: Center(
-              child: IconTheme.merge(
-                data: IconThemeData(size: isCompact ? 20 : 24),
-                child: leading,
-              ),
-            ),
-          ),
-          SizedBox(width: contentGap),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
-                if (subtitle != null && subtitle.trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle),
-                ],
-              ],
-            ),
-          ),
-          if (trailing != null) ...[
-            SizedBox(width: trailingGap),
-            IconTheme.merge(
-              data: IconThemeData(size: isCompact ? 22 : 24),
-              child: SettingsTrailing(child: trailing),
-            ),
-          ],
-        ],
-      ),
     );
   }
 
@@ -163,7 +91,7 @@ class OfflineStorageSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!hideStoragePaths) ...[
-          settingsSectionRow(
+          buildSettingsRow(
             context,
             leading: const Icon(PhonoliteIcons.database),
             title: 'Metadata database',
@@ -175,7 +103,7 @@ class OfflineStorageSection extends StatelessWidget {
             ),
           ),
           const SettingsDivider(),
-          settingsSectionRow(
+          buildSettingsRow(
             context,
             leading: const Icon(PhonoliteIcons.folder),
             title: 'Downloaded audio',
@@ -187,7 +115,7 @@ class OfflineStorageSection extends StatelessWidget {
             ),
           ),
           const SettingsDivider(),
-          settingsSectionRow(
+          buildSettingsRow(
             context,
             leading: const Icon(PhonoliteIcons.receiptText),
             title: 'Logs storage',
@@ -196,7 +124,7 @@ class OfflineStorageSection extends StatelessWidget {
           ),
           const SettingsDivider(),
         ],
-        settingsSectionRow(
+        buildSettingsRow(
           context,
           leading: Icon(PhonoliteIcons.trash, color: theme.colorScheme.error),
           title: 'Reset local data',
@@ -239,19 +167,15 @@ class SettingsStorageActions extends StatelessWidget {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        TechButton(
-          label: 'Change',
-          iconWidget: const EditIcon(),
-          density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
-          onTap: onChange,
-        ),
+        TechButton(label: 'Change', iconWidget: const EditIcon(), density: TechButtonDensity.compact, onTap: onChange),
         TechButton(
           label: 'Reset path',
           icon: PhonoliteIcons.rotateCcw,
           density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
+          trailingIconWidth: showOpen ? null : SettingsTrailing.slotWidth,
           onTap: onReset,
         ),
         if (showOpen)
@@ -259,7 +183,7 @@ class SettingsStorageActions extends StatelessWidget {
             label: 'Open folder',
             icon: PhonoliteIcons.folder,
             density: TechButtonDensity.compact,
-            chrome: TechButtonChrome.borderless,
+            trailingIconWidth: SettingsTrailing.slotWidth,
             onTap: onOpen,
           ),
       ],

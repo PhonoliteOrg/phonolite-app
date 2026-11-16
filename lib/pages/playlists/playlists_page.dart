@@ -10,8 +10,8 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/playlist_section.dart';
+import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
@@ -34,7 +34,7 @@ class PlaylistsPage extends BasePage {
 class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
   late final PlaylistsController _feature = bindController(PlaylistsController(AppScope.of(context)));
 
-  DisplaySettingsController get _displaySettings => widget.displaySettings ?? DisplaySettingsController.instance;
+  DisplaySettingsController get _displaySettings => widget.displaySettings ?? SettingsScope.of(context).display;
 
   void _openDetail(BuildContext context, Playlist playlist, {required bool isLocal}) {
     Navigator.of(context).push(
@@ -95,7 +95,6 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
       message: selected.length == 1
           ? 'Are you sure you want to delete this playlist?'
           : 'Are you sure you want to delete these playlists?',
-      actionChrome: TechButtonChrome.borderless,
     );
 
     if (!confirmed || !mounted) {

@@ -29,6 +29,24 @@ void main() {
     }
   });
 
+  test('native updater process secures staging and reads the current process identity', () async {
+    const process = LinuxUpdateProcess();
+    final stage = await process.createPrivateStage();
+    addTearDown(() => stage.delete(recursive: true));
+    final file = File('${stage.path}/manifest.json');
+    final contents = utf8.encode('{}');
+
+    await process.writePrivateFile(file, contents);
+    final identity = await process.applicationIdentity();
+
+    const permissionBits = 0x1ff;
+    expect((await stage.stat()).mode & permissionBits, 0x1c0); // 0700
+    expect((await file.stat()).mode & permissionBits, 0x180); // 0600
+    expect(await file.readAsBytes(), contents);
+    expect(identity.pid, pid);
+    expect(identity.startTime, greaterThan(0));
+  }, skip: Platform.isLinux ? false : 'Requires Linux procfs and chmod.');
+
   test('unmanaged installations expose the native disabled reason', () async {
     final process = _Process()..managed = false;
     final platform = LinuxAppUpdatePlatform(process: process);
@@ -136,14 +154,17 @@ void main() {
     await platform.latest(configuration);
     final verifying = Completer<void>();
     process.verification = verifying;
-    platform.progress.addListener(() {
-      if (platform.progress.value.phase == AppUpdatePhase.verifying) platform.cancelDownload();
-    });
     final install = platform.showUpdate();
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    verifying.complete();
+    try {
+      await process.verificationStarted.future.timeout(const Duration(seconds: 5));
+      expect(platform.progress.value.phase, AppUpdatePhase.verifying);
+      platform.cancelDownload();
+    } finally {
+      verifying.complete();
+    }
     await install;
     expect(process.coordinates, 0);
+    expect(process.identityReads, 0);
     expect(platform.progress.value.phase, AppUpdatePhase.idle);
     await platform.dispose();
   });
@@ -201,6 +222,8 @@ AppUpdateTransport _transport() => AppUpdateTransport(
 );
 
 class _Process extends LinuxUpdateProcess {
+  static const _identity = (pid: 1234, startTime: 12345);
+
   bool managed = true;
   Map<String, dynamic>? receipt;
   bool invalid = false;
@@ -209,6 +232,8 @@ class _Process extends LinuxUpdateProcess {
   int coordinates = 0;
   final commands = <List<String>>[];
   final stages = <String>[];
+  int identityReads = 0;
+  final verificationStarted = Completer<void>();
   _Child? child;
 
   @override
@@ -225,7 +250,12 @@ class _Process extends LinuxUpdateProcess {
       };
     }
     if (invalid) throw StateError('Invalid manifest signature.');
-    await verification?.future;
+    expect(await File(arguments[1]).readAsString(), '{}');
+    expect(await File(arguments[2]).readAsString(), '{}');
+    if (verification case final gate?) {
+      verificationStarted.complete();
+      await gate.future;
+    }
     return {
       'version': '0.5.0',
       'package_version': '0.5.0-1',
@@ -239,10 +269,27 @@ class _Process extends LinuxUpdateProcess {
   }
 
   @override
+  Future<({int pid, int startTime})> applicationIdentity() async {
+    identityReads++;
+    return _identity;
+  }
+
+  @override
+  Future<Directory> createPrivateStage() => Directory.systemTemp.createTemp('phonolite-update-test-');
+
+  @override
+  Future<void> writePrivateFile(File file, List<int> bytes) async {
+    await file.writeAsBytes(bytes);
+  }
+
+  @override
   Future<Process> coordinate(String directory) async {
     coordinates++;
     stages.add(directory);
+    expect(await File('$directory/candidate').readAsString(), 'package bytes');
     final request = jsonDecode(await File('$directory/request.json').readAsString()) as Map<String, dynamic>;
+    expect(request['pid'], _identity.pid);
+    expect(request['start'], _identity.startTime);
     child = _Child(response, request['correlation'] as String);
     return child!;
   }

@@ -1,9 +1,10 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
+
 import 'package:phonolite_app/ui/navigation/desktop_mouse_navigation.dart';
 import 'package:phonolite_app/ui/navigation/menu_navigation_history.dart';
+import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
 
 void main() {
   const desktops = TargetPlatformVariant({
@@ -11,6 +12,81 @@ void main() {
     TargetPlatform.macOS,
     TargetPlatform.linux,
   });
+
+  testWidgets('macOS trackpad swipes navigate back and forward once per gesture', (tester) async {
+    final menu = await _pumpMenu(tester);
+    final navigator = menu.navigators[0].currentState!;
+    navigator.push<void>(_page('Artist'));
+    navigator.push<void>(_page('Album'));
+    await tester.pumpAndSettle();
+
+    await _swipe(tester, const Offset(160, 10));
+    expect(find.text('Artist'), findsOneWidget);
+    await _swipe(tester, const Offset(-160, 10));
+    expect(find.text('Album'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('small, vertical, diagonal, zoom and rotate gestures stay on the page', (tester) async {
+    final menu = await _pumpMenu(tester);
+    menu.navigators[0].currentState!.push<void>(_page('Album'));
+    await tester.pumpAndSettle();
+
+    await _swipe(tester, const Offset(40, 0));
+    await _swipe(tester, const Offset(10, 160));
+    await _swipe(tester, const Offset(160, 100));
+    await _swipe(tester, const Offset(160, 0), scale: 1.25);
+    await _swipe(tester, const Offset(160, 0), rotation: 0.1);
+    expect(find.text('Album'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('macOS trackpad scrolling takes precedence over page navigation', (tester) async {
+    final menu = await _pumpMenu(tester);
+    final navigator = menu.navigators[0].currentState!;
+
+    for (final axis in Axis.values) {
+      final scroll = ScrollController(initialScrollOffset: 200);
+      addTearDown(scroll.dispose);
+      navigator.push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            body: ListView.builder(
+              controller: scroll,
+              scrollDirection: axis,
+              itemExtent: 100,
+              itemCount: 20,
+              itemBuilder: (_, index) => Text('Item $index'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _swipe(tester, axis == Axis.horizontal ? const Offset(160, 0) : const Offset(0, 160));
+      expect(scroll.offset, lessThan(200));
+      expect(navigator.canPop(), isTrue);
+
+      if (axis == Axis.vertical) {
+        await _swipe(tester, const Offset(160, 0));
+        expect(find.text('Root 0'), findsOneWidget);
+      } else {
+        navigator.pop();
+        await tester.pumpAndSettle();
+      }
+    }
+
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('trackpad swipes are scoped to macOS', (tester) async {
+    final menu = await _pumpMenu(tester);
+    menu.navigators[0].currentState!.push<void>(_page('Album'));
+    await tester.pumpAndSettle();
+
+    await _swipe(tester, const Offset(160, 0));
+    expect(find.text('Album'), findsOneWidget);
+  }, variant: const TargetPlatformVariant({TargetPlatform.windows, TargetPlatform.linux, TargetPlatform.iOS}));
 
   testWidgets(
     'side buttons follow the menu back stack and forward history',
@@ -265,5 +341,23 @@ Future<void> _click(
     buttons: buttons,
   );
   await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+Future<void> _swipe(WidgetTester tester, Offset pan, {double scale = 1, double rotation = 0}) async {
+  const position = Offset(100, 100);
+  final gesture = await tester.startGesture(position, kind: PointerDeviceKind.trackpad);
+
+  for (var step = 1; step <= 4; step++) {
+    await gesture.panZoomUpdate(
+      position,
+      pan: pan * (step / 4),
+      scale: scale,
+      rotation: rotation,
+      timeStamp: Duration(milliseconds: step * 16),
+    );
+  }
+
+  await gesture.panZoomEnd(timeStamp: const Duration(milliseconds: 80));
   await tester.pumpAndSettle();
 }

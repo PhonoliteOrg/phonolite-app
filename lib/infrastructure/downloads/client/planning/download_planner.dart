@@ -65,7 +65,7 @@ class _DownloadPlanner {
 
     if (_host.connection.token != null && _host.connection.token!.isNotEmpty) {
       Object? batchError;
-      var batchResponded = false;
+      DownloadBatchManifest? batchManifest;
 
       try {
         final manifest = await _host.connection.createDownloadBatch(<String>[serverTrackId]);
@@ -74,7 +74,7 @@ class _DownloadPlanner {
           return 0;
         }
 
-        batchResponded = true;
+        batchManifest = manifest;
 
         if (manifest.items.isEmpty) {
           String? reason;
@@ -92,7 +92,21 @@ class _DownloadPlanner {
         if (playlistOwned && !await _host._storage.hasDownloadDemand(source)) {
           return 0;
         }
+      } catch (err) {
+        if (!current()) {
+          return 0;
+        }
 
+        if (batchManifest != null) {
+          rethrow;
+        }
+
+        batchError = err;
+        AppLogger.warning('Download batch metadata failed for ${track.title}: $err');
+      }
+
+      // Staging runs outside the fetch handlers so storage failures reach the caller.
+      if (batchManifest case final manifest?) {
         if (!playlistOwned) {
           return _ownerBatch(manifest, label: track.title, isCurrent: current);
         }
@@ -108,75 +122,12 @@ class _DownloadPlanner {
             await _discardEmptyPlaylistBatch(manifest.batchId);
           }
         });
-      } catch (err) {
-        if (!current()) {
-          return 0;
-        }
-
-        if (batchResponded) {
-          rethrow;
-        }
-
-        batchError = err;
-        AppLogger.warning('Download batch metadata failed for ${track.title}: $err');
       }
 
+      final OfflineTrackMetadata metadata;
+
       try {
-        final metadata = await _host.connection.fetchOfflineMetadata(serverTrackId);
-
-        if (!current()) {
-          return 0;
-        }
-
-        final now = DateTime.now();
-        final hydratedTrack = metadata.track.copyWith(
-          id: serverTrackId,
-          serverBaseUrl: baseUrl,
-          serverTrackId: serverTrackId,
-        );
-        final initial =
-            existing?.copyWith(
-              status: OfflineDownloadStatus.queued,
-              updatedAt: now,
-              filePath: null,
-              error: null,
-              retryCount: existing.retryCount + 1,
-              track: hydratedTrack,
-              offlineMetadata: metadata.copyWith(track: hydratedTrack),
-            ) ??
-            OfflineTrackDownload(
-              serverBaseUrl: baseUrl,
-              track: hydratedTrack,
-              offlineMetadata: metadata.copyWith(track: hydratedTrack),
-              status: OfflineDownloadStatus.queued,
-              createdAt: now,
-              updatedAt: now,
-            );
-        Future<int> stageMetadata() async {
-          if (!current() || (playlistOwned && !await _host._storage.hasDownloadDemand(source))) {
-            return 0;
-          }
-
-          final queued = await _host._storageOperation(() => _host._storage.prepareDownload(initial));
-
-          if (!current()) {
-            return 0;
-          }
-
-          _host._clearObsoleteStopMarkersForQueue(queued);
-
-          await _host._replace(queued, persist: true);
-
-          if (!current()) {
-            return 0;
-          }
-
-          _host._schedule();
-
-          return 1;
-        }
-
-        return playlistOwned ? _host._ownerPlaylistDownloads.mutate(stageMetadata) : stageMetadata();
+        metadata = await _host.connection.fetchOfflineMetadata(serverTrackId);
       } catch (err) {
         if (!_host._localDataCurrent(dataRevision)) {
           return 0;
@@ -184,6 +135,61 @@ class _DownloadPlanner {
 
         throw Exception('offline metadata unavailable for ${track.title}: $err; batch error: $batchError');
       }
+
+      if (!current()) {
+        return 0;
+      }
+
+      final now = DateTime.now();
+      final hydratedTrack = metadata.track.copyWith(
+        id: serverTrackId,
+        serverBaseUrl: baseUrl,
+        serverTrackId: serverTrackId,
+      );
+      final initial =
+          existing?.copyWith(
+            status: OfflineDownloadStatus.queued,
+            updatedAt: now,
+            filePath: null,
+            error: null,
+            retryCount: existing.retryCount + 1,
+            track: hydratedTrack,
+            offlineMetadata: metadata.copyWith(track: hydratedTrack),
+          ) ??
+          OfflineTrackDownload(
+            serverBaseUrl: baseUrl,
+            track: hydratedTrack,
+            offlineMetadata: metadata.copyWith(track: hydratedTrack),
+            status: OfflineDownloadStatus.queued,
+            createdAt: now,
+            updatedAt: now,
+          );
+
+      Future<int> stageMetadata() async {
+        if (!current() || (playlistOwned && !await _host._storage.hasDownloadDemand(source))) {
+          return 0;
+        }
+
+        final queued = await _host._storageOperation(() => _host._storage.prepareDownload(initial));
+
+        if (!current()) {
+          return 0;
+        }
+
+        _host._clearObsoleteStopMarkersForQueue(queued);
+
+        await _host._replace(queued, persist: true);
+
+        if (!current()) {
+          return 0;
+        }
+
+        _host._schedule();
+
+        return 1;
+      }
+
+      return playlistOwned ? _host._ownerPlaylistDownloads.mutate(stageMetadata) : stageMetadata();
     }
 
     throw Exception('server session required to fetch offline metadata for ${track.title}');

@@ -1,4 +1,4 @@
-import 'dart:ui' show SemanticsAction, SemanticsActionEvent;
+import 'dart:ui' show SemanticsAction, SemanticsActionEvent, Tristate;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -54,10 +54,8 @@ void main() {
       var data = tester.getSemantics(find.byType(ObsidianSwitch)).getSemanticsData();
 
       expect(data.label, 'Example setting');
-      expect(data.flagsCollection.hasToggledState, isTrue);
-      expect(data.flagsCollection.isToggled, isFalse);
-      expect(data.flagsCollection.hasEnabledState, isTrue);
-      expect(data.flagsCollection.isEnabled, isTrue);
+      expect(data.flagsCollection.isToggled, Tristate.isFalse);
+      expect(data.flagsCollection.isEnabled, Tristate.isTrue);
       expect(data.hasAction(SemanticsAction.tap), isTrue);
       tester.binding.performSemanticsAction(
         SemanticsActionEvent(
@@ -73,8 +71,8 @@ void main() {
       await tester.pumpAndSettle();
       data = tester.getSemantics(find.byType(ObsidianSwitch)).getSemanticsData();
 
-      expect(data.flagsCollection.isToggled, isTrue);
-      expect(data.flagsCollection.isEnabled, isFalse);
+      expect(data.flagsCollection.isToggled, Tristate.isTrue);
+      expect(data.flagsCollection.isEnabled, Tristate.isFalse);
       expect(data.hasAction(SemanticsAction.tap), isFalse);
       await tester.tap(find.byType(ObsidianSwitch));
       await tester.pumpAndSettle();

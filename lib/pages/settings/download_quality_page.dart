@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/download_quality_selection.dart';
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/settings_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
@@ -28,7 +29,7 @@ class DownloadQualityPage extends BasePage {
 }
 
 class _DownloadQualityPageState extends BasePageState<DownloadQualityPage> {
-  DownloadSettingsController get _controller => widget.controller ?? DownloadSettingsController.instance;
+  DownloadSettingsController get _controller => widget.controller ?? SettingsScope.of(context).download;
 
   @override
   bool get usesScaffold => true;
@@ -103,7 +104,10 @@ class _DownloadQualityPageState extends BasePageState<DownloadQualityPage> {
                   if (!_controller.ready)
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: TechButton(label: 'Retry', onTap: () => unawaited(_retry())),
+                      child: TextButton(
+                        onPressed: withButtonHaptic(() => unawaited(_retry())),
+                        child: const Text('Retry'),
+                      ),
                     ),
                 ],
               ],

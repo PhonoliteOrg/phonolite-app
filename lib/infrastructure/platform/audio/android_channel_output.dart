@@ -27,16 +27,12 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
   int _writeEpoch = 0;
 
   AndroidChannelPlayer({
-    required int sampleRate,
-    required int channels,
-    required int deviceId,
-    int bitsPerSample = 16,
-    int validBitsPerSample = 16,
-  }) : _sampleRate = sampleRate,
-       _channels = channels,
-       _deviceId = deviceId,
-       _bitsPerSample = bitsPerSample,
-       _validBitsPerSample = validBitsPerSample;
+    required this._sampleRate,
+    required this._channels,
+    required this._deviceId,
+    this._bitsPerSample = 16,
+    this._validBitsPerSample = 16,
+  });
 
   @override
   Future<void> initialize() {

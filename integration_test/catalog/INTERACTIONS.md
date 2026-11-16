@@ -1,6 +1,6 @@
 # On-screen interaction inventory
 
-254 source-audited interaction patterns across 12 feature catalogs. 67 patterns have a device journey; that is implementation coverage, not proof that they ran on a phone.
+252 source-audited interaction patterns across 12 feature catalogs. 67 patterns have a device journey; that is implementation coverage, not proof that they ran on a phone.
 
 23 patterns also link to the separate opt-in playback-changing suite. Run it with `bash tools/ui_tests/run_player_controls.sh DEVICE_ID`; those actions do not run in the ordinary UI suite.
 
@@ -284,7 +284,7 @@ Sources: [lib/pages/settings/settings_page.dart](../../lib/pages/settings/settin
 
 ## Shared Platform
 
-Sources: [lib/ui/shared/music/compact_hero_details.dart](../../lib/ui/shared/music/compact_hero_details.dart), [lib/ui/shared/design_system/interaction/dismissible_selection_area.dart](../../lib/ui/shared/design_system/interaction/dismissible_selection_area.dart), [lib/ui/navigation/desktop_mouse_navigation.dart](../../lib/ui/navigation/desktop_mouse_navigation.dart), [lib/ui/navigation/desktop_playback_shortcuts.dart](../../lib/ui/navigation/desktop_playback_shortcuts.dart), [lib/pages/search/search_page.dart](../../lib/pages/search/search_page.dart), [lib/pages/splash/splash_page.dart](../../lib/pages/splash/splash_page.dart)
+Sources: [lib/ui/shared/music/compact_hero_details.dart](../../lib/ui/shared/music/compact_hero_details.dart), [lib/ui/shared/design_system/interaction/dismissible_selection_area.dart](../../lib/ui/shared/design_system/interaction/dismissible_selection_area.dart), [lib/ui/navigation/desktop_mouse_navigation.dart](../../lib/ui/navigation/desktop_mouse_navigation.dart), [lib/ui/navigation/desktop_playback_shortcuts.dart](../../lib/ui/navigation/desktop_playback_shortcuts.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |
@@ -300,12 +300,10 @@ Sources: [lib/ui/shared/music/compact_hero_details.dart](../../lib/ui/shared/mus
 | desktop.mouse_history | Use mouse Back/Forward | Navigate current tab history | Desktop only | browse | Pending / prerequisite-specific |
 | desktop.space | Press Space outside inputs | Toggle playback once per keypress | Desktop only | playback | Pending / prerequisite-specific |
 | desktop.volume | Adjust visible desktop volume control | Update volume | Desktop layout | preference | Pending / prerequisite-specific |
-| unreachable.search_page | Standalone SearchPage filter chips/search/results | Not reachable from current HomePage navigation; do not count as shipped coverage | Source-only page | browse | Pending / prerequisite-specific |
-| unreachable.splash_page | Standalone SplashPage controls | Not mounted by current main/HomePage; excluded from reachable coverage | Source-only page | browse | Pending / prerequisite-specific |
 
 ## Stats
 
-Sources: [lib/pages/listening_stats/stats_page.dart](../../lib/pages/listening_stats/stats_page.dart), [lib/ui/features/listening_stats/widgets/stats_cards.dart](../../lib/ui/features/listening_stats/widgets/stats_cards.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart)
+Sources: [lib/pages/listening_stats/stats_page.dart](../../lib/pages/listening_stats/stats_page.dart), [lib/ui/features/listening_stats/widgets/stats_cards_content.dart](../../lib/ui/features/listening_stats/widgets/stats_cards_content.dart), [lib/ui/features/listening_stats/widgets/stats_header.dart](../../lib/ui/features/listening_stats/widgets/stats_header.dart), [lib/ui/features/listening_stats/widgets/stats_history_status.dart](../../lib/ui/features/listening_stats/widgets/stats_history_status.dart), [lib/ui/shell/toolbars/base_page_toolbar.dart](../../lib/ui/shell/toolbars/base_page_toolbar.dart), [lib/ui/shell/toolbars/library_header.dart](../../lib/ui/shell/toolbars/library_header.dart)
 
 | ID | Visible action | Expected outcome | Available when | Effect | Device journey |
 | --- | --- | --- | --- | --- | --- |

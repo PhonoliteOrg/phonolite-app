@@ -21,7 +21,7 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/pages/listening_stats/stats_page.dart';
 import 'package:phonolite_app/pages/settings/settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards_content.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
@@ -258,6 +258,9 @@ Future<void> _dismissHistoryStatus(WidgetTester tester) async {
   await tester.pumpAndSettle();
   expect(find.byType(ObsidianAlertDialog), findsNothing);
 }
+
+Widget _statsContent(StatsResponse stats) =>
+    BackdropGroup(child: SingleChildScrollView(child: StatsCardsContent(stats: stats)));
 
 void main() {
   setUp(configureTestFonts);
@@ -708,15 +711,7 @@ void main() {
         topArtists: [],
         topGenres: [],
       );
-      await tester.pumpWidget(
-        wrapInTestApp(
-          StatsCards(
-            stats: stats,
-            onYearChanged: (_) {},
-            onMonthChanged: (_) {},
-          ),
-        ),
-      );
+      await tester.pumpWidget(wrapInTestApp(_statsContent(stats)));
       expect(find.text('12s'), findsOneWidget);
       expect(find.text('47'), findsOneWidget);
       expect(find.text('11'), findsOneWidget);
@@ -743,11 +738,7 @@ void main() {
         StatsItem(id: 'folk', name: 'Folk', minutes: 0, listeningMs: 500),
       ],
     );
-    await tester.pumpWidget(
-      wrapInTestApp(
-        StatsCards(stats: stats, onYearChanged: (_) {}, onMonthChanged: (_) {}),
-      ),
-    );
+    await tester.pumpWidget(wrapInTestApp(_statsContent(stats)));
 
     expect(find.text('Jazz'), findsOneWidget);
     expect(find.text('Rock'), findsOneWidget);
@@ -801,15 +792,7 @@ void main() {
             StatsItem(id: 'genre-$i', name: 'Genre $i', minutes: 20 - i),
         ],
       );
-      await tester.pumpWidget(
-        wrapInTestApp(
-          StatsCards(
-            stats: stats,
-            onYearChanged: (_) {},
-            onMonthChanged: (_) {},
-          ),
-        ),
-      );
+      await tester.pumpWidget(wrapInTestApp(_statsContent(stats)));
 
       expect(find.byType(ArtistRowTile), findsNWidgets(5));
       expect(find.text('Artist 5'), findsOneWidget);
@@ -894,15 +877,7 @@ void main() {
         'other_genre_listening_ms': 50000,
         'unclassified_listening_ms': 50001,
       });
-      await tester.pumpWidget(
-        wrapInTestApp(
-          StatsCards(
-            stats: stats,
-            onYearChanged: (_) {},
-            onMonthChanged: (_) {},
-          ),
-        ),
-      );
+      await tester.pumpWidget(wrapInTestApp(_statsContent(stats)));
       expect(find.text('10m 0s'), findsOneWidget);
       expect(find.text('Other Genres'), findsOneWidget);
       expect(find.text('Unclassified'), findsOneWidget);
@@ -1008,6 +983,7 @@ void main() {
       await tester.pumpAndSettle();
       final toggle = find.byKey(const ValueKey('listening-statistics-switch'));
       await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
       expect(tester.widget<ObsidianSwitch>(toggle).value, isTrue);
       expect(find.text('Listening statistics'), findsOneWidget);
       await tester.tap(toggle);

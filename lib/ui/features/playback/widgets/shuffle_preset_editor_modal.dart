@@ -93,6 +93,8 @@ class _ShufflePresetEditorModalState extends State<ShufflePresetEditorModal>
               ObsidianTextField(
                 controller: _nameController,
                 hintText: 'Custom shuffle name',
+                startPadding: 24,
+                isDense: true,
                 enabled: !_feature.saving,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => FocusScope.of(context).unfocus(),

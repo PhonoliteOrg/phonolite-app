@@ -68,7 +68,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
           : 'Queue downloads for every album by ${_feature.artist.name}? This may use significant storage.',
       confirmLabel: 'Download',
       confirmVariant: TechButtonVariant.standard,
-      actionChrome: TechButtonChrome.borderless,
     );
 
     if (!confirmed || !mounted) {
@@ -155,7 +154,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
                     icon: downloadSummary.isComplete ? PhonoliteIcons.circleCheck : PhonoliteIcons.download,
                     iconOnly: compactHeaderActions,
                     tooltip: downloadSummary.label,
-                    chrome: TechButtonChrome.borderless,
                     onTap: !isLoading && downloadSummary.canStart
                         ? () => _confirmDownloadArtist(controller, headlineAlbums, downloadSummary)
                         : null,

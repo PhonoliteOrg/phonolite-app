@@ -9,9 +9,7 @@ class LocalLibrarySelection {
   final Iterable<Track> _tracks;
   final Iterable<OfflineArtistGroup> _artists;
 
-  const LocalLibrarySelection({required Iterable<Track> tracks, required Iterable<OfflineArtistGroup> artists})
-    : _tracks = tracks,
-      _artists = artists;
+  const LocalLibrarySelection({required this._tracks, required this._artists});
 
   OfflineArtistGroup? artist(String artistId) {
     final target = artistId.trim();

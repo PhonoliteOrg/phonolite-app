@@ -174,7 +174,6 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
       label: label,
       hintText: hintText,
       height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
-      cut: 0,
       startPadding: 24,
       isDense: true,
       enabled: !_feature.isSubmitting,

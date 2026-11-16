@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
-import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
-import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
@@ -21,6 +19,7 @@ import 'package:phonolite_app/ui/features/settings/sections/local_storage_settin
 import 'package:phonolite_app/ui/features/settings/sections/misc_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/playback_settings_section.dart';
 import 'package:phonolite_app/ui/features/settings/sections/user_settings_section.dart';
+import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
@@ -43,6 +42,7 @@ class SettingsPage extends BaseStatelessPage {
     required AuthState authState,
     required int sessionRevision,
   }) {
+    final settings = SettingsScope.of(context);
     final messages = snapshot.data ?? [];
     final logLabel = messages.isEmpty ? 'No events yet' : '${messages.length} log entries';
 
@@ -75,16 +75,15 @@ class SettingsPage extends BaseStatelessPage {
                 const SizedBox(height: 24),
                 if (authState.isAuthorized) ...[
                   ListenableBuilder(
-                    listenable: displaySettings ?? DisplaySettingsController.instance,
-                    builder: (context, _) =>
-                        DisplaySettingsSection(controller: displaySettings ?? DisplaySettingsController.instance),
+                    listenable: displaySettings ?? settings.display,
+                    builder: (context, _) => DisplaySettingsSection(controller: displaySettings ?? settings.display),
                   ),
                   const SizedBox(height: 24),
                 ],
-                if (DesktopSettingsController.instance.supported) ...[
+                if (settings.desktop.supported) ...[
                   ListenableBuilder(
-                    listenable: DesktopSettingsController.instance,
-                    builder: (context, _) => DesktopSettingsSection(controller: DesktopSettingsController.instance),
+                    listenable: settings.desktop,
+                    builder: (context, _) => DesktopSettingsSection(controller: settings.desktop),
                   ),
                   const SizedBox(height: 24),
                 ],
@@ -101,7 +100,7 @@ class SettingsPage extends BaseStatelessPage {
                     logLabel: logLabel,
                     appVersion: versionSnapshot.data ?? (versionSnapshot.hasError ? 'Unavailable' : 'Loading…'),
                     onOpenLogs: () => Navigator.of(context).push(LogsPage.route()),
-                    updates: AppUpdatesController.instance.showInSettings ? AppUpdatesController.instance : null,
+                    updates: settings.updates.showInSettings ? settings.updates : null,
                   ),
                 ),
               ],

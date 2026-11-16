@@ -22,12 +22,10 @@ class ArtworkApi {
   /// Callbacks retain the facade's override surface without importing its type.
   ArtworkApi(
     this._transport, {
-    required String Function(String albumId) albumCoverUrl,
-    required PlaylistCoverUrlBuilder playlistCoverUrl,
-    required ArtistCoverUrlBuilder artistCoverUrl,
-  }) : _albumCoverUrl = albumCoverUrl,
-       _playlistCoverUrl = playlistCoverUrl,
-       _artistCoverUrl = artistCoverUrl;
+    required this._albumCoverUrl,
+    required this._playlistCoverUrl,
+    required this._artistCoverUrl,
+  });
 
   String buildPlaylistCoverUrl(String playlistId, {String? imageRef}) =>
       ServerArtworkUrls.playlistCover(_transport.baseUrl, playlistId, imageRef: imageRef);

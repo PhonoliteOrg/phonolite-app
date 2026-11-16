@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.dart';
-import 'package:phonolite_app/ui/features/search/widgets/search_filter_chips.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 
 void main() {
@@ -72,7 +71,7 @@ void main() {
       expect(find.byIcon(PhonoliteIcons.squareCheck), findsOneWidget);
       expect(
         tester.getSemantics(find.byType(Checkbox)),
-        containsSemantics(hasCheckedState: true, isChecked: true),
+        isSemantics(hasCheckedState: true, isChecked: true),
       );
       await tester.tap(find.byType(Checkbox));
       await tester.pumpAndSettle();
@@ -86,32 +85,5 @@ void main() {
     } finally {
       semantics.dispose();
     }
-  });
-
-  testWidgets('search filter chips use Lucide checks and remain selectable', (
-    tester,
-  ) async {
-    var selected = 'artist';
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) => SearchFilterChips(
-              activeFilter: selected,
-              onChanged: (value) => setState(() => selected = value),
-            ),
-          ),
-        ),
-      ),
-    );
-    for (final chip in tester.widgetList<ChoiceChip>(find.byType(ChoiceChip))) {
-      expect(chip.showCheckmark, isFalse);
-    }
-    expect(find.byIcon(PhonoliteIcons.check), findsOneWidget);
-    await tester.tap(find.text('ALBUM'));
-    await tester.pumpAndSettle();
-    expect(selected, 'album');
-    expect(find.byIcon(PhonoliteIcons.check), findsOneWidget);
-    expect(tester.takeException(), isNull);
   });
 }

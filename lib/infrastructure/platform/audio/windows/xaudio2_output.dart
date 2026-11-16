@@ -24,18 +24,13 @@ class XAudio2Player implements AudioPcmOutput, AudioPcm32Output {
   Future<void>? _shutdown;
 
   XAudio2Player({
-    required int sampleRate,
-    required int channels,
-    required int deviceId,
-    int bitsPerSample = 16,
-    int validBitsPerSample = 16,
+    required this._sampleRate,
+    required this._channels,
+    required this._deviceId,
+    this._bitsPerSample = 16,
+    this._validBitsPerSample = 16,
     XAudio2Bindings Function()? bindingsFactory,
-  }) : _sampleRate = sampleRate,
-       _channels = channels,
-       _deviceId = deviceId,
-       _bitsPerSample = bitsPerSample,
-       _validBitsPerSample = validBitsPerSample,
-       _bindingsFactory = bindingsFactory ?? XAudio2Bindings.new;
+  }) : _bindingsFactory = bindingsFactory ?? XAudio2Bindings.new;
 
   @override
   Future<void> initialize() => _initialization ??= Future<void>.sync(() {

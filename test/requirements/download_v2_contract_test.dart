@@ -97,7 +97,7 @@ void main() {
     expectContainsAll(source, [
       'StreamBuilder<OfflineDownloadSnapshot>',
       'controller!.offlineDownloadSnapshotStream',
-      'DownloadManagerViewState(state.downloads, state.jobs)',
+      'DownloadManagerViewState(state.downloads, state.jobs, jobItems: state.jobItems)',
       'ListView.builder',
     ]);
     expect(source, isNot(contains('controller!.offlineDownloadsStream')));

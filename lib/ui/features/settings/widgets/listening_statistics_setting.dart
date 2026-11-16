@@ -44,12 +44,12 @@ class SettingsListeningStatisticsSettingState extends State<ListeningStatisticsS
       hoverColor: Colors.transparent,
       hoverGradient: const LinearGradient(colors: [Colors.transparent, Colors.transparent]),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
           SizedBox(
             width: compact ? 28 : 32,
             child: Padding(
-              padding: const EdgeInsets.only(top: 3),
+              padding: EdgeInsets.only(top: compact ? 3 : 0),
               child: StatsIcon(size: compact ? 20 : 24),
             ),
           ),
@@ -87,7 +87,6 @@ class SettingsListeningStatisticsSettingState extends State<ListeningStatisticsS
               ],
             ),
           ),
-          const SizedBox(width: 6),
           SettingsTrailing(
             child: ObsidianSwitch(
               key: const ValueKey('listening-statistics-switch'),
@@ -151,7 +150,6 @@ class SettingsListeningStatisticsSettingState extends State<ListeningStatisticsS
                 ],
               ),
             ),
-            SizedBox(width: compact ? 6 : 8),
             SettingsTrailing(
               child: Icon(PhonoliteIcons.trash2, size: compact ? 22 : 24, color: color),
             ),

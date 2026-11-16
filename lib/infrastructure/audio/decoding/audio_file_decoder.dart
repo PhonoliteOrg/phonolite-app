@@ -54,50 +54,41 @@ class AudioFileDecoder {
   int _recoveryAttemptsRemaining = 3;
   Stopwatch? _recoveryTransferClock;
 
-  AudioFileDecoder.local({required String filePath, Duration startOffset = Duration.zero})
-    : _filePath = filePath,
-      _url = null,
+  AudioFileDecoder.local({required String this._filePath, this._startOffset = Duration.zero})
+    : _url = null,
       _quicHost = null,
       _quicPort = null,
       _quicTrackId = null,
       _token = '',
       _serverPin = '',
-      _workerSpawner = null,
-      _startOffset = startOffset;
+      _workerSpawner = null;
 
   AudioFileDecoder.remote({
     required Uri url,
-    required String token,
-    required String serverPin,
-    Duration startOffset = Duration.zero,
+    required this._token,
+    required this._serverPin,
+    this._startOffset = Duration.zero,
   }) : _filePath = null,
        _url = url.toString(),
        _quicHost = null,
        _quicPort = null,
        _quicTrackId = null,
-       _token = token,
-       _serverPin = serverPin,
-       _workerSpawner = null,
-       _startOffset = startOffset;
+       _workerSpawner = null;
 
   AudioFileDecoder.quic({
     required String host,
     required int port,
     required String trackId,
-    required String token,
-    required String serverPin,
-    Duration startOffset = Duration.zero,
-    AudioFileDecoderWorkerSpawner? workerSpawner,
+    required this._token,
+    required this._serverPin,
+    this._startOffset = Duration.zero,
+    this._workerSpawner,
     Map<String, dynamic>? expectedSourceMetadata,
   }) : _filePath = null,
        _url = null,
        _quicHost = host,
        _quicPort = port,
        _quicTrackId = trackId,
-       _token = token,
-       _serverPin = serverPin,
-       _workerSpawner = workerSpawner,
-       _startOffset = startOffset,
        _expectedSourceMetadata = expectedSourceMetadata == null ? null : Map.unmodifiable(expectedSourceMetadata);
 
   AudioFileFormat get format => _format ?? (throw StateError('Audio decoder is not initialized.'));

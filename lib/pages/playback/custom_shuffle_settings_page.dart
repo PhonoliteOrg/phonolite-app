@@ -163,9 +163,7 @@ class _CustomShuffleSettingsPageState extends BasePageState<CustomShuffleSetting
             ),
             const SizedBox(height: 16),
             Text(
-              local
-                  ? 'Local filters stay on this device.'
-                  : 'Select saved rules to use for library shuffles on this device. Saving or applying them leaves other devices playing independently.',
+              local ? 'Local filters stay on this device.' : 'Select saved rules to use for library shuffles on this device. Saving or applying them leaves other devices playing independently.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted),
             ),
             if (!local && app.shufflePresetsAvailable) ...[

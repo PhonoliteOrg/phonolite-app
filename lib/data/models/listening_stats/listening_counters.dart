@@ -9,8 +9,8 @@ class ListeningCounterCheckpoint {
     required this.lastSequence,
     required this.lastHash,
     required this.upgraded,
-    required _CounterPayload payload,
-  }) : _payload = payload;
+    required this._payload,
+  });
 
   factory ListeningCounterCheckpoint.fromJson(Map<String, dynamic> json) => ListeningCounterCheckpoint._(
     lastSequence: json['last_sequence'] as int? ?? 0,
@@ -54,7 +54,7 @@ class ListeningCounterBatch {
   final int batchSequence;
   final _CounterPayload _payload;
 
-  ListeningCounterBatch._({required this.batchSequence, required _CounterPayload payload}) : _payload = payload;
+  ListeningCounterBatch._({required this.batchSequence, required this._payload});
 
   factory ListeningCounterBatch.fromJson(Map<String, dynamic> json) =>
       ListeningCounterBatch._(batchSequence: json['batch_sequence'] as int, payload: _CounterPayload(json));
@@ -80,8 +80,8 @@ class ListeningCounterPage {
     required this.revision,
     required this.hasMore,
     required this.nextKey,
-    required _CounterPayload payload,
-  }) : _payload = payload;
+    required this._payload,
+  });
 
   factory ListeningCounterPage.fromJson(Map<String, dynamic> json) => ListeningCounterPage._(
     historyGeneration: json['history_generation'] as int,

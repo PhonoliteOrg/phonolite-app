@@ -9,6 +9,7 @@ import 'package:phonolite_app/ui/features/settings/dialogs/settings_dialogs.dart
 import 'package:phonolite_app/ui/features/settings/widgets/download_quality_setting.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/offline_storage_section.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
+import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/structures/sections/base_section.dart';
 
 class LocalStorageSettingsSection extends BaseSection {
@@ -30,7 +31,7 @@ class LocalStorageSettingsSection extends BaseSection {
   List<Widget> sectionContent(BuildContext context) => [
     if (onDownloadQuality != null) ...[
       DownloadQualitySetting(
-        controller: downloadSettings ?? DownloadSettingsController.instance,
+        controller: downloadSettings ?? SettingsScope.of(context).download,
         onOpen: onDownloadQuality!,
       ),
       const SettingsDivider(),

@@ -22,12 +22,12 @@ class Artist {
     this.collabAlbumCount = 0,
     this.appearanceCount = 0,
     this.otherCreditCount = 0,
-    int? releaseCount,
+    this._releaseCount,
     this.genres = const [],
     this.summary,
     this.logoRef,
     this.bannerRef,
-  }) : _releaseCount = releaseCount;
+  });
 
   factory Artist.fromJson(Map<String, dynamic> json) {
     return Artist(

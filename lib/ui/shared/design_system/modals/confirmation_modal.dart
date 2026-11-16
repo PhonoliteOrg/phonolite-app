@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
@@ -13,7 +12,6 @@ class ConfirmationModal extends StatelessWidget {
   final String confirmLabel;
   final String cancelLabel;
   final TechButtonVariant confirmVariant;
-  final TechButtonChrome actionChrome;
 
   const ConfirmationModal({
     super.key,
@@ -22,7 +20,6 @@ class ConfirmationModal extends StatelessWidget {
     this.confirmLabel = 'Yes',
     this.cancelLabel = 'Cancel',
     this.confirmVariant = TechButtonVariant.danger,
-    this.actionChrome = TechButtonChrome.borderless,
   });
 
   static Future<bool> show(
@@ -32,7 +29,6 @@ class ConfirmationModal extends StatelessWidget {
     String confirmLabel = 'Yes',
     String cancelLabel = 'Cancel',
     TechButtonVariant confirmVariant = TechButtonVariant.danger,
-    TechButtonChrome actionChrome = TechButtonChrome.borderless,
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -42,7 +38,6 @@ class ConfirmationModal extends StatelessWidget {
         confirmLabel: confirmLabel,
         cancelLabel: cancelLabel,
         confirmVariant: confirmVariant,
-        actionChrome: actionChrome,
       ),
     );
 
@@ -63,23 +58,12 @@ class ConfirmationModal extends StatelessWidget {
         ),
       ),
       actions: [
-        if (actionChrome == TechButtonChrome.borderless) ...[
-          ModalActionButton(label: cancelLabel, onPressed: () => Navigator.of(context).pop(false)),
-          ModalActionButton(
-            label: confirmLabel,
-            variant: confirmVariant,
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ] else ...[
-          TextButton(onPressed: withButtonHaptic(() => Navigator.of(context).pop(false)), child: Text(cancelLabel)),
-          TechButton(
-            label: confirmLabel,
-            density: TechButtonDensity.compact,
-            variant: confirmVariant,
-            chrome: actionChrome,
-            onTap: () => Navigator.of(context).pop(true),
-          ),
-        ],
+        ModalActionButton(label: cancelLabel, onPressed: () => Navigator.of(context).pop(false)),
+        ModalActionButton(
+          label: confirmLabel,
+          variant: confirmVariant,
+          onPressed: () => Navigator.of(context).pop(true),
+        ),
       ],
     );
   }

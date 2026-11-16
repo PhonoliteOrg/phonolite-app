@@ -34,14 +34,11 @@ class ArtistReleases {
   final List<ArtistReleaseContribution> _otherCredits;
 
   const ArtistReleases({
-    List<Album> albums = const [],
-    List<ArtistReleaseContribution> collabAlbums = const [],
-    List<ArtistReleaseContribution> appearsOn = const [],
-    List<ArtistReleaseContribution> otherCredits = const [],
-  }) : _albums = albums,
-       _collabAlbums = collabAlbums,
-       _appearsOn = appearsOn,
-       _otherCredits = otherCredits;
+    this._albums = const [],
+    this._collabAlbums = const [],
+    this._appearsOn = const [],
+    this._otherCredits = const [],
+  });
 
   factory ArtistReleases.fromJson(Map<String, dynamic> json) => ArtistReleases(
     albums: [

@@ -9,11 +9,7 @@ class LogStorageSettingsStorage {
   final SettingsFiles _files;
   final bool Function()? _usesManagedStoragePaths;
 
-  const LogStorageSettingsStorage({
-    SettingsFiles files = const SettingsFiles(),
-    bool Function()? usesManagedStoragePaths,
-  }) : _files = files,
-       _usesManagedStoragePaths = usesManagedStoragePaths;
+  const LogStorageSettingsStorage({this._files = const SettingsFiles(), this._usesManagedStoragePaths});
 
   bool get usesManagedStoragePaths => _usesManagedStoragePaths?.call() ?? (!kIsWeb && Platform.isIOS);
 

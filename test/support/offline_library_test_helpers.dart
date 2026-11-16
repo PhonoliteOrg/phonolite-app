@@ -7,7 +7,6 @@ import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
@@ -160,90 +159,25 @@ OfflineTrackMetadata offlineTestOfflineMetadata({
 }
 
 class DelayedReadStorage extends OfflineLibraryStorage {
-  DelayedReadStorage(this.delegate);
+  final readStarted = Completer<void>();
+  final _readReleased = Completer<void>();
 
-  final OfflineLibraryStorage delegate;
-  final Completer<void> _readCompleter = Completer<void>();
+  DelayedReadStorage(Directory directory) : super(baseDirectory: directory);
 
   void releaseRead() {
-    if (!_readCompleter.isCompleted) {
-      _readCompleter.complete();
+    if (!_readReleased.isCompleted) {
+      _readReleased.complete();
     }
   }
 
   @override
   Future<List<OfflineTrackDownload>> readDownloads() async {
-    await _readCompleter.future;
-    return delegate.readDownloads();
-  }
+    if (!readStarted.isCompleted) {
+      readStarted.complete();
+    }
 
-  @override
-  Future<List<OfflineDownloadBatch>> readDownloadBatches() {
-    return delegate.readDownloadBatches();
-  }
-
-  @override
-  Future<List<Playlist>> readLocalPlaylists() {
-    return delegate.readLocalPlaylists();
-  }
-
-  @override
-  Future<List<Track>> readLocalLikedTracks() {
-    return delegate.readLocalLikedTracks();
-  }
-
-  @override
-  Future<List<Track>> readLocalPlaylistTracks(String playlistId) {
-    return delegate.readLocalPlaylistTracks(playlistId);
-  }
-
-  @override
-  Future<List<OfflineTrackDownload>> prepareDownloads(
-    List<OfflineTrackDownload> downloads,
-  ) {
-    return delegate.prepareDownloads(downloads);
-  }
-
-  @override
-  Future<void> upsertDownloads(List<OfflineTrackDownload> downloads) {
-    return delegate.upsertDownloads(downloads);
-  }
-
-  @override
-  Future<void> removeDownloads(Iterable<OfflineTrackDownload> downloads) {
-    return delegate.removeDownloads(downloads);
-  }
-
-  @override
-  Future<OfflineDeletionResult> removeDownloadsScoped(
-    OfflineDeletionRequest request,
-  ) {
-    return delegate.removeDownloadsScoped(request);
-  }
-
-  @override
-  Future<void> recordPendingFileDeletes(Iterable<String?> paths) {
-    return delegate.recordPendingFileDeletes(paths);
-  }
-
-  @override
-  Future<List<String>> readPendingFileDeletes() {
-    return delegate.readPendingFileDeletes();
-  }
-
-  @override
-  Future<void> clearPendingFileDeletes(Iterable<String> paths) {
-    return delegate.clearPendingFileDeletes(paths);
-  }
-
-  @override
-  Future<bool> isManagedDeletePath(String path) {
-    return delegate.isManagedDeletePath(path);
-  }
-
-  @override
-  Future<void> upsertDownloadBatch(OfflineDownloadBatch batch) {
-    return delegate.upsertDownloadBatch(batch);
+    await _readReleased.future;
+    return super.readDownloads();
   }
 }
 

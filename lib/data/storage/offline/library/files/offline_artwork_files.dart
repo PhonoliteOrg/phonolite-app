@@ -124,9 +124,8 @@ class _OfflineArtworkFiles {
     final seen = <String>{};
 
     for (final extension in extensions) {
-      final safeExtension = OfflineLibraryStorage._safePathToken(
-        extension.trim().replaceAll('.', ''),
-      ).replaceAll('.', '');
+      final safeExtension = OfflineLibraryStorage._safePathToken(extension.trim().replaceAll('.', ''))
+          .replaceAll('.', '');
 
       if (safeExtension.isEmpty || !seen.add(safeExtension)) {
         continue;

@@ -43,8 +43,7 @@ class DesktopSettingsSection extends BaseSection {
     const SettingsDivider(),
     _toggle(
       title: 'Run in background',
-      subtitle:
-          'Keep playback and downloads running when you close the window. Use the tray or menu bar to show or quit Phonolite.',
+      subtitle: 'Keep playback and downloads running when you close the window. Use the tray or menu bar to show or quit Phonolite.',
       icon: const SvgAssetIcon(assetName: 'assets/icons/lucide/layers-arrow-down.svg'),
       value: controller.settings.runInBackground,
       settingKey: 'desktop-run-in-background',

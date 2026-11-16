@@ -20,12 +20,7 @@ class PlaybackPresenceReporter {
   bool _closed = false;
   bool _unsupported = false;
 
-  PlaybackPresenceReporter({
-    required this.clientId,
-    required Future<void> Function(String clientId, int sequence, bool playing) send,
-    int Function()? nextSequence,
-  }) : _send = send,
-       _nextSequence = nextSequence;
+  PlaybackPresenceReporter({required this.clientId, required this._send, this._nextSequence});
 
   void update(bool playing) {
     if (_closed || _unsupported || playing == _playing) return;

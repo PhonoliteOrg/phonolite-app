@@ -6,8 +6,11 @@ import 'package:phonolite_app/data/models/library/artist_summary.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 import 'package:phonolite_app/data/structures/library/byte_lru_cache.dart';
 
-typedef ArtistSummaryPageFetcher =
-    Future<ArtistSummaryPage> Function({required int limit, required int offset, String? revision});
+typedef ArtistSummaryPageFetcher = Future<ArtistSummaryPage> Function({
+  required int limit,
+  required int offset,
+  String? revision,
+});
 
 /// One logical catalogue with a byte/count-bounded materialized window.
 /// Index identity and total survive page eviction. Snapshots do not replay.

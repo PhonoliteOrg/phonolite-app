@@ -9,7 +9,7 @@ help review gaps after UI changes; reusable wrappers are included.
 This is an inventory of interaction **patterns**, not a claim to have visited
 every runtime state. One track-row pattern covers repeated rows; local/server,
 loading/disabled, empty/populated, and different layouts still need device runs.
-Source-only SearchPage/SplashPage, desktop-only input, and native iOS UI are
+Desktop-only input and native iOS UI are
 explicitly distinguished from reachable mobile Flutter controls.
 
 ## Find a test

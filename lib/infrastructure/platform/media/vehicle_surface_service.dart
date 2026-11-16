@@ -9,7 +9,7 @@ import 'package:phonolite_app/infrastructure/platform/media/vehicle_surface_code
 class VehicleSurfaceService {
   final MethodChannel _channel;
 
-  VehicleSurfaceService({MethodChannel channel = const MethodChannel('phonolite/carplay')}) : _channel = channel;
+  VehicleSurfaceService({this._channel = const MethodChannel('phonolite/carplay')});
 
   bool get isSupported => Platform.isIOS || Platform.isAndroid;
 

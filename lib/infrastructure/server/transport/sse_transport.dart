@@ -32,13 +32,7 @@ class _SseRequest<T> {
   bool _cancelled = false;
   String _buffer = '';
 
-  _SseRequest({
-    required ApiTransport transport,
-    required String path,
-    required T? Function(Map<String, dynamic>) decode,
-  }) : _transport = transport,
-       _path = path,
-       _decode = decode {
+  _SseRequest({required this._transport, required this._path, required this._decode}) {
     _controller = StreamController<T>(onListen: _start, onPause: _pause, onResume: _resume, onCancel: _cancel);
   }
 

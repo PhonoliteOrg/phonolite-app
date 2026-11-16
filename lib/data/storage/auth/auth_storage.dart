@@ -15,7 +15,7 @@ class AuthStorage {
   static const String _vaultKey = 'phonolite.auth.session.v1';
   final SettingsFiles _files;
 
-  const AuthStorage({SettingsFiles files = const SettingsFiles()}) : _files = files;
+  const AuthStorage({this._files = const SettingsFiles()});
 
   /// Before connecting, retain only security data owned by a remembered session.
   /// A saved server may be offline; cleanup never probes or authenticates it.

@@ -28,19 +28,15 @@ class MetadataEventListener {
   final _requests = RequestGeneration();
 
   MetadataEventListener({
-    required Stream<MetadataUpdateEvent> Function() openStream,
-    required bool Function(String baseUrl, String token) isSessionCurrent,
-    required Future<void> Function(MetadataUpdateEvent) applyEvent,
-    required void Function(String) onDiagnostic,
-    void Function()? onSessionInvalidated,
+    required this._openStream,
+    required this._isSessionCurrent,
+    required this._applyEvent,
+    required this._onDiagnostic,
+    this._onSessionInvalidated,
     this.debounceDelay = const Duration(milliseconds: 250),
     this.reconnectDelay = const Duration(seconds: 3),
     this.maxPending = 128,
-  }) : _openStream = openStream,
-       _isSessionCurrent = isSessionCurrent,
-       _applyEvent = applyEvent,
-       _onDiagnostic = onDiagnostic,
-       _onSessionInvalidated = onSessionInvalidated;
+  });
 
   void start({required String baseUrl, required String token}) {
     if (token.isEmpty) {

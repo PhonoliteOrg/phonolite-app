@@ -7,8 +7,9 @@ import 'package:phonolite_app/application/controllers/listening_stats/stats_cont
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards_content.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_header.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_history_status.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
@@ -39,7 +40,6 @@ class _StatsPageState extends BasePageState<StatsPage> {
           'It will sync to the server and appear on your other apps.',
       confirmLabel: 'Add history',
       confirmVariant: TechButtonVariant.standard,
-      actionChrome: TechButtonChrome.borderless,
     );
 
     if (!confirmed || !mounted) {

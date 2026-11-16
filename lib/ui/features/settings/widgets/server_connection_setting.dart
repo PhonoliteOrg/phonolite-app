@@ -65,20 +65,21 @@ Widget settingsServerActions(
   return Wrap(
     spacing: 8,
     runSpacing: 8,
+    alignment: WrapAlignment.end,
+    crossAxisAlignment: WrapCrossAlignment.center,
     children: [
       if (canRetry)
         TechButton(
           label: retryLabel,
           iconWidget: const ReloadIcon(),
           density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
           onTap: retryAction,
         ),
       TechButton(
         label: settingsLoginActionLabel(authState.status),
         icon: loginIcon,
         density: TechButtonDensity.compact,
-        chrome: TechButtonChrome.borderless,
+        trailingIconWidth: authState.hasSession ? null : SettingsTrailing.slotWidth,
         onTap: loginAction,
       ),
       if (authState.hasSession)
@@ -87,7 +88,7 @@ Widget settingsServerActions(
           icon: PhonoliteIcons.logOut,
           variant: TechButtonVariant.danger,
           density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
+          trailingIconWidth: SettingsTrailing.slotWidth,
           onTap: () async => controller.logout(),
         ),
     ],

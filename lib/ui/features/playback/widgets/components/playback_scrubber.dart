@@ -158,7 +158,7 @@ abstract class PlaybackScrubberState<T extends PlaybackScrubber> extends State<T
 
       _lastTickAt = now;
 
-      if (!mounted || lastTickAt == null || (respectsTickerMode && !TickerMode.of(context))) {
+      if (!mounted || lastTickAt == null || (respectsTickerMode && !TickerMode.valuesOf(context).enabled)) {
         return;
       }
 

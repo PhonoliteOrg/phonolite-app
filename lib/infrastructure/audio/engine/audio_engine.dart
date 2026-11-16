@@ -126,18 +126,12 @@ class AudioEngine {
 
   AudioEngine({
     AudioWorkerSpawner? workerSpawner,
-    void Function(String message)? onMessage,
-    void Function(Duration position, Duration bufferedAhead, double? bitrateKbps, int? rttMs, bool isLocalPlayback)?
-    onStats,
-    void Function()? onComplete,
-    void Function()? onStarted,
-    void Function(bool active, bool paused)? onState,
-  }) : _onMessage = onMessage,
-       _onStats = onStats,
-       _onComplete = onComplete,
-       _onStarted = onStarted,
-       _onState = onState,
-       _workerSpawner = workerSpawner ?? _spawnNativeWorker,
+    this._onMessage,
+    this._onStats,
+    this._onComplete,
+    this._onStarted,
+    this._onState,
+  }) : _workerSpawner = workerSpawner ?? _spawnNativeWorker,
        _usesNativeWorker = workerSpawner == null;
 
   /// The server rejected this request; reconnecting cannot repair its source.

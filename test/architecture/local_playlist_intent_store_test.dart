@@ -214,7 +214,10 @@ void main() {
 
     try {
       expect(reopened.select('SELECT match_key FROM tracks').single['match_key'], 'the artist|the album|the song');
-      expect(reopened.select("SELECT value FROM metadata WHERE key = 'schema_version'").single['value'], '12');
+      expect(
+        reopened.select("SELECT value FROM metadata WHERE key = 'track_match_normalization_v12'").single['value'],
+        '1',
+      );
     } finally {
       reopened.dispose();
     }

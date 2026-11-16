@@ -114,14 +114,14 @@ void main() {
         "invokeMethod('clearNowPlaying')",
       ]);
       expectContainsAll(vehicleSurface, const [
-        "MethodChannel channel = const MethodChannel('phonolite/carplay')",
+        "VehicleSurfaceService({this._channel = const MethodChannel('phonolite/carplay')})",
         'class VehicleSurfaceService',
         'void setMethodHandler(',
         "invokeMethod('carPlayState'",
         "invokeMethod('authState'",
       ]);
       expectContainsAll(localNetworkPermissions, const [
-        "MethodChannel channel = const MethodChannel('phonolite/permissions')",
+        "LocalNetworkPermissionService({this._channel = const MethodChannel('phonolite/permissions')})",
         'class LocalNetworkPermissionService',
         'bool get isSupported',
         "invokeMethod('refreshLocalNetworkPermission')",

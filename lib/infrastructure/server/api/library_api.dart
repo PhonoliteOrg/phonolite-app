@@ -12,15 +12,18 @@ import 'package:phonolite_app/infrastructure/server/api/json_api_endpoint.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 
-typedef ArtistPageFetcher =
-    Future<List<Artist>> Function({required int limit, required int offset, required bool includeContributors});
+typedef ArtistPageFetcher = Future<List<Artist>> Function({
+  required int limit,
+  required int offset,
+  required bool includeContributors,
+});
 
 class LibraryApi extends JsonApiEndpoint {
   final ArtistPageFetcher _fetchArtistsPage;
   int? _summarySession;
   bool _legacySummaries = false;
 
-  LibraryApi(super.transport, {required ArtistPageFetcher fetchArtistsPage}) : _fetchArtistsPage = fetchArtistsPage;
+  LibraryApi(super.transport, {required this._fetchArtistsPage});
 
   Future<ArtistSummaryPage> fetchArtistSummariesPage({int limit = 60, int offset = 0, String? revision}) async {
     if (_summarySession != transport.sessionRevision) {

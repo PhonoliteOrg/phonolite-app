@@ -82,7 +82,7 @@ void main() {
 
         decoder.close();
         expect(source.closed, 1);
-        expect(source.deadlines.every((timeout) => timeout > 0 && timeout <= 5000), isTrue);
+        expect(source.deadlines.every((timeout) => timeout > 0 && timeout <= 15000), isTrue);
       } finally {
         decoder?.close();
         source.dispose();

@@ -25,10 +25,9 @@ class CustomShuffleController extends FeatureController {
   CustomShuffleController(
     AppController app, {
     CustomShuffleSettings? initialSettings,
-    bool autosave = true,
+    this._autosave = true,
     CustomShuffleTarget initialTarget = CustomShuffleTarget.server,
   }) : _controller = app,
-       _autosave = autosave,
        _target = initialTarget {
     final settings = initialSettings ?? app.customShuffleSettings;
 

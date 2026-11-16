@@ -94,18 +94,17 @@ class LinuxAppUpdatePlatform
     final generation = ++_generation;
     _setProgress(AppUpdatePhase.idle);
     await _removeStage();
-    final stage = await Directory.systemTemp.createTemp('phonolite-update-');
+    final stage = await _process.createPrivateStage();
     if (_closed || generation != _generation) {
       await stage.delete(recursive: true);
       return null;
     }
     _stage = stage;
-    await _mode('700', stage.path);
     try {
       final manifest = await _transport.metadata(Uri.parse(configuration.feedUrl));
       final signature = await _transport.metadata(Uri.parse(_signatureUrl!), maximum: 8192);
-      await _writePrivate(File('${stage.path}/manifest.json'), manifest);
-      await _writePrivate(File('${stage.path}/manifest.sig'), signature);
+      await _process.writePrivateFile(File('${stage.path}/manifest.json'), manifest);
+      await _process.writePrivateFile(File('${stage.path}/manifest.sig'), signature);
       final selected = await _process.command([
         '--select',
         '${stage.path}/manifest.json',
@@ -146,7 +145,7 @@ class LinuxAppUpdatePlatform
     var preparationFailed = false;
     final candidate = File('${stage.path}/candidate');
     try {
-      await _writePrivate(candidate, const []);
+      await _process.writePrivateFile(candidate, const []);
       _setProgress(AppUpdatePhase.downloading, fraction: 0);
       await _transport.download(
         asset.url,
@@ -161,22 +160,24 @@ class LinuxAppUpdatePlatform
       _setProgress(AppUpdatePhase.verifying);
       if (asset.format == 'archlinux') {
         final proof = await _transport.metadata(Uri.parse('${asset.url}.sig'), maximum: 65536);
-        await _writePrivate(File('${stage.path}/candidate.sig'), proof);
+        await _process.writePrivateFile(File('${stage.path}/candidate.sig'), proof);
       }
       // The helper rechecks the installed descriptor and signed manifest before
       // accepting the request; the root installer repeats those checks on copies.
       await _process.command(['--select', '${stage.path}/manifest.json', '${stage.path}/manifest.sig']);
-      final start = await _processStart();
+      if (_closed || generation != _generation) throw const UpdateDownloadCancelled();
+
+      final identity = await _process.applicationIdentity();
       final random = Random.secure();
       final correlation = List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-      await _writePrivate(
+      await _process.writePrivateFile(
         File('${stage.path}/request.json'),
         utf8.encode(
           jsonEncode({
             'schema': 1,
             'correlation': correlation,
-            'pid': pid,
-            'start': start,
+            'pid': identity.pid,
+            'start': identity.startTime,
             'expected_version': _configuration!.currentVersion,
           }),
         ),
@@ -245,22 +246,6 @@ class LinuxAppUpdatePlatform
 
   void _setProgress(AppUpdatePhase phase, {double? fraction, String? message}) {
     if (!_closed) _progress.value = AppUpdateProgress(phase: phase, fraction: fraction, message: message);
-  }
-
-  Future<int> _processStart() async {
-    final stat = await File('/proc/$pid/stat').readAsString();
-    return int.parse(stat.substring(stat.lastIndexOf(')') + 2).split(' ')[19]);
-  }
-
-  Future<void> _writePrivate(File file, List<int> bytes) async {
-    await file.writeAsBytes(const []);
-    await _mode('600', file.path);
-    await file.writeAsBytes(bytes, flush: true);
-  }
-
-  Future<void> _mode(String mode, String path) async {
-    final result = await Process.run('/usr/bin/chmod', [mode, path]);
-    if (result.exitCode != 0) throw FileSystemException('Cannot secure updater staging', path);
   }
 
   Future<void> _removeStage() async {

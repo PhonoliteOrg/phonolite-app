@@ -40,7 +40,7 @@ class _DirectoryStat extends Fake implements FileStat {
   _DirectoryStat(this.modified);
 }
 
-class _NativeIo extends IOOverrides {}
+final class _NativeIo extends IOOverrides {}
 
 class _ObservedFile extends Fake implements File {
   final File delegate;

@@ -4,9 +4,7 @@
     "lib/ui/shared/music/compact_hero_details.dart",
     "lib/ui/shared/design_system/interaction/dismissible_selection_area.dart",
     "lib/ui/navigation/desktop_mouse_navigation.dart",
-    "lib/ui/navigation/desktop_playback_shortcuts.dart",
-    "lib/pages/search/search_page.dart",
-    "lib/pages/splash/splash_page.dart"
+    "lib/ui/navigation/desktop_playback_shortcuts.dart"
   ],
   "interactions": [
     {
@@ -103,22 +101,6 @@
       "expected": "Update volume",
       "availability": "Desktop layout",
       "risk": "preference",
-      "journeys": []
-    },
-    {
-      "id": "unreachable.search_page",
-      "action": "Standalone SearchPage filter chips/search/results",
-      "expected": "Not reachable from current HomePage navigation; do not count as shipped coverage",
-      "availability": "Source-only page",
-      "risk": "browse",
-      "journeys": []
-    },
-    {
-      "id": "unreachable.splash_page",
-      "action": "Standalone SplashPage controls",
-      "expected": "Not mounted by current main/HomePage; excluded from reachable coverage",
-      "availability": "Source-only page",
-      "risk": "browse",
       "journeys": []
     }
   ]

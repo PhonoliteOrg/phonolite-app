@@ -6,8 +6,10 @@ import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scop
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-typedef ObsidianAdaptiveModalBuilder =
-    Widget Function(BuildContext context, ObsidianAdaptiveModalPresentation presentation);
+typedef ObsidianAdaptiveModalBuilder = Widget Function(
+  BuildContext context,
+  ObsidianAdaptiveModalPresentation presentation,
+);
 
 enum ObsidianAdaptiveModalPresentation { sheet, dialog }
 

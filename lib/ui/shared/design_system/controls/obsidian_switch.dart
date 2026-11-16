@@ -5,7 +5,7 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-/// A controlled, rectangular switch with a full touch target and keyboard access.
+/// A controlled, pill-shaped switch with a full touch target and keyboard access.
 class ObsidianSwitch extends StatefulWidget {
   final bool value;
   final String semanticLabel;
@@ -62,87 +62,52 @@ class _ObsidianSwitchState extends State<ObsidianSwitch> with PointerInteraction
     return activationRepeat ? KeyEventResult.handled : KeyEventResult.ignored;
   }
 
-  Widget _surface({required Color fill, required Color border, required Widget child}) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: fill,
-      border: Border.all(color: border),
-    ),
-    child: child,
-  );
+  Widget _thumb(Duration duration) {
+    final color = widget.value ? ObsidianPalette.obsidian : ObsidianPalette.textPrimary;
+    final opacity = widget.enabled || widget.value ? 1.0 : 0.45;
 
-  Widget _thumb() {
-    final color = widget.value ? ObsidianPalette.gold : ObsidianPalette.textMuted;
-    final fill = widget.enabled ? color : color.withValues(alpha: 0.3);
-
-    return SizedBox(
+    return AnimatedContainer(
       key: const ValueKey('obsidian-switch-thumb'),
-      width: 20,
-      height: 20,
-      child: _surface(
-        fill: fill,
-        border: widget.enabled ? color : Colors.transparent,
-        child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var index = 0; index < 2; index++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                  child: ColoredBox(
-                    color: ObsidianPalette.obsidian.withValues(alpha: widget.enabled ? 0.65 : 0.4),
-                    child: const SizedBox(width: 1, height: 8),
-                  ),
-                ),
-            ],
-          ),
-        ),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: opacity),
       ),
     );
   }
 
   Widget _track(Duration duration) {
-    final highlighted = widget.enabled && pressed;
-    final accent = widget.value || highlighted ? ObsidianPalette.gold : ObsidianPalette.textMuted;
-    final enabledBorderOpacity = highlighted ? 1.0 : 0.6;
-    final border = accent.withValues(alpha: widget.enabled ? enabledBorderOpacity : 0.2);
+    const surface = ObsidianPalette.obsidianElevated;
+    final offColor = Color.alphaBlend(ObsidianPalette.border, surface);
+    final trackColor = widget.value ? ObsidianPalette.gold : offColor;
+    final enabledOpacity = pressed ? 0.8 : 1.0;
+    final opacity = widget.enabled ? enabledOpacity : 0.35;
+    final outline = ObsidianPalette.textMuted.withValues(alpha: widget.enabled ? 0.6 : 0.2);
 
     return AnimatedContainer(
       duration: duration,
+      curve: Curves.easeOutCubic,
+      width: 52,
+      height: 30,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        boxShadow: [
-          if (widget.enabled && (widget.value || highlighted))
-            BoxShadow(color: ObsidianPalette.gold.withValues(alpha: highlighted ? 0.15 : 0.07), blurRadius: 10),
-        ],
+        color: Color.alphaBlend(trackColor.withValues(alpha: opacity), surface),
+        borderRadius: const BorderRadius.all(Radius.circular(15)),
+        border: Border.all(color: widget.value ? Colors.transparent : outline),
       ),
-      child: _surface(
-        fill: widget.value && widget.enabled
-            ? Color.alphaBlend(ObsidianPalette.gold.withValues(alpha: 0.08), ObsidianPalette.obsidianElevated)
-            : ObsidianPalette.obsidianElevated,
-        border: border,
-        child: SizedBox(
-          width: 52,
-          height: 26,
-          child: Padding(
-            padding: const EdgeInsets.all(3),
-            child: AnimatedAlign(
-              alignment: widget.value ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
-              duration: duration,
-              curve: Curves.easeOutCubic,
-              child: _thumb(),
-            ),
-          ),
-        ),
+      child: AnimatedAlign(
+        alignment: widget.value ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        child: _thumb(duration),
       ),
     );
   }
 
-  Widget _control(Duration duration) => SizedBox(
-    width: 60,
-    height: 48,
-    child: Center(
-      child: Padding(padding: const EdgeInsets.all(3), child: _track(duration)),
-    ),
-  );
+  Widget _control(Duration duration) => SizedBox(width: 60, height: 48, child: Center(child: _track(duration)));
 
   @override
   Widget build(BuildContext context) {

@@ -1166,15 +1166,18 @@ void main() {
         'phonolite_offline_queue_load_',
       );
       addTearDown(() => temp.delete(recursive: true));
-      final delegate = OfflineLibraryStorage(baseDirectory: temp);
-      final storage = DelayedReadStorage(delegate);
+      final storage = DelayedReadStorage(temp);
       final manager = OfflineDownloadManager(
         connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
         storage: storage,
       );
-      addTearDown(manager.dispose);
+      addTearDown(() async {
+        storage.releaseRead();
+        await manager.dispose();
+      });
 
       final loadFuture = manager.load();
+      await storage.readStarted.future;
       var queued = false;
       final queueFuture = manager
           .queueBatch(
@@ -1196,7 +1199,7 @@ void main() {
       expect(await queueFuture, 1);
       await loadFuture;
 
-      final downloads = await delegate.readDownloads();
+      final downloads = await storage.readDownloads();
       expect(downloads.single.track.id, 'server-track-1');
       expect(downloads.single.status, OfflineDownloadStatus.queued);
       expect(downloads.single.offlineMetadata?.album.title, 'The Album');

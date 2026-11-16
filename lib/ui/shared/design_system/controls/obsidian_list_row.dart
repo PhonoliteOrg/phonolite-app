@@ -11,6 +11,7 @@ import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart'
 class ObsidianListRow extends StatelessWidget {
   final Widget leading;
   final String title;
+  final int? titleMaxLines;
   final String? subtitle;
   final int? subtitleMaxLines;
   final Widget? trailing;
@@ -30,6 +31,7 @@ class ObsidianListRow extends StatelessWidget {
     super.key,
     required this.leading,
     required this.title,
+    this.titleMaxLines = 1,
     this.subtitle,
     this.subtitleMaxLines = 1,
     this.trailing,
@@ -72,6 +74,7 @@ class ObsidianListRow extends StatelessWidget {
             Expanded(
               child: ObsidianRowLabels(
                 title: title,
+                titleMaxLines: titleMaxLines,
                 subtitle: subtitle,
                 subtitleMaxLines: subtitleMaxLines,
                 titleColor: titleColor,
@@ -89,6 +92,7 @@ class ObsidianListRow extends StatelessWidget {
 
 class ObsidianRowLabels extends StatelessWidget {
   final String title;
+  final int? titleMaxLines;
   final String? subtitle;
   final int? subtitleMaxLines;
   final Color? titleColor;
@@ -97,6 +101,7 @@ class ObsidianRowLabels extends StatelessWidget {
   const ObsidianRowLabels({
     super.key,
     required this.title,
+    this.titleMaxLines = 1,
     this.subtitle,
     this.subtitleMaxLines = 1,
     this.titleColor,
@@ -113,8 +118,8 @@ class ObsidianRowLabels extends StatelessWidget {
       children: [
         Text(
           title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+          maxLines: titleMaxLines,
+          overflow: titleMaxLines == null ? TextOverflow.visible : TextOverflow.ellipsis,
           style: textTheme.titleMedium?.copyWith(
             fontSize: compact ? 14.5 : null,
             letterSpacing: compact ? 0.2 : 0.6,

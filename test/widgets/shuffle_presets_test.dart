@@ -5,6 +5,7 @@ import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/shuffle_preset_editor_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
@@ -70,6 +71,9 @@ void main() {
     final app = PresetTestApp();
     await _mount(tester, app);
     await _tap(tester, find.byTooltip('Create custom shuffle'));
+    final nameInput = find.byType(ObsidianTextField);
+    expect(find.descendant(of: nameInput, matching: find.byType(ClipRect)), findsWidgets);
+    expect(find.descendant(of: nameInput, matching: find.byType(ClipPath)), findsNothing);
     await tester.enterText(_nameField(), 'Work music');
     await _tap(tester, find.text('Beta artist'));
     await _tap(tester, _action('Cancel'));

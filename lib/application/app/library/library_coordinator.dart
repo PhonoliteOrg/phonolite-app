@@ -353,41 +353,6 @@ class _LibraryCoordinator {
     }
   }
 
-  Future<void> selectSearchResult(SearchResult result) async {
-    if (!_host._requireServer('opening search results')) {
-      return;
-    }
-
-    switch (result.kind) {
-      case 'artist':
-        await _host.loadAlbums(result.id);
-        break;
-      case 'album':
-        final album = await _host.connection.fetchAlbumById(result.id);
-
-        await _host.loadAlbums(album.artistId);
-        await _host.loadTracks(album.id);
-        break;
-      case 'track':
-        final track = await _host.connection.fetchTrackById(result.id);
-
-        if (track.albumId == null) {
-          _host._pushMessage('Track is missing album info');
-
-          return;
-        }
-
-        final album = await _host.connection.fetchAlbumById(track.albumId!);
-
-        await _host.loadAlbums(album.artistId);
-        await _host.loadTracks(album.id);
-        await _host.queueAlbum(album.id, startTrackId: track.id);
-        break;
-      default:
-        break;
-    }
-  }
-
   void _setArtistsLoading(bool value) {
     if (_artistsLoading == value) {
       return;
@@ -953,8 +918,6 @@ mixin _LibraryFacade {
   Future<void> loadTracks(String albumId) => _libraryCoordinator.loadTracks(albumId);
 
   Future<void> search(String query, {String filter = 'all'}) => _libraryCoordinator.search(query, filter: filter);
-
-  Future<void> selectSearchResult(SearchResult result) => _libraryCoordinator.selectSearchResult(result);
 
   ArtistBrowseSnapshot get artistBrowseSnapshot => _libraryCoordinator._artistCatalog.browse.current;
 

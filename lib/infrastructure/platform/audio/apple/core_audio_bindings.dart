@@ -4,8 +4,11 @@ import 'package:ffi/ffi.dart';
 
 const int coreAudioQueueFull = -3;
 
-typedef CoreAudioOpenNative =
-    ffi.Pointer<ffi.Void> Function(ffi.Int32 sampleRate, ffi.Int32 channels, ffi.Int32 deviceId);
+typedef CoreAudioOpenNative = ffi.Pointer<ffi.Void> Function(
+  ffi.Int32 sampleRate,
+  ffi.Int32 channels,
+  ffi.Int32 deviceId,
+);
 
 typedef CoreAudioOpenDart = ffi.Pointer<ffi.Void> Function(int sampleRate, int channels, int deviceId);
 
@@ -16,11 +19,17 @@ typedef CoreAudioCloseNative = ffi.Void Function(ffi.Pointer<ffi.Void> handle);
 
 typedef CoreAudioCloseDart = void Function(ffi.Pointer<ffi.Void> handle);
 
-typedef CoreAudioWriteNative =
-    ffi.Int32 Function(ffi.Pointer<ffi.Void> handle, ffi.Pointer<ffi.Int16> samples, ffi.Int32 sampleCount);
+typedef CoreAudioWriteNative = ffi.Int32 Function(
+  ffi.Pointer<ffi.Void> handle,
+  ffi.Pointer<ffi.Int16> samples,
+  ffi.Int32 sampleCount,
+);
 
-typedef CoreAudioWriteDart =
-    int Function(ffi.Pointer<ffi.Void> handle, ffi.Pointer<ffi.Int16> samples, int sampleCount);
+typedef CoreAudioWriteDart = int Function(
+  ffi.Pointer<ffi.Void> handle,
+  ffi.Pointer<ffi.Int16> samples,
+  int sampleCount,
+);
 
 typedef CoreAudioWrite32Native = ffi.Int32 Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Int32>, ffi.Int32);
 typedef CoreAudioWrite32Dart = int Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Int32>, int);
@@ -53,8 +62,11 @@ typedef CoreAudioDeviceIdNative = ffi.Uint32 Function(ffi.Int32 index);
 
 typedef CoreAudioDeviceIdDart = int Function(int index);
 
-typedef CoreAudioDeviceNameNative =
-    ffi.Int32 Function(ffi.Uint32 deviceId, ffi.Pointer<ffi.Char> buffer, ffi.Int32 bufferLen);
+typedef CoreAudioDeviceNameNative = ffi.Int32 Function(
+  ffi.Uint32 deviceId,
+  ffi.Pointer<ffi.Char> buffer,
+  ffi.Int32 bufferLen,
+);
 
 typedef CoreAudioDeviceNameDart = int Function(int deviceId, ffi.Pointer<ffi.Char> buffer, int bufferLen);
 

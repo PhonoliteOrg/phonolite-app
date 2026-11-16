@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/surfaces/chamfer_clipper.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 enum TechButtonVariant { standard, danger }
 
 enum TechButtonDensity { standard, compact }
-
-enum TechButtonChrome { framed, borderless }
 
 class TechButton extends StatefulWidget {
   final String label;
@@ -20,9 +16,11 @@ class TechButton extends StatefulWidget {
   final VoidCallback? onTap;
   final TechButtonVariant variant;
   final TechButtonDensity density;
-  final TechButtonChrome chrome;
   final bool iconOnly;
   final double? iconOnlySize;
+
+  /// Places the icon in a fixed-width slot at the end of a labeled button.
+  final double? trailingIconWidth;
   final String? tooltip;
 
   const TechButton({
@@ -32,13 +30,14 @@ class TechButton extends StatefulWidget {
     this.iconWidget,
     this.variant = TechButtonVariant.standard,
     this.density = TechButtonDensity.standard,
-    this.chrome = TechButtonChrome.framed,
     this.iconOnly = false,
     this.iconOnlySize,
+    this.trailingIconWidth,
     this.tooltip,
     this.onTap,
   }) : assert(icon == null || iconWidget == null),
        assert(iconOnlySize == null || iconOnlySize > 0),
+       assert(trailingIconWidth == null || trailingIconWidth > 0 && !iconOnly && (icon != null || iconWidget != null)),
        assert(!iconOnly || icon != null || iconWidget != null);
 
   @override
@@ -74,8 +73,6 @@ class _TechButtonState extends State<TechButton> with PointerInteraction<TechBut
     final enabled = widget.onTap != null;
     final isDanger = widget.variant == TechButtonVariant.danger;
     final accent = isDanger ? Colors.redAccent : ObsidianPalette.gold;
-    final fill = isDanger ? Colors.red.withValues(alpha: 0.1) : ObsidianPalette.gold.withValues(alpha: 0.1);
-    final borderColor = enabled ? accent : accent.withValues(alpha: 0.4);
     final double textSize;
 
     if (touchLayout) {
@@ -93,103 +90,56 @@ class _TechButtonState extends State<TechButton> with PointerInteraction<TechBut
     final letterSpacing = widget.density == TechButtonDensity.compact ? 1.1 : 1.2;
     final semanticLabel = widget.tooltip ?? widget.label;
 
-    if (widget.chrome == TechButtonChrome.borderless) {
-      final highlighted = enabled && (hovered || pressed);
-      final idleColor = enabled ? ObsidianPalette.textMuted : ObsidianPalette.textMuted.withValues(alpha: 0.6);
-      final foreground = highlighted ? accent : idleColor;
-      final double glowOpacity;
+    final highlighted = enabled && (hovered || pressed);
+    final idleColor = enabled ? ObsidianPalette.textMuted : ObsidianPalette.textMuted.withValues(alpha: 0.6);
+    final foreground = highlighted ? accent : idleColor;
+    final double glowOpacity;
 
-      if (!enabled) {
-        glowOpacity = 0.0;
-      } else {
-        glowOpacity = hovered ? 0.7 : 0.35;
-      }
-
-      final shadows = <Shadow>[if (highlighted) Shadow(color: accent.withValues(alpha: glowOpacity), blurRadius: 10)];
-
-      final textStyle = GoogleFonts.rajdhani(
-        fontSize: textSize,
-        fontWeight: FontWeight.w700,
-        letterSpacing: letterSpacing,
-        color: foreground,
-        shadows: shadows,
-      );
-
-      final child = widget.iconOnly
-          ? SizedBox.square(
-              dimension: iconOnlySize,
-              child: Center(
-                child: _buildIcon(size: iconOnlyGlyphSize, color: foreground, shadows: shadows),
-              ),
-            )
-          : Container(
-              constraints: touchLayout ? const BoxConstraints(minHeight: 48, minWidth: 48) : null,
-              padding: padding,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.icon != null || widget.iconWidget != null) ...[
-                    _buildIcon(size: iconSize, color: foreground, shadows: shadows),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(widget.label.toUpperCase(), style: textStyle),
-                ],
-              ),
-            );
-
-      final button = pointerRegion(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: child);
-
-      if (!widget.iconOnly) {
-        return button;
-      }
-
-      return Tooltip(
-        message: semanticLabel,
-        excludeFromSemantics: true,
-        child: Semantics(button: true, enabled: enabled, label: semanticLabel, child: button),
-      );
+    if (!enabled) {
+      glowOpacity = 0.0;
+    } else {
+      glowOpacity = hovered ? 0.7 : 0.35;
     }
+
+    final shadows = <Shadow>[if (highlighted) Shadow(color: accent.withValues(alpha: glowOpacity), blurRadius: 10)];
+    final icon = widget.icon != null || widget.iconWidget != null
+        ? _buildIcon(size: widget.iconOnly ? iconOnlyGlyphSize : iconSize, color: foreground, shadows: shadows)
+        : null;
+    final trailingIconWidth = widget.trailingIconWidth;
 
     final textStyle = GoogleFonts.rajdhani(
       fontSize: textSize,
       fontWeight: FontWeight.w700,
       letterSpacing: letterSpacing,
-      color: enabled ? accent : accent.withValues(alpha: 0.4),
+      color: foreground,
+      shadows: shadows,
     );
 
-    final button = ClipPath(
-      clipper: const ChamferClipper(cutSize: 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          mouseCursor: WidgetStateMouseCursor.clickable,
-          onTap: withButtonHaptic(widget.onTap),
-          child: Container(
+    final child = widget.iconOnly
+        ? SizedBox.square(
+            dimension: iconOnlySize,
+            child: Center(child: icon),
+          )
+        : Container(
             constraints: touchLayout ? const BoxConstraints(minHeight: 48, minWidth: 48) : null,
-            padding: widget.iconOnly ? EdgeInsets.zero : padding,
-            width: widget.iconOnly ? iconOnlySize : null,
-            height: widget.iconOnly ? iconOnlySize : null,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: fill,
-              border: Border.all(color: borderColor),
-            ),
-            child: widget.iconOnly
-                ? _buildIcon(size: iconOnlyGlyphSize, color: textStyle.color)
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.icon != null || widget.iconWidget != null) ...[
-                        _buildIcon(size: iconSize, color: textStyle.color),
-                        const SizedBox(width: 6),
-                      ],
-                      Text(widget.label.toUpperCase(), style: textStyle),
-                    ],
+            padding: trailingIconWidth == null
+                ? padding
+                : EdgeInsetsDirectional.fromSTEB(padding.left, padding.top, 0, padding.bottom),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null && trailingIconWidth == null) ...[icon, const SizedBox(width: 6)],
+                Text(widget.label.toUpperCase(), style: textStyle),
+                if (trailingIconWidth != null)
+                  SizedBox(
+                    width: trailingIconWidth,
+                    child: Center(heightFactor: 1, child: icon),
                   ),
-          ),
-        ),
-      ),
-    );
+              ],
+            ),
+          );
+
+    final button = pointerRegion(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: child);
 
     if (!widget.iconOnly) {
       return button;

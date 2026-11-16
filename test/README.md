@@ -3,6 +3,7 @@
 | Directory | Purpose |
 | --- | --- |
 | [`../integration_test/`](../integration_test/README.md) | On-screen interaction inventory, feature journeys, and physical-device profile captures |
+| [`features/`](features/README.md) | Feature scenarios written once and run headlessly on every platform profile |
 | [`ui_automation/`](ui_automation/) | Inventory/journey integrity, frame math, and host report correctness |
 | [`audio_automation/`](audio_automation/) | Audio continuity/latency metric regressions, synthetic stalls and audio report correctness |
 | [`widgets/`](widgets/) | Focused UI behavior, layout, input and navigation regression tests |

@@ -297,12 +297,13 @@ class QuicOwnerLease implements ffi.Finalizable {
     Duration remaining = const Duration(seconds: 30),
     int attemptsRemaining = 3,
   }) {
-    if (_id != 0)
+    if (_id != 0) {
       _recoveryBegin(
         _id,
         remaining.inMilliseconds.clamp(0, 0xffffffff),
         attemptsRemaining.clamp(0, 3),
       );
+    }
   }
 
   Duration get recoveryRemaining =>
@@ -315,8 +316,9 @@ class QuicOwnerLease implements ffi.Finalizable {
   }
 
   void reportPlayableMilliseconds(int milliseconds) {
-    if (_id != 0)
+    if (_id != 0) {
       _playableMilliseconds(_id, milliseconds < 0 ? 0 : milliseconds);
+    }
   }
 
   void setMigrationEnabled(bool enabled) {
@@ -327,8 +329,9 @@ class QuicOwnerLease implements ffi.Finalizable {
     if (_id == 0) return null;
     final length = _copySourceMetadata(_id, ffi.nullptr, 0);
     if (length == 0) return null;
-    if (length > 64 * 1024)
+    if (length > 64 * 1024) {
       throw QuicException('Invalid Original source metadata.');
+    }
     final output = calloc<ffi.Uint8>(length);
     try {
       if (_copySourceMetadata(_id, output, length) != length) return null;
@@ -399,8 +402,9 @@ class QuicSourceTransport implements ffi.Finalizable {
     required String serverPin,
     int? ownerId,
   }) {
-    if (port <= 0 || port > 65535)
+    if (port <= 0 || port > 65535) {
       throw ArgumentError.value(port, 'port', 'Invalid QUIC port.');
+    }
     final library = _loadLibrary();
     final connect = library
         .lookupFunction<
@@ -449,8 +453,9 @@ class QuicSourceTransport implements ffi.Finalizable {
         pinPointer,
         ownerId ?? 0,
       );
-      if (handle == ffi.nullptr)
+      if (handle == ffi.nullptr) {
         throw QuicException('Could not open Original audio over QUIC.');
+      }
       return QuicSourceTransport._(
         handle.address,
         read,
@@ -475,8 +480,9 @@ class QuicSourceTransport implements ffi.Finalizable {
 
   /// The native decoder must consume the returned handle even if open fails.
   int takeHandle() {
-    if (_handle == 0)
+    if (_handle == 0) {
       throw StateError('QUIC source ownership was already transferred.');
+    }
     final value = _handle;
     _finalizer.detach(this);
     _handle = 0;
@@ -800,8 +806,9 @@ class QuicClient implements ffi.Finalizable {
 
 ffi.DynamicLibrary _loadLibrary() {
   final override = Platform.environment['PHONOLITE_QUIC_LIBRARY'];
-  if (override != null && override.isNotEmpty)
+  if (override != null && override.isNotEmpty) {
     return ffi.DynamicLibrary.open(override);
+  }
   if (Platform.isIOS || Platform.isMacOS) {
     final exec = File(Platform.resolvedExecutable);
     final frameworkPath = Platform.isMacOS

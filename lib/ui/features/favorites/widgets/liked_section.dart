@@ -88,9 +88,8 @@ class _LikedEmptyText extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
           title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(color: ObsidianPalette.textMuted, letterSpacing: 0.6),
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(color: ObsidianPalette.textMuted, letterSpacing: 0.6),
           textAlign: TextAlign.center,
         ),
       ),

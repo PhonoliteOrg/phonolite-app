@@ -128,8 +128,6 @@ String readProjectModule(String relativePath) {
       read('lib/ui/features/favorites/widgets/liked_section.dart');
     case 'lib/pages/library/library_page.dart':
       read('lib/ui/features/library/widgets/library_section_slivers.dart');
-    case 'lib/ui/features/listening_stats/widgets/stats_cards.dart':
-      directory('lib/ui/features/listening_stats/widgets');
     case 'lib/pages/playlists/playlists_page.dart':
       read('lib/ui/features/playlists/widgets/playlist_section.dart');
     case 'lib/pages/playlists/playlist_detail_view.dart':

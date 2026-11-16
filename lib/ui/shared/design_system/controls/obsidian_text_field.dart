@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/surfaces/chamfered.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
@@ -23,7 +22,6 @@ class ObsidianTextField extends StatefulWidget {
   final double startPadding;
   final bool isDense;
   final bool glassBackground;
-  final double cut;
   final bool enabled;
   final TextInputAction? textInputAction;
   final TextInputType? keyboardType;
@@ -44,7 +42,6 @@ class ObsidianTextField extends StatefulWidget {
     this.startPadding = 16,
     this.isDense = false,
     this.glassBackground = false,
-    this.cut = 15,
     this.enabled = true,
     this.textInputAction,
     this.keyboardType,
@@ -88,8 +85,7 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
           ),
           const SizedBox(height: 6),
         ],
-        ClipPath(
-          clipper: CutTopLeftClipper(cut: widget.cut),
+        ClipRect(
           child: _surface(
             GestureDetector(
               behavior: HitTestBehavior.opaque,

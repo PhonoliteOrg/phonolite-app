@@ -16,13 +16,8 @@ class ListeningRecorder {
   bool _heardAudio = false;
   bool _finished = false;
 
-  ListeningRecorder({
-    required this.emit,
-    required this.playbackId,
-    Map<String, dynamic>? context,
-    DateTime Function()? clock,
-  }) : _context = context,
-       _clock = clock ?? DateTime.now;
+  ListeningRecorder({required this.emit, required this.playbackId, this._context, DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
 
   bool get enabled => _context != null && !_finished;
 

@@ -6,8 +6,7 @@ import 'package:flutter/services.dart';
 class LocalNetworkPermissionService {
   final MethodChannel _channel;
 
-  LocalNetworkPermissionService({MethodChannel channel = const MethodChannel('phonolite/permissions')})
-    : _channel = channel;
+  LocalNetworkPermissionService({this._channel = const MethodChannel('phonolite/permissions')});
 
   bool get isSupported {
     if (kIsWeb) {

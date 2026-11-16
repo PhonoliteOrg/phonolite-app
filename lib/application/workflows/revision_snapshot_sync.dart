@@ -50,17 +50,17 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
   bool _allowLowerRevision = false;
 
   RevisionSnapshotSync({
-    required Stream<RevisionEvent<TRevision>> Function() openStream,
-    required Future<TSnapshot> Function() fetchSnapshot,
-    required Future<void> Function(TSnapshot) applySnapshot,
-    required bool Function(String baseUrl, String token) isSessionCurrent,
-    required void Function(String) onDiagnostic,
-    required TRevision Function(TSnapshot) revisionOf,
-    required TRevision Function(TRevision, TRevision) merge,
-    required bool Function(TRevision, TRevision) isAhead,
-    required bool Function(TRevision, TRevision) isRollback,
-    void Function()? onUnauthorized,
-    void Function()? onUnsupported,
+    required this._openStream,
+    required this._fetchSnapshot,
+    required this._applySnapshot,
+    required this._isSessionCurrent,
+    required this._onDiagnostic,
+    required this._revisionOf,
+    required this._merge,
+    required this._isAhead,
+    required this._isRollback,
+    this._onUnauthorized,
+    this._onUnsupported,
     this.debounceDelay = const Duration(milliseconds: 250),
     this.retryDelay = const Duration(seconds: 2),
     this.reconnectDelay = const Duration(seconds: 1),
@@ -69,18 +69,7 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
     this.reconnectJitter = 0.2,
     this.refreshUnchangedEvents = false,
     Random? random,
-  }) : _openStream = openStream,
-       _fetchSnapshot = fetchSnapshot,
-       _applySnapshot = applySnapshot,
-       _isSessionCurrent = isSessionCurrent,
-       _onDiagnostic = onDiagnostic,
-       _revisionOf = revisionOf,
-       _merge = merge,
-       _isAhead = isAhead,
-       _isRollback = isRollback,
-       _onUnauthorized = onUnauthorized,
-       _onUnsupported = onUnsupported,
-       _random = random ?? Random();
+  }) : _random = random ?? Random();
 
   TRevision? get appliedRevision => _appliedRevision;
 

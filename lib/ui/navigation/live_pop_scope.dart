@@ -84,9 +84,7 @@ class _LivePopEntry<T> extends PopEntry<T> with ChangeNotifier implements ValueL
   final PopInvokedWithResultCallback<T> _onPopInvokedWithResult;
   late bool _lastCanPop;
 
-  _LivePopEntry({required bool Function() canPop, required PopInvokedWithResultCallback<T> onPopInvokedWithResult})
-    : _canPop = canPop,
-      _onPopInvokedWithResult = onPopInvokedWithResult {
+  _LivePopEntry({required this._canPop, required this._onPopInvokedWithResult}) {
     _lastCanPop = value;
   }
 

@@ -397,47 +397,90 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.windows),
   );
 
-  testWidgets(
-    'desktop resizing pauses backdrop blur until the size settles',
-    (tester) async {
-      _configureView(tester);
-      final probe = GlobalKey<_TabProbeState>();
-      await tester.pumpWidget(
-        _app(
-          Column(
-            children: [
-              Expanded(
-                child: ObsidianGlassSurface(
-                  child: maybeBlur(
-                    sigma: 12,
-                    child: _TabProbe(key: probe, onLayout: () {}),
-                  ),
+  testWidgets('Linux resizing strengthens glass tints while backdrop blur is paused', (tester) async {
+    _configureView(tester);
+    final probe = GlobalKey<_TabProbeState>();
+    await tester.pumpWidget(
+      _app(
+        Column(
+          children: [
+            Expanded(
+              child: ObsidianGlassSurface(
+                child: maybeBlur(
+                  sigma: 12,
+                  child: _TabProbe(key: probe, onLayout: () {}),
                 ),
               ),
-            ],
-          ),
+            ),
+            Expanded(
+              child: BackdropGroup(
+                child: const ObsidianGlassSurface(
+                  grouped: true,
+                  backgroundColor: Color(0x9018181F),
+                  child: SizedBox.expand(),
+                ),
+              ),
+            ),
+          ],
         ),
-      );
-      await tester.pumpAndSettle();
-      final state = probe.currentState;
-      List<bool> enabled() =>
-          tester.widgetList<BackdropFilter>(find.byType(BackdropFilter)).map((filter) => filter.enabled).toList();
-      expect(enabled(), [true, true]);
+      ),
+    );
+    await tester.pumpAndSettle();
+    final state = probe.currentState;
 
-      tester.view.physicalSize = const Size(1200, 720);
-      await tester.pump();
-      expect(enabled(), [false, false]);
-      await tester.pump(const Duration(milliseconds: 150));
-      tester.view.physicalSize = const Size(1150, 720);
-      await tester.pump(const Duration(milliseconds: 150));
-      expect(enabled(), [false, false], reason: 'each resize step restarts the settle delay');
-      await tester.pump(BackdropBlurResizeSuspension.defaultSettle);
-      expect(enabled(), [true, true]);
-      expect(probe.currentState, same(state));
-      expect(tester.takeException(), isNull);
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
-  );
+    List<bool> enabled() =>
+        tester.widgetList<BackdropFilter>(find.byType(BackdropFilter)).map((filter) => filter.enabled).toList();
+
+    List<Color> glassTints() {
+      final filters = tester.widgetList<BackdropFilter>(find.byType(BackdropFilter));
+      final defaultTint = (filters.first.child as DecoratedBox).decoration as BoxDecoration;
+      final customTint = (filters.last.child as DecoratedBox).decoration as BoxDecoration;
+
+      return [...defaultTint.gradient!.colors, customTint.color!];
+    }
+
+    final restingTints = glassTints();
+    expect(enabled(), [true, true, true]);
+
+    tester.view.physicalSize = const Size(1200, 720);
+    await tester.pump();
+    expect(enabled(), [false, false, false]);
+    final resizeTints = glassTints();
+
+    for (var index = 0; index < restingTints.length; index++) {
+      expect(resizeTints[index].a, greaterThan(restingTints[index].a));
+    }
+
+    await tester.pump(const Duration(milliseconds: 150));
+    tester.view.physicalSize = const Size(1150, 720);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(enabled(), [false, false, false], reason: 'each resize step restarts the settle delay');
+    expect(glassTints(), resizeTints);
+    await tester.pump(BackdropBlurResizeSuspension.defaultSettle);
+    expect(enabled(), [true, true, true]);
+    expect(glassTints(), restingTints);
+    expect(probe.currentState, same(state));
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+
+  testWidgets('macOS resizing keeps both backdrop blur and glass tint', (tester) async {
+    _configureView(tester);
+    await tester.pumpWidget(_app(ObsidianGlassSurface(child: maybeBlur(sigma: 12, child: const SizedBox.expand()))));
+    await tester.pumpAndSettle();
+
+    final filters = find.byType(BackdropFilter);
+    final restingDecoration = (tester.widget<BackdropFilter>(filters.first).child as DecoratedBox).decoration;
+
+    for (final size in const [Size(1200, 720), Size(1150, 690)]) {
+      tester.view.physicalSize = size;
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(tester.widgetList<BackdropFilter>(filters).map((filter) => filter.enabled), [true, true]);
+      expect((tester.widget<BackdropFilter>(filters.first).child as DecoratedBox).decoration, restingDecoration);
+    }
+
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
   testWidgets(
     'mobile size changes keep backdrop blur',

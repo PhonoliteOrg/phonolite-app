@@ -5,8 +5,7 @@ import 'package:flutter/services.dart';
 class DesktopDirectoryService {
   final MethodChannel _channel;
 
-  const DesktopDirectoryService({MethodChannel channel = const MethodChannel('phonolite/directories')})
-    : _channel = channel;
+  const DesktopDirectoryService({this._channel = const MethodChannel('phonolite/directories')});
 
   Future<void> openDirectory(String path) async {
     if (path.isEmpty) {

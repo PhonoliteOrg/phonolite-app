@@ -13,7 +13,7 @@ class CustomShuffleSettingsStorage {
 
   final SettingsFiles _files;
 
-  const CustomShuffleSettingsStorage({SettingsFiles files = const SettingsFiles(cacheFirst: true)}) : _files = files;
+  const CustomShuffleSettingsStorage({this._files = const SettingsFiles(cacheFirst: true)});
 
   JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files);
 

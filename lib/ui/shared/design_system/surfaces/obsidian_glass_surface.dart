@@ -17,19 +17,26 @@ class ObsidianGlassSurface extends StatelessWidget {
 
   const ObsidianGlassSurface({super.key, required this.child, this.backgroundColor, this.shape, this.grouped = false});
 
+  Color _tint(Color color, {required bool blur}) {
+    // Reduce how much unfiltered content shows through while resizing.
+    return blur ? color : color.withValues(alpha: 0.8 + color.a * 0.2);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final blur = !BackdropBlurResizeSuspension.isSuspended(context);
+    final backgroundColor = this.backgroundColor;
     final decoration = DecoratedBox(
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: backgroundColor == null ? null : _tint(backgroundColor, blur: blur),
         gradient: backgroundColor == null
             ? LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  const Color(0xFF18181F).withValues(alpha: 0.72),
-                  ObsidianPalette.obsidianElevated.withValues(alpha: 0.75),
-                  ObsidianPalette.obsidianElevated.withValues(alpha: 0.78),
+                  _tint(const Color(0xFF18181F).withValues(alpha: 0.72), blur: blur),
+                  _tint(ObsidianPalette.obsidianElevated.withValues(alpha: 0.75), blur: blur),
+                  _tint(ObsidianPalette.obsidianElevated.withValues(alpha: 0.78), blur: blur),
                 ],
                 stops: const [0, 0.5, 1],
               )
@@ -38,7 +45,6 @@ class ObsidianGlassSurface extends StatelessWidget {
       child: child,
     );
 
-    final blur = !BackdropBlurResizeSuspension.isSuspended(context);
     final surface = grouped
         ? BackdropFilter.grouped(filter: _backdropBlur, enabled: blur, child: decoration)
         : BackdropFilter(filter: _backdropBlur, enabled: blur, child: decoration);

@@ -78,9 +78,8 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
   OfflineDownloadClient({
     required this.connection,
     OfflineLibraryStorage storage = const OfflineLibraryStorage(),
-    Future<DownloadQuality> Function()? qualityProvider,
-  }) : _qualityProvider = qualityProvider,
-       _storageConfig = OfflineStorageConfig.fromStorage(storage),
+    this._qualityProvider,
+  }) : _storageConfig = OfflineStorageConfig.fromStorage(storage),
        _inlineCore = _canUseActor(storage)
            ? null
            : _OfflineDownloadActorCore(connection: connection, storage: storage) {

@@ -98,13 +98,15 @@ class RawOpusHeader {
     int? playableFrames;
     if ((data[9] & 1) != 0) {
       final extension = idx + totalLen;
-      if (extension + 8 != headerLen)
+      if (extension + 8 != headerLen) {
         throw OpusException('invalid exact frame extension');
+      }
       playableFrames = ByteData.sublistView(
         data,
       ).getUint64(extension, Endian.little);
-      if (playableFrames < 0 || playableFrames > 0x1fffffffffffff)
+      if (playableFrames < 0 || playableFrames > 0x1fffffffffffff) {
         throw OpusException('invalid exact frame count');
+      }
     }
 
     return RawOpusHeader(

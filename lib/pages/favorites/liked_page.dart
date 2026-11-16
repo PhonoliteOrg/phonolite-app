@@ -12,6 +12,7 @@ import 'package:phonolite_app/ui/features/downloads/widgets/remove_download_moda
 import 'package:phonolite_app/ui/features/favorites/widgets/liked_section.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
+import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_edit_icon.dart';
@@ -32,7 +33,7 @@ class LikedPage extends BasePage {
 class _LikedPageState extends BasePageState<LikedPage> {
   late final LikedController _feature = bindController(LikedController(AppScope.of(context)));
 
-  DisplaySettingsController get _displaySettings => widget.displaySettings ?? DisplaySettingsController.instance;
+  DisplaySettingsController get _displaySettings => widget.displaySettings ?? SettingsScope.of(context).display;
 
   Future<void> _removeDownloads(List<Track> tracks, String label) async {
     if (tracks.isEmpty) {

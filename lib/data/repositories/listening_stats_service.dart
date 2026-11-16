@@ -35,14 +35,11 @@ class ListeningStatsService {
   String? _storageError;
 
   ListeningStatsService({
-    SettingsFiles files = const SettingsFiles(),
-    String? databasePath,
-    bool inMemory = false,
+    this._files = const SettingsFiles(),
+    this._databasePath,
+    this._inMemory = false,
     DateTime Function()? clock,
-  }) : _files = files,
-       _databasePath = databasePath,
-       _inMemory = inMemory,
-       _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now;
 
   bool get enabled => _enabled;
 

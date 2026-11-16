@@ -117,7 +117,6 @@ class DownloadManagerPanel extends StatelessWidget {
           iconOnly: true,
           iconOnlySize: buttonSize,
           density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
           onTap: controller == null || !state.hasPausable
               ? null
               : () => unawaited(controller!.pauseAllOfflineDownloads()),
@@ -129,7 +128,6 @@ class DownloadManagerPanel extends StatelessWidget {
           iconOnly: true,
           iconOnlySize: buttonSize,
           density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
           onTap: controller == null || !state.hasPaused
               ? null
               : () => unawaited(controller!.resumePausedOfflineDownloads()),
@@ -141,7 +139,6 @@ class DownloadManagerPanel extends StatelessWidget {
           iconOnly: true,
           iconOnlySize: buttonSize,
           density: TechButtonDensity.compact,
-          chrome: TechButtonChrome.borderless,
           onTap: controller == null || state.isEmpty ? null : () => unawaited(_confirmClearAll(context, controller!)),
         ),
       ],
@@ -177,7 +174,6 @@ class DownloadManagerPanel extends StatelessWidget {
           'Cancel unfinished download jobs and remove their partial files? Successfully downloaded songs will be kept.',
       confirmLabel: 'Clear',
       confirmVariant: TechButtonVariant.danger,
-      actionChrome: TechButtonChrome.borderless,
     );
 
     if (!confirmed) {

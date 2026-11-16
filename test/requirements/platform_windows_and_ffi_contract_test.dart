@@ -155,11 +155,10 @@ void main() {
         'phonolite_local_audio_last_error',
         'phonolite_local_audio_close',
       ]);
-      expectContainsAll(cargo, const [
-        'symphonia',
-        'features = ["mp3", "flac", "pcm"]',
-        'crate-type = ["cdylib", "staticlib"]',
-      ]);
+      expectContainsAll(cargo, const ['crate-type = ["cdylib", "staticlib"]']);
+      final symphonia = cargo.split('\n').singleWhere((line) => line.startsWith('symphonia = '));
+      final codecFeatures = RegExp(r'\bfeatures\s*=\s*\[([^\]]*)\]').firstMatch(symphonia)?.group(1);
+      expect(codecFeatures, allOf(contains('"mp3"'), contains('"flac"'), contains('"pcm"')));
       expectContainsAll(header, const [
         'phonolite_local_audio_open',
         'phonolite_local_audio_read',

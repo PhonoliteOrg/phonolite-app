@@ -47,11 +47,8 @@ class ObsidianToggleOption extends StatelessWidget {
       iconSize: const WidgetStatePropertyAll(18),
       padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
       textStyle: WidgetStatePropertyAll(
-        Theme.of(context).textTheme.titleSmall?.copyWith(
-          fontSize: touchLayout ? touchFontSize : null,
-          letterSpacing: 1.2,
-          fontWeight: FontWeight.w700,
-        ),
+        Theme.of(context).textTheme.titleSmall
+            ?.copyWith(fontSize: touchLayout ? touchFontSize : null, letterSpacing: 1.2, fontWeight: FontWeight.w700),
       ),
     );
 

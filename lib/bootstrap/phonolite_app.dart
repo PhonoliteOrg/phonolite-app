@@ -3,18 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
-import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
-import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
-import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
-import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
+import 'package:phonolite_app/application/controllers/settings/app_settings_controllers.dart';
+import 'package:phonolite_app/bootstrap/phonolite_app_shell.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
-import 'package:phonolite_app/pages/home/home_page.dart';
-import 'package:phonolite_app/ui/app_scope.dart';
-import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
-import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/decoded_artwork_preloader.dart';
 
@@ -26,6 +19,7 @@ class PhonoliteApp extends StatefulWidget {
 }
 
 class _PhonoliteAppState extends State<PhonoliteApp> {
+  final _settings = AppSettingsControllers.shared;
   late final AppController _controller;
   late final ManagedArtworkLoader _artworkLoader;
   late final DecodedArtworkPreloader _shuffleArtworkPreloader;
@@ -43,7 +37,11 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
 
     _artworkLoader = ManagedArtworkLoader(connection: connection, accountScope: () => _controller.artworkAccountScope);
     _shuffleArtworkPreloader = DecodedArtworkPreloader(loader: _artworkLoader);
-    _controller = AppController(connection: connection, shuffleArtworkPreloader: _shuffleArtworkPreloader);
+    _controller = AppController(
+      connection: connection,
+      shuffleArtworkPreloader: _shuffleArtworkPreloader,
+      downloadSettings: _settings.download,
+    );
     PaintingBinding.instance.imageCache.maximumSizeBytes = 16 * 1024 * 1024;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -57,8 +55,8 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   void dispose() {
     unawaited(_shutdownDesktop());
     _logLifecycle.dispose();
-    unawaited(AppUpdatesController.instance.shutdown());
-    unawaited(DesktopSettingsController.instance.shutdown());
+    unawaited(_settings.updates.shutdown());
+    unawaited(_settings.desktop.shutdown());
 
     unawaited(AppLogger.instance.flush());
 
@@ -67,13 +65,13 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
 
   Future<void> _initializeController() async {
     try {
-      await DownloadSettingsController.instance.initialize();
+      await _settings.download.initialize();
     } catch (error) {
       AppLogger.warning('Download preferences are unavailable; open Download quality in Settings to retry: $error');
     }
 
     try {
-      await Future.wait([_controller.initialize(), DisplaySettingsController.instance.initialize()]);
+      await Future.wait([_controller.initialize(), _settings.display.initialize()]);
 
       if (!mounted) {
         return;
@@ -87,11 +85,11 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   }
 
   Future<void> _initializeDesktopFeatures() async {
-    await DesktopSettingsController.instance.initialize(beforeQuit: _shutdownDesktop);
-    if (mounted && AppUpdatesController.instance.supported) {
-      await AppUpdatesController.instance.initialize(
-        onPrepare: DesktopSettingsController.instance.prepareForUpdate,
-        onInstall: DesktopSettingsController.instance.quitForUpdate,
+    await _settings.desktop.initialize(beforeQuit: _shutdownDesktop);
+    if (mounted && _settings.updates.supported) {
+      await _settings.updates.initialize(
+        onPrepare: _settings.desktop.prepareForUpdate,
+        onInstall: _settings.desktop.quitForUpdate,
       );
     }
   }
@@ -104,32 +102,18 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
     await Future.wait([
       controllerClosed,
       _artworkLoader.close(),
-      DisplaySettingsController.instance.flush(),
-      DownloadSettingsController.instance.flush(),
+      _settings.display.flush(),
+      _settings.download.flush(),
     ]);
     _controller.connection.close();
     await AppLogger.instance.flush();
   }
 
-  void _togglePlayback() => unawaited(_controller.pause(_controller.playbackState.isPlaying));
-
   @override
   Widget build(BuildContext context) {
     return ArtworkScope(
       loader: _artworkLoader,
-      child: AppScope(
-        controller: _controller,
-        child: MaterialApp(
-          title: 'Phonolite',
-          theme: ObsidianTheme.build(),
-          themeAnimationStyle: AnimationStyle.noAnimation,
-          builder: (context, child) => DesktopPlaybackShortcuts(
-            onTogglePlayPause: _togglePlayback,
-            child: TooltipVisibility(visible: false, child: ObsidianViewport(child: child ?? const SizedBox.shrink())),
-          ),
-          home: const HomePage(),
-        ),
-      ),
+      child: PhonoliteAppShell(controller: _controller, settings: _settings),
     );
   }
 }

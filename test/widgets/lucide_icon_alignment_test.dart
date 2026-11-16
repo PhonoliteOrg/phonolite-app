@@ -5,24 +5,29 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 
 void main() {
-  testWidgets('every bundled Lucide glyph paints in the center of its icon', (
-    tester,
-  ) async {
+  testWidgets('every bundled Lucide glyph paints in the center of its icon', (tester) async {
     final loader = FontLoader(PhonoliteIcons.fontFamily)
       ..addFont(rootBundle.load('assets/icons/lucide/PhonoliteLucide.ttf'));
     await loader.load();
     final manifest =
-        jsonDecode(
-              await rootBundle.loadString('assets/icons/lucide/manifest.json'),
-            )
-            as Map<String, dynamic>;
+        jsonDecode(await rootBundle.loadString('assets/icons/lucide/manifest.json')) as Map<String, dynamic>;
     final icons = manifest['icons'] as Map<String, dynamic>;
 
     const iconSize = 40.0;
     const pixelRatio = 4.0;
+    const glyphStyle = TextStyle(
+      inherit: false,
+      fontFamily: PhonoliteIcons.fontFamily,
+      fontSize: iconSize,
+      color: Color(0xFFFFFFFF),
+      height: 1.0,
+      leadingDistribution: TextLeadingDistribution.even,
+    );
+
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
@@ -32,13 +37,14 @@ void main() {
               for (final entry in icons.entries)
                 RepaintBoundary(
                   key: ValueKey(entry.key),
-                  child: Icon(
-                    IconData(
-                      entry.value['codepoint'] as int,
-                      fontFamily: PhonoliteIcons.fontFamily,
+                  child: SizedBox.square(
+                    dimension: iconSize,
+                    child: Center(
+                      child: RichText(
+                        overflow: TextOverflow.visible,
+                        text: TextSpan(text: String.fromCharCode(entry.value['codepoint'] as int), style: glyphStyle),
+                      ),
                     ),
-                    size: iconSize,
-                    color: const Color(0xFFFFFFFF),
                   ),
                 ),
             ],
@@ -49,15 +55,11 @@ void main() {
     await tester.pump();
 
     for (final name in icons.keys) {
-      final boundary = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(ValueKey(name)),
-      );
+      final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(ValueKey(name)));
       final paintedBounds = await tester.runAsync(() async {
         final image = await boundary.toImage(pixelRatio: pixelRatio);
         try {
-          final pixels = (await image.toByteData(
-            format: ui.ImageByteFormat.rawRgba,
-          ))!;
+          final pixels = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
           var left = image.width;
           var right = -1;
           var top = image.height;
@@ -84,16 +86,8 @@ void main() {
           image.dispose();
         }
       });
-      expect(
-        paintedBounds!.center.dx,
-        closeTo(iconSize / 2, 0.5),
-        reason: '$name horizontal paint alignment',
-      );
-      expect(
-        paintedBounds.center.dy,
-        closeTo(iconSize / 2, 0.5),
-        reason: '$name vertical paint alignment',
-      );
+      expect(paintedBounds!.center.dx, closeTo(iconSize / 2, 0.5), reason: '$name horizontal paint alignment');
+      expect(paintedBounds.center.dy, closeTo(iconSize / 2, 0.5), reason: '$name vertical paint alignment');
     }
     expect(tester.takeException(), isNull);
   });

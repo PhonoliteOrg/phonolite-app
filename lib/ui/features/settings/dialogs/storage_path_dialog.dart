@@ -83,7 +83,6 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
               hintText: widget.initialPath,
               height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
               startPadding: 24,
-              cut: 0,
               isDense: true,
               enabled: !_feature.busy,
               textInputAction: TextInputAction.done,

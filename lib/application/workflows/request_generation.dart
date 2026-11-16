@@ -7,7 +7,7 @@ class RequestGeneration {
   final bool Function()? _isActive;
   int _current = 0;
 
-  RequestGeneration({bool Function()? isActive}) : _isActive = isActive;
+  RequestGeneration({this._isActive});
 
   int get current => _current;
 

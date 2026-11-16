@@ -22,7 +22,7 @@ class DownloadSettingsController extends ChangeNotifier {
   bool _disposed = false;
   String? _error;
 
-  DownloadSettingsController({DownloadSettingsStorage storage = const DownloadSettingsStorage()}) : _storage = storage;
+  DownloadSettingsController({this._storage = const DownloadSettingsStorage()});
 
   DownloadSettings get settings => _settings;
 

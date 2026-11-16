@@ -10,6 +10,7 @@ import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
 import 'package:phonolite_app/pages/settings/download_quality_page.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_option.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 
@@ -161,8 +162,15 @@ final settingsJourneys = [
     interactions: ['settings.reset_open', 'settings.reset_cancel'],
     run: (ui) async {
       await ui.tab('Settings');
-      await ui.reveal(tooltipControl('Full reset'));
-      await ui.tooltip('Full reset');
+      // Compact widths show a tooltip icon action; wider layouts show a labelled button.
+      final resetControl = find.byWidgetPredicate(
+        (widget) =>
+            (widget is Tooltip && (widget.message ?? widget.richMessage?.toPlainText()) == 'Full reset') ||
+            (widget is TechButton && widget.label == 'Full reset'),
+        description: 'Full reset control',
+      );
+      await ui.reveal(resetControl);
+      await ui.tap(resetControl);
       expect(find.byType(ConfirmationModal), findsOneWidget);
       expect(find.text('Reset local data'), findsWidgets);
       await ui.text('CANCEL');

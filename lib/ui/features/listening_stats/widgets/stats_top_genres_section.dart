@@ -77,9 +77,8 @@ class _GenreBar extends StatelessWidget {
               genreDisplayLabel(label),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: ObsidianPalette.textMuted, letterSpacing: s(1.0)),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: ObsidianPalette.textMuted, letterSpacing: s(1.0)),
             ),
           ),
           SizedBox(width: s(12)),

@@ -14,8 +14,7 @@ import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart
 class DownloadsApi extends JsonApiEndpoint {
   final String Function(String trackId) _trackDownloadUrl;
 
-  DownloadsApi(super.transport, {required String Function(String trackId) trackDownloadUrl})
-    : _trackDownloadUrl = trackDownloadUrl;
+  DownloadsApi(super.transport, {required this._trackDownloadUrl});
 
   Future<DownloadBatchManifest> createDownloadBatch(List<String> trackIds, {String? clientBatchId}) async {
     final payload = <String, dynamic>{

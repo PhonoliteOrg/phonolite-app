@@ -22,6 +22,7 @@ import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_t
 import 'package:phonolite_app/ui/features/downloads/widgets/remove_download_modal.dart';
 import 'package:phonolite_app/ui/features/library/widgets/library_section_slivers.dart';
 import 'package:phonolite_app/ui/features/search/widgets/search_results_sliver.dart';
+import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
@@ -57,7 +58,7 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   late final TextEditingController _searchController;
   late final ScrollController _scrollController;
 
-  DisplaySettingsController get _displaySettings => widget.displaySettings ?? DisplaySettingsController.instance;
+  DisplaySettingsController get _displaySettings => widget.displaySettings ?? SettingsScope.of(context).display;
 
   @override
   void initState() {

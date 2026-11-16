@@ -51,7 +51,6 @@ class SearchHud extends StatelessWidget {
           controller: controller,
           height: height,
           startPadding: 24,
-          cut: 0,
           isDense: height < searchHudHeight,
           glassBackground: glassBackground,
           hintText: hintText,

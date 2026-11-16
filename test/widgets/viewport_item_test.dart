@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:phonolite_app/ui/structures/collections/viewport_item.dart';
 
 Widget _library(ScrollController controller, Set<int> active, {bool enabled = true}) => MaterialApp(
@@ -13,7 +15,7 @@ Widget _library(ScrollController controller, Set<int> active, {bool enabled = tr
           height: 300,
           child: CustomScrollView(
             controller: controller,
-            cacheExtent: 1000,
+            scrollCacheExtent: const ScrollCacheExtent.pixels(1000),
             slivers: [
               SliverList.builder(
                 itemCount: 5000,
@@ -56,7 +58,7 @@ void main() {
     expect(active, isEmpty);
   });
 
-  testWidgets('new tiles wait for scrolling to stop and hidden pages release tiles', (tester) async {
+  testWidgets('new tiles activate during a drag and hidden pages release tiles', (tester) async {
     final controller = ScrollController();
     addTearDown(controller.dispose);
     final active = <int>{};
@@ -65,15 +67,45 @@ void main() {
     final gesture = await tester.startGesture(const Offset(100, 250));
     await gesture.moveBy(const Offset(0, -210));
     await tester.pump();
-    expect(active.difference({0, 1, 2}), isEmpty);
-    await tester.pump(const Duration(milliseconds: 200));
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(active, isNotEmpty);
-    expect(active.every((index) => index >= 2 && index <= 5), isTrue);
+
+    expect(controller.position.isScrollingNotifier.value, isTrue);
+    expect(active, containsAll([3, 4]));
+    expect(active, isNot(contains(6)));
 
     await tester.pumpWidget(_library(controller, active, enabled: false));
     await tester.pump();
     expect(active, isEmpty);
+    await gesture.cancel();
+  });
+
+  testWidgets('fast scrolling defers new tiles until it slows while still moving', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    final active = <int>{};
+    await tester.pumpWidget(_library(controller, active));
+    await tester.pump();
+
+    final motion = controller.animateTo(1800, duration: const Duration(seconds: 1), curve: Curves.easeOutCubic);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(controller.position.isScrollingNotifier.value, isTrue);
+    expect(active, isEmpty);
+
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(controller.position.isScrollingNotifier.value, isTrue);
+    expect(active, isNotEmpty);
+    expect(
+      active.every((index) => index * 100 < controller.offset + 300 && (index + 1) * 100 > controller.offset),
+      isTrue,
+    );
+
+    await tester.pumpAndSettle();
+    await motion;
+    expect(active, {18, 19, 20});
   });
 }

@@ -35,8 +35,7 @@ class _AccountSessionsSettingState extends State<AccountSessionsSetting>
     final sessionIsCurrent = widget.sessionIsCurrent;
     final confirmed = await _confirm(
       title: 'Sign out other devices?',
-      message:
-          'Sign out every other app session for this account? Streaming on those devices will stop and they will need to sign in again. This device and admin console sessions stay signed in.',
+      message: 'Sign out every other app session for this account? Streaming on those devices will stop and they will need to sign in again. This device and admin console sessions stay signed in.',
       confirmLabel: 'Sign out other devices',
       sessionIsCurrent: sessionIsCurrent,
     );
@@ -51,8 +50,7 @@ class _AccountSessionsSettingState extends State<AccountSessionsSetting>
     final sessionIsCurrent = widget.sessionIsCurrent;
     final confirmed = await _confirm(
       title: 'Sign out all devices?',
-      message:
-          'Sign out every app session for this account, including this device? Streaming will stop and all apps will need to sign in again. Admin console sessions stay signed in.',
+      message: 'Sign out every app session for this account, including this device? Streaming will stop and all apps will need to sign in again. Admin console sessions stay signed in.',
       confirmLabel: 'Sign out all devices',
       sessionIsCurrent: sessionIsCurrent,
     );
@@ -98,9 +96,8 @@ class _AccountSessionsSettingState extends State<AccountSessionsSetting>
         child: Text(
           _feature.message!,
           key: const ValueKey('account-session-feedback'),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: _feature.failed ? Theme.of(context).colorScheme.error : ObsidianPalette.textMuted,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: _feature.failed ? Theme.of(context).colorScheme.error : ObsidianPalette.textMuted),
         ),
       ),
     );

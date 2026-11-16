@@ -165,7 +165,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                     TechButton(
                       label: 'Download playlist',
                       icon: PhonoliteIcons.download,
-                      chrome: TechButtonChrome.borderless,
                       iconOnly: isCompactListWidth(context),
                       tooltip: 'Download playlist',
                       onTap: _feature.tracksLoading || displayedTracks.isEmpty

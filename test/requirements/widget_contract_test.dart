@@ -16,10 +16,10 @@ import 'package:phonolite_app/data/storage/offline/library/offline_library.dart'
 import 'package:phonolite_app/pages/settings/settings_page.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_manager_panel.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards_content.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_header.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
-import 'package:phonolite_app/ui/features/search/widgets/search_filter_chips.dart';
 import 'package:phonolite_app/ui/features/search/widgets/search_result_tile.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/expandable_summary_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
@@ -263,30 +263,6 @@ void main() {
       expect(submitted, 1);
     });
 
-    testWidgets('search filter chips expose artist album and track filters', (
-      tester,
-    ) async {
-      String? selected;
-
-      await tester.pumpWidget(
-        wrapInTestApp(
-          SearchFilterChips(
-            activeFilter: 'artist',
-            onChanged: (value) => selected = value,
-          ),
-        ),
-      );
-
-      expect(find.text('ARTIST'), findsOneWidget);
-      expect(find.text('ALBUM'), findsOneWidget);
-      expect(find.text('TRACK'), findsOneWidget);
-
-      await tester.tap(find.text('TRACK'));
-      await tester.pumpAndSettle();
-
-      expect(selected, 'track');
-    });
-
     testWidgets('collection view toggle forwards taps', (tester) async {
       var tapped = 0;
 
@@ -315,7 +291,6 @@ void main() {
           TechButton(
             label: 'Download Artist',
             icon: PhonoliteIcons.download,
-            chrome: TechButtonChrome.borderless,
             onTap: () => tapped += 1,
           ),
         ),
@@ -376,7 +351,6 @@ void main() {
             icon: PhonoliteIcons.download,
             iconOnly: true,
             tooltip: 'Download Artist',
-            chrome: TechButtonChrome.borderless,
             onTap: () => tapped += 1,
           ),
         ),
@@ -396,7 +370,7 @@ void main() {
       expect(tapped, 1);
     });
 
-    testWidgets('confirmation modal can use borderless action buttons', (
+    testWidgets('confirmation modal uses shared action buttons', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -406,7 +380,6 @@ void main() {
             message: 'Queue downloads for Artist?',
             confirmLabel: 'Download',
             confirmVariant: TechButtonVariant.standard,
-            actionChrome: TechButtonChrome.borderless,
           ),
         ),
       );
@@ -1280,10 +1253,15 @@ void main() {
 
       await tester.pumpWidget(
         wrapInTestApp(
-          StatsCards(
-            stats: stats,
-            onYearChanged: (_) {},
-            onMonthChanged: (_) {},
+          BackdropGroup(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  StatsHeader(stats: stats, onYearChanged: (_) {}, onMonthChanged: (_) {}),
+                  StatsCardsContent(stats: stats),
+                ],
+              ),
+            ),
           ),
         ),
       );

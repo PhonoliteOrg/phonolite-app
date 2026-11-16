@@ -10,8 +10,7 @@ import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart
 class CollectionsApi extends JsonApiEndpoint {
   final Future<List<ServerLikeState>> Function(Map<String, bool> states) _updateLikeStates;
 
-  CollectionsApi(super.transport, {required Future<List<ServerLikeState>> Function(Map<String, bool>) updateLikeStates})
-    : _updateLikeStates = updateLikeStates;
+  CollectionsApi(super.transport, {required this._updateLikeStates});
 
   Future<List<Playlist>> fetchPlaylists() async {
     return getValues('/library/playlists', Playlist.fromJson);

@@ -243,23 +243,23 @@ class AppController
 
   AppController({
     required this.connection,
-    AudioEngineFactory audioEngineFactory = AudioEngine.new,
+    this._audioEngineFactory = AudioEngine.new,
     OfflineDownloadManager? offlineDownloadManager,
     OfflineLibraryStorage offlineStorage = const OfflineLibraryStorage(),
-    AuthStorage authStorage = const AuthStorage(),
-    CustomShuffleSettingsStorage customShuffleStorage = const CustomShuffleSettingsStorage(),
-    PlaybackPreferencesStorage playbackPreferencesStorage = const PlaybackPreferencesStorage(),
+    this._authStorage = const AuthStorage(),
+    this._customShuffleStorage = const CustomShuffleSettingsStorage(),
+    this._playbackPreferencesStorage = const PlaybackPreferencesStorage(),
     PlaybackResumeStorage? playbackResumeStorage,
     ConnectivitySignalSource? connectivitySignalSource,
     NowPlayingPlatformService? nowPlayingPlatformService,
     NowPlayingArtworkLoader? nowPlayingArtworkLoader,
-    ArtworkPreloader? shuffleArtworkPreloader,
+    this._shuffleArtworkPreloader,
     VehicleSurfaceService? vehicleSurfaceService,
     LocalNetworkPermissionService? localNetworkPermissionService,
     ListeningStatsService? listeningStatsService,
+    DownloadSettingsController? downloadSettings,
     DateTime Function()? playbackClock,
-  }) : _audioEngineFactory = audioEngineFactory,
-       _playbackClock = playbackClock ?? DateTime.now,
+  }) : _playbackClock = playbackClock ?? DateTime.now,
        _listeningStats =
            listeningStatsService ?? ListeningStatsService(inMemory: Platform.environment.containsKey('FLUTTER_TEST')),
        _offlineStorage = offlineStorage,
@@ -269,20 +269,16 @@ class AppController
              connection: connection,
              storage: offlineStorage,
              qualityProvider: () async {
-               final settings = DownloadSettingsController.instance;
+               final settings = downloadSettings ?? DownloadSettingsController.instance;
                await settings.initialize();
                return settings.settings.quality;
              },
            ),
-       _authStorage = authStorage,
-       _customShuffleStorage = customShuffleStorage,
-       _playbackPreferencesStorage = playbackPreferencesStorage,
        _playbackResumeStorage = playbackResumeStorage ?? PlaybackResumeStorage(),
        _resumeDeviceStorageEnabled = playbackResumeStorage != null || !Platform.environment.containsKey('FLUTTER_TEST'),
        _connectivitySignalSource = connectivitySignalSource ?? ConnectivityPlusSignalSource(),
        _nowPlayingPlatform = nowPlayingPlatformService ?? NowPlayingPlatformService(),
        _artwork = NowPlayingArtwork(loader: nowPlayingArtworkLoader ?? NowPlayingArtworkLoader()),
-       _shuffleArtworkPreloader = shuffleArtworkPreloader,
        _vehicleSurface = vehicleSurfaceService ?? VehicleSurfaceService(),
        _localNetworkPermissions = localNetworkPermissionService ?? LocalNetworkPermissionService() {
     // Create state owners in the same zone as the parent and before UI subscriptions.

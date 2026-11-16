@@ -355,7 +355,7 @@ void main() {
         await _tap(tester, _serverAlpha);
         await _save(tester);
         expect(_selected(tester, _serverAlpha), isTrue);
-        expect(tester.getSemantics(_checkbox(_serverAlpha)), containsSemantics(hasCheckedState: true, isChecked: true));
+        expect(tester.getSemantics(_checkbox(_serverAlpha)), isSemantics(hasCheckedState: true, isChecked: true));
         await _tap(tester, 'Genres');
         await _tap(tester, 'Local');
         await _tap(tester, 'Select all');

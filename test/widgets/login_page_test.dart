@@ -207,7 +207,7 @@ void main() {
 
         for (final label in ['Server address', 'Port']) {
           final surface = find
-              .descendant(of: _field(label), matching: find.byType(ClipPath))
+              .descendant(of: _field(label), matching: find.byType(ClipRect))
               .first;
           final rect = tester.getRect(surface);
           expect(rect.height, greaterThanOrEqualTo(width < 820 ? 56 : 48));

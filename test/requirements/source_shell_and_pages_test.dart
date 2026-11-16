@@ -8,6 +8,7 @@ void main() {
       final source = readProjectFiles([
         'lib/main.dart',
         'lib/bootstrap/phonolite_app.dart',
+        'lib/bootstrap/phonolite_app_shell.dart',
         'lib/bootstrap/app_startup.dart',
       ]);
 
@@ -15,11 +16,10 @@ void main() {
         'GoogleFonts.config.allowRuntimeFetching = false;',
         "'PHONOLITE_URL'",
         "'https://127.0.0.1:3000/api'",
-        'await Future.wait([_controller.initialize(), DisplaySettingsController.instance.initialize()]);',
+        'await Future.wait([_controller.initialize(), _settings.display.initialize()]);',
         'await _controller.restoreSession();',
         'home: const HomePage(),',
       ]);
-      expect(source, isNot(contains('SplashPage(')));
       expect(source, isNot(contains('LoginPage(')));
     });
 
@@ -206,7 +206,6 @@ void main() {
       );
       final logsSource = readProjectModule('lib/pages/logs/logs_page.dart');
       final messageLogSource = readProjectModule('lib/ui/features/logs/widgets/message_log.dart');
-      final splashSource = readProjectModule('lib/pages/splash/splash_page.dart');
 
       expectContainsAll(artistSource, const [
         "backLabel: 'Back to library'",
@@ -214,11 +213,9 @@ void main() {
         'isCompactListWidth(context)',
         'iconOnly: compactHeaderActions',
         'tooltip: downloadSummary.label',
-        'TechButtonChrome',
-        '.borderless',
+        'TechButton(',
         'DownloadSelectionToolbar',
         'ConfirmationModal.show',
-        'actionChrome:',
         'confirmRemoveDownloadedDownloads',
         'controller.downloadArtist(',
         'app.removeOfflineDownloads(',
@@ -235,8 +232,7 @@ void main() {
         'isCompactListWidth(context)',
         'iconOnly: compactHeaderActions',
         'tooltip: downloadSummary.label',
-        'TechButtonChrome',
-        '.borderless',
+        'TechButton(',
         'DownloadSelectionToolbar',
         'downloadAlbum(',
         'confirmRemoveDownloadedTracks',
@@ -412,7 +408,6 @@ void main() {
         "title: 'Remove download'",
         "confirmLabel: 'Remove'",
         'confirmVariant: TechButtonVariant.danger',
-        'actionChrome: TechButtonChrome.borderless',
       ]);
       expectContainsAll(logsSource, const [
         "static const String routeName = '/settings/logs';",
@@ -427,7 +422,6 @@ void main() {
         'itemCount: widget.messages.length',
         'final combined = widget.messages.reversed',
       ]);
-      expectContainsAll(splashSource, const ["'Connecting to saved server...'", "'Try a different server'"]);
     });
   });
 }

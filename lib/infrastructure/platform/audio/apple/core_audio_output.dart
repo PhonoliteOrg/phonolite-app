@@ -19,15 +19,12 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
   Future<void>? _shutdown;
 
   CoreAudioPlayer({
-    required int sampleRate,
-    required int channels,
-    required int deviceId,
+    required this._sampleRate,
+    required this._channels,
+    required this._deviceId,
     int bitsPerSample = 16,
     int validBitsPerSample = 16,
-  }) : _sampleRate = sampleRate,
-       _channels = channels,
-       _deviceId = deviceId,
-       _bitsPerSample = bitsPerSample {
+  }) : _bitsPerSample = bitsPerSample {
     if ((bitsPerSample != 16 && bitsPerSample != 32) || validBitsPerSample <= 0 || validBitsPerSample > bitsPerSample) {
       throw ArgumentError('Unsupported PCM precision.');
     }

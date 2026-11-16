@@ -76,7 +76,6 @@ class _ResetUserPasswordPageState extends BaseFormPageState<ResetUserPasswordPag
     controller: controller,
     label: label,
     height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
-    cut: 0,
     startPadding: 24,
     isDense: true,
     enabled: !_feature.saving,
