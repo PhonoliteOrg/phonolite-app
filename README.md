@@ -61,8 +61,7 @@ tray/window integration, autostart, native decoders, QUIC and 16/32-bit PCM
 playback through the system default audio output. Native output-device enumeration
 and MPRIS media integration remain unfinished. Linux native packaging and the
 signed GitHub updater are implemented with production rollout gated on signing
-setup and target/session validation. See the
-[Linux support and build checks](docs/linux-native-specification.md).
+setup and target/session validation.
 
 ### Windows
 
@@ -145,8 +144,6 @@ App Store Connect record with both iOS and macOS enabled for the shared listing.
 Select the correct Apple development team in `macos/Runner.xcworkspace`,
 then archive, validate and upload through Xcode. The Mac App Store manages app
 updates.
-See the [macOS native specification](docs/macos-native-specification.md) for
-build checks and the remaining user-controlled runtime checks.
 
 ### iOS
 
