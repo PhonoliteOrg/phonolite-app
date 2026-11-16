@@ -200,16 +200,22 @@ class _ListeningStatsCoordinator {
         saved.baseUrl == _host.connection.baseUrl &&
         saved.token == _host.connection.token &&
         (saved.serverId != serverId || saved.userId != userId)) {
-      await _host._storeSavedCredentials(
-        AuthCredentials(
-          baseUrl: saved.baseUrl,
-          token: saved.token,
-          username: saved.username,
-          serverId: serverId,
-          userId: userId,
-          trust: saved.trust,
-        ),
-      );
+      // The identity is already active for this session; a failed save must not
+      // turn into a statistics sync failure and its retry loop.
+      try {
+        await _host._storeSavedCredentials(
+          AuthCredentials(
+            baseUrl: saved.baseUrl,
+            token: saved.token,
+            username: saved.username,
+            serverId: serverId,
+            userId: userId,
+            trust: saved.trust,
+          ),
+        );
+      } catch (err) {
+        _host._pushMessage('Could not save the listening account on this device: $err', level: LogLevel.warning);
+      }
     }
 
     final track = _host._playbackState.track;

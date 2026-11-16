@@ -44,36 +44,15 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
     );
   }
 
-  Future<void> _createPlaylist(
-    AppController controller, {
-    required String name,
-    required String description,
-    required PlaylistImageEdit imageEdit,
-    required PlaylistEditorTarget target,
-    required bool canCreateServer,
-  }) {
-    if (target == PlaylistEditorTarget.server && canCreateServer) {
-      return controller.createPlaylist(name, description: description, imageEdit: imageEdit);
-    }
-
-    return controller.createLocalPlaylist(name, description: description, imageEdit: imageEdit);
-  }
-
-  void _openCreate(AppController controller, {required bool canCreateServer}) {
+  void _openCreate({required bool canCreateServer}) {
     showDialog<void>(
       context: context,
       builder: (context) => PlaylistEditorModal(
         title: 'Create playlist',
         initialValue: '',
         showTargetSelector: canCreateServer,
-        onSubmit: (name, description, imageEdit, target) => _createPlaylist(
-          controller,
-          name: name,
-          description: description,
-          imageEdit: imageEdit,
-          target: target,
-          canCreateServer: canCreateServer,
-        ),
+        onSubmit: (name, description, imageEdit, target) =>
+            _feature.createPlaylist(name, description: description, imageEdit: imageEdit, target: target),
       ),
     );
   }
@@ -184,7 +163,7 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
                       child: ObsidianHudIconButton(
                         icon: PhonoliteIcons.plus,
                         size: headerActionIconSize,
-                        onPressed: () => _openCreate(controller, canCreateServer: authState.isAuthorized),
+                        onPressed: () => _openCreate(canCreateServer: authState.isAuthorized),
                       ),
                     ),
                     Tooltip(

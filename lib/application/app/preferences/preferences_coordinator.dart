@@ -129,8 +129,24 @@ class _PreferencesCoordinator {
 
     _customShuffleSaveChain = save.then<void>((_) {}, onError: (Object _, StackTrace __) {});
 
-    await save;
+    // The new filters are already in effect, so playback follows them even when
+    // persisting fails; the save failure still reaches the caller afterwards.
+    try {
+      await save;
+    } finally {
+      await _applyCustomShuffleChange(
+        accountGeneration,
+        changesLocalFilters: changesLocalFilters,
+        changesServerFilters: changesServerFilters,
+      );
+    }
+  }
 
+  Future<void> _applyCustomShuffleChange(
+    int accountGeneration, {
+    required bool changesLocalFilters,
+    required bool changesServerFilters,
+  }) async {
     if (_host._disposed || _shuffleAccountGeneration != accountGeneration) {
       return;
     }

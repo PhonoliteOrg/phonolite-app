@@ -69,14 +69,20 @@ class _AudioWorkerEngine {
   bool get _hasPendingPreparation => _preparing.any(_isCurrentPreparation);
 
   Future<void> stop({bool notify = true}) {
-    if (notify) _startGeneration++;
+    if (notify) {
+      _startGeneration++;
+    }
+
     return _stopInFlight ??= _stopSession(notify).whenComplete(() => _stopInFlight = null);
   }
 
   Future<void> dispose() => stop();
 
   void notifyNetworkChange({required int playbackId, required int routeGeneration}) {
-    if (_stopping || playbackId != _playbackId || routeGeneration <= _routeGeneration) return;
+    if (_stopping || playbackId != _playbackId || routeGeneration <= _routeGeneration) {
+      return;
+    }
+
     _routeGeneration = routeGeneration;
     final entries = _occurrences.toList();
     final current = _current;
@@ -84,6 +90,7 @@ class _AudioWorkerEngine {
       entries.remove(current);
       entries.insert(0, current);
     }
+
     for (final entry in entries) {
       entry.session.notifyNetworkChange(routeGeneration);
     }
@@ -108,26 +115,38 @@ class _AudioWorkerEngine {
   }
 
   Future<void> pause({int? playbackId}) async {
-    if (playbackId != null && playbackId != (_requestedPlaybackId > 0 ? _requestedPlaybackId : _playbackId)) return;
+    if (playbackId != null && playbackId != (_requestedPlaybackId > 0 ? _requestedPlaybackId : _playbackId)) {
+      return;
+    }
+
     final revision = ++_pauseRevision;
     final startGeneration = _startGeneration;
     _paused = true;
     _timeline?.pause();
     for (final entry in _occurrences.toList()) {
-      if (revision != _pauseRevision || startGeneration != _startGeneration || !_paused) return;
+      if (revision != _pauseRevision || startGeneration != _startGeneration || !_paused) {
+        return;
+      }
+
       await entry.session.pause();
     }
   }
 
   void resume({int? playbackId}) {
-    if (playbackId != null && playbackId != (_requestedPlaybackId > 0 ? _requestedPlaybackId : _playbackId)) return;
+    if (playbackId != null && playbackId != (_requestedPlaybackId > 0 ? _requestedPlaybackId : _playbackId)) {
+      return;
+    }
+
     _pauseRevision++;
     _paused = false;
     _timeline?.resume();
     for (final entry in _occurrences.toList()) {
       entry.session.resume();
     }
-    if (_buffering) _send({'type': 'gapless_buffering', 'waiting': true, 'playback_id': _playbackId});
+
+    if (_buffering) {
+      _send({'type': 'gapless_buffering', 'waiting': true, 'playback_id': _playbackId});
+    }
   }
 
   void setVolume(double value) {
@@ -151,10 +170,13 @@ class _AudioWorkerEngine {
     final startGeneration = _startGeneration;
     if ((playbackId != null && playbackId != sessionId) || current == null || _stopping) {
       _send({'type': 'seek_failed', 'request_id': requestId, 'playback_id': playbackId});
+
       return;
     }
+
     final seekGeneration = ++_seekGeneration;
     _seekingOccurrence = current;
+
     bool isCurrent() =>
         !_stopping &&
         sessionId == _playbackId &&
@@ -162,22 +184,28 @@ class _AudioWorkerEngine {
         seekGeneration == _seekGeneration &&
         identical(current, _current) &&
         !current.output._cancelled;
+
     try {
       // Cancellation flushes a submitted successor, but the requested seek
       // replaces its ordinary rewind of the current track.
       await cancelPreparedNext();
       if (!isCurrent()) {
         _send({'type': 'seek_failed', 'request_id': requestId, 'playback_id': sessionId});
+
         return;
       }
+
       await current.session.seekTo(position, requestId: requestId);
     } catch (error) {
       if (isCurrent()) {
         _send({'type': 'message', 'text': 'Unable to prepare audio seek: $error', 'playback_id': sessionId});
       }
+
       _send({'type': 'seek_failed', 'request_id': requestId, 'playback_id': sessionId});
     } finally {
-      if (seekGeneration == _seekGeneration) _seekingOccurrence = null;
+      if (seekGeneration == _seekGeneration) {
+        _seekingOccurrence = null;
+      }
     }
   }
 
@@ -202,7 +230,10 @@ class _AudioWorkerEngine {
     final listeningRevision = _listeningRevision;
     final pauseRevision = _pauseRevision;
     await stop(notify: false);
-    if (generation != _startGeneration) return;
+    if (generation != _startGeneration) {
+      return;
+    }
+
     _begin(playbackId, pauseRevision == _pauseRevision ? initialPaused : _paused);
     _current = _create(
       trackId: trackId,
@@ -236,7 +267,10 @@ class _AudioWorkerEngine {
     final listeningRevision = _listeningRevision;
     final pauseRevision = _pauseRevision;
     await stop(notify: false);
-    if (generation != _startGeneration) return;
+    if (generation != _startGeneration) {
+      return;
+    }
+
     _begin(playbackId, pauseRevision == _pauseRevision ? initialPaused : _paused);
     _current = _create(
       trackId: trackId,
@@ -262,7 +296,10 @@ class _AudioWorkerEngine {
       normalize: gaplessResampling,
       progressTimeout: outputProgressTimeout,
     )..setVolume(_volume);
-    if (_paused) _timeline!.pause();
+    if (_paused) {
+      _timeline!.pause();
+    }
+
     _preparing.clear();
   }
 
@@ -275,9 +312,14 @@ class _AudioWorkerEngine {
           _pendingPreparations.first['preparation_id'] == message['after_preparation_id']) {
         _pendingPreparations.add(Map.from(message));
       }
+
       return;
     }
-    if (message['playback_id'] != _playbackId || _current == null || _timeline == null) return;
+
+    if (message['playback_id'] != _playbackId || _current == null || _timeline == null) {
+      return;
+    }
+
     final after = (message['after_preparation_id'] as num?)?.toInt();
     final generation = after == null ? ++_preparationGeneration : ++_tailGeneration;
     final preparation = (
@@ -313,9 +355,11 @@ class _AudioWorkerEngine {
     } else if (_following != null) {
       await cancelPreparedNext(invalidate: false, preparationId: _following!.preparationId);
     }
+
     if (!_isCurrentPreparation(preparation) || _current == null) {
       return;
     }
+
     if (after != null &&
         after != _prepared?.preparationId &&
         !(after == _current?.preparationId && _prepared == null)) {
@@ -324,11 +368,16 @@ class _AudioWorkerEngine {
         'preparation_id': message['preparation_id'],
         'playback_id': _playbackId,
       });
+
       return;
     }
+
     final rawContext = message['listening_context'];
     final id = (message['preparation_id'] as num?)?.toInt();
-    if (id == null || id <= 0) return;
+    if (id == null || id <= 0) {
+      return;
+    }
+
     const defaultSettings = StreamSettings.original();
     final entry = _create(
       preparationId: id,
@@ -351,6 +400,7 @@ class _AudioWorkerEngine {
     } else {
       _prepared = entry;
     }
+
     _launch(entry);
   }
 
@@ -358,7 +408,10 @@ class _AudioWorkerEngine {
     final pending = _pendingPreparations.toList();
     _pendingPreparations.clear();
     for (final message in pending) {
-      if (_requestedPlaybackId != id || _playbackId != id) return;
+      if (_requestedPlaybackId != id || _playbackId != id) {
+        return;
+      }
+
       await prepareNext(message);
     }
   }
@@ -384,7 +437,9 @@ class _AudioWorkerEngine {
       onAudible: () => _becameAudible(entry),
       onAbort: (begin) => _audibleSuppression += begin ? 1 : -1,
     ).._isPrepared = preparationId != null;
+
     void send(Map<String, dynamic> message) => _handle(entry, message);
+
     AudioFileDecoder makeDecoder(Uri uri, Duration offset) => fileDecoderFactory!(trackId, uri, offset);
     final session = filePath != null
         ? _PlaybackSession.local(
@@ -433,6 +488,7 @@ class _AudioWorkerEngine {
           );
     entry = _GaplessOccurrence(session, output, preparationId, _listeningRevision, context);
     _occurrences.add(entry);
+
     return entry;
   }
 
@@ -447,13 +503,22 @@ class _AudioWorkerEngine {
   }
 
   void _becameAudible(_GaplessOccurrence entry) {
-    if (entry.output._cancelled || entry.session._playbackId != _playbackId) return;
-    if (entry.preparationId == null || identical(entry, _current)) return;
+    if (entry.output._cancelled || entry.session._playbackId != _playbackId) {
+      return;
+    }
+
+    if (entry.preparationId == null || identical(entry, _current)) {
+      return;
+    }
+
     final context = entry.listeningRevision == _listeningRevision ? entry.context : null;
     entry.session._listening.setContext(
       context == null ? null : {...context, 'session_started_at_ms': DateTime.now().toUtc().millisecondsSinceEpoch},
     );
-    if (_stopping || _audibleSuppression > 0) return;
+    if (_stopping || _audibleSuppression > 0) {
+      return;
+    }
+
     entry.predecessor = _current;
     _unacknowledged[entry.preparationId!] = entry;
     _current = entry;
@@ -461,6 +526,7 @@ class _AudioWorkerEngine {
       _prepared = _following;
       _following = null;
     }
+
     _setBuffering(false);
     _send({'type': 'gapless_transition', 'preparation_id': entry.preparationId, 'playback_id': _playbackId});
     _send({'type': 'started', 'playback_id': _playbackId});
@@ -470,15 +536,25 @@ class _AudioWorkerEngine {
     final type = message['type'];
     if (type == 'listening_segment') {
       _send(message);
+
       return;
     }
-    if (entry.session._playbackId != _playbackId) return;
-    if (_stopping) return;
+
+    if (entry.session._playbackId != _playbackId) {
+      return;
+    }
+
+    if (_stopping) {
+      return;
+    }
+
     if (type == 'state' && message['active'] == false && identical(entry, _current)) {
       _stopping = true;
       unawaited(stop(notify: false).then((_) => _send(message)));
+
       return;
     }
+
     if (type == 'complete') {
       entry.ended = true;
       if ((identical(_prepared, entry) || identical(_following, entry)) && entry.output._deviceWritten == 0) {
@@ -486,15 +562,21 @@ class _AudioWorkerEngine {
       } else {
         _maybeComplete(entry);
       }
+
       return;
     }
+
     if (type == 'state' &&
         message['active'] == false &&
         (identical(_prepared, entry) || identical(_following, entry))) {
       _preparationFailed(entry);
+
       return;
     }
-    if (identical(entry, _current)) _send(message);
+
+    if (identical(entry, _current)) {
+      _send(message);
+    }
   }
 
   void _preparationFailed(_GaplessOccurrence entry) {
@@ -506,17 +588,24 @@ class _AudioWorkerEngine {
           'playback_id': entry.session._playbackId,
         });
         final current = _current;
-        if (current != null) _maybeComplete(current);
+        if (current != null) {
+          _maybeComplete(current);
+        }
       }),
     );
   }
 
   void _maybeComplete(_GaplessOccurrence entry) {
-    if (!entry.ended || entry.completeReported || !identical(entry, _current)) return;
-    if (_prepared != null || _following != null || _hasPendingPreparation) {
-      _setBuffering(true);
+    if (!entry.ended || entry.completeReported || !identical(entry, _current)) {
       return;
     }
+
+    if (_prepared != null || _following != null || _hasPendingPreparation) {
+      _setBuffering(true);
+
+      return;
+    }
+
     _setBuffering(false);
     entry.completeReported = true;
     if (entry.output._deviceWritten == 0 && entry.session._baseOffsetMs == 0) {
@@ -525,6 +614,7 @@ class _AudioWorkerEngine {
     } else {
       _send({'type': 'complete', 'playback_id': _playbackId});
     }
+
     final timeline = _timeline;
     _timeline = null;
     if (timeline != null) {
@@ -532,14 +622,19 @@ class _AudioWorkerEngine {
       _retiringOutput = closing;
       unawaited(
         closing.whenComplete(() {
-          if (identical(_retiringOutput, closing)) _retiringOutput = null;
+          if (identical(_retiringOutput, closing)) {
+            _retiringOutput = null;
+          }
         }),
       );
     }
   }
 
   void _setBuffering(bool waiting) {
-    if (_buffering == waiting) return;
+    if (_buffering == waiting) {
+      return;
+    }
+
     _buffering = waiting;
     _send({'type': 'gapless_buffering', 'waiting': waiting, 'playback_id': _playbackId});
   }
@@ -549,27 +644,40 @@ class _AudioWorkerEngine {
       _pendingPreparations.clear();
     } else {
       final index = _pendingPreparations.indexWhere((item) => item['preparation_id'] == preparationId);
-      if (index >= 0) _pendingPreparations.removeRange(index, _pendingPreparations.length);
+      if (index >= 0) {
+        _pendingPreparations.removeRange(index, _pendingPreparations.length);
+      }
     }
+
     if (preparationId == null && _cancellations.isNotEmpty) {
       return _joinPreparedCancellations(invalidate: invalidate);
     }
+
     final key = preparationId ?? _prepared?.preparationId ?? 0;
     final pending = _cancellations[key];
-    if (pending != null) return pending;
+    if (pending != null) {
+      return pending;
+    }
+
     final keys = <int>{key};
     if (preparationId == null ||
         preparationId == _prepared?.preparationId ||
         (preparationId == _following?.preparationId && (_following?.output._deviceWritten ?? 0) > 0)) {
       for (final entry in [_prepared, _following]) {
-        if (entry?.preparationId != null) keys.add(entry!.preparationId!);
+        if (entry?.preparationId != null) {
+          keys.add(entry!.preparationId!);
+        }
       }
     }
+
     if (_unacknowledged.containsKey(preparationId)) {
       for (final entry in [_prepared, _following, ..._unacknowledged.values]) {
-        if (entry?.preparationId != null) keys.add(entry!.preparationId!);
+        if (entry?.preparationId != null) {
+          keys.add(entry!.preparationId!);
+        }
       }
     }
+
     final timeline = _timeline;
     final playbackId = _playbackId;
     final startGeneration = _startGeneration;
@@ -580,15 +688,19 @@ class _AudioWorkerEngine {
           identical(timeline, _timeline)) {
         throw error;
       }
+
       // A release failure from an already retired timeline cannot fail the
       // replacement worker command or revive its old playback occurrence.
     });
     for (final id in keys) {
       _cancellations[id] = future;
     }
+
     return future.whenComplete(() {
       for (final id in keys) {
-        if (identical(_cancellations[id], future)) _cancellations.remove(id);
+        if (identical(_cancellations[id], future)) {
+          _cancellations.remove(id);
+        }
       }
     });
   }
@@ -597,15 +709,18 @@ class _AudioWorkerEngine {
     final timeline = _timeline;
     final playbackId = _playbackId;
     final startGeneration = _startGeneration;
+
     bool isCurrent() =>
         !_stopping &&
         playbackId == _playbackId &&
         startGeneration == _startGeneration &&
         identical(timeline, _timeline);
+
     while (isCurrent() && _cancellations.isNotEmpty) {
       final pending = _cancellations.values.toSet();
       await Future.wait(pending);
     }
+
     if (isCurrent()) {
       // A targeted tail cancellation can leave the head in place. Re-evaluate
       // after release rather than treating a targeted future as cancel-all.
@@ -617,17 +732,25 @@ class _AudioWorkerEngine {
     final timeline = _timeline;
     final playbackId = _playbackId;
     final startGeneration = _startGeneration;
+
     bool isCurrent() =>
         !_stopping &&
         playbackId == _playbackId &&
         startGeneration == _startGeneration &&
         identical(timeline, _timeline);
-    if (!isCurrent()) return;
+
+    if (!isCurrent()) {
+      return;
+    }
+
     final tailOnly = preparationId != null && preparationId == _following?.preparationId;
     if (invalidate) {
       _tailGeneration++;
-      if (!tailOnly) _preparationGeneration++;
+      if (!tailOnly) {
+        _preparationGeneration++;
+      }
     }
+
     final selected = tailOnly ? _following : _prepared;
     if ((_unacknowledged.containsKey(preparationId)) ||
         ((preparationId == null || selected?.preparationId == preparationId) &&
@@ -640,7 +763,11 @@ class _AudioWorkerEngine {
         _audibleSuppression--;
       }
     }
-    if (!isCurrent()) return;
+
+    if (!isCurrent()) {
+      return;
+    }
+
     // A renderer marker may have crossed while its UI notification was in
     // flight. Targeted invalidation must retract that occurrence as well.
     final audible = _unacknowledged[preparationId];
@@ -658,39 +785,67 @@ class _AudioWorkerEngine {
         entry.output.cancel();
         _unacknowledged.remove(entry.preparationId);
       }
+
       await timeline?.flush();
       await Future.wait(cancelled.map((entry) => entry.session.requestStop(outcome: 'superseded')));
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       predecessor.ended = true;
       _maybeComplete(predecessor);
+
       return;
     }
+
     final entry = tailOnly ? _following : _prepared;
-    if (entry == null || (preparationId != null && entry.preparationId != preparationId)) return;
+    if (entry == null || (preparationId != null && entry.preparationId != preparationId)) {
+      return;
+    }
+
     final committed = entry.output._deviceWritten > 0;
     final cancelled = <_GaplessOccurrence>{entry};
     if (!tailOnly || committed) {
-      if (_prepared != null) cancelled.add(_prepared!);
-      if (_following != null) cancelled.add(_following!);
+      if (_prepared != null) {
+        cancelled.add(_prepared!);
+      }
+
+      if (_following != null) {
+        cancelled.add(_following!);
+      }
+
       _prepared = _following = null;
     } else {
       _following = null;
     }
+
     _setBuffering(false);
     for (final item in cancelled) {
       item.output.cancel();
     }
-    if (committed) timeline?.pauseOutput();
+
+    if (committed) {
+      timeline?.pauseOutput();
+    }
+
     await Future.wait(cancelled.map((item) => item.session.requestStop(outcome: 'superseded')));
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      return;
+    }
+
     if (committed) {
       final current = _current;
       await timeline?.poll();
-      if (!isCurrent() || !identical(current, _current)) return;
-      if (current != null && identical(current, _seekingOccurrence)) {
-        await timeline?.flush();
+      if (!isCurrent() || !identical(current, _current)) {
         return;
       }
+
+      if (current != null && identical(current, _seekingOccurrence)) {
+        await timeline?.flush();
+
+        return;
+      }
+
       if (current != null && !identical(current, entry) && !current.ended) {
         final source = current.output;
         final position =
@@ -700,8 +855,13 @@ class _AudioWorkerEngine {
         await current.session._ownerSeek._seekCompletion?.future.timeout(const Duration(seconds: 6));
       } else {
         await timeline?.flush();
-        if (!isCurrent()) return;
-        if (current != null) _maybeComplete(current);
+        if (!isCurrent()) {
+          return;
+        }
+
+        if (current != null) {
+          _maybeComplete(current);
+        }
       }
     }
   }
@@ -714,6 +874,7 @@ class _AudioWorkerEngine {
       _requestedPlaybackId = 0;
       _pendingPreparations.clear();
     }
+
     final id = _playbackId;
     await _retiringOutput;
     _timeline?.pause();
@@ -722,6 +883,7 @@ class _AudioWorkerEngine {
     } catch (_) {
       /* Output failure still releases every source. */
     }
+
     final entries = _occurrences.toList();
     _current = _prepared = _following = null;
     _unacknowledged.clear();
@@ -731,8 +893,11 @@ class _AudioWorkerEngine {
     for (final entry in entries) {
       entry.output.cancel();
     }
+
     await timeline?.close();
     await Future.wait(entries.map((entry) => entry.session.requestStop(outcome: notify ? 'cancelled' : 'superseded')));
-    if (notify) _send({'type': 'state', 'active': false, 'paused': false, 'playback_id': id});
+    if (notify) {
+      _send({'type': 'state', 'active': false, 'paused': false, 'playback_id': id});
+    }
   }
 }

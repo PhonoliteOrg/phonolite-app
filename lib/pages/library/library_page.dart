@@ -57,6 +57,9 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   late final LibraryController _feature = bindController(LibraryController(AppScope.of(context)));
   late final TextEditingController _searchController;
   late final ScrollController _scrollController;
+  StreamSubscription<List<Artist>>? _artistUpdates;
+  StreamSubscription<bool>? _artistLoadingUpdates;
+  bool _artistExtentReportScheduled = false;
 
   DisplaySettingsController get _displaySettings => widget.displaySettings ?? SettingsScope.of(context).display;
 
@@ -77,11 +80,17 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
 
     _feature.loadIfNeeded();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMoreArtists());
+    final app = AppScope.of(context);
+
+    _artistUpdates ??= app.artistsStream.listen((_) => _scheduleArtistScrollExtentReport());
+    _artistLoadingUpdates ??= app.artistsLoadingStream.listen((_) => _scheduleArtistScrollExtentReport());
+    _scheduleArtistScrollExtentReport();
   }
 
   @override
   void dispose() {
+    unawaited(_artistUpdates?.cancel());
+    unawaited(_artistLoadingUpdates?.cancel());
     _scrollController.removeListener(_handleArtistScroll);
     _scrollController.dispose();
     _searchController.dispose();
@@ -118,10 +127,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
                     builder: (context, artistSnapshot) {
                       final artists = artistSnapshot.data ?? [];
                       final query = _searchController.text.trim();
-
-                      if (query.isEmpty && artists.isNotEmpty && controller.hasMoreArtists && !isLoading) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMoreArtists());
-                      }
 
                       return StreamBuilder<bool>(
                         stream: controller.collectionListModeStream,
@@ -216,13 +221,13 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     required List<OfflineArtistGroup> groups,
     required List<OfflineArtistGroup> selectedGroups,
   }) {
+    final selectableGroups = _feature.selectableArtistGroups(groups);
+
     return DownloadSelectionToolbar(
       selectedCount: selectedGroups.length,
-      totalCount: groups.where((group) => group.tracksForArtist.isNotEmpty).length,
+      totalCount: selectableGroups.length,
       onCancel: _feature.clearArtistSelection,
-      onSelectAll: () => _feature.selectAllArtists(
-        groups.where((group) => group.tracksForArtist.isNotEmpty).map(_feature.artistSelectionKey),
-      ),
+      onSelectAll: () => _feature.selectAllArtists(selectableGroups.map(_feature.artistSelectionKey)),
       onDeselectAll: _feature.deselectAllArtists,
       onRemove: selectedGroups.isEmpty ? null : () => _removeSelectedArtistDownloads(selectedGroups),
     );
@@ -283,34 +288,32 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     required bool showCollectionList,
     required bool isLoading,
   }) {
-    final snapshot = controller.artistBrowseSnapshot;
-    final windowed = snapshot.total > 0;
-    final indices = windowed ? snapshot.indices : List<int>.generate(artists.length, (index) => index);
-
-    Artist? sourceAt(int index) => windowed ? snapshot.at(index)?.toArtist() : artists[index];
+    final indices = _feature.serverArtistIndices(artists);
+    // Read during build: row visibility also reports while rows are being unmounted.
+    final libraryLocalFirst = _displaySettings.settings.libraryLocalFirst;
 
     Artist artistAt(int index) {
-      final source = sourceAt(index);
+      final source = _feature.serverArtistAt(index, artists);
 
       return source == null
           ? Artist(id: 'unloaded-artist-$index', name: 'Loading artist…', albumCount: 0)
           : _feature.visibleArtist(source);
     }
 
-    void visibilityChanged(int index, bool visible) {
-      final artist = sourceAt(index);
+    void openArtist(int index) {
+      final source = _feature.serverArtistAt(index, artists);
 
-      if (artist != null) {
-        _feature.artistVisibilityChanged(artist, visible);
-      } else if (visible) {
-        unawaited(controller.loadArtistBrowsePage(index));
-      }
-
-      if (visible && !windowed && !_displaySettings.settings.libraryLocalFirst && index == indices.length - 1) {
-        // Local sections below the server catalogue must not delay legacy paging.
-        _feature.loadMoreArtists(0);
+      if (source != null) {
+        _openArtistDetail(_feature.visibleArtist(source));
       }
     }
+
+    void visibilityChanged(int index, bool visible) => _feature.serverArtistRowVisibilityChanged(
+      index,
+      visible,
+      artists: artists,
+      libraryLocalFirst: libraryLocalFirst,
+    );
 
     return [
       LibrarySectionHeading(title: 'Server Library'),
@@ -334,11 +337,7 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
             artistFor: artistAt,
             coverFor: (index) => _feature.artistCoverUrl(controller, artistAt(index)),
             headers: authHeadersMap,
-            onOpen: (index) {
-              if (sourceAt(index) != null) {
-                _openArtistDetail(artistAt(index));
-              }
-            },
+            onOpen: openArtist,
             onVisibilityChanged: visibilityChanged,
             visibilityScope: controller.connection.sessionRevision,
           ),
@@ -424,8 +423,7 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
       onOpen: _openLocalArtistDetail,
       selectionMode: _feature.artistSelectionMode,
       isDeleting: (group) => _feature.groupHasRemovingTracks(group, removingTrackIds),
-      selectable: (group) =>
-          !_feature.groupHasRemovingTracks(group, removingTrackIds) && group.tracksForArtist.isNotEmpty,
+      selectable: (group) => _feature.canSelectArtistGroup(group, removingTrackIds),
       selected: (group) => _feature.selectedArtistIds.contains(_feature.artistSelectionKey(group)),
       onSelectionToggle: _feature.toggleArtistSelection,
     );
@@ -455,10 +453,24 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
       return;
     }
 
-    _maybeLoadMoreArtists();
+    _reportArtistScrollExtent();
   }
 
-  void _maybeLoadMoreArtists() {
+  /// New artists or a finished load change the content height, so the remaining
+  /// extent is measured again once the next frame is laid out.
+  void _scheduleArtistScrollExtentReport() {
+    if (_artistExtentReportScheduled) {
+      return;
+    }
+
+    _artistExtentReportScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _artistExtentReportScheduled = false;
+      _reportArtistScrollExtent();
+    });
+  }
+
+  void _reportArtistScrollExtent() {
     if (mounted && _scrollController.hasClients && _scrollController.position.hasContentDimensions) {
       _feature.loadMoreArtists(_scrollController.position.extentAfter);
     }

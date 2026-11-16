@@ -67,11 +67,6 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
     }
   }
 
-  Future<void> _playAlbum(AppController controller) async {
-    controller.updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
-    await controller.queueAlbum(_feature.album.id);
-  }
-
   Widget _albumContent(
     BuildContext context,
     PageAssembler assemble,
@@ -134,7 +129,7 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
               actions: BannerPlaybackButton(
                 message: 'Play album',
                 visible: !_feature.selectionMode,
-                onPressed: isLoading || tracks.isEmpty ? null : () => _playAlbum(controller),
+                onPressed: isLoading || tracks.isEmpty ? null : _feature.playInOrder,
               ),
             ),
           ),

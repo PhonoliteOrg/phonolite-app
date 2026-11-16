@@ -18,7 +18,7 @@ class ApiResponseDecoder {
     }
   }
 
-  Duration? retryAfter(http.Response response, {DateTime? now}) {
+  Duration? retryAfter(http.BaseResponse response, {DateTime? now}) {
     final header = response.headers['retry-after'];
 
     if (header == null) {

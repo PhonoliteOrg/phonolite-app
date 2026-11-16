@@ -13,11 +13,22 @@ import 'package:phonolite_app/application/controllers/playlists/add_to_playlist_
 import 'package:phonolite_app/application/controllers/playlists/playlist_detail_controller.dart';
 import 'package:phonolite_app/application/controllers/playlists/playlist_editor_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/artist_browse_snapshot.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
+import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
+import 'package:phonolite_app/application/controllers/library/album_detail_controller.dart';
+import 'package:phonolite_app/application/controllers/library/artist_detail_controller.dart';
+import 'package:phonolite_app/application/controllers/playback/shuffle_presets_controller.dart';
+import 'package:phonolite_app/application/controllers/playlists/playlists_controller.dart';
+import 'package:phonolite_app/data/models/library/artist_releases.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
+import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 class _Connection extends Fake implements ServerConnection {
@@ -80,6 +91,108 @@ class _App extends Fake implements AppController {
 
   @override
   Future<void> loadPlaylistTracks(String id) => (playlistLoads[id] = Completer<void>()).future;
+
+  @override
+  ArtistBrowseSnapshot artistBrowseSnapshot = const ArtistBrowseSnapshot();
+
+  @override
+  bool artistsLoading = false;
+
+  @override
+  bool hasMoreArtists = true;
+
+  final browsePageRequests = <int>[];
+  Object? browsePageFailure;
+  int moreArtistLoads = 0;
+
+  @override
+  Future<void> loadArtistBrowsePage(int index) async {
+    browsePageRequests.add(index);
+
+    if (browsePageFailure != null) {
+      throw browsePageFailure!;
+    }
+  }
+
+  @override
+  Future<void> loadMoreArtists() async => moreArtistLoads++;
+
+  @override
+  Stream<Artist> watchArtist(String artistId) => const Stream.empty();
+
+  final playlistCommands = <String>[];
+
+  @override
+  Future<void> playPlaylistFromTop(String playlistId) async => playlistCommands.add('server:play:$playlistId');
+
+  @override
+  Future<void> playLocalPlaylistFromTop(String playlistId) async => playlistCommands.add('local:play:$playlistId');
+
+  @override
+  Future<void> queuePlaylist(String playlistId, {String? startTrackId}) async =>
+      playlistCommands.add('server:queue:$playlistId:$startTrackId');
+
+  @override
+  Future<void> queueLocalPlaylist(String playlistId, {String? startTrackId}) async =>
+      playlistCommands.add('local:queue:$playlistId:$startTrackId');
+
+  @override
+  Future<void> renamePlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) async => playlistCommands.add('server:rename:$playlistId:$name');
+
+  @override
+  Future<void> renameLocalPlaylist(
+    String playlistId,
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) async => playlistCommands.add('local:rename:$playlistId:$name');
+
+  @override
+  Future<void> toggleLike(Track track) async => playlistCommands.add('server:like:${track.id}');
+
+  @override
+  Future<void> toggleLocalLike(Track track) async => playlistCommands.add('local:like:${track.id}');
+
+  @override
+  Future<void> createPlaylist(
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+    List<Track> tracks = const <Track>[],
+  }) async => playlistCommands.add('server:create:$name');
+
+  @override
+  Future<void> createLocalPlaylist(
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+    List<Track> tracks = const <Track>[],
+  }) async => playlistCommands.add('local:create:$name');
+
+  final playbackCommands = <String>[];
+
+  @override
+  void updateShuffleMode(ShuffleMode mode, {ActionScope? scope}) =>
+      playbackCommands.add('shuffle:${mode.name}:${scope?.name}');
+
+  @override
+  Future<void> queueAlbum(String albumId, {String? startTrackId}) async => playbackCommands.add('queue:$albumId');
+
+  @override
+  List<ShufflePreset> shufflePresets = const [];
+
+  @override
+  bool shufflePresetsAvailable = true;
+
+  final deletedPresetIds = <String>[];
+
+  @override
+  Future<void> deleteShufflePreset(ShufflePreset preset) async => deletedPresetIds.add(preset.id);
 
   @override
   Future<void> close() => authEvents.close();
@@ -157,6 +270,268 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(app.searches, ['second:all']);
     await app.close();
+  });
+
+  test('a visible unloaded windowed row requests its page and a failed request stays contained', () async {
+    final app = _App()..artistBrowseSnapshot = const ArtistBrowseSnapshot(total: 500);
+    final controller = LibraryController(app);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+
+    expect(controller.serverArtistIndices(const []), hasLength(500));
+    expect(controller.serverArtistAt(120, const []), isNull);
+
+    controller.serverArtistRowVisibilityChanged(120, false, artists: const [], libraryLocalFirst: false);
+    controller.serverArtistRowVisibilityChanged(120, true, artists: const [], libraryLocalFirst: false);
+    app.browsePageFailure = StateError('Artist browse capacity reached');
+    controller.serverArtistRowVisibilityChanged(499, true, artists: const [], libraryLocalFirst: false);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(app.browsePageRequests, [120, 499]);
+    expect(app.moreArtistLoads, 0);
+  });
+
+  test('the legacy roster loads its next page at the last row unless local sections come first', () {
+    final app = _App();
+    final controller = LibraryController(app);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+    final artists = [
+      for (var index = 0; index < 3; index++) Artist(id: 'artist-$index', name: 'A$index', albumCount: 1),
+    ];
+
+    expect(controller.serverArtistIndices(artists), [0, 1, 2]);
+
+    controller.serverArtistRowVisibilityChanged(2, true, artists: artists, libraryLocalFirst: true);
+
+    expect(app.moreArtistLoads, 0);
+
+    app.artistsLoading = true;
+    controller.serverArtistRowVisibilityChanged(2, true, artists: artists, libraryLocalFirst: false);
+
+    expect(app.moreArtistLoads, 0);
+
+    app.artistsLoading = false;
+    controller.serverArtistRowVisibilityChanged(2, true, artists: artists, libraryLocalFirst: false);
+
+    expect(app.moreArtistLoads, 1);
+    expect(app.browsePageRequests, isEmpty);
+  });
+
+  test('the remaining scroll extent decides legacy paging and windowed catalogues ignore it', () {
+    final app = _App();
+    final controller = LibraryController(app);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+
+    controller.loadMoreArtists(721);
+    controller.loadMoreArtists(720);
+
+    expect(app.moreArtistLoads, 1);
+
+    controller.setQuery('search');
+    controller.loadMoreArtists(0);
+    controller.setQuery('');
+    app.artistBrowseSnapshot = const ArtistBrowseSnapshot(total: 500);
+    controller.loadMoreArtists(0);
+
+    expect(app.moreArtistLoads, 1);
+  });
+
+  test('playlist detail resolves its playlist and entries and hides tracks while loading', () async {
+    final app = _App();
+    final controller = PlaylistDetailController(app, 'mix', true);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+    final track = Track(
+      id: 'track',
+      title: 'Song',
+      artist: 'Artist',
+      album: 'Album',
+      durationMs: 1,
+      liked: false,
+      inPlaylists: true,
+    );
+    final mix = Playlist(id: 'mix', name: 'Mix', trackIds: const ['track']);
+
+    expect(controller.playlistFrom([Playlist(id: 'other', name: 'Other', trackIds: const []), mix]), same(mix));
+    expect(controller.playlistFrom(const []).id, 'mix');
+    expect(
+      controller
+          .entriesFrom([
+            LocalPlaylistEntry(
+              entryKey: 'other:0',
+              playlistId: 'other',
+              position: 0,
+              track: track,
+              status: OfflineDownloadStatus.downloaded,
+              isPending: false,
+            ),
+            LocalPlaylistEntry(
+              entryKey: 'mix:0',
+              playlistId: 'mix',
+              position: 0,
+              track: track,
+              status: OfflineDownloadStatus.downloaded,
+              isPending: false,
+            ),
+          ])
+          .map((entry) => entry.entryKey),
+      ['mix:0'],
+    );
+    expect(controller.actionScope, ActionScope.local);
+
+    final server = PlaylistDetailController(app, 'mix', false);
+    addTearDown(server.dispose);
+
+    expect(server.displayedTracks([track]), isEmpty);
+
+    server.loadTracksIfNeeded(app);
+    app.playlistLoads['mix']!.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(server.displayedTracks([track]), [track]);
+    expect(server.actionScope, ActionScope.server);
+  });
+
+  test('playlist detail routes commands to the local or server playlist it shows', () async {
+    final app = _App();
+    final track = Track(
+      id: 'track',
+      title: 'Song',
+      artist: 'Artist',
+      album: 'Album',
+      durationMs: 1,
+      liked: false,
+      inPlaylists: true,
+    );
+    addTearDown(app.close);
+
+    for (final local in [true, false]) {
+      final controller = PlaylistDetailController(app, 'mix', local);
+      addTearDown(controller.dispose);
+
+      await controller.playFromTop();
+      await controller.playFrom(track);
+      await controller.rename('Renamed');
+      await controller.toggleLike(track);
+    }
+
+    expect(app.playlistCommands, [
+      'local:play:mix',
+      'local:queue:mix:track',
+      'local:rename:mix:Renamed',
+      'local:like:track',
+      'server:play:mix',
+      'server:queue:mix:track',
+      'server:rename:mix:Renamed',
+      'server:like:track',
+    ]);
+  });
+
+  test('local artists are selectable only when they have downloaded tracks', () {
+    final app = _App();
+    final controller = LibraryController(app);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+    final track = Track(
+      id: 'track',
+      title: 'Song',
+      artist: 'Artist',
+      album: 'Album',
+      durationMs: 1,
+      liked: false,
+      inPlaylists: false,
+    );
+    final withTracks = OfflineArtistGroup(
+      id: 'artist',
+      name: 'Artist',
+      albums: [
+        OfflineAlbumGroup(id: 'album', title: 'Album', artist: 'Artist', artistId: 'artist', tracks: [track]),
+      ],
+    );
+    const empty = OfflineArtistGroup(id: 'empty', name: 'Empty', albums: []);
+
+    expect(controller.hasRemovableTracks(withTracks), isTrue);
+    expect(controller.hasRemovableTracks(empty), isFalse);
+    expect(controller.selectableArtistGroups([withTracks, empty]), [withTracks]);
+    expect(controller.canSelectArtistGroup(withTracks, const {}), isTrue);
+    expect(controller.canSelectArtistGroup(empty, const {}), isFalse);
+  });
+
+  test('artist albums are selectable when removable and not already being removed', () {
+    final app = _App();
+    final controller = ArtistDetailController(app, Artist(id: 'artist', name: 'Artist', albumCount: 2));
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+    final album = Album(id: 'album', title: 'Album', artist: 'Artist', artistId: 'artist', trackCount: 1);
+
+    expect(controller.canSelectAlbum(album, removableIds: {'album'}, removingIds: const {}), isTrue);
+    expect(controller.canSelectAlbum(album, removableIds: const {}, removingIds: const {}), isFalse);
+    expect(controller.canSelectAlbum(album, removableIds: {'album'}, removingIds: {'album'}), isFalse);
+    expect(controller.isRemovingAlbum(album, {'album'}), isTrue);
+    expect(
+      controller.canSelectContribution(
+        ArtistReleaseContribution(album: album, roles: const ['album_artist']),
+        removableIds: {'album'},
+        removingIds: const {},
+      ),
+      isTrue,
+    );
+    expect(
+      controller.canSelectContribution(
+        ArtistReleaseContribution(album: album, roles: const ['featured']),
+        removableIds: {'album'},
+        removingIds: const {},
+      ),
+      isFalse,
+    );
+  });
+
+  test('a shuffle deletion confirmed after the session changed deletes nothing', () async {
+    final app = _App()
+      ..shufflePresets = [ShufflePreset(id: 'preset', name: 'Mix', artistIds: const [], genres: const [], revision: 1)];
+    final controller = ShufflePresetsController(app);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+    controller.toggleSelection('preset');
+
+    final stale = controller.beginDeletion();
+    app.connection.sessionRevision++;
+    await controller.delete(stale);
+
+    expect(app.deletedPresetIds, isEmpty);
+
+    await controller.delete(controller.beginDeletion());
+
+    expect(app.deletedPresetIds, ['preset']);
+  });
+
+  test('playlist creation uses the chosen target and falls back to the device when signed out', () async {
+    final app = _App();
+    final controller = PlaylistsController(app);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+    const keep = PlaylistImageEdit.keep();
+
+    await controller.createPlaylist('A', description: '', imageEdit: keep, target: PlaylistEditorTarget.server);
+    await controller.createPlaylist('B', description: '', imageEdit: keep, target: PlaylistEditorTarget.local);
+    app.authState = AuthState(isAuthorized: false, baseUrl: 'https://music.test:3000');
+    await controller.createPlaylist('C', description: '', imageEdit: keep, target: PlaylistEditorTarget.server);
+
+    expect(app.playlistCommands, ['server:create:A', 'local:create:B', 'local:create:C']);
+  });
+
+  test('playing an album in order turns server shuffle off before queueing it', () async {
+    final app = _App();
+    final album = Album(id: 'album', title: 'Album', artist: 'Artist', artistId: 'artist', trackCount: 1);
+    final controller = AlbumDetailController(app, album);
+    addTearDown(controller.dispose);
+    addTearDown(app.close);
+
+    await controller.playInOrder();
+
+    expect(app.playbackCommands, ['shuffle:off:server', 'queue:album']);
   });
 
   test('device refresh ignores an older completion', () async {

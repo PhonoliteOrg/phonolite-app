@@ -220,10 +220,14 @@ class _LibraryCoordinator {
 
     final revision = _host.connection.sessionRevision;
     final request = _albumRequests.advance();
+
     bool isCurrent() =>
         _host._sessionCoordinator._isServerSessionCurrent(revision) && _albumRequests.isCurrent(request);
+
     final retainContent = refresh && _lastArtistId == artistId;
-    if (!retainContent) _setAlbumsLoading(true);
+    if (!retainContent) {
+      _setAlbumsLoading(true);
+    }
 
     try {
       _lastArtistId = artistId;
@@ -233,7 +237,10 @@ class _LibraryCoordinator {
       }
 
       final albums = await _host.connection.fetchAlbums(artistId);
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _albums = _sortAlbumsByReleaseYear(albums);
 
       for (final album in _albums) {
@@ -242,15 +249,23 @@ class _LibraryCoordinator {
 
       _albumsController.add(List.unmodifiable(_albums));
     } on ApiException catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _catalogueReadFailures++;
       _host._handleApiError(err, context: 'albums');
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _catalogueReadFailures++;
       _host._pushMessage('Failed to load albums: $err', level: LogLevel.warning);
     } finally {
-      if (isCurrent()) _setAlbumsLoading(false);
+      if (isCurrent()) {
+        _setAlbumsLoading(false);
+      }
     }
   }
 
@@ -261,10 +276,14 @@ class _LibraryCoordinator {
 
     final revision = _host.connection.sessionRevision;
     final request = _trackRequests.advance();
+
     bool isCurrent() =>
         _host._sessionCoordinator._isServerSessionCurrent(revision) && _trackRequests.isCurrent(request);
+
     final retainContent = refresh && _lastAlbumId == albumId;
-    if (!retainContent) _setTracksLoading(true);
+    if (!retainContent) {
+      _setTracksLoading(true);
+    }
 
     try {
       _lastAlbumId = albumId;
@@ -274,7 +293,10 @@ class _LibraryCoordinator {
       }
 
       final tracks = await _host.connection.fetchTracks(albumId);
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _tracks = tracks;
 
       for (final track in _tracks) {
@@ -283,15 +305,23 @@ class _LibraryCoordinator {
 
       _tracksController.add(List.unmodifiable(_tracks));
     } on ApiException catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _catalogueReadFailures++;
       _host._handleApiError(err, context: 'tracks');
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _catalogueReadFailures++;
       _host._pushMessage('Failed to load tracks: $err', level: LogLevel.warning);
     } finally {
-      if (isCurrent()) _setTracksLoading(false);
+      if (isCurrent()) {
+        _setTracksLoading(false);
+      }
     }
   }
 
@@ -302,6 +332,7 @@ class _LibraryCoordinator {
     _lastSearchFilter = filter;
     final requestId = _searchRequests.advance();
     final revision = _host.connection.sessionRevision;
+
     bool isCurrent() =>
         _host._sessionCoordinator._isServerSessionCurrent(revision) && _searchRequests.isCurrent(requestId);
 
@@ -321,7 +352,9 @@ class _LibraryCoordinator {
       return;
     }
 
-    if (!retainContent) _setSearchLoading(true);
+    if (!retainContent) {
+      _setSearchLoading(true);
+    }
 
     try {
       final results = await _host.connection.search(trimmed, filter: filter);

@@ -23,7 +23,10 @@ class PlaybackPresenceReporter {
   PlaybackPresenceReporter({required this.clientId, required this._send, this._nextSequence});
 
   void update(bool playing) {
-    if (_closed || _unsupported || playing == _playing) return;
+    if (_closed || _unsupported || playing == _playing) {
+      return;
+    }
+
     _playing = playing;
     _heartbeat?.cancel();
     _heartbeat = playing ? Timer.periodic(heartbeatInterval, (_) => _queue()) : null;
@@ -37,15 +40,21 @@ class PlaybackPresenceReporter {
       _heartbeat?.cancel();
       _heartbeat = null;
     }
+
     return _draining ?? Future<void>.value();
   }
 
   void _queue() {
-    if (_unsupported) return;
+    if (_unsupported) {
+      return;
+    }
+
     // Allocate before sending: a retired session's delayed stop must remain
     // older than a replacement session's start, even if requests finish late.
     _pending = (_nextSequence?.call() ?? ++_sequence, _playing);
-    if (!_running) _draining = _drain();
+    if (!_running) {
+      _draining = _drain();
+    }
   }
 
   Future<void> _drain() async {

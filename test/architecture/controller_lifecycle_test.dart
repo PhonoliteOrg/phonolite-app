@@ -46,6 +46,7 @@ import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 import 'package:phonolite_app/data/models/library/track_match.dart';
 import 'package:phonolite_app/data/models/collections/like_state.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
+import 'package:phonolite_app/application/controllers/playback/custom_shuffle_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
@@ -3979,6 +3980,146 @@ void main() {
     expect(harness.controller.messages.last.message, contains('Failed to clear download jobs and cache:'));
   });
 
+  test('failed download job and retry commands report the failure instead of escaping', () async {
+    final harness = _Harness();
+    await harness.controller.initialize();
+    addTearDown(harness.controller.close);
+    await harness.controller.clearMessages();
+    harness.downloads.failCommands = true;
+
+    final job = OfflineDownloadJob(
+      jobId: 'job',
+      kind: 'album',
+      serverBaseUrl: 'https://unused.test',
+      status: OfflineDownloadStatus.failed,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      label: 'Album',
+    );
+    final download = OfflineTrackDownload(
+      serverBaseUrl: 'https://unused.test',
+      track: Track(
+        id: 'track',
+        title: 'Song',
+        artist: 'Artist',
+        album: 'Album',
+        durationMs: 1000,
+        liked: false,
+        inPlaylists: false,
+      ),
+      status: OfflineDownloadStatus.failed,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+
+    await harness.controller.pauseOfflineDownloadJob(job);
+    await harness.controller.resumeOfflineDownloadJob(job);
+    await harness.controller.cancelOfflineDownloadJob(job);
+    await harness.controller.retryOfflineDownload(download);
+
+    expect(harness.controller.messages.map((entry) => entry.message), [
+      contains('Failed to pause downloads for Album:'),
+      contains('Failed to resume downloads for Album:'),
+      contains('Failed to cancel downloads for Album:'),
+      contains('Failed to retry download of Song:'),
+    ]);
+  });
+
+  test('auth storage propagates vault failures and treats only unreadable sessions as absent', () async {
+    final failures = _mockFailingVault();
+    const storage = AuthStorage();
+    const credentials = AuthCredentials(
+      baseUrl: 'https://unused.test',
+      token: 'test-token',
+      username: 'test',
+      trust: testServerTrust,
+    );
+
+    await expectLater(storage.write(credentials), throwsA(isA<PlatformException>()));
+    await expectLater(storage.clear(), throwsA(isA<PlatformException>()));
+    await expectLater(storage.read(), throwsA(isA<PlatformException>()));
+
+    failures.reads = false;
+    failures.storedSession = 'not json';
+
+    expect(await storage.read(), isNull);
+  });
+
+  test('a sign-in that cannot be remembered stays signed in and reports why', () async {
+    _mockTrustVault();
+    final auth = _FailingAuth();
+    final connection = _DelayedLoginConnection();
+    connection.portsResponse.complete(ServerPortsResponse(httpPort: 3000, quicPort: 3001, quicEnabled: true));
+    final harness = _Harness(connection: connection, authStorage: auth);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.clearMessages();
+
+    await harness.controller.loginWithPassword(
+      baseUrl: 'https://unused.test:3000/api',
+      username: 'test',
+      password: 'secret',
+      rememberMe: true,
+    );
+
+    expect(auth.writes, 1);
+    expect(harness.controller.authState.isAuthorized, isTrue);
+    expect(
+      harness.controller.messages.map((entry) => entry.message),
+      contains(contains('Could not remember this sign-in on this device:')),
+    );
+  });
+
+  test('an unreadable credential vault reports the failure and leaves restore offline', () async {
+    final auth = _FailingAuth()..failReads = true;
+    final harness = _Harness(authStorage: auth);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.clearMessages();
+
+    await harness.controller.restoreSession();
+
+    expect(harness.controller.authState.status, SessionStatus.offline);
+    expect(
+      harness.controller.messages.map((entry) => entry.message),
+      contains(contains('Could not read the saved sign-in:')),
+    );
+  });
+
+  test('a failed custom shuffle save propagates without blocking the next save', () async {
+    final harness = _Harness();
+    await harness.controller.initialize();
+    addTearDown(harness.controller.close);
+    final feature = CustomShuffleController(harness.controller, initialTarget: CustomShuffleTarget.local);
+    addTearDown(feature.dispose);
+    harness.shuffle.failingLocalWrites = 1;
+
+    await expectLater(feature.flushSave(), throwsStateError);
+    await feature.flushSave();
+
+    expect(harness.shuffle.localWrites, 1);
+  });
+
+  test('a failed background custom shuffle save is reported', () async {
+    final harness = _Harness();
+    await harness.controller.initialize();
+    addTearDown(harness.controller.close);
+    final feature = CustomShuffleController(harness.controller, initialTarget: CustomShuffleTarget.local);
+    await harness.controller.clearMessages();
+    harness.shuffle.failingLocalWrites = 1;
+
+    bool reported() =>
+        harness.controller.messages.any((entry) => entry.message.contains('Could not save custom shuffle filters:'));
+
+    feature.dispose();
+
+    for (var attempt = 0; attempt < 100 && !reported(); attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    expect(reported(), isTrue);
+  });
+
   test('reset local data clears log history in every category', () async {
     final harness = _Harness();
     await harness.controller.initialize();
@@ -5482,6 +5623,7 @@ class _Downloads implements OfflineDownloadManager {
   int resets = 0;
   bool failLoad = false;
   bool failReset = false;
+  bool failCommands = false;
   final refreshedAlbums = <String>[];
   final refreshedArtists = <String>[];
   final pausedServers = <String>[];
@@ -5489,6 +5631,22 @@ class _Downloads implements OfflineDownloadManager {
   Future<void> pauseDownloadsForServer(String serverBaseUrl) async {
     pausedServers.add(serverBaseUrl);
   }
+
+  Future<void> _command() async {
+    if (failCommands) throw StateError('download command failed');
+  }
+
+  @override
+  Future<void> pauseDownloadJob(OfflineDownloadJob job) => _command();
+
+  @override
+  Future<void> resumeDownloadJob(OfflineDownloadJob job) => _command();
+
+  @override
+  Future<void> cancelDownloadJob(OfflineDownloadJob job) => _command();
+
+  @override
+  Future<void> retryDownload(OfflineTrackDownload download) => _command();
 
   @override
   List<OfflineTrackDownload> get downloads => const [];
@@ -5940,6 +6098,48 @@ class _MemoryAuth extends AuthStorage {
   }
 }
 
+class _FailingAuth extends _MemoryAuth {
+  _FailingAuth() : super(false);
+  bool failReads = false;
+  int writes = 0;
+
+  @override
+  Future<AuthCredentials?> read() async {
+    if (failReads) throw StateError('vault unavailable');
+
+    return null;
+  }
+
+  @override
+  Future<void> write(AuthCredentials credentials) async {
+    writes++;
+
+    throw StateError('vault unavailable');
+  }
+
+  @override
+  Future<void> clear() async => throw StateError('vault unavailable');
+}
+
+class _VaultFailures {
+  bool reads = true;
+  String? storedSession;
+}
+
+_VaultFailures _mockFailingVault() {
+  const vault = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  final failures = _VaultFailures();
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, (call) async {
+    if (call.method == 'read' && !failures.reads) return failures.storedSession;
+    throw PlatformException(code: 'vault-unavailable');
+  });
+  addTearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(vault, null),
+  );
+
+  return failures;
+}
+
 void _mockTrustVault() {
   const vault = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
   final values = <String, String>{};
@@ -6024,6 +6224,8 @@ class _Preferences extends PlaybackPreferencesStorage {
 
 class _Shuffle extends CustomShuffleSettingsStorage {
   int reads = 0;
+  int failingLocalWrites = 0;
+  int localWrites = 0;
   Future<CustomShuffleSettings>? pending;
   @override
   Future<CustomShuffleSettings> read() {
@@ -6035,7 +6237,15 @@ class _Shuffle extends CustomShuffleSettingsStorage {
   Future<void> write(CustomShuffleSettings settings) async {}
 
   @override
-  Future<void> writeLocal(CustomShuffleSettings settings) async {}
+  Future<void> writeLocal(CustomShuffleSettings settings) async {
+    if (failingLocalWrites > 0) {
+      failingLocalWrites--;
+
+      throw StateError('shuffle settings unavailable');
+    }
+
+    localWrites++;
+  }
 
   @override
   Future<CustomShuffleSettings> readForAccount(String scope) async => const CustomShuffleSettings();

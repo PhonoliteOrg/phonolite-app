@@ -94,56 +94,50 @@ class AuthStorage {
     }
   }
 
+  /// Returns `null` when no session is saved or the saved session is unreadable.
+  /// Vault failures propagate so callers do not mistake them for a signed-out device.
   Future<AuthCredentials?> read() async {
     if (kIsWeb) {
       return null;
     }
 
-    try {
-      final protected = await _vault.read(key: _vaultKey);
+    final protected = await _vault.read(key: _vaultKey);
 
-      if (protected != null) {
-        final decoded = jsonDecode(protected);
-
-        if (decoded is Map) {
-          return AuthCredentials.fromJson(Map<String, dynamic>.from(decoded));
-        }
-      }
-
+    if (protected == null) {
       return null;
+    }
+
+    try {
+      final decoded = jsonDecode(protected);
+
+      return decoded is Map ? AuthCredentials.fromJson(Map<String, dynamic>.from(decoded)) : null;
     } catch (_) {
-      AppLogger.warning('Failed to read stored auth');
+      AppLogger.warning('Stored auth is unreadable');
 
       return null;
     }
   }
 
+  /// Completes once the session is stored; validation and vault failures propagate.
   Future<void> write(AuthCredentials credentials) async {
     if (kIsWeb) {
       return;
     }
 
-    try {
-      if (AuthCredentials.fromJson(credentials.toJson()) == null) {
-        throw StateError('Invalid authenticated session');
-      }
-
-      await _vault.write(key: _vaultKey, value: jsonEncode(credentials.toJson()));
-    } catch (_) {
-      AppLogger.warning('Failed to persist auth');
+    if (AuthCredentials.fromJson(credentials.toJson()) == null) {
+      throw StateError('Invalid authenticated session');
     }
+
+    await _vault.write(key: _vaultKey, value: jsonEncode(credentials.toJson()));
   }
 
+  /// Completes once the saved session is removed; vault failures propagate.
   Future<void> clear() async {
     if (kIsWeb) {
       return;
     }
 
-    try {
-      await _vault.delete(key: _vaultKey, iOptions: CredentialVault.allIOSAccessibilities);
-    } catch (_) {
-      AppLogger.warning('Failed to clear auth');
-    }
+    await _vault.delete(key: _vaultKey, iOptions: CredentialVault.allIOSAccessibilities);
   }
 
   /// Forgetting one server must retain a remembered session for another origin.

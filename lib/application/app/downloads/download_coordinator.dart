@@ -152,20 +152,25 @@ class _DownloadCoordinator {
     await _host._offlineDownloadManager.resumeDownload(download);
   }
 
+  /// Download-manager actions report their own outcome, so callers may detach them.
   Future<void> pauseOfflineDownloadJob(OfflineDownloadJob job) async {
-    await _host._offlineDownloadManager.pauseDownloadJob(job);
+    try {
+      await _host._offlineDownloadManager.pauseDownloadJob(job);
 
-    final label = job.label?.trim();
-
-    _host._pushMessage('Paused downloads for ${label == null || label.isEmpty ? job.kind : label}.');
+      _host._pushMessage('Paused downloads for ${_jobLabel(job)}.');
+    } catch (err) {
+      _host._pushMessage('Failed to pause downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
+    }
   }
 
   Future<void> resumeOfflineDownloadJob(OfflineDownloadJob job) async {
-    await _host._offlineDownloadManager.resumeDownloadJob(job);
+    try {
+      await _host._offlineDownloadManager.resumeDownloadJob(job);
 
-    final label = job.label?.trim();
-
-    _host._pushMessage('Resumed downloads for ${label == null || label.isEmpty ? job.kind : label}.');
+      _host._pushMessage('Resumed downloads for ${_jobLabel(job)}.');
+    } catch (err) {
+      _host._pushMessage('Failed to resume downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
+    }
   }
 
   Future<void> pauseAllOfflineDownloads() async {
@@ -191,20 +196,34 @@ class _DownloadCoordinator {
     _host._pushMessage('Paused downloads.');
   }
 
+  /// Reports its own failure, so the download manager can detach it.
   Future<void> retryOfflineDownload(OfflineTrackDownload download) async {
-    await _host._offlineDownloadManager.retryDownload(download);
+    try {
+      await _host._offlineDownloadManager.retryDownload(download);
+    } catch (err) {
+      _host._pushMessage('Failed to retry download of ${download.track.title}: $err', level: LogLevel.warning);
+    }
   }
 
   Future<void> cancelOfflineDownload(OfflineTrackDownload download) async {
     await _host._offlineDownloadManager.cancelDownload(download);
   }
 
+  /// Reports its own failure, so the download manager can detach it.
   Future<void> cancelOfflineDownloadJob(OfflineDownloadJob job) async {
-    await _host._offlineDownloadManager.cancelDownloadJob(job);
+    try {
+      await _host._offlineDownloadManager.cancelDownloadJob(job);
 
+      _host._pushMessage('Canceled downloads for ${_jobLabel(job)}.');
+    } catch (err) {
+      _host._pushMessage('Failed to cancel downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
+    }
+  }
+
+  String _jobLabel(OfflineDownloadJob job) {
     final label = job.label?.trim();
 
-    _host._pushMessage('Canceled downloads for ${label == null || label.isEmpty ? job.kind : label}.');
+    return label == null || label.isEmpty ? job.kind : label;
   }
 
   Future<void> removeOfflineDownload(OfflineTrackDownload download) async {

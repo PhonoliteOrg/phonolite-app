@@ -81,6 +81,52 @@ class LibraryController extends FeatureController {
     _visibleArtists.setVisible(artist, visible && app.authState.isAuthorized);
   }
 
+  /// Whether server rows come from the windowed browse catalogue rather than the loaded roster.
+  bool get serverArtistsWindowed => app.artistBrowseSnapshot.total > 0;
+
+  /// Server row indices: a windowed catalogue spans its full total, otherwise every loaded artist.
+  List<int> serverArtistIndices(List<Artist> artists) =>
+      serverArtistsWindowed ? app.artistBrowseSnapshot.indices : List<int>.generate(artists.length, (index) => index);
+
+  /// The artist on a server row, or `null` while its windowed page has not loaded.
+  Artist? serverArtistAt(int index, List<Artist> artists) {
+    final snapshot = app.artistBrowseSnapshot;
+
+    if (snapshot.total > 0) {
+      return snapshot.at(index)?.toArtist();
+    }
+
+    return index < artists.length ? artists[index] : null;
+  }
+
+  /// Loads what a server row needs when it becomes visible, and releases its artist when hidden.
+  ///
+  /// A visible row without a loaded artist requests its windowed page. In the legacy roster,
+  /// reaching the last row loads the next page unless local sections are listed first.
+  void serverArtistRowVisibilityChanged(
+    int index,
+    bool visible, {
+    required List<Artist> artists,
+    required bool libraryLocalFirst,
+  }) {
+    if (isDisposed) {
+      return;
+    }
+
+    final artist = serverArtistAt(index, artists);
+
+    if (artist != null) {
+      artistVisibilityChanged(artist, visible);
+    } else if (visible) {
+      unawaited(app.loadArtistBrowsePage(index).catchError((Object error) => _reportBrowsePageFailure(index, error)));
+    }
+
+    // Local sections below the server catalogue must not delay legacy paging.
+    if (visible && !serverArtistsWindowed && !libraryLocalFirst && index == artists.length - 1) {
+      loadMoreArtists(0);
+    }
+  }
+
   void setQuery(String value) {
     if (_query == value) {
       return;
@@ -102,6 +148,8 @@ class LibraryController extends FeatureController {
     }
   }
 
+  /// Receives the scroll distance remaining below the viewport, measured after layout,
+  /// and decides whether the legacy roster needs its next page.
   void loadMoreArtists(double extentAfter) {
     if (_query.trim().isNotEmpty ||
         !app.authState.isAuthorized ||
@@ -164,6 +212,11 @@ class LibraryController extends FeatureController {
     _localSearchRevision = null;
     _localSearchQuery = null;
     _localSearchResults = null;
+  }
+
+  /// A skipped viewport page is requested again the next time one of its rows becomes visible.
+  void _reportBrowsePageFailure(int index, Object error) {
+    AppLogger.debug('Artist browse page for row $index was not loaded: $error');
   }
 
   List<Track> tracksForArtists(List<OfflineArtistGroup> groups) {
@@ -252,9 +305,20 @@ class LibraryController extends FeatureController {
     }
 
     return groups
-        .where((group) => selected.contains(artistSelectionKey(group)) && group.tracksForArtist.isNotEmpty)
+        .where((group) => selected.contains(artistSelectionKey(group)) && hasRemovableTracks(group))
         .toList(growable: false);
   }
+
+  /// Whether a local artist has downloaded tracks for a selection to remove.
+  bool hasRemovableTracks(OfflineArtistGroup group) => group.tracksForArtist.isNotEmpty;
+
+  /// The local artists that "select all" includes.
+  List<OfflineArtistGroup> selectableArtistGroups(List<OfflineArtistGroup> groups) =>
+      groups.where(hasRemovableTracks).toList(growable: false);
+
+  /// Whether a local artist can be selected now: it has downloaded tracks and none is being removed.
+  bool canSelectArtistGroup(OfflineArtistGroup group, Set<String> removingTrackIds) =>
+      hasRemovableTracks(group) && !groupHasRemovingTracks(group, removingTrackIds);
 
   void toggleArtistSelection(OfflineArtistGroup group) {
     final key = artistSelectionKey(group);

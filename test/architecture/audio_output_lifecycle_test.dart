@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -247,6 +248,82 @@ void main() {
         await expectLater(session.close(), throwsA(same(player.closeFailure)));
       }
     }
+  });
+
+  test('a write retries while the native queue is full and completes once queued', () async {
+    var fullReplies = 2;
+    mockChannel((call) async {
+      if (call.method == 'open') {
+        return 42;
+      }
+
+      if (call.method == 'write') {
+        return fullReplies-- > 0 ? -3 : 0;
+      }
+
+      return null;
+    });
+    final player = output();
+
+    await player.write(Int16List.fromList([1, 2]));
+
+    expect(calls.where((call) => call.method == 'write'), hasLength(3));
+
+    await player.dispose();
+  });
+
+  test('flush cancels a write waiting for queue capacity', () async {
+    mockChannel((call) async {
+      if (call.method == 'open') {
+        return 42;
+      }
+
+      return call.method == 'write' ? -3 : null;
+    });
+    final player = output();
+    final write = player.write(Int16List.fromList([1, 2]));
+
+    await waitUntil(() => calls.any((call) => call.method == 'write'));
+    await player.flush();
+    await write;
+
+    final attempts = calls.where((call) => call.method == 'write').length;
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(calls.where((call) => call.method == 'write'), hasLength(attempts));
+    expect(calls.map((call) => call.method), contains('flush'));
+
+    await player.dispose();
+  });
+
+  test('a native write failure is reported unless a flush has superseded the write', () async {
+    final failure = Completer<Object?>();
+    var failNow = true;
+    mockChannel((call) async {
+      if (call.method == 'open') {
+        return 42;
+      }
+
+      if (call.method == 'write') {
+        return failNow ? -1 : failure.future;
+      }
+
+      return null;
+    });
+    final player = output();
+
+    await expectLater(player.write(Int16List.fromList([1, 2])), throwsException);
+
+    failNow = false;
+    final superseded = player.write(Int16List.fromList([3, 4]));
+
+    await waitUntil(() => calls.where((call) => call.method == 'write').length == 2);
+    await player.flush();
+    failure.complete(-1);
+
+    await superseded;
+    await player.dispose();
   });
 }
 

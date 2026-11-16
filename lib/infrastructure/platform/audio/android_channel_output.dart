@@ -4,14 +4,19 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
+import 'package:phonolite_app/infrastructure/audio/output/pcm_queue_writer.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_bindings.dart';
 
 const MethodChannel androidAudioOutputChannel = MethodChannel('phonolite/audio_output');
+
+/// Each retry resends the chunk over the platform channel. The native side
+/// holds about a second of audio, so a coarse wait loses nothing and keeps the
+/// shared UI/platform thread free for rendering.
 const Duration _queueFullRetryDelay = Duration(milliseconds: 20);
 
 /// Writes wait for native queue capacity (`-3` retries), and flush or disposal
-/// advances [_writeEpoch] to cancel a waiting write, satisfying the bounded
-/// contract. Without it the gapless timeline caps Android at ~125 ms in flight.
+/// cancels a waiting write through [_writes], satisfying the bounded contract.
+/// Without it the gapless timeline caps Android at ~125 ms in flight.
 class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
   final int _sampleRate;
   final int _channels;
@@ -24,7 +29,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
   double _pendingVolume = 1.0;
   bool _pendingPaused = false;
   bool _disposed = false;
-  int _writeEpoch = 0;
+  final PcmQueueWriter _writes = PcmQueueWriter(retryDelay: _queueFullRetryDelay);
 
   AndroidChannelPlayer({
     required this._sampleRate,
@@ -47,7 +52,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
   Future<void> dispose() => _shutdown ??= _close();
 
   Future<void> _close() async {
-    _writeEpoch++;
+    _writes.cancelPending();
     _disposed = true;
 
     try {
@@ -74,7 +79,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
 
   @override
   Future<void> flush() async {
-    _writeEpoch++;
+    _writes.cancelPending();
 
     final handle = await _handle();
     if (handle == null) {
@@ -153,7 +158,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
       return;
     }
 
-    final epoch = _writeEpoch;
+    final write = _writes.begin();
 
     final handle = await _handle();
     if (handle == null) {
@@ -162,31 +167,23 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
 
     final bytes = Uint8List.view(samples.buffer, samples.offsetInBytes, samples.lengthInBytes);
 
-    while (true) {
-      if (_disposed || epoch != _writeEpoch || handle != _handleId) {
-        return;
-      }
+    await _writes.queue(
+      write,
+      targetIsOpen: () => !_disposed && handle == _handleId,
+      attempt: () async {
+        final result = await androidAudioOutputChannel.invokeMethod<int>('write', {'id': handle, 'pcm': bytes});
 
-      final result = await androidAudioOutputChannel.invokeMethod<int>('write', {'id': handle, 'pcm': bytes});
+        if (result == null || result == 0) {
+          return PcmQueueStatus.queued;
+        }
 
-      if (_disposed || epoch != _writeEpoch || handle != _handleId) {
-        return;
-      }
+        if (result == coreAudioQueueFull) {
+          return PcmQueueStatus.full;
+        }
 
-      if (result == null || result == 0) {
-        return;
-      }
-
-      if (result == coreAudioQueueFull) {
-        // Each retry resends the chunk over the platform channel. The native
-        // side holds about a second of audio, so a coarse wait loses nothing
-        // and keeps the shared UI/platform thread free for rendering.
-        await Future<void>.delayed(_queueFullRetryDelay);
-        continue;
-      }
-
-      throw Exception('Android audio write failed: $result');
-    }
+        throw Exception('Android audio write failed: $result');
+      },
+    );
   }
 
   Future<void> _open() async {

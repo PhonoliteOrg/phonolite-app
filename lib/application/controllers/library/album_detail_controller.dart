@@ -35,6 +35,13 @@ class AlbumDetailController extends FeatureController {
     return loading;
   }
 
+  /// Plays the album in order from its first track; an album play always turns server shuffle off.
+  Future<void> playInOrder() async {
+    app.updateShuffleMode(ShuffleMode.off, scope: ActionScope.server);
+
+    await app.queueAlbum(_album.id);
+  }
+
   Future<void> removeDownloads(List<Track> tracks, {required String label}) async {
     await app.removeDownloadedTracks(tracks, label: label, scope: const OfflineDeletionScope.track());
 

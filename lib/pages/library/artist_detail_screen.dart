@@ -194,10 +194,9 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
                 headers: authHeadersMap,
                 onOpen: _openAlbumDetail,
                 selectionMode: _feature.albumSelectionMode,
-                isDeleting: (album) => removingAlbumIds.contains(_feature.albumSelectionKey(album)),
+                isDeleting: (album) => _feature.isRemovingAlbum(album, removingAlbumIds),
                 selectable: (album) =>
-                    !removingAlbumIds.contains(_feature.albumSelectionKey(album)) &&
-                    removableAlbumIds.contains(_feature.albumSelectionKey(album)),
+                    _feature.canSelectAlbum(album, removableIds: removableAlbumIds, removingIds: removingAlbumIds),
                 selected: (album) => _feature.selectedAlbumIds.contains(_feature.albumSelectionKey(album)),
                 onSelectionToggle: _feature.toggleAlbumSelection,
               ),
@@ -213,10 +212,8 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
               selectionMode: _feature.albumSelectionMode,
               selected: (entry) => _feature.selectedAlbumIds.contains(_feature.albumSelectionKey(entry.album)),
               selectable: (entry) =>
-                  entry.isAlbumArtist &&
-                  !removingAlbumIds.contains(_feature.albumSelectionKey(entry.album)) &&
-                  removableAlbumIds.contains(_feature.albumSelectionKey(entry.album)),
-              isDeleting: (entry) => removingAlbumIds.contains(_feature.albumSelectionKey(entry.album)),
+                  _feature.canSelectContribution(entry, removableIds: removableAlbumIds, removingIds: removingAlbumIds),
+              isDeleting: (entry) => _feature.isRemovingAlbum(entry.album, removingAlbumIds),
               onSelectionToggle: (entry) => _feature.toggleAlbumSelection(entry.album),
             ),
           if (!isLoading && releases.appearsOn.isNotEmpty)

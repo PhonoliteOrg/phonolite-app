@@ -28,6 +28,7 @@ class _ViewportItemState extends State<ViewportItem> {
       position?.addListener(_scheduleCheck);
       position?.isScrollingNotifier.addListener(_scheduleCheck);
     }
+
     _routeActive = TickerMode.valuesOf(context).enabled && (ModalRoute.of(context)?.isCurrent ?? true);
     _scheduleCheck();
   }
@@ -47,6 +48,7 @@ class _ViewportItemState extends State<ViewportItem> {
     if (_scheduled || !mounted) {
       return;
     }
+
     _scheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduled = false;
@@ -67,6 +69,7 @@ class _ViewportItemState extends State<ViewportItem> {
         visible = bounds.overlaps(viewport.paintBounds);
       }
     }
+
     final active = visible && (_active || !_shouldDeferLoading());
     if (active != _active) {
       setState(() => _active = active);
@@ -86,6 +89,7 @@ class _ViewportItemState extends State<ViewportItem> {
     if (_active) {
       widget.onVisibilityChanged(false);
     }
+
     super.dispose();
   }
 

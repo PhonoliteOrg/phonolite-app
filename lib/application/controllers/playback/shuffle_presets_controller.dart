@@ -6,6 +6,7 @@ import 'package:phonolite_app/application/controllers/shared/controller_selectio
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_preset_deletion.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 
 class ShufflePresetsController extends FeatureController {
@@ -78,11 +79,21 @@ class ShufflePresetsController extends FeatureController {
 
   Future<void> importExisting() => _run(app.importCustomShufflePreset);
 
-  Future<void> deleteSelected(List<ShufflePreset> presets) async {
-    final revision = app.connection.sessionRevision;
+  /// Captures the current selection and session before the user is asked to confirm.
+  ShufflePresetDeletion beginDeletion() =>
+      ShufflePresetDeletion(presets: selectedPresets, sessionRevision: app.connection.sessionRevision);
+
+  /// Deletes a confirmed selection. Nothing is deleted once the session it was captured in
+  /// has ended, including a change while the confirmation was open.
+  Future<void> delete(ShufflePresetDeletion deletion) async {
+    final revision = deletion.sessionRevision;
+
+    if (isDisposed || app.connection.sessionRevision != revision) {
+      return;
+    }
 
     await _run(() async {
-      for (final preset in presets) {
+      for (final preset in deletion.presets) {
         if (isDisposed || app.connection.sessionRevision != revision || !app.shufflePresetsAvailable) {
           return;
         }

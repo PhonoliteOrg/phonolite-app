@@ -125,9 +125,21 @@ class _SessionCoordinator {
           trust: _host.connection.trust!,
         );
 
-        await _storeSavedCredentials(credentials);
+        try {
+          await _storeSavedCredentials(credentials);
+        } catch (err) {
+          if (isCurrent()) {
+            _reportSavedCredentialsFailure('remember this sign-in on this device', err);
+          }
+        }
       } else {
-        await _clearSavedCredentials();
+        try {
+          await _clearSavedCredentials();
+        } catch (err) {
+          if (isCurrent()) {
+            _reportSavedCredentialsFailure('remove the previously saved sign-in', err);
+          }
+        }
       }
     } on ApiException catch (err) {
       if (!isCurrent()) return;
@@ -404,7 +416,11 @@ class _SessionCoordinator {
 
     _host.connection.setToken(null);
     final disconnectedRevision = _host.connection.sessionRevision;
-    final clearSavedCredentials = _clearSavedCredentials();
+    // Attach the failure policy now: the clear is awaited only after the
+    // disconnect steps below, and an unobserved failure would escape the zone.
+    final clearSavedCredentials = _clearSavedCredentials().catchError(
+      (Object err) => _reportSavedCredentialsFailure('remove the saved sign-in', err),
+    );
 
     if (_host._disposed) {
       await clearSavedCredentials;
@@ -505,7 +521,18 @@ class _SessionCoordinator {
   }
 
   Future<void> _restoreSessionInternal(int revision) async {
-    final credentials = await _host.loadSavedCredentials();
+    final AuthCredentials? credentials;
+
+    try {
+      credentials = await _host.loadSavedCredentials();
+    } catch (err) {
+      if (_isRestoreSessionCurrent(revision)) {
+        _reportSavedCredentialsFailure('read the saved sign-in', err);
+        _setSessionStatus(SessionStatus.offline, error: null);
+      }
+
+      return;
+    }
 
     if (!_isRestoreSessionCurrent(revision) ||
         credentials == null ||
@@ -520,7 +547,12 @@ class _SessionCoordinator {
     _host.connection.setBaseUrl(credentials.baseUrl);
 
     if (credentials.token.trim().isEmpty) {
-      await _clearSavedCredentials();
+      try {
+        await _clearSavedCredentials();
+      } catch (err) {
+        _reportSavedCredentialsFailure('remove the empty saved sign-in', err);
+      }
+
       _host.connection.setToken(null);
       _setSessionStatus(SessionStatus.offline, error: null);
 
@@ -670,6 +702,11 @@ class _SessionCoordinator {
     _savedCredentialsInvalidated = true;
     _savedCredentials = null;
     await _queueSavedCredentialsWrite(_host._authStorage.clear);
+  }
+
+  /// The session itself stays as it is; only the device's saved copy is out of date.
+  void _reportSavedCredentialsFailure(String action, Object error) {
+    _host._pushMessage('Could not $action: $error', level: LogLevel.warning);
   }
 
   Future<void> _queueSavedCredentialsWrite(Future<void> Function() operation) {

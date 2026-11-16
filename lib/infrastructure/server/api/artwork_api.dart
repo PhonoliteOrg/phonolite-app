@@ -1,19 +1,22 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import 'package:phonolite_app/data/models/server/server_artwork.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_urls.dart';
+import 'package:phonolite_app/infrastructure/server/transport/api_response_decoder.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
+import 'package:phonolite_app/infrastructure/server/transport/streamed_response_body.dart';
 
 typedef PlaylistCoverUrlBuilder = String Function(String playlistId, {String? imageRef});
 
 typedef ArtistCoverUrlBuilder = String Function(String artistId, {String? kind, String? ref});
 
 class ArtworkApi {
+  static const int _maximumBytes = 16 * 1024 * 1024;
+
   final ApiTransport _transport;
   final String Function(String albumId) _albumCoverUrl;
   final PlaylistCoverUrlBuilder _playlistCoverUrl;
@@ -67,79 +70,59 @@ class ArtworkApi {
 
     final headers = _transport.buildHeaders();
     final revision = _transport.sessionRevision;
+    final response = await _transport.executeRequest(
+      () {
+        final request = http.Request('GET', uri)..followRedirects = false;
+        request.headers.addAll(headers);
 
-    for (var attempt = 1; attempt <= ApiTransport.maxGetAttempts; attempt++) {
-      final request = http.Request('GET', uri)..followRedirects = false;
-      request.headers.addAll(headers);
-      final response = await _transport.client.send(request).timeout(timeout);
-      final status = response.statusCode;
-
-      if (status < 200 || status >= 300 || status == 204) {
-        await response.stream.listen((_) {}).cancel();
-
-        if (status == 404 || status == 204) {
-          return null;
+        return _transport.client.send(request);
+      },
+      retryable: true,
+      timeout: timeout,
+      label: 'GET artwork',
+      beforeRetry: () {
+        if (_transport.sessionRevision != revision) {
+          throw StateError('Artwork session changed');
         }
+      },
+    );
+    final status = response.statusCode;
 
-        if ((status >= 500 || status == 429) && attempt < ApiTransport.maxGetAttempts) {
-          final seconds = int.tryParse(response.headers[HttpHeaders.retryAfterHeader] ?? '');
-          await Future<void>.delayed(
-            seconds == null ? _transport.retryDelay(attempt) : Duration(seconds: seconds.clamp(1, 60)),
-          );
+    if (_transport.sessionRevision != revision) {
+      await discardResponseBody(response);
 
-          if (_transport.sessionRevision != revision) {
-            throw StateError('Artwork session changed');
-          }
-
-          continue;
-        }
-
-        throw ApiException(status, 'Artwork request failed');
-      }
-
-      const maximumBytes = 16 * 1024 * 1024;
-
-      if ((response.contentLength ?? 0) > maximumBytes) {
-        await response.stream.listen((_) {}).cancel();
-
-        throw const HttpException('Artwork exceeds encoded byte limit');
-      }
-
-      final bytes = BytesBuilder(copy: false);
-      final elapsed = Stopwatch()..start();
-      final chunks = StreamIterator(response.stream);
-
-      try {
-        while (true) {
-          final remaining = timeout - elapsed.elapsed;
-
-          if (remaining <= Duration.zero) {
-            throw TimeoutException('Artwork body deadline exceeded');
-          }
-
-          if (!await chunks.moveNext().timeout(remaining)) {
-            break;
-          }
-
-          if (bytes.length + chunks.current.length > maximumBytes) {
-            throw const HttpException('Artwork exceeds encoded byte limit');
-          }
-
-          bytes.add(chunks.current);
-        }
-      } finally {
-        await chunks.cancel();
-      }
-
-      if (_transport.sessionRevision != revision) {
-        throw StateError('Artwork session changed');
-      }
-
-      return bytes.isEmpty
-          ? null
-          : ServerArtwork(bytes: bytes.takeBytes(), contentType: response.headers[HttpHeaders.contentTypeHeader]);
+      throw StateError('Artwork session changed');
     }
 
-    throw StateError('Artwork retry budget exhausted');
+    if (status < 200 || status >= 300 || status == 204) {
+      await discardResponseBody(response);
+
+      if (status == 404 || status == 204) {
+        return null;
+      }
+
+      throw ApiException(status, 'Artwork request failed', retryAfter: const ApiResponseDecoder().retryAfter(response));
+    }
+
+    if ((response.contentLength ?? 0) > _maximumBytes) {
+      await discardResponseBody(response);
+
+      throw const HttpException('Artwork exceeds encoded byte limit');
+    }
+
+    final bytes = await readBoundedBody(
+      response.stream,
+      deadline: timeout,
+      maximumBytes: _maximumBytes,
+      tooLarge: (_) => const HttpException('Artwork exceeds encoded byte limit'),
+    );
+
+    if (_transport.sessionRevision != revision) {
+      throw StateError('Artwork session changed');
+    }
+
+    return bytes.isEmpty
+        ? null
+        : ServerArtwork(bytes: bytes, contentType: response.headers[HttpHeaders.contentTypeHeader]);
   }
 }

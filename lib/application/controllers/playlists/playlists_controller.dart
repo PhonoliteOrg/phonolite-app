@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_editor_values.dart';
 import 'package:phonolite_app/data/models/collections/selected_playlist.dart';
 
 export 'package:phonolite_app/data/models/collections/selected_playlist.dart';
@@ -49,6 +50,21 @@ class PlaylistsController extends FeatureController {
     _requestedServerRevision = revision;
 
     return app.loadPlaylists();
+  }
+
+  /// Creates a playlist where the user chose. A server playlist needs a signed-in session;
+  /// without one, the playlist is created on this device instead.
+  Future<void> createPlaylist(
+    String name, {
+    required String description,
+    required PlaylistImageEdit imageEdit,
+    required PlaylistEditorTarget target,
+  }) {
+    if (target == PlaylistEditorTarget.server && app.authState.isAuthorized) {
+      return app.createPlaylist(name, description: description, imageEdit: imageEdit);
+    }
+
+    return app.createLocalPlaylist(name, description: description, imageEdit: imageEdit);
   }
 
   Future<void> deletePlaylists(List<SelectedPlaylist> selected) async {

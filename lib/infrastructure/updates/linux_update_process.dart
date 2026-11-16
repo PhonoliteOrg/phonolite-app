@@ -17,7 +17,10 @@ class LinuxUpdateProcess {
       final status = results[0] as int;
       final text = results[1] as String;
       final error = results[2] as String;
-      if (status != 0) throw StateError(error.trim().isEmpty ? 'Linux update verification failed.' : error.trim());
+      if (status != 0) {
+        throw StateError(error.trim().isEmpty ? 'Linux update verification failed.' : error.trim());
+      }
+
       return jsonDecode(text);
     } catch (_) {
       process.kill();
@@ -43,6 +46,7 @@ class LinuxUpdateProcess {
 
     try {
       await _setMode('700', stage.path);
+
       return stage;
     } catch (_) {
       await stage.delete(recursive: true);
@@ -68,9 +72,13 @@ class LinuxUpdateProcess {
   Future<String> _bounded(Stream<List<int>> input) async {
     final bytes = <int>[];
     await for (final chunk in input) {
-      if (bytes.length + chunk.length > 1024 * 1024) throw const FormatException('Updater output exceeded its limit.');
+      if (bytes.length + chunk.length > 1024 * 1024) {
+        throw const FormatException('Updater output exceeded its limit.');
+      }
+
       bytes.addAll(chunk);
     }
+
     return utf8.decode(bytes);
   }
 }

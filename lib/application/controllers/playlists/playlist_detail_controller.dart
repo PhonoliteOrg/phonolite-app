@@ -42,6 +42,26 @@ class PlaylistDetailController extends FeatureController {
     return _isLocal ? 'local:$_playlistId' : 'server:${app.connection.sessionRevision}:$_playlistId';
   }
 
+  /// The scope that track actions such as adding to another playlist apply to.
+  ActionScope get actionScope => _isLocal ? ActionScope.local : ActionScope.server;
+
+  /// This page's playlist within [playlists]. Until the published list contains it,
+  /// a placeholder with the same ID keeps the page's frame stable.
+  Playlist playlistFrom(List<Playlist> playlists) => playlists.firstWhere(
+    (playlist) => playlist.id == _playlistId,
+    orElse: () => Playlist(id: _playlistId, name: 'Playlist', trackIds: const []),
+  );
+
+  /// This playlist's local entries within [entries], in their published order.
+  List<LocalPlaylistEntry> entriesFrom(List<LocalPlaylistEntry> entries) =>
+      entries.where((entry) => entry.playlistId == _playlistId).toList(growable: false);
+
+  /// The tracks to show; none while this playlist's tracks are loading.
+  List<Track> displayedTracks(List<Track> tracks) => _tracksLoading ? const <Track>[] : tracks;
+
+  /// The playlist's cover: its local image path, or the server rendition URL.
+  String? coverUrl(Playlist playlist) => _isLocal ? playlist.imagePath : serverPlaylistCoverUrl(app, playlist);
+
   void setPlaylist(String id, bool local) {
     if (isDisposed) {
       return;
@@ -52,6 +72,23 @@ class PlaylistDetailController extends FeatureController {
 
     loadTracksIfNeeded(app, force: true);
   }
+
+  Future<void> playFromTop() =>
+      _isLocal ? app.playLocalPlaylistFromTop(_playlistId) : app.playPlaylistFromTop(_playlistId);
+
+  Future<void> playFrom(Track track) => _isLocal
+      ? app.queueLocalPlaylist(_playlistId, startTrackId: track.id)
+      : app.queuePlaylist(_playlistId, startTrackId: track.id);
+
+  Future<void> rename(
+    String name, {
+    String? description,
+    PlaylistImageEdit imageEdit = const PlaylistImageEdit.keep(),
+  }) => _isLocal
+      ? app.renameLocalPlaylist(_playlistId, name, description: description, imageEdit: imageEdit)
+      : app.renamePlaylist(_playlistId, name, description: description, imageEdit: imageEdit);
+
+  Future<void> toggleLike(Track track) => _isLocal ? app.toggleLocalLike(track) : app.toggleLike(track);
 
   Future<void> removeDownloads(List<Track> tracks, {required String label}) async {
     await app.removeDownloadedTracks(tracks, label: label);
@@ -70,7 +107,7 @@ class PlaylistDetailController extends FeatureController {
       return null;
     }
 
-    final entries = app.localPlaylistEntries.where((entry) => entry.playlistId == _playlistId);
+    final entries = entriesFrom(app.localPlaylistEntries);
 
     for (final entry in entries) {
       if (identical(entry.track, track)) {

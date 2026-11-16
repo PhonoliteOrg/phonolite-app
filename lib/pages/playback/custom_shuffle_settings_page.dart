@@ -57,18 +57,17 @@ class _CustomShuffleSettingsPageState extends BasePageState<CustomShuffleSetting
   );
 
   Future<void> _deleteSelected() async {
-    final selected = _feature.selectedPresets;
-    final revision = _feature.app.connection.sessionRevision;
+    final deletion = _feature.beginDeletion();
+    final count = deletion.presets.length;
     final confirmed = await ConfirmationModal.show(
       context,
       title: 'Delete custom shuffles',
-      message:
-          'Delete ${selected.length} selected custom ${selected.length == 1 ? 'shuffle' : 'shuffles'} from your account?',
+      message: 'Delete $count selected custom ${count == 1 ? 'shuffle' : 'shuffles'} from your account?',
       confirmLabel: 'Delete',
     );
 
-    if (mounted && confirmed && _feature.app.connection.sessionRevision == revision) {
-      await _feature.deleteSelected(selected);
+    if (mounted && confirmed) {
+      await _feature.delete(deletion);
     }
   }
 

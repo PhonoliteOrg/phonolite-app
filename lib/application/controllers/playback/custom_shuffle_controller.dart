@@ -5,9 +5,11 @@ import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
 import 'package:phonolite_app/application/presentation/genre_labels.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
+import 'package:phonolite_app/application/workflows/serial_action_queue.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 export 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
 
@@ -19,7 +21,7 @@ class CustomShuffleController extends FeatureController {
   late final ControllerSelection<String> _selection;
   CustomShuffleTarget _target;
   final _saveDebounce = DebouncedAction();
-  Future<void> _saveChain = Future.value();
+  final _saves = SerialActionQueue();
   bool _initialized = false;
 
   CustomShuffleController(
@@ -70,7 +72,7 @@ class CustomShuffleController extends FeatureController {
   @override
   void dispose() {
     _saveDebounce.cancel();
-    flushSave();
+    _saveInBackground();
     super.dispose();
   }
 
@@ -171,7 +173,7 @@ class CustomShuffleController extends FeatureController {
       return;
     }
 
-    _saveDebounce.schedule(const Duration(milliseconds: 350), flushSave);
+    _saveDebounce.schedule(const Duration(milliseconds: 350), _saveInBackground);
   }
 
   /// Replaces a draft only after an explicit reload; live updates never call it.
@@ -196,9 +198,11 @@ class CustomShuffleController extends FeatureController {
     }
   }
 
-  void flushSave() {
+  /// Saves the current selection after any earlier accepted saves.
+  /// Completes when this save finishes; its failure propagates without blocking later saves.
+  Future<void> flushSave() {
     if (!_initialized || !_autosave) {
-      return;
+      return Future<void>.value();
     }
 
     final controller = _controller;
@@ -212,14 +216,23 @@ class CustomShuffleController extends FeatureController {
 
     localGenres.sort();
 
-    _saveChain = _saveChain.then(
-      (_) => controller.updateCustomShuffleSettings(
+    return _saves.add(
+      () => controller.updateCustomShuffleSettings(
         artistIds: artistIds,
         genres: genres,
         localArtistIds: localArtistIds,
         localGenres: localGenres,
       ),
     );
+  }
+
+  /// Debounced and disposal saves have no awaiting caller, so they report failures here.
+  void _saveInBackground() {
+    unawaited(flushSave().catchError(_reportSaveFailure));
+  }
+
+  void _reportSaveFailure(Object error) {
+    AppLogger.warning('Could not save custom shuffle filters: $error');
   }
 
   List<Artist> filterArtists(List<Artist> artists) {

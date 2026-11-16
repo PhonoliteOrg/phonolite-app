@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
-
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
+import 'package:phonolite_app/infrastructure/audio/output/pcm_queue_writer.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_bindings.dart';
+import 'package:phonolite_app/infrastructure/platform/audio/native_pcm_buffer.dart';
 
 class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
   final int _sampleRate;
@@ -14,7 +14,7 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
   final int _bitsPerSample;
   late final CoreAudioBindings _bindings;
   ffi.Pointer<ffi.Void> _handle = ffi.nullptr;
-  int _writeEpoch = 0;
+  final PcmQueueWriter _writes = PcmQueueWriter(retryDelay: const Duration(milliseconds: 2));
   Future<void>? _initialization;
   Future<void>? _shutdown;
 
@@ -44,7 +44,7 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
   Future<void> dispose() => _shutdown ??= Future<void>.sync(_close);
 
   void _close() {
-    _writeEpoch++;
+    _writes.cancelPending();
 
     final handle = _handle;
 
@@ -65,7 +65,7 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
 
   @override
   Future<void> flush() async {
-    _writeEpoch++;
+    _writes.cancelPending();
 
     final handle = _handle;
 
@@ -156,43 +156,34 @@ class CoreAudioPlayer implements AudioPcmOutput, AudioPcm32Output {
       return;
     }
 
-    final epoch = _writeEpoch;
-    final dataPtr = calloc<ffi.Uint8>(samples.lengthInBytes);
+    final write = _writes.begin();
+    final handle = _handle;
 
-    try {
-      dataPtr
-          .asTypedList(samples.lengthInBytes)
-          .setAll(0, samples.buffer.asUint8List(samples.offsetInBytes, samples.lengthInBytes));
-
-      while (true) {
-        if (epoch != _writeEpoch) {
-          return;
-        }
-
-        final handle = _handle;
-
-        if (handle == ffi.nullptr) {
-          return;
-        }
-
-        final result = bitsPerSample == 32
-            ? _bindings.write32(handle, dataPtr.cast<ffi.Int32>(), sampleCount)
-            : _bindings.write(handle, dataPtr.cast<ffi.Int16>(), sampleCount);
-
-        if (result == 0) {
-          break;
-        }
-
-        if (result == coreAudioQueueFull) {
-          await Future<void>.delayed(const Duration(milliseconds: 2));
-          continue;
-        }
-
-        throw Exception('CoreAudio write failed: $result');
-      }
-    } finally {
-      calloc.free(dataPtr);
+    if (handle == ffi.nullptr) {
+      return;
     }
+
+    await withNativePcm(samples, (data) {
+      return _writes.queue(
+        write,
+        targetIsOpen: () => _handle == handle,
+        attempt: () {
+          final result = bitsPerSample == 32
+              ? _bindings.write32(handle, data.cast<ffi.Int32>(), sampleCount)
+              : _bindings.write(handle, data.cast<ffi.Int16>(), sampleCount);
+
+          if (result == 0) {
+            return PcmQueueStatus.queued;
+          }
+
+          if (result == coreAudioQueueFull) {
+            return PcmQueueStatus.full;
+          }
+
+          throw Exception('CoreAudio write failed: $result');
+        },
+      );
+    });
   }
 
   void _open() {

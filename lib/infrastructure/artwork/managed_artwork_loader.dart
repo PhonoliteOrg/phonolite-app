@@ -10,6 +10,7 @@ import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/data/rules/artwork/encoded_artwork.dart';
 import 'package:phonolite_app/data/storage/artwork/artwork_disk_cache.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/infrastructure/server/transport/streamed_response_body.dart';
 
 /// Shared trusted artwork execution. At most four loads run and 32 wait;
 /// simultaneous same-key consumers share bytes without adding queue entries.
@@ -240,23 +241,19 @@ class ManagedArtworkLoader implements ArtworkLoader {
     );
 
     if (response.statusCode == 304 && stored != null) {
-      await response.stream.listen((_) {}).cancel();
+      await discardResponseBody(response);
 
       return stored.bytes;
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      await response.stream.listen((_) {}).cancel();
-      final seconds = int.tryParse(response.headers[HttpHeaders.retryAfterHeader] ?? '');
+      await discardResponseBody(response);
 
-      throw ArtworkLoadException(
-        statusCode: response.statusCode,
-        retryAfter: seconds == null ? null : Duration(seconds: seconds.clamp(1, 60)),
-      );
+      throw ArtworkLoadException(statusCode: response.statusCode, retryAfter: boundedRetryAfter(response));
     }
 
     if ((response.contentLength ?? 0) > ArtworkDiskCache.maximumImageBytes) {
-      await response.stream.listen((_) {}).cancel();
+      await discardResponseBody(response);
 
       throw const ArtworkLoadException(statusCode: 413);
     }
@@ -300,42 +297,23 @@ class ManagedArtworkLoader implements ArtworkLoader {
   static Future<Uint8List> _file(String source) async => _collect(File(source).openRead());
 
   static Future<Uint8List> _collect(Stream<List<int>> chunks, {int? expectedLength}) async {
-    final result = BytesBuilder(copy: false);
-    final elapsed = Stopwatch()..start();
-    final iterator = StreamIterator(chunks);
+    const imageLimit = ArtworkDiskCache.maximumImageBytes;
+    final limit = expectedLength != null && expectedLength < imageLimit ? expectedLength : imageLimit;
+    final bytes = await readBoundedBody(
+      chunks,
+      deadline: _bodyTimeout,
+      maximumBytes: limit,
+      // Past the image limit the artwork is too large; past only its declared
+      // length the response is malformed.
+      tooLarge: (length) =>
+          length > imageLimit ? const ArtworkLoadException(statusCode: 413) : const ArtworkLoadException(),
+    );
 
-    try {
-      while (true) {
-        final remaining = _bodyTimeout - elapsed.elapsed;
-
-        if (remaining <= Duration.zero) {
-          throw TimeoutException('Artwork body deadline exceeded');
-        }
-
-        if (!await iterator.moveNext().timeout(remaining)) {
-          break;
-        }
-
-        final chunk = iterator.current;
-
-        if (result.length + chunk.length > ArtworkDiskCache.maximumImageBytes) {
-          throw const ArtworkLoadException(statusCode: 413);
-        }
-
-        result.add(chunk);
-        if (expectedLength != null && result.length > expectedLength) {
-          throw const ArtworkLoadException();
-        }
-      }
-    } finally {
-      await iterator.cancel();
-    }
-
-    if (result.isEmpty || (expectedLength != null && result.length != expectedLength)) {
+    if (bytes.isEmpty || (expectedLength != null && bytes.length != expectedLength)) {
       throw const ArtworkLoadException();
     }
 
-    return result.takeBytes();
+    return bytes;
   }
 
   static String _rendition(String source, int? size) {

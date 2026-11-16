@@ -12,6 +12,7 @@ import 'package:phonolite_app/data/models/server/server_errors.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/infrastructure/security/server_trust.dart' show ServerTrustRegistry, pinnedApiClient;
 import 'package:phonolite_app/infrastructure/server/transport/api_response_decoder.dart';
+import 'package:phonolite_app/infrastructure/server/transport/streamed_response_body.dart';
 
 class ApiTransport {
   static const ApiResponseDecoder _responses = ApiResponseDecoder();
@@ -388,11 +389,17 @@ class ApiTransport {
     return headers;
   }
 
-  Future<http.Response> executeRequest(
-    Future<http.Response> Function() request, {
+  /// Sends [request], retrying a retryable request after timeouts, connection
+  /// failures, 429 and 5xx. A streamed body is released before each retry; the
+  /// returned response's body belongs to the caller. [beforeRetry] runs after
+  /// each retry delay; it throws to stop retrying, for example when the request
+  /// belongs to a session that has since changed.
+  Future<R> executeRequest<R extends http.BaseResponse>(
+    Future<R> Function() request, {
     bool retryable = false,
     Duration timeout = defaultRequestTimeout,
     String label = 'request',
+    void Function()? beforeRetry,
   }) async {
     final safeLabel = _safeRequestLabel(label);
     final sessionRevision = _sessionRevision;
@@ -403,7 +410,12 @@ class ApiTransport {
     final stopwatch = Stopwatch();
     stopwatch.start();
 
-    Future<void> backoff(int attempt) => Future<void>.delayed(retryDelay(attempt));
+    Future<void> wait(Duration delay) async {
+      await Future<void>.delayed(delay);
+      beforeRetry?.call();
+    }
+
+    Future<void> backoff(int attempt) => wait(retryDelay(attempt));
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -425,7 +437,11 @@ class ApiTransport {
             return response;
           }
 
-          await Future<void>.delayed(retryAfter ?? retryDelay(attempt));
+          if (response is http.StreamedResponse) {
+            await discardResponseBody(response);
+          }
+
+          await wait(retryAfter ?? retryDelay(attempt));
           continue;
         }
 

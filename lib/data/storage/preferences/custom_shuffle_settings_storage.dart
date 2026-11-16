@@ -76,18 +76,15 @@ class CustomShuffleSettingsStorage {
     }
   }
 
+  /// An unreadable existing file is replaced; write failures propagate to the saving owner.
   Future<void> _update(JsonSettingsFile file, Map<String, dynamic> values) async {
     if (kIsWeb) {
       return;
     }
 
-    try {
-      await file.update(
-        (payload) => payload.addAll(values),
-        onReadError: (error) => AppLogger.warning('Failed to read shuffle settings: $error'),
-      );
-    } catch (err) {
-      AppLogger.warning('Failed to persist shuffle settings: $err');
-    }
+    await file.update(
+      (payload) => payload.addAll(values),
+      onReadError: (error) => AppLogger.warning('Failed to read shuffle settings: $error'),
+    );
   }
 }

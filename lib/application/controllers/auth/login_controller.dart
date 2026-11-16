@@ -2,6 +2,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/host_port_parts.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 export 'package:phonolite_app/data/models/auth/host_port_parts.dart';
 
@@ -54,8 +55,17 @@ class LoginController extends FeatureController {
 
   void setRememberMe(bool value) => update(() => _rememberMe = value);
 
+  /// Prefills the form when possible; an unreadable vault leaves it empty.
   Future<AuthCredentials?> loadSavedCredentials() async {
-    final saved = await app.loadSavedCredentials();
+    final AuthCredentials? saved;
+
+    try {
+      saved = await app.loadSavedCredentials();
+    } catch (err) {
+      AppLogger.warning('Could not read the saved sign-in: $err');
+
+      return null;
+    }
 
     if (saved != null) {
       update(() => _rememberMe = true);

@@ -53,6 +53,7 @@ class LinuxAppUpdatePlatform
         disabledReason: 'Automatic Linux updates require an installed Phonolite release package.',
       );
     }
+
     _signatureUrl = description['signatureUrl'] as String?;
     _configuration = AppUpdateConfiguration.fromPlatform(description);
     final session = description['sessionResult'] as Map<String, dynamic>?;
@@ -61,6 +62,7 @@ class LinuxAppUpdatePlatform
         {'relaunch-requested', 'relaunch-failed'}.contains(session['state'])) {
       await _process.command(['--acknowledge-relaunch', session['correlation'] as String]);
     }
+
     final receipt = description['receipt'] as Map<String, dynamic>?;
     if (receipt != null && receipt['state'] != 'succeeded') {
       _setProgress(
@@ -70,6 +72,7 @@ class LinuxAppUpdatePlatform
             'After repair, select to check again; user data is retained.',
       );
     }
+
     return _configuration!;
   }
 
@@ -83,22 +86,30 @@ class LinuxAppUpdatePlatform
   @override
   Future<void> dispose() async {
     close();
-    if (!_handedOff) await _removeStage();
+    if (!_handedOff) {
+      await _removeStage();
+    }
+
     _onInstall = null;
     _prepare = null;
   }
 
   @override
   Future<AppUpdateRelease?> latest(AppUpdateConfiguration configuration) async {
-    if (_handedOff) throw StateError('An update is already being installed.');
+    if (_handedOff) {
+      throw StateError('An update is already being installed.');
+    }
+
     final generation = ++_generation;
     _setProgress(AppUpdatePhase.idle);
     await _removeStage();
     final stage = await _process.createPrivateStage();
     if (_closed || generation != _generation) {
       await stage.delete(recursive: true);
+
       return null;
     }
+
     _stage = stage;
     try {
       final manifest = await _transport.metadata(Uri.parse(configuration.feedUrl));
@@ -111,22 +122,33 @@ class LinuxAppUpdatePlatform
         '${stage.path}/manifest.sig',
       ]);
       if (_closed || generation != _generation) {
-        if (await stage.exists()) await stage.delete(recursive: true);
-        if (identical(_stage, stage)) _stage = null;
+        if (await stage.exists()) {
+          await stage.delete(recursive: true);
+        }
+
+        if (identical(_stage, stage)) {
+          _stage = null;
+        }
+
         return null;
       }
+
       if (selected == null) {
         _asset = null;
         await _removeStage();
+
         return null;
       }
+
       _asset = LinuxUpdateAsset.fromVerifiedJson(selected as Map<String, dynamic>);
+
       return AppUpdateRelease(version: _asset!.version);
     } catch (_) {
       if (generation == _generation) {
         _asset = null;
         await _removeStage();
       }
+
       rethrow;
     }
   }
@@ -136,11 +158,13 @@ class LinuxAppUpdatePlatform
     if (_stage == null && !_closed && !_handedOff && _configuration != null) {
       await latest(_configuration!);
     }
+
     final stage = _stage;
     final asset = _asset;
     if (stage == null || asset == null || _handedOff || _closed || _prepare == null) {
       throw StateError('Check for updates again before installing.');
     }
+
     final generation = _generation;
     var preparationFailed = false;
     final candidate = File('${stage.path}/candidate');
@@ -153,19 +177,27 @@ class LinuxAppUpdatePlatform
         length: asset.length,
         digest: asset.sha256,
         onProgress: (fraction) {
-          if (!_closed && generation == _generation) _setProgress(AppUpdatePhase.downloading, fraction: fraction);
+          if (!_closed && generation == _generation) {
+            _setProgress(AppUpdatePhase.downloading, fraction: fraction);
+          }
         },
       );
-      if (_closed || generation != _generation) throw const UpdateDownloadCancelled();
+      if (_closed || generation != _generation) {
+        throw const UpdateDownloadCancelled();
+      }
+
       _setProgress(AppUpdatePhase.verifying);
       if (asset.format == 'archlinux') {
         final proof = await _transport.metadata(Uri.parse('${asset.url}.sig'), maximum: 65536);
         await _process.writePrivateFile(File('${stage.path}/candidate.sig'), proof);
       }
+
       // The helper rechecks the installed descriptor and signed manifest before
       // accepting the request; the root installer repeats those checks on copies.
       await _process.command(['--select', '${stage.path}/manifest.json', '${stage.path}/manifest.sig']);
-      if (_closed || generation != _generation) throw const UpdateDownloadCancelled();
+      if (_closed || generation != _generation) {
+        throw const UpdateDownloadCancelled();
+      }
 
       final identity = await _process.applicationIdentity();
       final random = Random.secure();
@@ -182,7 +214,10 @@ class LinuxAppUpdatePlatform
           }),
         ),
       );
-      if (_closed || generation != _generation) throw const UpdateDownloadCancelled();
+      if (_closed || generation != _generation) {
+        throw const UpdateDownloadCancelled();
+      }
+
       _setProgress(AppUpdatePhase.authorizing);
       final coordinator = await _process.coordinate(stage.path);
       // Once spawned the coordinator is independent; disposal must leave its
@@ -190,11 +225,17 @@ class LinuxAppUpdatePlatform
       _handedOff = true;
       unawaited(coordinator.stderr.drain<void>());
       await for (final line in coordinator.stdout.transform(utf8.decoder).transform(const LineSplitter())) {
-        if (line.length > 65536) throw const FormatException('Invalid coordinator response.');
+        if (line.length > 65536) {
+          throw const FormatException('Invalid coordinator response.');
+        }
+
         final event = jsonDecode(line) as Map<String, dynamic>;
         switch (event['event']) {
           case 'ready':
-            if (event['correlation'] != correlation) throw const FormatException('Mismatched update response.');
+            if (event['correlation'] != correlation) {
+              throw const FormatException('Mismatched update response.');
+            }
+
             _setProgress(AppUpdatePhase.preparing);
             try {
               preparationFailed = true;
@@ -215,6 +256,7 @@ class LinuxAppUpdatePlatform
             throw const FormatException('Unknown coordinator response.');
         }
       }
+
       throw StateError(
         'The update coordinator closed before application exit. Check the updater window for recovery details.',
       );
@@ -233,24 +275,32 @@ class LinuxAppUpdatePlatform
         _stage = null;
         _asset = null;
       }
+
       _handedOff = false;
     }
   }
 
   @override
   void cancelDownload() {
-    if (!_progress.value.cancellable) return;
+    if (!_progress.value.cancellable) {
+      return;
+    }
+
     ++_generation;
     _transport.cancel();
   }
 
   void _setProgress(AppUpdatePhase phase, {double? fraction, String? message}) {
-    if (!_closed) _progress.value = AppUpdateProgress(phase: phase, fraction: fraction, message: message);
+    if (!_closed) {
+      _progress.value = AppUpdateProgress(phase: phase, fraction: fraction, message: message);
+    }
   }
 
   Future<void> _removeStage() async {
     final stage = _stage;
     _stage = null;
-    if (stage != null && await stage.exists()) await stage.delete(recursive: true);
+    if (stage != null && await stage.exists()) {
+      await stage.delete(recursive: true);
+    }
   }
 }

@@ -68,15 +68,11 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
     }
   }
 
-  Widget _playlistPlaybackButton(AppController controller, List<Track> tracks) {
+  Widget _playlistPlaybackButton(List<Track> tracks) {
     return BannerPlaybackButton(
       message: 'Play playlist',
       visible: !_feature.selectionMode,
-      onPressed: _feature.tracksLoading || !tracks.any(_feature.isTrackPlayable)
-          ? null
-          : () => widget.isLocal
-                ? controller.playLocalPlaylistFromTop(widget.playlistId)
-                : controller.playPlaylistFromTop(widget.playlistId),
+      onPressed: _feature.tracksLoading || !tracks.any(_feature.isTrackPlayable) ? null : _feature.playFromTop,
     );
   }
 
@@ -87,11 +83,10 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
         title: 'Rename playlist',
         initialValue: playlist.name,
         initialDescription: playlist.description ?? '',
-        initialImageUrl: widget.isLocal ? playlist.imagePath : _feature.serverPlaylistCoverUrl(controller, playlist),
-        imageHeaders: widget.isLocal ? const <String, String>{} : authHeaders(controller),
-        onSubmit: (value, description, imageEdit, _) => widget.isLocal
-            ? controller.renameLocalPlaylist(playlist.id, value, description: description, imageEdit: imageEdit)
-            : controller.renamePlaylist(playlist.id, value, description: description, imageEdit: imageEdit),
+        initialImageUrl: _feature.coverUrl(playlist),
+        imageHeaders: _imageHeaders(controller),
+        onSubmit: (value, description, imageEdit, _) =>
+            _feature.rename(value, description: description, imageEdit: imageEdit),
       ),
     );
   }
@@ -110,6 +105,10 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
       ),
     );
   }
+
+  /// Local covers are files; server covers need the session's authentication headers.
+  Map<String, String> _imageHeaders(AppController controller) =>
+      widget.isLocal ? const <String, String>{} : authHeaders(controller);
 
   Future<void> _removeDownloads(List<Track> tracks, String label) async {
     if (tracks.isEmpty) {
@@ -137,7 +136,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
     required String playlistCoverUrl,
     required Album playlistAlbum,
     required Map<String, String> playlistHeaders,
-    required List<Track> tracks,
     required List<Track> displayedTracks,
   }) {
     final removableTracks = _feature.removableTracks(controller, displayedTracks);
@@ -197,7 +195,7 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
               album: playlistAlbum,
               coverUrl: playlistCoverUrl,
               headers: playlistHeaders,
-              actions: _playlistPlaybackButton(controller, displayedTracks),
+              actions: _playlistPlaybackButton(displayedTracks),
             ),
           ),
           if (_feature.tracksLoading)
@@ -219,20 +217,15 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                     tracks: displayedTracks,
                     showAlbumArt: true,
                     isPlayingTrack: (track) => playback.isPlaying && playingId == track.id,
-                    onTrackTap: (track) => widget.isLocal
-                        ? controller.queueLocalPlaylist(widget.playlistId, startTrackId: track.id)
-                        : controller.queuePlaylist(widget.playlistId, startTrackId: track.id),
-                    onTrackAddToPlaylist: (track) => showAddToPlaylistModalForTrack(
-                      context,
-                      track,
-                      scope: widget.isLocal ? ActionScope.local : ActionScope.server,
-                    ),
+                    onTrackTap: _feature.playFrom,
+                    onTrackAddToPlaylist: (track) =>
+                        showAddToPlaylistModalForTrack(context, track, scope: _feature.actionScope),
                     onTrackDownload: widget.isLocal ? null : controller.downloadTrack,
                     onTrackRetryDownload: widget.isLocal ? _feature.retryTrackDownload : null,
                     onTrackContinueDownload: widget.isLocal ? _feature.continueTrackDownload : null,
                     downloadStatusForTrack: widget.isLocal ? _feature.downloadStatusForTrack : null,
                     isTrackPlayable: _feature.isTrackPlayable,
-                    onTrackLike: widget.isLocal ? controller.toggleLocalLike : controller.toggleLike,
+                    onTrackLike: _feature.toggleLike,
                     selectionMode: _feature.selectionMode,
                     canSelectTrack: (track) => _feature.canRemoveTrack(controller, track),
                     isTrackSelected: (track) => _feature.selectedTrackIds.contains(_feature.selectionKey(track)),
@@ -268,24 +261,17 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
           );
         }
 
-        final playlist = (snapshot.data ?? []).firstWhere(
-          (item) => item.id == widget.playlistId,
-          orElse: () => Playlist(id: widget.playlistId, name: 'Playlist', trackIds: const []),
-        );
-        final playlistCoverUrl = widget.isLocal
-            ? playlist.imagePath ?? ''
-            : _feature.serverPlaylistCoverUrl(controller, playlist) ?? '';
+        final playlist = _feature.playlistFrom(snapshot.data ?? const <Playlist>[]);
+        final playlistCoverUrl = _feature.coverUrl(playlist) ?? '';
         final playlistAlbum = _feature.playlistAlbum(playlist);
-        final playlistHeaders = widget.isLocal ? const <String, String>{} : authHeaders(controller);
+        final playlistHeaders = _imageHeaders(controller);
 
         if (widget.isLocal) {
           return StreamBuilder<List<LocalPlaylistEntry>>(
             stream: controller.localPlaylistEntriesStream,
             initialData: controller.localPlaylistEntries,
             builder: (context, entriesSnapshot) {
-              final entries = (entriesSnapshot.data ?? const <LocalPlaylistEntry>[])
-                  .where((entry) => entry.playlistId == widget.playlistId)
-                  .toList(growable: false);
+              final entries = _feature.entriesFrom(entriesSnapshot.data ?? const <LocalPlaylistEntry>[]);
               final tracks = entries.map((entry) => entry.track).toList(growable: false);
 
               return StreamBuilder<List<OfflineTrackDownload>>(
@@ -299,8 +285,7 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                   playlistCoverUrl: playlistCoverUrl,
                   playlistAlbum: playlistAlbum,
                   playlistHeaders: playlistHeaders,
-                  tracks: tracks,
-                  displayedTracks: _feature.tracksLoading ? const <Track>[] : tracks,
+                  displayedTracks: _feature.displayedTracks(tracks),
                 ),
               );
             },
@@ -308,11 +293,10 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
         }
 
         return StreamBuilder<List<Track>>(
-          stream: widget.isLocal ? controller.localPlaylistTracksStream : controller.playlistTracksStream,
-          initialData: widget.isLocal ? controller.localPlaylistTracks : controller.playlistTracks,
+          stream: controller.playlistTracksStream,
+          initialData: controller.playlistTracks,
           builder: (context, tracksSnapshot) {
-            final tracks = tracksSnapshot.data ?? [];
-            final displayedTracks = _feature.tracksLoading ? const <Track>[] : tracks;
+            final displayedTracks = _feature.displayedTracks(tracksSnapshot.data ?? const <Track>[]);
 
             return StreamBuilder<List<OfflineTrackDownload>>(
               stream: controller.offlineDownloadsStream,
@@ -325,7 +309,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                 playlistCoverUrl: playlistCoverUrl,
                 playlistAlbum: playlistAlbum,
                 playlistHeaders: playlistHeaders,
-                tracks: tracks,
                 displayedTracks: displayedTracks,
               ),
             );

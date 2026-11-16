@@ -8,6 +8,7 @@ import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/models/library/artist_releases.dart';
 
 export 'package:phonolite_app/data/models/downloads/artist_download_summary.dart';
 
@@ -92,6 +93,26 @@ class ArtistDetailController extends FeatureController {
         if (albumHasRemovingDownloads(controller, album)) albumSelectionKey(album),
     };
   }
+
+  /// Whether [album] is among the albums whose downloads are being removed.
+  bool isRemovingAlbum(Album album, Set<String> removingIds) => removingIds.contains(albumSelectionKey(album));
+
+  /// Whether [album] can be selected now: it has downloads and none of them is being removed.
+  bool canSelectAlbum(Album album, {required Set<String> removableIds, required Set<String> removingIds}) {
+    final key = albumSelectionKey(album);
+
+    return removableIds.contains(key) && !removingIds.contains(key);
+  }
+
+  /// A collaboration can be selected only where this artist is an album artist,
+  /// so removal never deletes another artist's release from a guest credit.
+  bool canSelectContribution(
+    ArtistReleaseContribution contribution, {
+    required Set<String> removableIds,
+    required Set<String> removingIds,
+  }) =>
+      contribution.isAlbumArtist &&
+      canSelectAlbum(contribution.album, removableIds: removableIds, removingIds: removingIds);
 
   List<OfflineTrackDownload> downloadsForAlbums(AppController controller, List<Album> albums) {
     final downloadsByKey = <String, OfflineTrackDownload>{};
