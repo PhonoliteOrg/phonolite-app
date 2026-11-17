@@ -152,7 +152,7 @@ class WindowsAppUpdatePlatform
       await quit();
     } on UpdateDownloadCancelled {
       _setProgress(AppUpdatePhase.idle, message: 'Download cancelled. Select to try again.');
-    } catch (error) {
+    } on Object catch (error) {
       _setProgress(
         preparing ? AppUpdatePhase.restartRequired : AppUpdatePhase.failed,
         message: preparing ? 'Restart Phonolite before trying the update again. $error' : error.toString(),

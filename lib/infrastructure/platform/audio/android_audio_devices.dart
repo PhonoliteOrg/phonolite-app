@@ -24,7 +24,7 @@ Future<List<OutputDevice>> listAndroidAudioDevices() async {
 
       devices.add(OutputDevice(id: id, name: name));
     }
-  } catch (_) {
+  } on Object catch (_) {
     // Device discovery is optional; the system-default output remains usable.
   }
 

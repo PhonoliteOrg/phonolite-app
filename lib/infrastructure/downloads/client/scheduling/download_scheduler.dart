@@ -111,6 +111,7 @@ class _DownloadScheduler {
     _host._clearObsoleteStopMarkersForQueue(download);
 
     void finishDownload() {
+      // ignore: discarded_futures -- Map.remove only returns the tracked transfer; nothing is started.
       _active.remove(key);
       _host._activeCancelPorts.remove(key);
       _host._cancelRequested.remove(key);

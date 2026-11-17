@@ -27,7 +27,9 @@ class _AudioListeningSession {
         if (epoch == _host._outputEpoch && identical(player, _host._player)) {
           _host._playedSamples += done;
         }
-      } catch (_) {}
+      } on Object catch (_) {
+        // Listening statistics are best effort; a context change must still apply.
+      }
     }
 
     if (revision != _listeningContextRevision || _host._stopRequested) {

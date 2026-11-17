@@ -29,7 +29,7 @@ void _audioWorkerMain(AudioWorkerInit init) {
 
     try {
       await _runAudioWorkerCommand(engine, message, cmd, defaultSettings);
-    } catch (error) {
+    } on Object catch (error) {
       init.sendPort.send({'type': 'message', 'text': 'Audio worker command $cmd failed: $error'});
     } finally {
       switch (cmd) {

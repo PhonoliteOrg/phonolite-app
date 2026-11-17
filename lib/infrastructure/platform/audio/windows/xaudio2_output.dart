@@ -51,7 +51,7 @@ class XAudio2Player implements AudioPcmOutput, AudioPcm32Output {
       if (_paused) {
         _check(_bindings.pause(handle), 'pause');
       }
-    } catch (_) {
+    } on Object catch (_) {
       _bindings.close(handle);
       rethrow;
     }

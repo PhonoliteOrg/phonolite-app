@@ -405,7 +405,7 @@ class _RollingDownloadJobs {
       for (final job in runnable) {
         try {
           await _topUpRollingJob(job);
-        } catch (error) {
+        } on Object catch (error) {
           // Keep the durable request queued so a later reconnect can retry it.
           AppLogger.warning('Could not continue download ${job.label ?? job.jobId}: $error');
         }

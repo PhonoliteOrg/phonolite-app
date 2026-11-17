@@ -39,7 +39,7 @@ final class PcmQueueWriter {
 
       try {
         status = await attempt();
-      } catch (_) {
+      } on Object catch (_) {
         if (!isCurrent()) {
           return;
         }

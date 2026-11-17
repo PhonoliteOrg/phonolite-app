@@ -62,7 +62,7 @@ class NativeDesktopTray implements DesktopTray {
       if (!icon.setVisible(true)) {
         throw StateError('Could not show the desktop tray icon.');
       }
-    } catch (_) {
+    } on Object catch (_) {
       dispose();
       rethrow;
     }

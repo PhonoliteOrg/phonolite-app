@@ -59,7 +59,7 @@ class PulseAudioPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
     _stream = null;
     try {
       await _initialization;
-    } catch (_) {
+    } on Object catch (_) {
       // Startup failure/cancellation still releases every native resource.
     }
   }
@@ -132,7 +132,7 @@ class PulseAudioPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
       }
       stream.setVolume(_volume);
       stream.setPaused(_paused);
-    } catch (_) {
+    } on Object catch (_) {
       if (identical(_stream, stream)) {
         _stream = null;
         stream.close();

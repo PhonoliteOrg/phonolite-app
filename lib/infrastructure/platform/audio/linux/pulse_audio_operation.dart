@@ -21,7 +21,7 @@ class PulseAudioOperation {
       if (_handle == nullptr) {
         throw StateError('Could not start the Linux audio operation.');
       }
-    } catch (_) {
+    } on Object catch (_) {
       dispose();
       rethrow;
     }

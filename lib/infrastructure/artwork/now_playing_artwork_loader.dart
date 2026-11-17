@@ -28,7 +28,8 @@ class NowPlayingArtworkLoader {
       }
 
       return await _decode(response.bodyBytes);
-    } catch (_) {
+    } on Object catch (_) {
+      // Artwork is optional (see class docs); a miss leaves the now-playing surface without an image.
       return null;
     }
   }
@@ -36,7 +37,8 @@ class NowPlayingArtworkLoader {
   Future<Uint8List?> loadFile(String path) async {
     try {
       return await _decode(await File(path).readAsBytes());
-    } catch (_) {
+    } on Object catch (_) {
+      // Artwork is optional (see class docs); a miss leaves the now-playing surface without an image.
       return null;
     }
   }

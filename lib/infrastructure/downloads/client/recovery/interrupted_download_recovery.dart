@@ -55,9 +55,10 @@ class _InterruptedDownloadRecovery {
   Future<bool> _downloadsRootAvailable() async {
     try {
       return await (await _host._storage.downloadsRoot()).exists();
-    } catch (err) {
+    } on Object catch (err) {
       AppLogger.warning('Failed to check offline downloads folder: $err');
 
+      // Treating the root as unavailable leaves completed downloads untouched until a later recovery.
       return false;
     }
   }

@@ -73,7 +73,7 @@ class _RemoteAudioSource {
     _recovery.interrupted();
     try {
       if (_host._quic?.notifyNetworkChange(generation) == true) return;
-    } catch (_) {
+    } on Object catch (_) {
       // Unsupported migration adapters retain delivery-based recovery.
     }
     // A path observation does not establish that this socket stopped working.
@@ -172,7 +172,7 @@ class _RemoteAudioSource {
         throw AudioSourceRejected(error.toString());
       }
       _repairRequested = true;
-    } catch (error) {
+    } on Object catch (error) {
       _repairRequested = true;
       _host._log('Audio delivery retry deferred (${error.runtimeType}).');
     } finally {
@@ -211,7 +211,7 @@ class _RemoteAudioSource {
     try {
       _transportRequestId = quic.seek(trackId: _host.trackId, positionMs: ms, seekId: _host._pendingSeekId!);
       _host._reportBuffer(force: true);
-    } catch (error) {
+    } on Object catch (error) {
       if (_terminalFailure(quic, error)) throw AudioSourceRejected(error.toString());
       _repairRequested = true;
     }
@@ -364,7 +364,7 @@ class _RemoteAudioSource {
         final int read;
         try {
           read = quic.read(data);
-        } catch (error) {
+        } on Object catch (error) {
           _connectionFailed(quic, error);
         }
 
@@ -519,7 +519,7 @@ class _RemoteAudioSource {
     _host._pumpChunkSamples = _host._sampleRate * _host._channels * _PlaybackSession._pumpChunkMs ~/ 1000;
     try {
       _host._updateAdaptiveBufferProfile(bufferedMs: 0, rttMs: _host._quic?.pollRttMs());
-    } catch (_) {
+    } on Object catch (_) {
       // A missing latency observation cannot reject an accepted source header.
     }
     _host._refreshBufferTargets();

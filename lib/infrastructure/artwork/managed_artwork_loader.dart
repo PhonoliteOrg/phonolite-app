@@ -142,7 +142,7 @@ class ManagedArtworkLoader implements ArtworkLoader {
         run: () async {
           try {
             result.complete(await operation());
-          } catch (error, stack) {
+          } on Object catch (error, stack) {
             result.completeError(error, stack);
           }
         },
@@ -203,7 +203,7 @@ class ManagedArtworkLoader implements ArtworkLoader {
       }
 
       load.result.complete(bytes);
-    } catch (error, stack) {
+    } on Object catch (error, stack) {
       load.result.completeError(error, stack);
     } finally {
       _pending.remove(load.key);

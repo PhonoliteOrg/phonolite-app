@@ -143,7 +143,7 @@ class LinuxAppUpdatePlatform
       _asset = LinuxUpdateAsset.fromVerifiedJson(selected as Map<String, dynamic>);
 
       return AppUpdateRelease(version: _asset!.version);
-    } catch (_) {
+    } on Object catch (_) {
       if (generation == _generation) {
         _asset = null;
         await _removeStage();
@@ -245,7 +245,7 @@ class LinuxAppUpdatePlatform
               _setProgress(AppUpdatePhase.installing);
               await _onInstall!();
               preparationFailed = false;
-            } catch (_) {
+            } on Object catch (_) {
               coordinator.stdin.writeln('abort');
               await coordinator.stdin.flush();
               rethrow;
@@ -262,7 +262,7 @@ class LinuxAppUpdatePlatform
       );
     } on UpdateDownloadCancelled {
       _setProgress(AppUpdatePhase.idle, message: 'Download cancelled. Select to try again.');
-    } catch (error) {
+    } on Object catch (error) {
       _setProgress(
         preparationFailed ? AppUpdatePhase.restartRequired : AppUpdatePhase.failed,
         message: preparationFailed ? 'Restart Phonolite before trying the update again. $error' : error.toString(),

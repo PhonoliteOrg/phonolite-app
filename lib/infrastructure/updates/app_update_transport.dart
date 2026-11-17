@@ -59,7 +59,7 @@ class AppUpdateTransport {
       if (received != length || (digest != null && hash.value?.toString() != digest)) {
         throw const FormatException('The package does not match its signed length and digest.');
       }
-    } catch (_) {
+    } on Object catch (_) {
       await output.close();
       if (await destination.exists()) {
         await destination.delete();
@@ -126,7 +126,7 @@ class AppUpdateTransport {
 
     try {
       await Future.any([readResponse(), interruption.future]);
-    } catch (_) {
+    } on Object catch (_) {
       if (generation != _generation) throw const UpdateDownloadCancelled();
       rethrow;
     } finally {

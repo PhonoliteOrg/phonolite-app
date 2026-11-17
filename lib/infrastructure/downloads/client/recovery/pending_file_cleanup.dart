@@ -58,7 +58,7 @@ class _PendingFileCleanup {
           await _host._storage.clearPendingFileDeletes(completed);
         }
       }
-    } catch (err) {
+    } on Object catch (err) {
       AppLogger.warning('Failed to clean up removed download files: $err');
     }
   }
@@ -103,7 +103,7 @@ class _PendingFileCleanup {
       }
 
       return true;
-    } catch (err) {
+    } on Object catch (err) {
       AppLogger.warning('Failed to delete removed download file $trimmed: $err');
 
       return false;

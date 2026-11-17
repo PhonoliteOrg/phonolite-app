@@ -181,7 +181,7 @@ void _offlineDownloadActorMain(OfflineActorInit init) {
 
         commandPort.close();
       }
-    } catch (err, stack) {
+    } on Object catch (err, stack) {
       init.replyPort.send(OfflineActorResult(id: message.id, error: '$err\n$stack'));
     } finally {
       task.finish();

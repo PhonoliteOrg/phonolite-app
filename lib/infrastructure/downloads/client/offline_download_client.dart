@@ -216,7 +216,9 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
       try {
         // Bounded so a wedged actor cannot hold app shutdown; the actor is killed below.
         await _send<void>('dispose').timeout(const Duration(seconds: 10));
-      } catch (_) {}
+      } on Object catch (error) {
+        AppLogger.warning('Offline download actor did not dispose cleanly: $error');
+      }
     }
 
     for (final completer in _pending.values) {

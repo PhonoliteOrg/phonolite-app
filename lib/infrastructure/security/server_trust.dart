@@ -59,7 +59,8 @@ class ServerTrustRegistry {
 
     try {
       return certificateSpki(certificate.der) == trust.spki;
-    } catch (_) {
+    } on Object catch (_) {
+      // Fail closed: a certificate whose key cannot be read is never trusted.
       return false;
     }
   }

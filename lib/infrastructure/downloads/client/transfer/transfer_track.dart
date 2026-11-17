@@ -266,7 +266,7 @@ class _TrackDownloadTransfer {
       );
       await _host._refreshJobCounts(download.batchId!);
       _host._compressedJobs._pollLater();
-    } catch (err) {
+    } on Object catch (err) {
       if (partialFile != null && await partialFile.exists()) {
         bytesDownloaded = await partialFile.length();
       }

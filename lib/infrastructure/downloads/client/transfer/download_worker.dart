@@ -222,7 +222,7 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
     );
   } on DownloadWorkerCorrupt catch (err) {
     start.sendPort.send(DownloadWorkerFailure(kind: DownloadWorkerFailureKind.corrupt, message: err.message));
-  } catch (err) {
+  } on Object catch (err) {
     start.sendPort.send(
       DownloadWorkerFailure(
         kind: canceled ? DownloadWorkerFailureKind.canceled : DownloadWorkerFailureKind.error,
@@ -232,7 +232,9 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
   } finally {
     try {
       await sink?.close();
-    } catch (_) {}
+    } on Object catch (_) {
+      // The transfer outcome was already reported above; a failed close cannot change it.
+    }
 
     client?.close(force: true);
     cancelPort.close();

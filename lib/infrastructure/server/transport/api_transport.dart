@@ -168,7 +168,9 @@ class ApiTransport {
       await verifyServerConnection(_baseUrl);
     } on ServerConnectionCheckException catch (error) {
       return error.reason == ServerConnectionFailure.identityChanged;
-    } catch (_) {}
+    } on Object catch (_) {
+      // Detection only: an unreachable or failing server does not establish an identity change.
+    }
     return false;
   }
 
@@ -270,7 +272,8 @@ class ApiTransport {
       final success = response.statusCode >= 200 && response.statusCode < 300;
 
       return success ? stopwatch.elapsedMilliseconds : null;
-    } catch (_) {
+    } on Object catch (_) {
+      // Null means no healthy response at this URL; `pingHealthMs` tries the next one.
       return null;
     }
   }
@@ -320,6 +323,7 @@ class ApiTransport {
 
     void removePending() {
       if (identical(_metadataRequests[path], pending)) {
+        // ignore: discarded_futures -- Map.remove only returns the tracked request; nothing is started.
         _metadataRequests.remove(path);
       }
     }
@@ -517,7 +521,9 @@ class ApiTransport {
     if (lastError != null && lastStackTrace != null) {
       try {
         if (_sessionRevision == sessionRevision) onTransportFailure?.call(lastError);
-      } catch (_) {}
+      } on Object catch (_) {
+        // A failing observer must not replace the transport error reported below.
+      }
 
       developer.log(
         '$safeLabel failed after ${stopwatch.elapsedMilliseconds}ms',

@@ -192,7 +192,7 @@ class _LocalPlaylistDownloads {
           playlistOwned: true,
           isCurrent: isCurrent,
         );
-      } catch (error) {
+      } on Object catch (error) {
         if (isCurrent()) {
           await _host._storage.updatePendingPlaylistRequest(
             source,
@@ -212,7 +212,7 @@ class _LocalPlaylistDownloads {
             }
 
             await _host._loadLocalUserData();
-          } catch (error) {
+          } on Object catch (error) {
             AppLogger.warning('Failed to refresh saved playlist downloads: $error');
           }
         }
@@ -227,6 +227,7 @@ class _LocalPlaylistDownloads {
 
     void finishStaging() {
       if (identical(_staging[source.key], completion)) {
+        // ignore: discarded_futures -- Map.remove only returns the tracked completion; nothing is started.
         _staging.remove(source.key);
         _stagingSessions.remove(source.key);
       }

@@ -37,7 +37,7 @@ class _CompressedDownloadJobs {
     }
     try {
       await _host.connection.applyDownloadJobAction(jobId: job.serverJobId!, action: action);
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Could not $action compressed server download: $error');
     }
   }
@@ -115,7 +115,7 @@ class _CompressedDownloadJobs {
               jobId: remote.jobId,
               action: latest?.status == OfflineDownloadStatus.paused ? 'pause' : 'cancel',
             );
-          } catch (error) {
+          } on Object catch (error) {
             AppLogger.warning('Could not stop late server preparation: $error');
           }
         }
@@ -293,7 +293,7 @@ class _CompressedDownloadJobs {
       if (waiting || pending) {
         _pollLater();
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (!current()) {
         return;
       }

@@ -50,7 +50,7 @@ class _DownloadJobMaterializer {
         }
 
         return;
-      } catch (err) {
+      } on Object catch (err) {
         AppLogger.warning('Falling back to direct rolling queue for ${job.label ?? job.jobId}: $err');
       }
     }

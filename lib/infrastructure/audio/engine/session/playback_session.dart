@@ -251,7 +251,9 @@ class _PlaybackSession
         final done = await _collectListeningSamples(player);
 
         _playedSamples += done;
-      } catch (_) {}
+      } on Object catch (_) {
+        // Listening statistics are best effort; a paused output must not fail the pause.
+      }
 
       _listening.flush();
       if (_userPaused && _paused && _isActive && identical(player, _player)) {
@@ -298,7 +300,7 @@ class _PlaybackSession
     try {
       await _runPlayback();
       completed = _isActive;
-    } catch (err) {
+    } on Object catch (err) {
       _log('Playback failed: $err');
 
       final source = _gaplessSource;
@@ -368,7 +370,9 @@ class _PlaybackSession
       if (_listening.enabled) {
         await _collectListeningSamples(player);
       }
-    } catch (_) {}
+    } on Object catch (_) {
+      // The replaced output may already be broken; it must still be disposed below.
+    }
 
     try {
       await player.dispose();
@@ -405,7 +409,9 @@ class _PlaybackSession
           if (_listening.enabled) {
             await _collectListeningSamples(player);
           }
-        } catch (_) {}
+        } on Object catch (_) {
+          // A failed output may reject pause or statistics; it must still be disposed below.
+        }
 
         await player.dispose();
       }
@@ -483,7 +489,7 @@ class _PlaybackSession
         queue: queueTrackIds,
         startMs: startOffset.inMilliseconds,
       );
-    } catch (error) {
+    } on Object catch (error) {
       if (_ownerRemote._terminalFailure(quic, error)) {
         throw AudioSourceRejected(error.toString());
       }
@@ -513,8 +519,9 @@ class _PlaybackSession
 
     try {
       await Future.wait([receiveTask, decodeTask], eagerError: true);
-    } catch (_) {
-      requestStop(outcome: 'error');
+    } on Object catch (_) {
+      // Stop is memoized; `run()` awaits its completion in its `finally`.
+      unawaited(requestStop(outcome: 'error'));
 
       rethrow;
     }
