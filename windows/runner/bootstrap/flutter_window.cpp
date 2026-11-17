@@ -97,7 +97,10 @@ LRESULT FlutterWindow::message_handler(HWND window, UINT message, WPARAM wparam,
 
   switch (message) {
   case WM_FONTCHANGE:
-    flutter_controller_->engine()->ReloadSystemFonts();
+    // The controller is released in on_destroy; a late font message must not dereference it.
+    if (flutter_controller_) {
+      flutter_controller_->engine()->ReloadSystemFonts();
+    }
     break;
   }
 
