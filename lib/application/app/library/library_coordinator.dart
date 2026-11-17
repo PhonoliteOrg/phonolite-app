@@ -403,7 +403,9 @@ class _LibraryCoordinator {
     }
 
     _albumsLoading = value;
-    _albumsLoadingController.add(value);
+    if (!_host._disposed && !_albumsLoadingController.isClosed) {
+      _albumsLoadingController.add(value);
+    }
   }
 
   void _setTracksLoading(bool value) {
@@ -412,7 +414,9 @@ class _LibraryCoordinator {
     }
 
     _tracksLoading = value;
-    _tracksLoadingController.add(value);
+    if (!_host._disposed && !_tracksLoadingController.isClosed) {
+      _tracksLoadingController.add(value);
+    }
   }
 
   void _setSearchLoading(bool value) {
@@ -421,7 +425,9 @@ class _LibraryCoordinator {
     }
 
     _searchLoading = value;
-    _searchLoadingController.add(value);
+    if (!_host._disposed && !_searchLoadingController.isClosed) {
+      _searchLoadingController.add(value);
+    }
   }
 
   void _startMetadataEventListener() {
