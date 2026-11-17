@@ -38,7 +38,9 @@ class OfflineStorageSettingsStorage {
       }
 
       return settings;
-    } catch (err) {
+    } on Object catch (err) {
+      // Unreadable settings read as the default locations. This read moves and deletes nothing, and the
+      // file is left in place for the next read.
       AppLogger.warning('Failed to read offline storage settings: $err');
 
       return const OfflineStorageSettings();
@@ -52,7 +54,8 @@ class OfflineStorageSettingsStorage {
 
     try {
       return await _readFromDisk();
-    } catch (err) {
+    } on Object catch (err) {
+      // Only used to find legacy paths to migrate; without them there is nothing to migrate.
       AppLogger.warning('Failed to read raw offline storage settings: $err');
 
       return const OfflineStorageSettings();

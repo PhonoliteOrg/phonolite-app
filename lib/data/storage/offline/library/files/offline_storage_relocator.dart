@@ -106,7 +106,8 @@ class _OfflineStorageRelocator {
     if (legacyMetadataPath != null) {
       try {
         await _copyMetadataFilesIfNeeded(fromDirectory: Directory(legacyMetadataPath), toDirectory: defaultRoot);
-      } catch (err) {
+      } on Object catch (err) {
+        // Migration copies and never deletes, so the legacy files remain for a later attempt.
         AppLogger.warning('Failed to migrate managed offline metadata storage: $err');
       }
     }
@@ -117,14 +118,16 @@ class _OfflineStorageRelocator {
           fromDirectory: Directory(legacyDownloadsPath),
           toDirectory: defaultRoot,
         );
-      } catch (err) {
+      } on Object catch (err) {
+        // Migration copies and never deletes, so the legacy files remain for a later attempt.
         AppLogger.warning('Failed to migrate managed offline download storage: $err');
       }
     }
 
     try {
       await _host.settingsStorage.write(const OfflineStorageSettings());
-    } catch (err) {
+    } on Object catch (err) {
+      // Stale legacy paths only make the next launch repeat this migration.
       AppLogger.warning('Failed to clear migrated offline storage settings: $err');
     }
   }

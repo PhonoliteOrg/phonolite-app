@@ -487,7 +487,7 @@ class ListeningStatsService {
     if (_initializing != null) {
       try {
         await _initializing;
-      } catch (_) {
+      } on Object catch (_) {
         // A failed initialization still needs its ports closed.
       }
     }

@@ -72,7 +72,8 @@ class _OfflineDownloadJobStore {
         'offline.sqlite.readJobItemsLean',
         () => _readDownloadJobItems(open, jobId, includeTrackJson: false),
       );
-    } catch (err) {
+    } on Object catch (err) {
+      // Same recovery policy as the other job readers in this store.
       AppLogger.warning('Failed to read offline download job items: $err');
 
       return const [];
@@ -105,7 +106,8 @@ class _OfflineDownloadJobStore {
         'offline.sqlite.readJobItemsWindow',
         () => _readDownloadJobItemsForTracks(open, jobId, ids),
       );
-    } catch (err) {
+    } on Object catch (err) {
+      // Hydration is optional: callers keep the items they already hold.
       AppLogger.warning('Failed to read offline download job item window: $err');
 
       return const [];
@@ -319,7 +321,8 @@ class _OfflineDownloadJobStore {
         database.execute('DELETE FROM download_jobs WHERE job_id = ?', [trimmed]);
         database.execute('DELETE FROM download_batches WHERE batch_id = ?', [trimmed]);
       });
-    } catch (err) {
+    } on Object catch (err) {
+      // Same recovery policy as deleteDownloadBatch in this store.
       AppLogger.warning('Failed to delete offline download job: $err');
     } finally {
       _host._releaseDatabase(db);

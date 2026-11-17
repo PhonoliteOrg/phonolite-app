@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -53,7 +54,8 @@ class JsonSettingsFile {
 
       try {
         value = await read(source: file);
-      } catch (error) {
+      } on Object catch (error) {
+        // Recovery is documented above: the unreadable value is replaced and the store may report it.
         onReadError?.call(error);
       }
 
@@ -83,7 +85,8 @@ class JsonSettingsFile {
       await next;
     } finally {
       if (identical(_updates[key], tail)) {
-        _updates.remove(key);
+        // The removed entry is [tail], which never completes with an error.
+        unawaited(_updates.remove(key));
       }
     }
   }

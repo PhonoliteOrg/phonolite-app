@@ -98,7 +98,10 @@ class _OfflineRowMapper {
           offlineMetadata = OfflineTrackMetadata.fromJson(Map<String, dynamic>.from(decoded));
           track = offlineMetadata.track;
         }
-      } catch (_) {}
+      } on Object catch (error) {
+        // A damaged optional snapshot falls back to track_json or the row's own columns.
+        AppLogger.warning('Ignoring unreadable offline job item metadata: $error');
+      }
     }
 
     final rawTrack = OfflineLibraryStorage._readNullableString(row, 'track_json');
@@ -110,7 +113,10 @@ class _OfflineRowMapper {
         if (decoded is Map) {
           track = Track.fromJson(Map<String, dynamic>.from(decoded));
         }
-      } catch (_) {}
+      } on Object catch (error) {
+        // The item stays usable without its cached track, which is optional job payload.
+        AppLogger.warning('Ignoring unreadable offline job item track: $error');
+      }
     }
 
     return OfflineDownloadJobItem(
@@ -153,7 +159,10 @@ class _OfflineRowMapper {
       if (decoded is List) {
         return decoded.map((item) => item.toString().trim()).where((item) => item.isNotEmpty).toList(growable: false);
       }
-    } catch (_) {}
+    } on Object catch (error) {
+      // Genres are optional display metadata; a damaged list must not hide the track.
+      AppLogger.warning('Ignoring unreadable offline track genres: $error');
+    }
 
     return const [];
   }
@@ -219,7 +228,10 @@ class _OfflineRowMapper {
         album: Album.fromJson(Map<String, dynamic>.from(rawAlbum)),
         artist: Artist.fromJson(Map<String, dynamic>.from(rawArtist)),
       );
-    } catch (_) {
+    } on Object catch (error) {
+      // Callers fall back to the row's flat columns when the snapshot is unusable.
+      AppLogger.warning('Ignoring unreadable offline track metadata snapshot: $error');
+
       return null;
     }
   }
@@ -302,13 +314,9 @@ class _OfflineRowMapper {
 
   static String? _normalizeOptionalText(String? value) => JsonValues.nonEmptyString(value);
 
-  static String? _tryReadNullableString(Row row, String key) {
-    try {
-      return OfflineLibraryStorage._readNullableString(row, key);
-    } catch (_) {
-      return null;
-    }
-  }
+  /// A [Row] lookup returns null for a column the query did not select, so
+  /// optional columns need no exception handling.
+  static String? _tryReadNullableString(Row row, String key) => OfflineLibraryStorage._readNullableString(row, key);
 
   static int _readInt(Row row, String key) {
     final value = row[key];
@@ -341,13 +349,8 @@ class _OfflineRowMapper {
     return int.tryParse(value.toString());
   }
 
-  static int? _tryReadNullableInt(Row row, String key) {
-    try {
-      return OfflineLibraryStorage._readNullableInt(row, key);
-    } catch (_) {
-      return null;
-    }
-  }
+  /// See [_tryReadNullableString]: a missing column reads as null.
+  static int? _tryReadNullableInt(Row row, String key) => OfflineLibraryStorage._readNullableInt(row, key);
 
   static bool _readBool(Row row, String key) {
     final value = row[key];

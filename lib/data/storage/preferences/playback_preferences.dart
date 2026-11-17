@@ -85,7 +85,8 @@ class PlaybackPreferencesStorage {
 
     try {
       return await _file.read();
-    } catch (err) {
+    } on Object catch (err) {
+      // Null means "not saved"; each reader then uses its default.
       AppLogger.warning('Failed to read playback prefs: $err');
 
       return null;
@@ -102,7 +103,8 @@ class PlaybackPreferencesStorage {
         (payload) => payload[key] = value,
         onReadError: (error) => AppLogger.warning('Failed to read playback prefs: $error'),
       );
-    } catch (err) {
+    } on Object catch (err) {
+      // Playback preferences are conveniences that the next change writes again.
       AppLogger.warning('Failed to persist playback prefs: $err');
     }
   }

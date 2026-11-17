@@ -66,7 +66,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   Future<void> _initializeController() async {
     try {
       await _settings.download.initialize();
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Download preferences are unavailable; open Download quality in Settings to retry: $error');
     }
 
@@ -78,7 +78,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
       }
 
       await _controller.restoreSession();
-    } catch (error, stackTrace) {
+    } on Object catch (error, stackTrace) {
       AppLogger.error('Phonolite could not start. Restart the app and check its storage permissions: $error');
       AppLogger.debug('Application startup failure: $stackTrace');
     }

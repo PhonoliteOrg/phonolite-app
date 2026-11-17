@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -32,7 +33,8 @@ class ServerTrustStore {
       await pending;
     } finally {
       if (identical(_mutations[key], pending)) {
-        _mutations.remove(key);
+        // The removed entry is [pending], whose outcome was observed above.
+        unawaited(_mutations.remove(key));
       }
     }
   }

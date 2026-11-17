@@ -43,7 +43,7 @@ class AuthStorage {
             credentials = saved;
           }
         }
-      } catch (_) {
+      } on Object catch (_) {
         // An unsupported or malformed session cannot own persisted server keys.
       }
     }
@@ -59,7 +59,7 @@ class AuthStorage {
         try {
           final trust = ServerTrust.fromJson(jsonDecode(rawTrust));
           matchingTrust = trust?.spki == credentials.trust.spki && trust?.opaqueKey == credentials.trust.opaqueKey;
-        } catch (_) {
+        } on Object catch (_) {
           // Repair a redundant malformed pin from the saved session's identity.
         }
       }
@@ -112,7 +112,8 @@ class AuthStorage {
       final decoded = jsonDecode(protected);
 
       return decoded is Map ? AuthCredentials.fromJson(Map<String, dynamic>.from(decoded)) : null;
-    } catch (_) {
+    } on Object catch (_) {
+      // The error is not logged because a decode failure can quote the stored token.
       AppLogger.warning('Stored auth is unreadable');
 
       return null;
