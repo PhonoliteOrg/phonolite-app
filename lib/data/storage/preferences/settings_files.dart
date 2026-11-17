@@ -15,7 +15,7 @@ class SettingsFiles {
   const SettingsFiles({this.cacheFirst = false, this.directoryProvider});
 
   Future<File> resolve(String name, {bool createDirectory = false}) async {
-    final directory = await (directoryProvider?.call() ?? _defaultDirectory());
+    final directory = await (directoryProvider?.call() ?? defaultDirectory(cacheFirst: cacheFirst));
 
     if (createDirectory) {
       await directory.create(recursive: true);
@@ -24,14 +24,28 @@ class SettingsFiles {
     return File(_join(directory.path, name));
   }
 
-  Future<Directory> _defaultDirectory() async {
-    if (Platform.isWindows) {
-      return WindowsAppStorage.directory() ?? await getApplicationSupportDirectory();
+  /// The settings directory used when no [directoryProvider] is given.
+  ///
+  /// Windows keeps settings under Roaming AppData, falling back to the support
+  /// directory when `APPDATA` is unset. Other platforms use a `Phonolite`
+  /// folder in the support directory, or in the cache directory first when
+  /// [cacheFirst] is set and the cache is available.
+  static Future<Directory> defaultDirectory({
+    bool cacheFirst = false,
+    String? operatingSystem,
+    Map<String, String>? environment,
+    Future<Directory> Function()? cacheDirectoryProvider,
+    Future<Directory> Function()? supportDirectoryProvider,
+  }) async {
+    final supportDirectory = supportDirectoryProvider ?? getApplicationSupportDirectory;
+
+    if ((operatingSystem ?? Platform.operatingSystem) == 'windows') {
+      return WindowsAppStorage.directory(environment: environment) ?? await supportDirectory();
     }
 
     if (cacheFirst) {
       try {
-        final cache = await getApplicationCacheDirectory();
+        final cache = await (cacheDirectoryProvider ?? getApplicationCacheDirectory)();
 
         return Directory(_join(cache.path, 'Phonolite'));
       } on Object catch (_) {
@@ -39,12 +53,12 @@ class SettingsFiles {
       }
     }
 
-    final support = await getApplicationSupportDirectory();
+    final support = await supportDirectory();
 
     return Directory(_join(support.path, 'Phonolite'));
   }
 
-  String _join(String directory, String name) {
+  static String _join(String directory, String name) {
     if (directory.isEmpty || directory.endsWith(Platform.pathSeparator)) {
       return '$directory$name';
     }

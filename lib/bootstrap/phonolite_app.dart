@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_settings_controllers.dart';
+import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/bootstrap/phonolite_app_shell.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
@@ -11,15 +12,28 @@ import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/decoded_artwork_preloader.dart';
 
+/// Creates the application controller from the resources [PhonoliteApp] owns.
+typedef AppControllerFactory = AppController Function({
+  required ServerConnection connection,
+  required DecodedArtworkPreloader shuffleArtworkPreloader,
+  required DownloadSettingsController downloadSettings,
+});
+
 class PhonoliteApp extends StatefulWidget {
-  const PhonoliteApp({super.key});
+  /// Device-preference controllers; defaults to the process-wide ones.
+  final AppSettingsControllers? settings;
+
+  /// Creates the controller the app owns; defaults to [AppController.new].
+  final AppControllerFactory createController;
+
+  const PhonoliteApp({super.key, this.settings, this.createController = AppController.new});
 
   @override
   State<PhonoliteApp> createState() => _PhonoliteAppState();
 }
 
 class _PhonoliteAppState extends State<PhonoliteApp> {
-  final _settings = AppSettingsControllers.shared;
+  late final _settings = widget.settings ?? AppSettingsControllers.shared;
   late final AppController _controller;
   late final ManagedArtworkLoader _artworkLoader;
   late final DecodedArtworkPreloader _shuffleArtworkPreloader;
@@ -37,7 +51,7 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
 
     _artworkLoader = ManagedArtworkLoader(connection: connection, accountScope: () => _controller.artworkAccountScope);
     _shuffleArtworkPreloader = DecodedArtworkPreloader(loader: _artworkLoader);
-    _controller = AppController(
+    _controller = widget.createController(
       connection: connection,
       shuffleArtworkPreloader: _shuffleArtworkPreloader,
       downloadSettings: _settings.download,

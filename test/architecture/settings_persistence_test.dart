@@ -224,4 +224,52 @@ void main() {
       expect(await blocker.readAsString(), 'not a directory');
     },
   );
+
+  group('default settings directory', () {
+    final support = Directory('support');
+    final cache = Directory('cache');
+    Future<Directory> supportDirectory() async => support;
+    Future<Directory> cacheDirectory() async => cache;
+    Future<Directory> unavailableCache() async => throw const FileSystemException('no cache');
+    String phonolite(Directory parent) => '${parent.path}${Platform.pathSeparator}Phonolite';
+
+    test('Windows uses Roaming AppData and falls back to the support directory', () async {
+      final roaming = await SettingsFiles.defaultDirectory(
+        operatingSystem: 'windows',
+        environment: const {'APPDATA': 'roaming'},
+        supportDirectoryProvider: supportDirectory,
+      );
+      final fallback = await SettingsFiles.defaultDirectory(
+        cacheFirst: true,
+        operatingSystem: 'windows',
+        environment: const {},
+        cacheDirectoryProvider: cacheDirectory,
+        supportDirectoryProvider: supportDirectory,
+      );
+
+      expect(roaming.path, phonolite(Directory('roaming')));
+      expect(fallback.path, support.path);
+    });
+
+    test('other platforms use the support directory unless the cache comes first', () async {
+      for (final operatingSystem in const ['android', 'ios', 'linux', 'macos']) {
+        Future<Directory> resolve({required bool cacheFirst, Future<Directory> Function()? cacheProvider}) =>
+            SettingsFiles.defaultDirectory(
+              cacheFirst: cacheFirst,
+              operatingSystem: operatingSystem,
+              environment: const {'APPDATA': 'roaming'},
+              cacheDirectoryProvider: cacheProvider ?? cacheDirectory,
+              supportDirectoryProvider: supportDirectory,
+            );
+
+        expect((await resolve(cacheFirst: false)).path, phonolite(support), reason: operatingSystem);
+        expect((await resolve(cacheFirst: true)).path, phonolite(cache), reason: operatingSystem);
+        expect(
+          (await resolve(cacheFirst: true, cacheProvider: unavailableCache)).path,
+          phonolite(support),
+          reason: operatingSystem,
+        );
+      }
+    });
+  });
 }

@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -118,4 +120,14 @@ void main() {
       expect(connection.authorizationHeaders, isEmpty);
     },
   );
+
+  test('artwork is precached on every native platform except Windows', () {
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    for (final platform in TargetPlatform.values) {
+      debugDefaultTargetPlatformOverride = platform;
+
+      expect(shouldPrecacheImages(), platform != TargetPlatform.windows, reason: platform.name);
+    }
+  });
 }

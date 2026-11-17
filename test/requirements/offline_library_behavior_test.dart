@@ -2424,6 +2424,42 @@ void main() {
       expect(await mediaFile.exists(), isFalse);
       expect(await storage.readPendingFileDeletes(), isEmpty);
     });
+
+    test('pending cleanup keeps files outside the current download folder', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_moved_root_cleanup_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final metadataDir = Directory(offlineTestJoin(temp.path, 'metadata'));
+      final previous = OfflineLibraryStorage(
+        metadataDirectory: metadataDir,
+        downloadsDirectory: Directory(offlineTestJoin(temp.path, 'previous')),
+      );
+      final mediaFile = await previous.trackFile(
+        serverBaseUrl: 'http://server-one.test/api',
+        trackId: 'server-track-1',
+        extension: 'mp3',
+      );
+      await mediaFile.writeAsBytes(const [1, 2, 3]);
+      await previous.recordPendingFileDeletes([mediaFile.path]);
+      expect(await previous.readPendingFileDeletes(), isNotEmpty);
+
+      final storage = OfflineLibraryStorage(
+        metadataDirectory: metadataDir,
+        downloadsDirectory: Directory(offlineTestJoin(temp.path, 'current')),
+      );
+      final manager = OfflineDownloadManager(
+        connection: ServerConnection(baseUrl: 'http://server-one.test/api'),
+        storage: storage,
+      );
+      addTearDown(manager.dispose);
+      await manager.load();
+
+      await offlineTestWaitFor(
+        () async => (await storage.readPendingFileDeletes()).isEmpty,
+      );
+      expect(await mediaFile.exists(), isTrue);
+    });
   });
 
   group('offline library data-loss guards', () {
