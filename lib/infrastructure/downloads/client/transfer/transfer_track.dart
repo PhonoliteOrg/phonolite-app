@@ -338,7 +338,7 @@ class _TrackDownloadTransfer {
       // download instead of leaving this loop waiting forever.
       isolate = await Isolate.spawn(
         _downloadWorkerMain,
-        DownloadWorkerStart(request, receivePort.sendPort),
+        DownloadWorkerStart(request, receivePort.sendPort, owner: Isolate.current),
         onError: receivePort.sendPort,
         onExit: receivePort.sendPort,
         debugName: 'phonolite-download-worker',

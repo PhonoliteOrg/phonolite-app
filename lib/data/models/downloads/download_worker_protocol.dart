@@ -8,7 +8,11 @@ class DownloadWorkerStart {
   final DownloadWorkerRequest request;
   final SendPort sendPort;
 
-  const DownloadWorkerStart(this.request, this.sendPort);
+  /// The isolate that owns this worker. Dart does not stop spawned isolates with their parent,
+  /// so the worker cancels itself when the owner exits instead of writing on unobserved.
+  final Isolate? owner;
+
+  const DownloadWorkerStart(this.request, this.sendPort, {this.owner});
 }
 
 class DownloadWorkerRequest {

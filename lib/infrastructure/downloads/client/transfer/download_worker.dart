@@ -14,6 +14,9 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
   }
 
   cancelPort.listen(cancelDownload);
+  // If the owning actor dies, its exit notice cancels this transfer; otherwise a restarted
+  // download could append to the same partial file while this worker is still writing.
+  start.owner?.addOnExitListener(cancelPort.sendPort);
 
   start.sendPort.send(DownloadWorkerReady(cancelPort.sendPort));
 

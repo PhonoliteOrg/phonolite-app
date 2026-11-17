@@ -118,7 +118,12 @@ class _DownloadScheduler {
       _schedule();
     }
 
-    final future = _host._runDownload(download).whenComplete(finishDownload);
+    // A throw escaping the run's own handling (for example a storage error while recording a
+    // failure) is logged; unobserved, it would be an uncaught error that kills the actor.
+    final future = _host
+        ._runDownload(download)
+        .catchError((Object error) => AppLogger.warning('Download run failed for ${download.track.title}: $error'))
+        .whenComplete(finishDownload);
 
     _active[key] = future;
     unawaited(future);
