@@ -2407,6 +2407,84 @@ void main() {
     expect(await ServerTrustStore.read(orphan), isNull);
   });
 
+  test('a stored-session restore that never answers times out as unavailable and keeps the saved sign-in', () async {
+    final connection = _Connection()..pendingPlaybackSettings = Completer<PlaybackSettingsResponse>().future;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+
+    // fake_async is not a declared dependency, so this waits for the real 10-second restore bound.
+    await harness.controller.restoreSession().timeout(const Duration(seconds: 15));
+
+    expect(harness.controller.authState.status, SessionStatus.serverUnavailable);
+    expect(harness.controller.hasSavedCredentials, isTrue);
+    expect(connection.token, 'test-token');
+    expect(harness.auth.clears, 0);
+  });
+
+  test('one failed health probe keeps the session and two consecutive failures make the server unavailable', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.connection.pendingHealth = Future.value(25);
+    await harness.controller.refreshServerAvailability();
+    harness.connection.pendingHealth = null;
+
+    await harness.controller.refreshServerAvailability();
+    expect(harness.controller.authState.status, SessionStatus.authenticated);
+    expect(harness.controller.authState.isAuthorized, isTrue);
+
+    harness.connection.pendingHealth = Future.value(25);
+    await harness.controller.refreshServerAvailability();
+    harness.connection.pendingHealth = null;
+    await harness.controller.refreshServerAvailability();
+    expect(harness.controller.authState.status, SessionStatus.authenticated);
+
+    await harness.controller.refreshServerAvailability();
+    expect(harness.controller.authState.status, SessionStatus.serverUnavailable);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+    expect(harness.controller.hasSavedCredentials, isTrue);
+  });
+
+  test('disconnect completes and clears local state while the server logout never answers', () async {
+    _mockTrustVault();
+    final connection = _PasswordConnection()..logoutResponse = Completer<void>().future;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+
+    await harness.controller.logout().timeout(const Duration(seconds: 5));
+
+    expect(connection.logoutRequests, 1);
+    expect(connection.logoutTimeouts.single, lessThan(const Duration(seconds: 1)));
+    expect(connection.token, isNull);
+    expect(connection.baseUrl, isEmpty);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+    expect(harness.controller.playbackState.track, isNull);
+    expect(harness.auth.clears, 1);
+    expect(await harness.controller.loadSavedCredentials(), isNull);
+  });
+
+  test('an expired session during reconnect requires sign-in and removes the saved sign-in', () async {
+    final connection = _Connection()..playbackSettingsFailure = true;
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    expect(harness.controller.authState.status, SessionStatus.serverUnavailable);
+    expect(harness.auth.clears, 0);
+
+    connection.healthFailure = ApiException(401, 'Session expired');
+    await harness.controller.refreshServerAvailability();
+
+    expect(harness.controller.authState.requiresSignIn, isTrue);
+    expect(harness.controller.authState.isAuthorized, isFalse);
+    expect(connection.token, isNull);
+    expect(harness.auth.clears, 1);
+    expect(harness.controller.hasSavedCredentials, isFalse);
+  });
+
   test('paused quality selection is applied when playback resumes', () async {
     final harness = _Harness(authenticated: true);
     addTearDown(harness.controller.close);
@@ -5195,6 +5273,194 @@ void main() {
     expect(harness.controller.artists, hasLength(5000));
     expect(harness.controller.artists.every((artist) => artist.summary == null && artist.bannerRef == null), isTrue);
   });
+
+  test('CarPlay server requests report an unavailable server and a state request reconnects at once', () async {
+    final connection = _Connection()..playbackSettingsFailure = true;
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.vehicle.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    expect(harness.controller.authState.status, SessionStatus.serverUnavailable);
+
+    final artists = await harness.vehicle.handler!('getArtists', {'scope': 'server'}) as Map;
+    expect(artists['error'], 'server_unavailable');
+
+    final pings = connection.pings;
+    await harness.vehicle.handler!('getCarPlayState', {});
+    expect(connection.pings, greaterThan(pings));
+  });
+
+  test('seek position holds the target until the engine confirms the seek in either direction', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.onStats!(const Duration(seconds: 30), const Duration(seconds: 5), null, null, false);
+    expect(harness.controller.playbackState.position, const Duration(seconds: 30));
+
+    final forward = Completer<bool>();
+    harness.audio.seekResults.add(forward.future);
+    final seekingForward = harness.controller.seekTo(const Duration(seconds: 60));
+    harness.onStats!(const Duration(seconds: 10), const Duration(seconds: 5), null, null, false);
+    expect(harness.controller.playbackState.position, const Duration(seconds: 60));
+    forward.complete(true);
+    await seekingForward;
+    harness.onStats!(const Duration(seconds: 61), const Duration(seconds: 5), null, null, false);
+    expect(harness.controller.playbackState.position, const Duration(seconds: 61));
+
+    final backward = Completer<bool>();
+    harness.audio.seekResults.add(backward.future);
+    final seekingBackward = harness.controller.seekTo(const Duration(seconds: 20));
+    harness.onStats!(const Duration(seconds: 62), const Duration(seconds: 5), null, null, false);
+    expect(harness.controller.playbackState.position, const Duration(seconds: 20));
+    backward.complete(true);
+    await seekingBackward;
+    harness.onStats!(const Duration(milliseconds: 20500), const Duration(seconds: 5), null, null, false);
+    expect(harness.controller.playbackState.position, const Duration(milliseconds: 20500));
+  });
+
+  test('buffered progress keeps its furthest point until a seek or a new track and never passes the end', () async {
+    final connection = _Connection()
+      ..trackResponse = [
+        offlineTestTrack(id: 'first', albumId: 'album'),
+        offlineTestTrack(id: 'second', albumId: 'album'),
+      ];
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    double buffered() => harness.controller.playbackState.bufferRatio;
+
+    harness.onStats!(const Duration(seconds: 10), const Duration(seconds: 20), null, null, false);
+    expect(buffered(), closeTo(30 / 180, 1e-9));
+    harness.onStats!(const Duration(seconds: 12), const Duration(seconds: 8), null, null, false);
+    expect(buffered(), closeTo(30 / 180, 1e-9));
+    harness.onStats!(const Duration(seconds: 13), const Duration(minutes: 10), null, null, false);
+    expect(buffered(), 1.0);
+
+    await harness.controller.seekTo(const Duration(seconds: 5));
+    harness.onStats!(const Duration(seconds: 5), const Duration(seconds: 3), null, null, false);
+    expect(buffered(), closeTo(8 / 180, 1e-9));
+    harness.onStats!(const Duration(seconds: 6), const Duration(seconds: 34), null, null, false);
+    expect(buffered(), closeTo(40 / 180, 1e-9));
+
+    await harness.controller.nextTrack();
+    expect(harness.controller.playbackState.track?.id, 'second');
+    harness.onStarted!();
+    harness.onStats!(const Duration(milliseconds: 500), const Duration(milliseconds: 1500), null, null, false);
+    expect(buffered(), closeTo(2 / 180, 1e-9));
+  });
+
+  test('removing a queued download prunes it from offline playback and removing the playing one stops', () async {
+    final directory = await Directory.systemTemp.createTemp('remove_offline_queue_');
+    final storage = await _seedResumeLibrary(directory, 3);
+    final connection = _Connection();
+    final manager = OfflineDownloadManager(connection: connection, storage: storage);
+    final harness = _Harness(connection: connection, offlineStorage: storage, offlineDownloadManager: manager);
+    addTearDown(() async {
+      await harness.controller.close();
+      await storage.close();
+      await directory.delete(recursive: true);
+    });
+    await harness.controller.initialize();
+    final tracks = harness.controller.offlineTracks;
+    expect(tracks, hasLength(3));
+    OfflineTrackDownload downloadOf(Track track) =>
+        manager.downloads.singleWhere((download) => download.localTrackId == track.id);
+    await harness.controller.playOfflineTrack(tracks[0].id, tracks: tracks);
+    harness.onStarted!();
+    final stops = harness.audio.stops;
+
+    await harness.controller.removeOfflineDownload(downloadOf(tracks[1]));
+
+    expect(manager.downloads, hasLength(2));
+    expect(harness.audio.stops, stops);
+    expect(harness.controller.playbackState.track?.id, tracks[0].id);
+    expect(harness.controller.playbackState.isPlaying, isTrue);
+    await harness.controller.nextTrack();
+    expect(harness.controller.playbackState.track?.id, tracks[2].id);
+
+    await harness.controller.removeOfflineDownload(downloadOf(tracks[2]));
+
+    expect(manager.downloads, hasLength(1));
+    expect(harness.audio.stops, greaterThan(stops));
+    expect(harness.audio.active, isFalse);
+    expect(harness.controller.playbackState.track, isNull);
+  });
+
+  for (final likedQueue in [true, false]) {
+    final queueName = likedQueue ? 'local liked' : 'downloads';
+    test('unliking a local track ${likedQueue ? 'removes it from' : 'leaves'} the $queueName queue', () async {
+      final directory = await Directory.systemTemp.createTemp('unlike_local_queue_');
+      final storage = await _seedResumeLibrary(directory, 3);
+      final connection = _Connection();
+      final manager = OfflineDownloadManager(connection: connection, storage: storage);
+      final harness = _Harness(connection: connection, offlineStorage: storage, offlineDownloadManager: manager);
+      addTearDown(() async {
+        await harness.controller.close();
+        await storage.close();
+        await directory.delete(recursive: true);
+      });
+      await harness.controller.initialize();
+      for (final track in harness.controller.offlineTracks) {
+        await harness.controller.toggleLike(track);
+      }
+      await harness.controller.loadLocalLikedTracks();
+      await offlineTestWaitFor(() => harness.controller.localLiked.length == 3);
+      final queue = likedQueue ? harness.controller.localLiked : harness.controller.offlineTracks;
+      if (likedQueue) {
+        await harness.controller.playLocalLikedTrack(queue[0].id);
+      } else {
+        await harness.controller.playOfflineTrack(queue[0].id, tracks: queue);
+      }
+      harness.onStarted!();
+      expect(harness.controller.playbackState.track?.id, queue[0].id);
+
+      await harness.controller.toggleLike(harness.controller.localLiked.singleWhere((track) => track.id == queue[1].id));
+      await harness.controller.nextTrack();
+
+      expect(harness.controller.playbackState.track?.id, likedQueue ? queue[2].id : queue[1].id);
+    });
+  }
+
+  test('a server like keeps the known track metadata when no loaded list contains the track', () async {
+    final connection = _IsolationConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    expect(harness.controller.liked, isEmpty);
+    final track = offlineTestTrack(id: 'server-only', title: 'Known title', artist: 'Known artist', album: 'Known album');
+
+    await harness.controller.toggleLike(track);
+
+    final liked = harness.controller.liked.single;
+    expect(liked.id, 'server-only');
+    expect(liked.liked, isTrue);
+    expect(liked.title, 'Known title');
+    expect(liked.artist, 'Known artist');
+    expect(liked.album, 'Known album');
+  });
+
+  test('library refresh continues to the server when the offline load never finishes', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(() {
+      harness.downloads.pendingLoad = null;
+      return harness.controller.close();
+    });
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.connection.artistsPageResponse = [Artist(id: 'refreshed', name: 'Refreshed artist', albumCount: 1)];
+    harness.downloads.pendingLoad = Completer<void>().future;
+
+    // fake_async is not a declared dependency, so this waits for the real 5-second offline bound.
+    await harness.controller.refreshLibrary().timeout(const Duration(seconds: 10));
+
+    expect(harness.controller.artists.map((artist) => artist.id), ['refreshed']);
+    expect(
+      harness.controller.messages.map((entry) => entry.message),
+      contains('Server library refreshed; offline refresh did not complete.'),
+    );
+  });
 }
 
 Album _collaborationAlbum() => Album(
@@ -5686,10 +5952,12 @@ class _Downloads implements OfflineDownloadManager {
   Stream<List<Track>> get localLikedStream => const Stream.empty();
   @override
   Stream<List<Playlist>> get localPlaylistsStream => const Stream.empty();
+  Future<void>? pendingLoad;
   @override
   Future<void> load() async {
     loads++;
     if (failLoad) throw StateError('load failed');
+    await pendingLoad;
   }
 
   @override
@@ -5856,8 +6124,10 @@ class _Connection extends ServerConnection {
     bool retryable = true,
   }) async {
     if (playbackSettingsFailure) throw StateError('TLS pin mismatch');
-    return PlaybackSettingsResponse(repeatMode: 'off');
+    return pendingPlaybackSettings ?? PlaybackSettingsResponse(repeatMode: 'off');
   }
+
+  Future<PlaybackSettingsResponse>? pendingPlaybackSettings;
 
   @override
   Future<ServerPortsResponse> fetchServerPorts({
@@ -5909,8 +6179,12 @@ class _Connection extends ServerConnection {
   @override
   Future<int?> pingHealthMs({Duration timeout = const Duration(seconds: 3)}) {
     pings++;
+    final failure = healthFailure;
+    if (failure != null) return Future.error(failure);
     return pendingHealth ?? Future.value(null);
   }
+
+  Object? healthFailure;
 }
 
 class _LikeConnection extends _Connection {
@@ -6059,9 +6333,13 @@ class _PasswordConnection extends _Connection {
     await passwordResponse;
   }
 
+  Future<void>? logoutResponse;
+  final logoutTimeouts = <Duration>[];
   @override
   Future<void> logout({Duration timeout = const Duration(seconds: 8)}) async {
     logoutRequests++;
+    logoutTimeouts.add(timeout);
+    await logoutResponse;
   }
 }
 

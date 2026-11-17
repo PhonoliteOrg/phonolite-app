@@ -483,6 +483,81 @@ void main() {
     expect(worker.commands.where((item) => item['cmd'] == 'stop'), hasLength(1));
     expect(segments.single['event_id'], 'shutdown-tail');
   });
+
+  test('stream playback asks the worker for a quick start unless the caller opts out', () async {
+    final factory = _Workers();
+    final engine = AudioEngine(workerSpawner: factory.spawn);
+    addTearDown(() async {
+      factory.acknowledgeStops();
+      await engine.dispose();
+      factory.close();
+    });
+    Iterable<Map<String, dynamic>> plays() => factory.latest.commands.where((command) => command['cmd'] == 'play');
+
+    await _play(engine, 'default');
+    await waitUntil(() => plays().length == 1);
+    expect(plays().last['quick_start'], isTrue);
+
+    await engine.playTrack(
+      track: _track('resumed'),
+      connection: ServerConnection(baseUrl: 'http://unused.test'),
+      settings: const StreamSettings(mode: 'fixed', quality: 'high'),
+      startOffset: const Duration(seconds: 5),
+      quickStart: false,
+    );
+    await waitUntil(() => plays().length == 2);
+    expect(plays().last['start_ms'], 5000);
+    expect(plays().last['quick_start'], isFalse);
+  });
+
+  testWidgets('an unanswered seek fails at its deadline and its late readiness cannot settle the next seek', (
+    tester,
+  ) async {
+    final factory = _Workers();
+    final messages = <String>[];
+    final engine = AudioEngine(workerSpawner: factory.spawn, onMessage: messages.add);
+    Iterable<Map<String, dynamic>> seeks() => factory.latest.commands.where((command) => command['cmd'] == 'seek');
+
+    try {
+      await tester.runAsync(() async {
+        await _play(engine, 'seeking');
+        await waitUntil(() => factory.latest.commands.any((command) => command['cmd'] == 'play'));
+      });
+
+      bool? expired;
+      unawaited(engine.seekTo(const Duration(seconds: 10)).then((ready) => expired = ready));
+      await tester.pump(const Duration(milliseconds: 5999));
+      expect(expired, isNull);
+      await tester.pump(const Duration(milliseconds: 2));
+      expect(expired, isFalse);
+
+      await tester.runAsync(() async {
+        await waitUntil(() => seeks().length == 1);
+        final expiredId = seeks().single['request_id'];
+        bool? nextReady;
+        final next = engine.seekTo(const Duration(seconds: 20)).then((ready) => nextReady = ready);
+        await waitUntil(() => seeks().length == 2);
+        final nextId = seeks().last['request_id'];
+        expect(nextId, isNot(expiredId));
+
+        factory.latest.emit({'type': 'seek_ready', 'request_id': expiredId});
+        factory.latest.emit({'type': 'seek_failed', 'request_id': expiredId});
+        factory.latest.emit({'type': 'message', 'text': 'late readiness delivered'});
+        await waitUntil(() => messages.contains('late readiness delivered'));
+        expect(nextReady, isNull);
+
+        factory.latest.emit({'type': 'seek_ready', 'request_id': nextId});
+        await next.timeout(const Duration(seconds: 1));
+        expect(nextReady, isTrue);
+      });
+    } finally {
+      await tester.runAsync(() async {
+        factory.acknowledgeStops();
+        await engine.dispose();
+        factory.close();
+      });
+    }
+  });
 }
 
 Future<void> _play(AudioEngine engine, String id, {bool paused = false}) => engine.playTrack(
