@@ -201,15 +201,3 @@ class OfflineLibraryStorage
 
   static bool _readBool(Row row, String key) => _OfflineRowMapper._readBool(row, key);
 }
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull {
-    final iterator = this.iterator;
-
-    if (!iterator.moveNext()) {
-      return null;
-    }
-
-    return iterator.current;
-  }
-}

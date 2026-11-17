@@ -381,8 +381,7 @@ class _PlaylistCoordinator {
     final finishMutation = _host._collectionCoordinator.beginMutation();
 
     try {
-      final matching = _playlists.where((playlist) => playlist.id == playlistId);
-      final expectedRevision = matching.isEmpty ? null : matching.first.revision;
+      final expectedRevision = _playlists.where((playlist) => playlist.id == playlistId).firstOrNull?.revision;
       final updated = expectedRevision == null
           ? await _host.connection.updatePlaylistTracks(playlistId, trackIds)
           : await _host.connection.replacePlaylistTracks(playlistId, trackIds, expectedRevision: expectedRevision);
@@ -587,12 +586,13 @@ class _PlaylistCoordinator {
   }
 
   bool _replaceServerPlaylist(Playlist updated) {
-    final existing = _playlists.where((playlist) => playlist.id == updated.id);
-    final currentRevision = existing.isEmpty ? null : existing.first.revision;
+    final existing = _playlists.where((playlist) => playlist.id == updated.id).firstOrNull;
 
-    if (existing.isEmpty) {
+    if (existing == null) {
       return false;
     }
+
+    final currentRevision = existing.revision;
 
     if (updated.revision != null && currentRevision != null && updated.revision! < currentRevision) {
       return false;

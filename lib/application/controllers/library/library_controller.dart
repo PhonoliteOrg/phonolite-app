@@ -353,15 +353,9 @@ class LibraryController extends FeatureController {
       return false;
     }
 
-    for (final album in group.albums) {
-      for (final track in album.tracks) {
-        if (trackMatchesAnyIdentity(track, removingTrackIds)) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+    return group.albums
+        .expand((album) => album.tracks)
+        .any((track) => trackMatchesAnyIdentity(track, removingTrackIds));
   }
 
   bool trackMatchesAnyIdentity(Track track, Set<String> ids) {

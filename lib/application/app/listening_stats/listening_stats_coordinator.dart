@@ -602,11 +602,7 @@ class _ListeningStatsCoordinator {
           return;
         }
 
-        for (final entry in results) {
-          if (entry != null) {
-            metadata[entry.key] = entry.value;
-          }
-        }
+        metadata.addEntries(results.nonNulls);
       }
 
       if (current()) {
