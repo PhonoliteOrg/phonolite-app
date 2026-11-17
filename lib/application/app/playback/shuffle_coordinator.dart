@@ -17,7 +17,7 @@ class _ShuffleCoordinator {
   int? _serverDeckSessionRevision;
   bool _serverDeckExpired = false;
   bool _serverDeckReady = false;
-  Future<void> _serverNavigation = Future<void>.value();
+  final _serverNavigation = SerialActionQueue();
 
   _ShuffleCoordinator(this._host);
 
@@ -260,9 +260,7 @@ class _ShuffleCoordinator {
       }
     }
 
-    final pending = _serverNavigation.catchError((Object _) {}).then((_) => move());
-    _serverNavigation = pending;
-    return pending;
+    return _serverNavigation.add(move);
   }
 
   Future<void> queueLocalShuffle({

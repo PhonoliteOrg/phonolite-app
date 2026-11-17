@@ -4,7 +4,7 @@ class _PreferencesCoordinator {
   final AppController _host;
   CustomShuffleSettings _customShuffleSettings = const CustomShuffleSettings();
   Future<void>? _customShuffleLoadFuture;
-  Future<void> _customShuffleSaveChain = Future.value();
+  final _customShuffleSaves = SerialActionQueue();
   String? _shuffleAccountScope;
   int _shuffleAccountGeneration = 0;
   int _shuffleLoadGeneration = 0;
@@ -12,7 +12,7 @@ class _PreferencesCoordinator {
   int _serverShuffleMutation = 0;
   int _localShuffleMutation = 0;
   Future<PlaybackRepeatMode?>? _repeatModeLoadFuture;
-  Future<void> _repeatModeSaveChain = Future.value();
+  final _repeatModeSaves = SerialActionQueue();
   bool _repeatModeTouched = false;
   bool _repeatModeHasLocalValue = false;
   final _volumeSaveDebounce = DebouncedAction();
@@ -83,7 +83,7 @@ class _PreferencesCoordinator {
 
   Future<void> close() async {
     await _gaplessResamplingController.close();
-    await Future.wait([_customShuffleSaveChain, _repeatModeSaveChain, _gaplessResamplingSaves.drain()]);
+    await Future.wait([_customShuffleSaves.drain(), _repeatModeSaves.drain(), _gaplessResamplingSaves.drain()]);
   }
 
   Future<void> loadCustomShuffleSettings() async {
@@ -127,7 +127,7 @@ class _PreferencesCoordinator {
     _customShuffleSettings = next;
     _customShuffleSettingsController.add(_host.customShuffleSettings);
 
-    final save = _customShuffleSaveChain.then((_) async {
+    final save = _customShuffleSaves.add(() async {
       if (changesLocalFilters) {
         await _host._customShuffleStorage.writeLocal(next);
       }
@@ -139,8 +139,6 @@ class _PreferencesCoordinator {
         await _host._customShuffleStorage.writeForAccount(scope, next);
       }
     });
-
-    _customShuffleSaveChain = save.then<void>((_) {}, onError: (Object _, StackTrace __) {});
 
     // The new filters are already in effect, so playback follows them even when
     // persisting fails; the save failure still reaches the caller afterwards.
@@ -398,13 +396,8 @@ class _PreferencesCoordinator {
     _host._updatePlayback(repeatMode: mode);
   }
 
-  Future<void> _saveRepeatMode(PlaybackRepeatMode mode) {
-    final save = _repeatModeSaveChain.then((_) => _host._playbackPreferencesStorage.writeRepeatMode(mode));
-
-    _repeatModeSaveChain = save.then<void>((_) {}, onError: (Object _, StackTrace __) {});
-
-    return save;
-  }
+  Future<void> _saveRepeatMode(PlaybackRepeatMode mode) =>
+      _repeatModeSaves.add(() => _host._playbackPreferencesStorage.writeRepeatMode(mode));
 }
 
 // Forwarding preserves the existing library entry point and virtual dispatch.

@@ -3,7 +3,7 @@ part of '../app_controller.dart';
 class _SessionCoordinator {
   final AppController _host;
   AuthCredentials? _savedCredentials;
-  Future<void> _savedCredentialsWriteChain = Future<void>.value();
+  final _savedCredentialsWrites = SerialActionQueue();
   bool _resettingUserPassword = false;
   bool _restoringSession = false;
   bool _savedCredentialsInvalidated = false;
@@ -712,11 +712,7 @@ class _SessionCoordinator {
   Future<void> _queueSavedCredentialsWrite(Future<void> Function() operation) {
     // A newly remembered session must be written after an earlier sign-out's
     // deletion, even when the platform secure storage operations finish late.
-    final pending = _savedCredentialsWriteChain.catchError((Object _) {}).then((_) => operation());
-
-    _savedCredentialsWriteChain = pending;
-
-    return pending;
+    return _savedCredentialsWrites.add(operation);
   }
 
   void _setAuthorized(bool authorized, {String? error}) {

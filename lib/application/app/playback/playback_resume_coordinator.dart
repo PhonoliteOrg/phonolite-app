@@ -10,8 +10,8 @@ class _PlaybackResumeCoordinator {
   PlaybackSourceContext _source = PlaybackSourceContext(kind: 'standalone');
   PlaybackSourceContext _shuffleContext = PlaybackSourceContext(kind: 'library');
   AccountPlaybackSnapshot _account = const AccountPlaybackSnapshot(revision: 0);
-  Future<void> _writes = Future<void>.value();
-  Future<void> _localWrites = Future<void>.value();
+  final _writes = SerialActionQueue();
+  final _localWrites = SerialActionQueue();
   Future<void>? _accountReady;
   String? _scope;
   String? _activeScope;
@@ -94,7 +94,7 @@ class _PlaybackResumeCoordinator {
     }
     _closed = true;
     _closing.complete();
-    await Future.wait([_writes, _localWrites]);
+    await Future.wait([_writes.drain(), _localWrites.drain()]);
     await _host._playbackResumeStorage.flush();
   }
 
@@ -594,14 +594,18 @@ class _PlaybackResumeCoordinator {
   }
 
   void _enqueue(Future<void> Function() operation) {
-    _writes = _writes.then((_) => operation()).catchError((Object error) {
-      AppLogger.debug('Playback persistence deferred: $error');
-    });
+    unawaited(
+      _writes.add(operation).catchError((Object error) {
+        AppLogger.debug('Playback persistence deferred: $error');
+      }),
+    );
   }
 
   void _enqueueLocal(Future<void> Function() operation) {
-    _localWrites = _localWrites.then((_) => operation()).catchError((Object error) {
-      AppLogger.debug('Device playback persistence deferred: $error');
-    });
+    unawaited(
+      _localWrites.add(operation).catchError((Object error) {
+        AppLogger.debug('Device playback persistence deferred: $error');
+      }),
+    );
   }
 }
