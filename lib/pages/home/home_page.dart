@@ -39,7 +39,8 @@ class HomePage extends BasePage {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends BasePageState<HomePage> {
+  late final AppLifecycleListener _lifecycle;
   int _selectedIndex = 0;
   AppController? _controller;
   LibraryNavigationController? _navigation;
@@ -72,7 +73,7 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
       _buildTabNavigator(4, const SettingsPage()),
     ];
 
-    WidgetsBinding.instance.addObserver(this);
+    _lifecycle = AppLifecycleListener(onStateChange: _handleAppLifecycleState);
   }
 
   @override
@@ -104,8 +105,7 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     );
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
+  void _handleAppLifecycleState(AppLifecycleState state) {
     if (!mounted) {
       return;
     }
@@ -122,7 +122,7 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
 
     _navigation?.dispose();
     _tabBackChanges.dispose();
-    WidgetsBinding.instance.removeObserver(this);
+    _lifecycle.dispose();
 
     super.dispose();
   }

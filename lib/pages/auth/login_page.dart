@@ -32,8 +32,10 @@ class LoginPage extends BasePage {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingObserver {
+class _LoginPageState extends BaseFormPageState<LoginPage> {
   late final LoginController _feature = bindController(LoginController(widget.controller));
+  // A permission granted in system settings applies when the app comes back.
+  late final AppLifecycleListener _lifecycle;
   late final TextEditingController _serverHostController;
   late final TextEditingController _serverPortController;
   late final TextEditingController _usernameController;
@@ -44,7 +46,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addObserver(this);
+    _lifecycle = AppLifecycleListener(onResume: () => widget.controller.refreshLocalNetworkPermission());
 
     _serverHostController = TextEditingController();
     _serverHostController.addListener(_handleServerHostChanged);
@@ -56,15 +58,8 @@ class _LoginPageState extends BaseFormPageState<LoginPage> with WidgetsBindingOb
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      widget.controller.refreshLocalNetworkPermission();
-    }
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    _lifecycle.dispose();
     _serverHostController.removeListener(_handleServerHostChanged);
     _serverHostController.dispose();
     _serverPortController.dispose();

@@ -27,7 +27,7 @@ void main() {
       final source = readProjectModule('lib/pages/home/home_page.dart');
 
       expectContainsAll(source, const [
-        'with WidgetsBindingObserver',
+        'AppLifecycleListener(onStateChange: _handleAppLifecycleState)',
         'List.generate(',
         'GlobalKey<NavigatorState>()',
         'LivePopScope<Object?>(',
