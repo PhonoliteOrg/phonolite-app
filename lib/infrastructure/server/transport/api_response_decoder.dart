@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -43,11 +44,11 @@ class ApiResponseDecoder {
   Future<Map<String, dynamic>> object(http.Response response) async {
     requireSuccess(response);
 
-    if (response.body.isEmpty) {
+    if (response.bodyBytes.isEmpty) {
       return <String, dynamic>{};
     }
 
-    final decoded = await _decode(response.body);
+    final decoded = await _decode(response.bodyBytes);
 
     if (decoded is Map<String, dynamic>) {
       return decoded;
@@ -59,7 +60,7 @@ class ApiResponseDecoder {
   Future<List<Map<String, dynamic>>> list(http.Response response, {required String path}) async {
     requireSuccess(response);
 
-    final decoded = await _decode(response.body);
+    final decoded = await _decode(response.bodyBytes);
 
     if (decoded is List) {
       return decoded.cast<Map<String, dynamic>>();
@@ -72,6 +73,11 @@ class ApiResponseDecoder {
     throw Exception('Expected list response for $path');
   }
 
-  Future<dynamic> _decode(String body) async =>
-      body.length >= 64 * 1024 ? await Isolate.run<dynamic>(() => jsonDecode(body)) : jsonDecode(body);
+  static final Converter<List<int>, Object?> _jsonFromUtf8 = utf8.decoder.fuse(json.decoder);
+
+  /// Decodes API JSON (UTF-8 by the JSON spec) straight from bytes. `http.Response.body` would
+  /// re-decode the whole body on every read; large bodies are decoded entirely off the UI isolate.
+  Future<dynamic> _decode(Uint8List bytes) async => bytes.length >= 64 * 1024
+      ? await Isolate.run<dynamic>(() => _jsonFromUtf8.convert(bytes))
+      : _jsonFromUtf8.convert(bytes);
 }
