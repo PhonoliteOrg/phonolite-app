@@ -57,9 +57,8 @@ class DownloadsApi extends JsonApiEndpoint {
       if (scopeKind != null && scopeKind.trim().isNotEmpty) 'scope_kind': scopeKind.trim(),
       if (scopeId != null && scopeId.trim().isNotEmpty) 'scope_id': scopeId.trim(),
     };
-    final suffix = query.isEmpty
-        ? ''
-        : '?${query.entries.map((entry) => '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}').join('&')}';
+    // Uri builds the same encodeQueryComponent encoding the hand-joined string used.
+    final suffix = query.isEmpty ? '' : '?${Uri(queryParameters: query).query}';
 
     return getValues('/download/jobs$suffix', DownloadJobV2.fromJson);
   }

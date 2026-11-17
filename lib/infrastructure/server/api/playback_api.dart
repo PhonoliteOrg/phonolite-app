@@ -62,7 +62,7 @@ class PlaybackApi extends JsonApiEndpoint {
     List<String>? artistIds,
     List<String>? genres,
   }) async {
-    var path = '/library/shuffle?mode=$mode';
+    var path = '/library/shuffle?mode=${Uri.encodeComponent(mode)}';
 
     if (artistId != null && artistId.isNotEmpty) {
       path = '$path&artist_id=${Uri.encodeComponent(artistId)}';

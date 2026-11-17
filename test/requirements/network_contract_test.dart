@@ -653,7 +653,7 @@ void main() {
         "'/browse/artists?limit=\$limit&offset=\$offset&include_contributors=\$includeContributors'",
         "'/library/playlists'",
         "'/browse/likes'",
-        "'/library/shuffle?mode=\$mode'",
+        "'/library/shuffle?mode=\${Uri.encodeComponent(mode)}'",
         "'/library/search?query=\$encoded&limit=50'",
         "'/library/tracks/\$encoded/offline-metadata'",
         "'/download/batches'",
