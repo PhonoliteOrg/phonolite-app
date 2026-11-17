@@ -24,6 +24,7 @@ dependencies:
   phonolite_quic:
     path: packages/phonolite_quic
   http: ^1.5.0
+  characters: ^1.4.1
   xml: ^6.6.1
   connectivity_plus: ^6.1.5
   crypto: ^3.0.8
