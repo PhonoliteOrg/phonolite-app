@@ -281,12 +281,17 @@ void main() {
     });
   });
 
-  testWidgets('back retains the existing direct-pop behavior for nested page vetoes', (tester) async {
+  testWidgets('back honors a nested page veto and reports the blocked pop', (tester) async {
     await _withHomeNavigation(tester, (root, tab) async {
+      final vetoes = <bool>[];
       unawaited(
         tab.push<void>(
           MaterialPageRoute<void>(
-            builder: (_) => const PopScope<void>(canPop: false, child: Scaffold(body: Text('Nested veto target'))),
+            builder: (_) => PopScope<void>(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, _) => vetoes.add(didPop),
+              child: const Scaffold(body: Text('Nested veto target')),
+            ),
           ),
         ),
       );
@@ -295,7 +300,39 @@ void main() {
       expect(await root.maybePop(), isTrue);
       await tester.pumpAndSettle();
 
-      expect(find.text('Nested veto target'), findsNothing);
+      expect(find.text('Nested veto target'), findsOneWidget);
+      expect(vetoes, [false]);
+      expect(tab.canPop(), isTrue);
+    });
+  });
+
+  testWidgets('back pops a nested page once its veto is lifted', (tester) async {
+    await _withHomeNavigation(tester, (root, tab) async {
+      final canPop = ValueNotifier<bool>(false);
+      addTearDown(canPop.dispose);
+      unawaited(
+        tab.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => ValueListenableBuilder<bool>(
+              valueListenable: canPop,
+              builder: (_, value, child) => PopScope<void>(canPop: value, child: child!),
+              child: const Scaffold(body: Text('Lifted veto target')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(await root.maybePop(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Lifted veto target'), findsOneWidget);
+
+      canPop.value = true;
+      await tester.pumpAndSettle();
+
+      expect(await root.maybePop(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Lifted veto target'), findsNothing);
       expect(find.byType(LibraryPage), findsOneWidget);
     });
   });

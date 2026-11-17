@@ -6,12 +6,16 @@ class TabRouteObserver extends MenuNavigationHistory {
   final ValueChanged<String?> onRouteChanged;
   String? currentRouteName;
 
+  /// The navigator's top route, updated synchronously on push and pop, before the route first builds.
+  Route<dynamic>? currentRoute;
+
   TabRouteObserver({required this.onRouteChanged});
 
   @override
   void didChangeTop(Route<dynamic> topRoute, Route<dynamic>? previousTopRoute) {
     super.didChangeTop(topRoute, previousTopRoute);
 
+    currentRoute = topRoute;
     currentRouteName = topRoute.settings.name;
   }
 

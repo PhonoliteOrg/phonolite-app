@@ -434,6 +434,16 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
     final navigator = _navigatorKeys[_selectedIndex].currentState;
 
     if (navigator != null && navigator.canPop()) {
+      final route = _routeObservers[_selectedIndex].currentRoute;
+
+      // Honor the top page's PopScope veto, e.g. a form that is saving. popDisposition only reads
+      // registered pop entries, so unlike maybePop it is safe for a route pushed this frame.
+      if (route != null && route.popDisposition == RoutePopDisposition.doNotPop) {
+        route.onPopInvokedWithResult(false, null);
+
+        return false;
+      }
+
       navigator.pop();
 
       return false;
