@@ -32,7 +32,10 @@ class WindowMessageDispatcher : public MainThreadDispatcher {
       : registrar_(registrar),
         message_id_(RegisterWindowMessage(L"just_audio_windows_main_thread")) {
     auto view = registrar_->GetView();
-    hwnd_ = view == nullptr ? nullptr : view->GetNativeWindow();
+    HWND child = view == nullptr ? nullptr : view->GetNativeWindow();
+    // The delegate below only sees the top-level window's messages, so post
+    // to the root window rather than the Flutter view's child HWND.
+    hwnd_ = child == nullptr ? nullptr : ::GetAncestor(child, GA_ROOT);
     delegate_id_ = registrar_->RegisterTopLevelWindowProcDelegate(
         [this](HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
             -> std::optional<LRESULT> {
