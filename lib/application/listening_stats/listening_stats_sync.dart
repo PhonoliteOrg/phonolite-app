@@ -64,9 +64,12 @@ class ListeningStatsSync {
 
     final running = _running;
     if (running != null) {
-      // In particular, an opt-out arriving during upload must still deliver
-      // its preference after the current request finishes.
-      return immediate ? running.then((_) => sync(immediate: true)) : running;
+      // The running work may be a server refresh, whose failure belongs to the refresh caller;
+      // sync callers (mostly fire-and-forget) only wait for it to settle. In particular, an
+      // opt-out arriving during upload or refresh must still deliver its preference afterwards.
+      final settled = running.then<void>((_) {}, onError: (Object _) {});
+
+      return immediate ? settled.then((_) => sync(immediate: true)) : settled;
     }
 
     final work = _sync();
