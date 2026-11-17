@@ -68,7 +68,7 @@ class RawOpusStreamReader {
           break;
         }
 
-        final headerBytes = Uint8List.fromList(_bytes.sublist(_offset, _offset + headerLength));
+        final headerBytes = _bytes.sublist(_offset, _offset + headerLength);
 
         _offset += headerLength;
         _hasHeader = true;
@@ -88,7 +88,7 @@ class RawOpusStreamReader {
       }
 
       _offset += 2;
-      final packet = Uint8List.fromList(_bytes.sublist(_offset, _offset + length));
+      final packet = _bytes.sublist(_offset, _offset + length);
 
       _offset += length;
       events.add(RawOpusPacket(packet));
