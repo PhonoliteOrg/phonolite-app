@@ -24,7 +24,9 @@ class JsonSettingsFile {
       return null;
     }
 
-    final decoded = jsonDecode(await file.readAsString());
+    // File.readAsString reports malformed UTF-8 as a FileSystemException. Decoding the bytes here makes every
+    // kind of corrupt content a FormatException, so stores can tell it apart from a file they cannot read now.
+    final decoded = jsonDecode(utf8.decode(await file.readAsBytes()));
 
     return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
   }
