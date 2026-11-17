@@ -1,8 +1,8 @@
-# Engineering standards
+# Flutter standards
 
-This document is a portable standard for how a project's source is structured and written. It covers application code and any native or platform hosts embedding it. It describes how code is organized and how it reads, not what the software does.
+This document is a portable standard for how a Flutter application's source is structured and written. It covers the Dart application code, the native platform hosts that embed it, and the native packages it calls. It is not a general standard for other kinds of project; a server, CLI or library outside the Flutter application follows its own standard. It describes how code is organized and how it reads, not what the software does.
 
-It contains no facts about any particular project. Each project that adopts it keeps those facts in a separate [project profile](project-profile.md): its source directories, hosts, tools, limits and commit vocabulary ([2.11](#211-project-profile)). To adopt the standard in another project, copy this file unchanged, remove language sections the project does not use, and write a new profile.
+It contains no facts about any particular project. Each project that adopts it keeps those facts in a separate [project profile](PROJECT-PROFILE.md): its source directories, hosts, tools, limits, release checklists and commit vocabulary ([2.11](#211-project-profile)). A project developed with coding agents also keeps agent instructions that turn this standard into a working procedure ([5.6](#56-agent-instructions)). To adopt the standard in another Flutter application, copy this file unchanged, remove the language sections for hosts and packages it does not have, and write a new profile and agent instructions.
 
 The standard applies to new code and code being materially refactored. Existing source may not conform yet. Apply the standard within the responsibility you are changing, preserve behavior, and keep unrelated formatting or renaming out of a functional change.
 
@@ -40,6 +40,18 @@ Each piece of data, state, policy, resource and design decision has exactly one 
 
 A reader sees the contract first, follows a readable operation or composition, and opens implementation details only when needed. Types present their inputs before their implementation. Operations read in the order their work happens. Final assembly reveals the main regions and how they relate, and names its pieces.
 
+### 1.4 Verify, don't assume
+
+A change relies only on behavior it has confirmed. Before using a framework, library, platform or operating-system API in a way that matters, confirm from its documentation or source:
+
+- what its defaults are, and what an omitted or null argument means;
+- whether it copies or borrows, and who owns what it returns;
+- whether it blocks, and which thread or isolate it calls back on;
+- what failure looks like: an exception, a sentinel value, an error reply or silence;
+- whether stopping a wait (a timeout, a cancelled listener, a dropped reference) also stops the underlying work.
+
+When a consequential decision rests on such a fact, state it in a short comment beside the code. A plausible name, a familiar pattern or code copied from elsewhere is not confirmation.
+
 ---
 
 ## Part 2. Structure
@@ -56,8 +68,6 @@ Source is divided into responsibility areas. A directory identifies an owner or 
 | Application | Controllers, shared workflows and application lifecycles | Provides functionality without owning widgets, routes, dialogs or native views |
 | Data | Data definitions and the operations that naturally belong to them | One silo, independent of application and presentation |
 | Infrastructure | Runtime execution, protocols, workers, native resources, platform adapters and transport | Implements technical capabilities using standalone data definitions |
-
-A project without a user interface (a server, CLI or library) omits Pages and UI and keeps the other four. Its request handlers, commands or public API surface play the assembly role that pages play in an app.
 
 Create a directory only when it has a meaningful responsibility and real contents. A feature needs only the subdirectories it uses. Abstraction, specialization and assembly happen within these areas; they are not extra top-level directories. The profile maps each area to its directory.
 
@@ -220,6 +230,10 @@ Splitting a file into private parts only separates text. It does not create a re
 - When a lifecycle or execution protocol is common to a family, its shared owner enforces it. Variants supply resource-specific work through that contract; they do not each carry a copy of initialization, cancellation or cleanup policy.
 - Sharing an abstraction does not mean sharing a mutable instance. Bootstrap or the parent assembly decides lifetime and instance count.
 - Reorganization preserves initialization order, request generations, stale-result guards, serialized writes, scoping, migrations, cancellation and worker command ordering.
+- **Anything started answers four questions.** A worker, request, stream, timer, subscription or native handle has a defined answer to: who stops it, what bounds it in time, what happens to its waiters if it dies, and what still runs if one cleanup step fails.
+- **Supervise every worker.** A spawned worker, isolate, process or thread has error and exit observation from the moment it starts. When it exits, every pending request fails and the parent forgets it, so the next request starts a fresh one. Children are bound to their parent's lifetime explicitly; runtimes generally do not stop children when a parent dies. A failed spawn releases what it allocated.
+- **A command failure does not kill its worker.** A worker's command loop contains each command's failure and reports it. Replies the parent waits for are sent from a `finally` path.
+- **Native resources have a safety net.** An object owning native memory or handles registers a finalizer bound to the native release function and detaches it on explicit close. A finalizer never blocks: it does not join threads or wait for I/O.
 
 ### 2.10 Cross-language boundaries
 
@@ -233,12 +247,17 @@ Message channels between the application and native code (platform channels, IPC
 - **Threads have owners.** UI mutation and outbound channel calls happen on the platform main thread. Work from other threads is delivered through an explicit dispatcher with defined lifetime and relevance rules. A reply callback's threading permission is not permission to mutate UI.
 - **Shared mechanics are extracted when a family exists.** Once several adapters share registration, invocation, reply and teardown decisions, a shared channel collaborator owns them. Each adapter keeps its own methods and decoding.
 - **Realtime paths stay lean.** Audio, video and render callbacks receive no logging, main-thread hops, channel messages or general task scheduling.
+- **Failures never cross a boundary as crashes.** Panics, exceptions and aborts are caught at every exported entry point and converted to the boundary's error convention. A handle that faulted is marked unusable.
+- **A missing native library fails loudly.** Loading checks for an expected symbol and reports the path it expected. It never falls back silently to a process-wide lookup that fails later with an unrelated error.
+- **Return values are checked before use.** Every native result's failure sentinel is checked before the value is used, especially before arithmetic on sizes and counts held in unsigned types.
+- **Secrets and allocators are handled deliberately.** Secrets copied into native memory are zeroed before they are freed. Memory is freed with the allocator that allocated it.
+- **Handlers re-check their owner.** Every message handler or callback that can run after teardown checks that the window, engine or controller it uses still exists. Delivery thread is confirmed from the platform's documentation, never assumed.
 
 Adapters on the application side mirror this: they decode channel methods into typed requests, encode typed responses, and keep method strings out of application workflows. Their contracts live in data.
 
 ### 2.11 Project profile
 
-The same separation of general rules from specific values applies to the project's own documentation. **This standard is the shared abstraction; the project profile is the specialization.** Every project keeps one profile document, `docs/project-profile.md`. The profile states how the project instantiates the standard and adds no new rules.
+The same separation of general rules from specific values applies to the project's own documentation. **This standard is the shared abstraction; the project profile is the specialization.** Every project keeps one profile document, `PROJECT-PROFILE.md` at the repository root, beside this standard and the agent instructions. The profile states how the project instantiates the standard and adds no new rules.
 
 The profile has these sections, in this order. Omit a section only when it does not apply.
 
@@ -248,7 +267,8 @@ The profile has these sections, in this order. Omit a section only when it does 
 | Source areas | A table mapping each source area ([2.1](#21-source-areas)) to its directory, plus any project-specific subdivisions |
 | Native hosts | Each host's location, source extensions and the area folders it currently uses |
 | Tools and configuration | Formatter, analyzer and linter for each language, with the location of each configuration file and any documented rule exceptions |
-| Limits and enforcement | File-size limits and other measurable limits, and where structural checks and test indexes live |
+| Limits and enforcement | File-size limits, the agent instructions' length limit and other measurable limits, and where structural checks and test indexes live |
+| Release readiness | Each host's release checklist ([2.12](#212-host-release-readiness)) |
 | Commit vocabulary | The `Changelog:` categories and `Platforms:` values that commits use ([5.4](#54-commits)) |
 
 Rules for keeping the two documents apart:
@@ -257,6 +277,19 @@ Rules for keeping the two documents apart:
 - When the profile would need a rule, generalize it into the standard first. The profile then records only the value.
 - Tools that read project structure, such as structural tests, read the profile's tables rather than the standard.
 - Feature behavior and protocol contracts belong in neither document.
+
+### 2.12 Host release readiness
+
+Platform defaults are often wrong for a shipped application, and nothing fails until release, store review or a user's device. Every host has a release-readiness checklist in the project profile. Each checklist covers, where the platform has them:
+
+- **Signing.** Release builds use release credentials and fail rather than fall back to development keys.
+- **Backup and transfer.** An explicit policy for whether local data, downloads and credentials are backed up or moved to a new device. Encrypted data whose keys do not travel with it is excluded.
+- **Privacy declarations.** Required privacy manifests, required-reason API declarations, permission usage strings and data-collection disclosures.
+- **Exposure.** Which components are exported to other applications and which callers they accept.
+- **Background behavior.** Service start and restart policy, and every obligation a background start creates, such as posting a notification in time.
+- **Shared system resources.** Behavior toward other applications: audio session category and activation, audio focus, ducking and interruption handling.
+
+A change that adds or changes a host capability updates that host's checklist in the same piece of work.
 
 ---
 
@@ -368,6 +401,8 @@ Other layout rules:
 - Extract a helper when it names a meaningful suboperation, isolates a policy or boundary, removes a repeated decision or makes the parent readable. Keep the overall sequence visible in the parent. Do not split every statement into a method.
 - Use a method reference for direct delegation. Keep an inline closure for simple argument adaptation. Give branching, multi-step and asynchronous event handling a named handler with a clear completion and error policy.
 - Share a repeated **decision or responsibility**, not merely matching lines. Before writing another layout, state transition, storage sequence or cleanup, look for its existing owner.
+- **Search before writing a mechanism.** Never hand-write an encoder, escaper, query-string builder, enum-name parser, byte accumulator, retry loop, serial queue, request generation or text truncation when the language, framework or an existing project owner provides one. Writing a new one requires a stated reason the existing ones do not fit.
+- **Model distinct states distinctly.** One value never carries two meanings, such as what the user intends and what an engine is currently doing. Do not infer one state from another that merely correlates with it. When two sources can disagree, keep two values and name both.
 - Express a complete decision over an owned enum or closed family as a named helper with an exhaustive switch that lists every case, so a new variant reveals where updates are needed. Handle unknown external values explicitly at the decoding boundary. A fallback for external input is different from a catch-all hiding an unhandled internal state.
 - Short pure filter/map chains suit collection projection. Use ordinary loops for substantial branching, mutation, side effects or sequential awaited work. Take a snapshot before mutating a lazily iterated source or crossing an ownership boundary.
 - Use generics for a coherent family that shares structure across item types, with meaningful bounds and typed builders. Avoid raw types and casts that hide an incomplete contract.
@@ -389,6 +424,12 @@ Other layout rules:
 - Keep multi-step callbacks in named handlers on the right owner. Use an awaitable callback contract when the consumer must wait for completion.
 - Use shared controls, theme tokens, surfaces and layout structures. Recurring spacing, typography, interaction states and responsive rules live in the shared design owner. Specializations pick supported variants rather than restating colors, borders, dimensions or disabled behavior. Read responsive breakpoints through the shared layout owner rather than comparing raw window sizes.
 - On pointer-driven platforms, enabled click targets use the hand cursor; disabled controls keep the arrow, text inputs the text cursor, and passive surfaces advertise no action. Shared controls own this.
+- **Shared controls own accessibility.** An interactive control gets focus, keyboard activation, a visible focus state, its semantic role, a label and any toggle state from the shared control layer. An icon-only control requires a label. Never build an interactive control from a raw gesture recognizer alone. Do not announce a label twice through nested semantics or tooltips.
+- **Respect user settings.** Animations honor the platform's reduced-motion setting. A region containing text has a minimum size that grows with text scaling, never a fixed height. Credential fields declare autofill hints and commit them only after a successful sign-in.
+- **Keep the tree's shape stable.** A component returns the same structure on both sides of a breakpoint or mode change and toggles behavior through parameters. Swapping subtrees discards their state.
+- **Read values inside the listener that keeps them current.** A callback that captures observable state is created inside the builder that listens to that state.
+- **Navigation discipline.** Choose the navigator explicitly and use the same one for every adaptive form of a modal. After an awaited action, close a route only if it is still the current route. Back handling goes through the route's pop disposition, never an unconditional pop. Routes that navigation compares are named.
+- **Animate paint, not layout.** Frequently changing visuals are painted inside a repaint boundary without changing layout. Components depend on the narrowest aspect of inherited data they read. Images are decoded at their display size. Large payloads are decoded once, away from the UI thread.
 
 ### 3.9 Async work, errors and resource lifetime
 
@@ -398,6 +439,13 @@ Other layout rules:
 - Choose sequential, latest-result or concurrent event processing explicitly. Asynchronous listener callbacks do not serialize events by themselves. Cancellation, generation invalidation and timeouts are different things; ignoring a stale result or timing out does not stop the underlying work.
 - After a suspension point, re-check relevance: mounted state, request generation, scene or engine identity, cancellation. Isolation alone does not establish relevance.
 - Catch errors where the owner can recover, translate them into a meaningful result, or report an actionable failure. Preserve stack traces. Never silently catch everything or return a success-shaped default after a failed required operation. A best-effort fallback is intentional, narrow and documented. User-facing messages belong to presentation; diagnostics belong to the logging owner. Never log credentials, tokens or proofs.
+- **Catch-all handlers justify themselves.** A handler that catches everything either rethrows, records the failure through the logging owner, or carries a comment saying why the failure does not matter. An empty catch body is never acceptable. Failed is not empty: a failed load does not return an empty list.
+- **Error messages keep their cause.** A message names one cause and carries the underlying error. Never replace a specific failure with a message that covers several possible causes.
+- **Every wait on I/O is bounded, and a timeout stops the work.** Network reads use an idle timeout that restarts on progress, so half-open connections are detected. On timeout, abort the underlying request or connection, not only the wait. Error bodies and other untrusted responses are read up to a size limit and decoded leniently.
+- **Independent cleanup steps are isolated.** In teardown and shutdown each release runs even if an earlier one failed. Shutdown cancels in-flight work first, then waits with a bound.
+- **Chained work isolates failures.** A queue or promise chain never lets one failure skip later work or leave errors unhandled on its tail. Return to a caller only the outcome that caller asked for, not a shared in-flight operation whose failure belongs to another caller.
+- **Fire-and-forget calls handle their own errors** where they are issued.
+- **Global error reporting is installed before the UI starts.** Uncaught synchronous, asynchronous and framework errors go to the logging owner. A startup failure shows a recoverable screen rather than rethrowing before the UI exists.
 - Remove listeners, cancel subscriptions and timers, and release native handles when their owner ends. Release temporaries on success and failure (`try`/`finally`, `defer`, RAII, scoped cleanup). When a borrowed dependency can be replaced, detach from the old one and attach to the new one.
 - Synchronous disposal cannot wait for asynchronous work. Provide an explicit asynchronous shutdown boundary and await it at the right lifecycle level.
 - Weak captures are for real cycles or borrowed lifetimes. A released owner must still complete any outstanding obligation such as a channel reply.
@@ -409,11 +457,26 @@ Other layout rules:
 - Do not narrate syntax, keep commented-out code, label a component as new, use decorative banners, or accumulate change history in comments.
 - No README files inside source trees. Project-wide expectations live in this document; feature and protocol contracts live in their own documents.
 
+### 3.11 Text, locale and identity
+
+- Text length, truncation and cursor positions count user-perceived characters (grapheme clusters), never code units or bytes. Limits on editable text use the framework's input-limiting mechanism, so input-method composition is not interrupted.
+- Case folding, trimming and normalization used for identity comparison happen in one owner, with Unicode-aware rules, on both sides of the comparison. Do not split a comparison between a database function and application code.
+- Dates, times and numbers shown to users are formatted through the locale-aware formatter for the user's region, with the framework's localizations registered.
+
+### 3.12 Durable data
+
+- A file that must survive a crash is written to a uniquely named temporary file in the same directory and renamed over its target. Writes to one file are serialized through a single owner.
+- A multi-statement migration or backfill runs in one transaction together with its completion marker. A statement inside a loop is prepared once.
+- A live database is copied with the engine's own snapshot mechanism into a temporary file, then renamed into place. Never copy its files directly.
+- **Destructive cleanup acts only on confirmed absence.** "Not readable right now" (an unmounted drive, a locked keystore, a transient I/O error) is not "gone" and never deletes user data, references or credentials. When a stored item cannot be decrypted or parsed, distinguish a permanent failure from a transient one before resetting anything.
+- A deferred delete checks that nothing references its path again before it runs, because deterministic paths are reused.
+- Untrusted or corrupt stored data produces an error result, never a crash.
+
 ---
 
 ## Part 4. Language conventions
 
-Keep the sections for languages the project uses and add sections for others it adopts. Each section restates Parts 1–3 only where the language needs a specific form.
+Dart and Flutter (4.1) is the core of this part. The other sections cover the languages a Flutter application uses in its native platform hosts and native packages, and they apply only to that code. Remove the sections for hosts and packages a project does not have. Add a section only for a language that becomes a significant part of the application's hosts or native packages. Each section restates Parts 1–3 only where the language needs a specific form.
 
 ### 4.1 Dart and Flutter
 
@@ -459,6 +522,33 @@ Hooks for subclasses in other libraries use non-underscore names with `@protecte
 - Feature controllers extend a shared controller base, keep construction inert and put startup in its initialization hook. A shared view binding initializes, observes and disposes controllers a view owns.
 - `State.dispose()` is synchronous. Asynchronous shutdown happens at an owner boundary that can be awaited.
 - After an async gap, check `BuildContext.mounted` before using that context, or `State.mounted` before updating that state. A guard on a different owner does not protect the context in use.
+- A dismissed route stays mounted through its exit animation; `mounted` alone does not show that a route may still be popped. Check `ModalRoute.isCurrent`.
+- Install `FlutterError.onError` and `PlatformDispatcher.onError` before `runApp`. Observe the app lifecycle with `AppLifecycleListener` rather than mixing in `WidgetsBindingObserver`.
+
+**Known traps**
+
+These are confirmed instances of [1.4](#14-verify-dont-assume) for Dart and Flutter. Add to the list when review finds another.
+
+| Trap | Use instead |
+| --- | --- |
+| A Material 3 `ColorScheme.dark`/`light` built from a few roles leaves the rest at Material 2 defaults | `ColorScheme.fromSeed`, then override the roles the design specifies |
+| `Future.timeout` stops waiting but leaves the request running | An abortable request whose abort trigger completes on timeout; `Stream.timeout` on body streams |
+| Isolates spawned without ports die silently; children outlive their parent; an `async` listener in an `errorsAreFatal` isolate dies on any throw | `onError` and `onExit` ports, an exit listener on the parent, and a guarded command loop |
+| `MediaQuery.of` rebuilds on every change, including each keyboard animation frame | `MediaQuery.sizeOf`, `paddingOf` and the other aspect accessors |
+| `SelectableText` runs its own selection and does not join a `SelectionArea` | Plain `Text` inside the area |
+| Passing both target dimensions to `instantiateImageCodec` forces that size and upscales | `instantiateImageCodecWithSize`; `cacheWidth`/`ResizeImage` for list images |
+| Truncating text with `substring` in a controller listener splits characters and breaks IME composition | `LengthLimitingTextInputFormatter` and `package:characters` |
+| `http.Response.body` decodes the whole body on every read | Decode `bodyBytes` once with a fused UTF-8 and JSON decoder, inside `Isolate.run` for large bodies |
+| `sublist` already copies; wrapping it copies again | Use the result directly |
+| A `List<int>` used as a byte buffer stores each byte as a full element | `BytesBuilder` |
+| Hand-written enum-name parsing | A cached `values.asNameMap()` |
+| `Timeline.startSync` spans held across `await` overlap and close each other | `Timeline.timeSync` for synchronous work, `TimelineTask` across awaits |
+| `dart:io` `Platform` checks cannot be overridden in tests and fail on the web | `defaultTargetPlatform` |
+| A wrapper defaulting `autofillHints` to `null` disables autofill | Default to an empty list, as `TextField` does |
+| A runtime font loader for fonts already bundled registers a second copy and loads it asynchronously | Name the bundled families directly |
+| A package used directly but resolved transitively | Declare it in `pubspec.yaml` |
+
+**Analyzer rules.** Enable the rules that mechanically check parts of [3.9](#39-async-work-errors-and-resource-lifetime): `empty_catches`, `avoid_catches_without_on_clauses`, `unawaited_futures`, `discarded_futures`, `use_build_context_synchronously`, `cancel_subscriptions` and `close_sinks`. Fix their findings rather than suppressing them wholesale; adopting them is its own change ([5.3](#53-verification)).
 
 **Formatter**
 
@@ -672,7 +762,7 @@ Format an explicit list of handwritten files. Exclude generated, framework-manag
 
 ### 4.6 Other languages
 
-Languages without a section here (for example Rust, build scripts, CMake, Gradle and XML) follow their own conventions and formatters. Parts 1–3 still apply: named owners, shared abstractions, explicit lifetimes and readable assembly. Vendored code keeps its upstream style. Add a section here when a language becomes a significant part of the project.
+Other languages inside the application (for example Rust in native packages, build scripts, CMake, Gradle and XML) follow their own conventions and formatters. Parts 1–3 still apply: named owners, shared abstractions, explicit lifetimes and readable assembly, and native packages keep the boundary rules in [2.10](#210-cross-language-boundaries). Vendored code keeps its upstream style. Add a section here when such a language becomes a significant part of the application's hosts or native packages.
 
 ### 4.7 Formatter baseline
 
@@ -694,6 +784,12 @@ Every formatter configuration targets two-space indentation, 120 columns and at 
 
 Keep established public names when a source move alone is enough. Do not move initializers, change callback timing, expose state or alter cleanup just to make a file look ordered. Correctness fixes discovered during a refactor are separate, visible changes.
 
+**Diagnose before changing.** For a defect that cannot be explained from the code, first reproduce it or add instrumentation that separates the candidate causes. Do not commit speculative fixes. If an attempt does not confirm the cause, revert it before trying the next.
+
+**Fix the class, not the instance.** When a defect is found, name the mistake that caused it, search the codebase for every other occurrence of that mistake, and fix them together or list the remaining ones in the commit body.
+
+**Measure performance changes.** A change motivated by performance states the measurement that motivated it and the measurement after it, on the affected hardware class.
+
 ### 5.2 Review checklist
 
 1. Location, name and dependencies match the source areas and dependency rules. Independent pieces are outside private component trees.
@@ -704,6 +800,8 @@ Keep established public names when a source move alone is enough. Do not move in
 6. Mutable state and collections have deliberate access rules. Async completion, error handling and resource ownership are clear.
 7. Cross-language boundaries decode once, keep wire names exact and answer every call exactly once.
 8. Formatting and static analysis pass for affected files, and behavioral checks cover material changes.
+9. API behavior the change relies on is confirmed ([1.4](#14-verify-dont-assume)); everything started has an owner, a bound and an exit path; failures are neither swallowed nor turned into empty results.
+10. A fix addresses every occurrence of its mistake and has a regression test that fails without it.
 
 ### 5.3 Verification
 
@@ -711,7 +809,10 @@ Keep established public names when a source move alone is enough. Do not move in
 - Run focused tests for the changed behavior and the project's structural checks (see the profile). Tests verify behavior and contracts, not helper extraction or member order. Structural checks enforce only part of this standard; passing them does not show the abstractions are right.
 - Analyzers and formatters do not enforce naming, contract boundaries, assembly quality or member grouping; those need review. Change lint policy separately when there is a concrete enforcement benefit, and never suppress a warning without understanding and documenting why.
 - Native hosts are verified by compilation and headless contract checks with injected capabilities. These do not exercise rendered windows, devices or system services.
-- **Do not start the application, simulators, emulators, servers or background services for verification.** Compilation, static analysis and headless tests are allowed. The developer owns launching software and device checks.
+- **Tests exercise behavior, not source text.** A test must fail when the behavior breaks and keep passing through a harmless refactor. Tests do not read source files and assert that they contain or omit particular strings. The one exception is a build or packaging contract that cannot be executed headlessly, such as exported symbols or manifest entries, and such a test parses the structure rather than matching substrings.
+- **Every fix ships a regression test that fails without the fix.**
+- **A rule that keeps being broken gets a mechanical check.** When review finds a rule of this standard broken more than once, add or enable an analyzer rule, lint or structural test for it.
+- **Do not start the application, simulators, emulators, servers or background services for verification.** Compilation, static analysis and headless tests are allowed. The developer owns launching software and device checks. For anything only a running application can show (layout, focus, scrolling, large text, reduced motion, device changes), the author lists the specific checks the developer should perform.
 - Documentation-only changes need link, example and consistency checks, not a build.
 
 ### 5.4 Commits
@@ -722,6 +823,8 @@ Commit history is the source for release changelogs, so every commit should expl
 
 - One logical change per commit. Keep refactors, formatting passes, dependency or toolchain upgrades and behavior changes in separate commits.
 - A commit leaves the project formatting, analyzing and passing its relevant checks.
+- Build outputs, native target directories and generated caches are ignored before the first build of a new component.
+- A dependency change regenerates every affected lockfile in the same commit. Toolchain minimums required by a framework upgrade are raised in the same change as the upgrade.
 
 **Message structure**
 
@@ -749,18 +852,89 @@ Platforms: <scope from the profile>
 
 - Commits are authored and committed by the developer's own git identity, as configured in the repository or global git configuration. Do not override author or committer with `--author`, environment variables or per-command configuration.
 - Commit messages, trailers and branch names contain no tool, model or assistant attribution: no `Co-Authored-By` lines for tools, no "Generated with" lines, no product names.
-
-**Coding agents and LLM tools**
-
-When a coding agent or LLM tool makes changes in the repository:
-
-- After completing a coherent set of changes, offer to commit them and wait for explicit approval. Never commit, amend, rebase, force-push or push without that approval.
-- When approved, commit with the configured git identity and a message that follows the structure above. Do not set or change `user.name` or `user.email`. If no identity is configured, stop and ask the developer to configure one rather than inventing one.
-- The message describes the change itself. It never mentions that an agent, LLM or tool produced it.
 - Do not bypass hooks or signing.
+
+How coding agents obtain approval and commit is defined by the agent instructions ([5.6](#56-agent-instructions)).
 
 ### 5.5 Keeping this document healthy
 
-- This standard and the project profile are the only documents that define structure and coding standards. Do not maintain a parallel architecture guide, a per-platform style guide or a file-by-file catalog.
+- This standard, the project profile and the agent instructions are the only documents that define structure, coding standards and the development procedure. Do not maintain a parallel architecture guide, a per-platform style guide, a file-by-file catalog or a second agent instructions file.
 - This document contains only rules that hold for any project adopting it. Project facts belong in the profile ([2.11](#211-project-profile)). Feature behavior, protocol contracts and platform integration details go in their own documents.
 - When a rule changes, change it here and update the code that it governs in the same piece of work, or note that adoption is incremental.
+
+### 5.6 Agent instructions
+
+Every project developed with coding agents keeps one agent instructions file, `AGENTS.md`, at the repository root. Tool-specific instruction files point to it rather than repeating it.
+
+**Purpose.** This standard defines the rules, the project profile records the project's facts, and the agent instructions define the working procedure that makes an agent apply both. Agents read the file at the start of every session, so it is short and procedural. It tells an agent when to stop and consult a rule, what evidence to leave that it did, and what to check before finishing. It adds no rules and restates none.
+
+| Document | Answers | Read |
+| --- | --- | --- |
+| Standard | What good code is | Consulted as reference |
+| Project profile | Where things are and which tools and values the project uses | Consulted as reference |
+| Agent instructions | How an agent works so the result meets the standard | Every session, in full |
+
+**Sections, in this order.** Omit a section only when it does not apply.
+
+| Section | Contents |
+| --- | --- |
+| Sources | Links to this standard and the profile, and the instruction to read both before changing code |
+| Before starting | How to begin a task. A defect is explained from the code, or reproduced or instrumented to separate the candidate causes, before behavior changes ([5.1](#51-applying-the-standard)) |
+| Triggers | A table of situations an agent can recognize while working. Each row links to the rule it invokes and names the evidence the agent leaves |
+| Evidence | Where evidence goes: code comments for confirmed API facts, commit bodies for causes, searches and regression tests, and the final report for measurements and manual checks |
+| Self-review | The named questions the agent applies to its own diff before reporting the work as finished, including the review checklist ([5.2](#52-review-checklist)) |
+| Verification limits | What the agent may and may not run, and the list of manual checks it gives the developer for anything it cannot exercise ([5.3](#53-verification)) |
+| Commits and approval | When to offer a commit and the approval requirement, linking to [5.4](#54-commits) for the message format and authorship |
+
+**Writing triggers.**
+
+- A trigger names a situation the agent can recognize at the moment it occurs, not a quality to aim for. Write "When you add a timeout to an operation", not "Handle timeouts correctly".
+- Each trigger links to the section of this standard whose rule it invokes. If no rule backs it, generalize the rule into this standard first; the agent instructions then add only the trigger and its evidence.
+- Each trigger names evidence a reviewer can find: a comment, a commit-body statement, a test or an entry in the final report. A check that leaves no trace cannot be reviewed.
+- Triggers come from observed failures. When review finds the same rule broken more than once, add a trigger for it, a mechanical check, or both. Remove a trigger once a mechanical check fully enforces its rule.
+
+**Writing the file.**
+
+- Keep it short enough to read in full every session; the profile sets the line limit. Every line gets similar weight, so each line must earn its place.
+- Write in the imperative and address the agent directly.
+- Link to rules; never paraphrase them. Two wordings of one rule drift apart.
+- Project facts stay in the profile and feature behavior stays in feature documents; the agent instructions link to both.
+- Name no tool, model or vendor unless an instruction depends on that tool's behavior.
+
+**Approval and commits.** The agent instructions require that an agent:
+
+- offers to commit after a coherent set of changes and waits for explicit approval, and never commits, amends, rebases, force-pushes or pushes without it;
+- commits with the configured git identity, never sets or changes it, and asks the developer to configure one when none exists;
+- writes a message that describes the change itself and never mentions that an agent or tool produced it.
+
+**Maintenance.** A change to a rule updates the triggers that link to it in the same piece of work. A trigger whose linked section no longer exists is a defect.
+
+An illustrative skeleton:
+
+```markdown
+# Agent instructions
+
+## Sources
+Read FLUTTER-STANDARDS.md and PROJECT-PROFILE.md before changing code.
+
+## Before starting
+For a defect, explain the cause from the code, or reproduce or instrument it to
+separate the candidate causes, before changing behavior (standard 5.1).
+
+## Triggers
+| When you… | Apply | Leave as evidence |
+| --- | --- | --- |
+| rely on how an API behaves | 1.4 | A comment stating the confirmed fact, where consequential |
+| are about to write an encoder, parser, retry or queue | 3.6 | The existing owner used, or why none fits |
+| fix a defect | 5.1 | The mistake, the search for other occurrences, the regression test |
+
+## Self-review
+Check the diff against every trigger above and the review checklist (5.2).
+
+## Verification limits
+Format, analyze and run headless tests. Do not launch the app. List the manual
+checks the developer should run.
+
+## Commits and approval
+Offer a commit and wait for approval. Follow 5.4.
+```

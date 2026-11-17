@@ -24,5 +24,5 @@ from visible action to device journey. Existing test files retain their paths.
 Production code is organized under `lib/bootstrap`, `lib/pages`, `lib/ui`, `lib/application`,
 `lib/data`, and `lib/infrastructure`. Test imports and source-contract paths
 follow those locations. Existing test directories remain stable during this
-source migration; the [engineering standards](../docs/engineering-standards.md)
+source migration; the [Flutter standards](../FLUTTER-STANDARDS.md)
 explains responsibility boundaries and the verification policy.

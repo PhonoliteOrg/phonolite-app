@@ -73,7 +73,7 @@ void main() {
     final documented = RegExp(
       r'^\| `lib/([^/`]+)/` \|',
       multiLine: true,
-    ).allMatches(File('docs/project-profile.md').readAsStringSync()).map((match) => match[1]!).toList();
+    ).allMatches(File('PROJECT-PROFILE.md').readAsStringSync()).map((match) => match[1]!).toList();
     final sources = _dartFiles('lib').map((file) => file.path.replaceAll('\\', '/')).toSet();
     final areas = sources
         .map((path) => path.substring('lib/'.length))
