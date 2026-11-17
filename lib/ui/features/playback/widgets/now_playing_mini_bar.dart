@@ -22,7 +22,10 @@ import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 
 class NowPlayingMiniBar extends StatelessWidget {
-  static const double _height = 72;
+  static const double _minHeight = 72;
+
+  /// Font size the text-scale growth is measured at; nonlinear scalers enlarge small text more.
+  static const double _referenceFontSize = 14;
 
   final PlaybackState state;
   final VoidCallback onPlayPause;
@@ -39,7 +42,14 @@ class NowPlayingMiniBar extends StatelessWidget {
     this.onOpenAlbum,
   });
 
-  static double heightForWidth(double width) => _height;
+  /// The bar's height, excluding its outer bottom margin. It is [_minHeight] at the default text
+  /// size and grows with the text scaler so the title, subtitle and tags never clip. The shell
+  /// reserves the same value as content inset.
+  static double heightOf(BuildContext context) {
+    final textFactor = MediaQuery.textScalerOf(context).scale(_referenceFontSize) / _referenceFontSize;
+
+    return textFactor <= 1 ? _minHeight : _minHeight * textFactor;
+  }
 
   String _miniSubtitle(Track track) {
     final artist = track.artist.trim();
@@ -89,7 +99,8 @@ class NowPlayingMiniBar extends StatelessWidget {
 
     final artSize = s(54);
     final playPadding = s(6);
-    final playVisualSize = math.min(42.0, _height - playPadding * 2);
+    final height = heightOf(context);
+    final playVisualSize = math.min(42.0, _minHeight - playPadding * 2);
     final playSize = playVisualSize / scale;
 
     return Padding(
@@ -101,7 +112,8 @@ class NowPlayingMiniBar extends StatelessWidget {
             mouseCursor: WidgetStateMouseCursor.clickable,
             onTap: withButtonHaptic(onExpand),
             child: Container(
-              height: _height,
+              // The column is centered in the reserved height and may still grow past it rather than clip.
+              constraints: BoxConstraints(minHeight: height),
               padding: EdgeInsets.symmetric(horizontal: s(14)),
               child: Row(
                 children: [

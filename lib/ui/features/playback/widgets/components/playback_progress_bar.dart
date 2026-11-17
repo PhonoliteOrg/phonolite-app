@@ -61,11 +61,15 @@ class PlaybackProgressBarState extends PlaybackScrubberState<PlaybackProgressBar
       ),
     );
 
+    final timeFontSize = s(13);
+    // The fixed label slots widen with the text scaler so enlarged times do not overflow.
+    final timeLabelWidth = s(42) * MediaQuery.textScalerOf(context).scale(timeFontSize) / timeFontSize;
+
     Widget timeLabel(Duration time) => Text(
       playbackFormatTime(time),
       textAlign: TextAlign.center,
       style: GoogleFonts.rajdhani(
-        fontSize: s(13),
+        fontSize: timeFontSize,
         // Keep the footer height stable before and after font loading.
         height: 1.0,
         letterSpacing: s(1.1),
@@ -91,11 +95,11 @@ class PlaybackProgressBarState extends PlaybackScrubberState<PlaybackProgressBar
             )
           : Row(
               children: [
-                SizedBox(width: s(42), child: timeLabel(displayPosition)),
+                SizedBox(width: timeLabelWidth, child: timeLabel(displayPosition)),
                 SizedBox(width: s(12)),
                 Expanded(child: slider),
                 SizedBox(width: s(12)),
-                SizedBox(width: s(42), child: timeLabel(widget.duration)),
+                SizedBox(width: timeLabelWidth, child: timeLabel(widget.duration)),
               ],
             ),
     );

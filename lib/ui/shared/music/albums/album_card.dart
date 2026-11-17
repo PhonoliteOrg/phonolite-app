@@ -53,7 +53,10 @@ class AlbumCard extends StatelessWidget {
       contentBuilder: (context, constraints, hovered) {
         final minImageSize = t(80.0);
         final maxImageSize = math.min(t(albumPortraitSize), constraints.maxWidth);
-        final reservedTextHeight = t(48.0);
+        // The artwork gap stays fixed; the title line grows with the text scaler.
+        final titleSize = t(16.0);
+        final textFactor = MediaQuery.textScalerOf(context).scale(titleSize) / titleSize;
+        final reservedTextHeight = t(14.0) + t(34.0) * textFactor;
         final availableForImage = (constraints.maxHeight - reservedTextHeight).clamp(
           minImageSize,
           t(albumPortraitSize),

@@ -87,7 +87,7 @@ class AdaptiveScaffold extends StatelessWidget {
     );
     final showWideBar = isWide && !hidePlaybackChrome;
     final showMiniBar = !isWide && !hidePlaybackChrome;
-    final miniBarHeight = showMiniBar ? NowPlayingMiniBar.heightForWidth(screenWidth) + s(12) : 0.0;
+    final miniBarHeight = showMiniBar ? NowPlayingMiniBar.heightOf(context) + s(12) : 0.0;
     final playbackInset = showWideBar
         ? desktopLayout?.height ?? nowPlayingHeight + s(_nowPlayingPadding)
         : miniBarHeight;
