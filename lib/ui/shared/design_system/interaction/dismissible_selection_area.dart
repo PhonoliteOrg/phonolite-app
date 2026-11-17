@@ -27,6 +27,7 @@ class _SelectionDismissLayerState extends State<SelectionDismissLayer> {
   int? _trackedPointer;
   Offset? _pointerStart;
   bool _hadSelectionAtPointerDown = false;
+  int _revisionAtPointerDown = 0;
   bool _movedPastTapSlop = false;
 
   @override
@@ -64,6 +65,7 @@ class _SelectionDismissLayerState extends State<SelectionDismissLayer> {
     _pointerStart = event.position;
     _movedPastTapSlop = false;
     _hadSelectionAtPointerDown = _DismissibleSelectionRegistry.hasSelection;
+    _revisionAtPointerDown = _DismissibleSelectionRegistry.revision;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -80,6 +82,7 @@ class _SelectionDismissLayerState extends State<SelectionDismissLayer> {
 
   void _handlePointerUp(PointerUpEvent event) {
     final shouldClear = event.pointer == _trackedPointer && _hadSelectionAtPointerDown && !_movedPastTapSlop;
+    final revision = _revisionAtPointerDown;
 
     _resetPointerTracking();
 
@@ -87,8 +90,10 @@ class _SelectionDismissLayerState extends State<SelectionDismissLayer> {
       return;
     }
 
+    // Only a tap that left every selection unchanged dismisses them; a tap that itself selected
+    // (toolbar or context-menu "Select all", shift-click, triple-click) keeps its result.
     scheduleMicrotask(() {
-      if (mounted) {
+      if (mounted && _DismissibleSelectionRegistry.revision == revision) {
         _DismissibleSelectionRegistry.clearSelections();
       }
     });
@@ -104,6 +109,7 @@ class _SelectionDismissLayerState extends State<SelectionDismissLayer> {
     _trackedPointer = null;
     _pointerStart = null;
     _hadSelectionAtPointerDown = false;
+    _revisionAtPointerDown = 0;
     _movedPastTapSlop = false;
   }
 
@@ -156,6 +162,7 @@ class _DismissibleSelectionAreaState extends State<DismissibleSelectionArea> {
 
   void _handleSelectionChanged(SelectedContent? content) {
     _hasSelection = content?.plainText.isNotEmpty ?? false;
+    _DismissibleSelectionRegistry.selectionChanged();
     widget.onSelectionChanged?.call(content);
   }
 
@@ -167,8 +174,16 @@ class _DismissibleSelectionAreaState extends State<DismissibleSelectionArea> {
 
 class _DismissibleSelectionRegistry {
   static final Set<_DismissibleSelectionAreaState> _areas = <_DismissibleSelectionAreaState>{};
+  static int _revision = 0;
 
   static bool get hasSelection => _areas.any((area) => area.hasSelection);
+
+  /// Advances whenever any registered area reports a selection change.
+  static int get revision => _revision;
+
+  static void selectionChanged() {
+    _revision++;
+  }
 
   static void register(_DismissibleSelectionAreaState area) {
     _areas.add(area);
