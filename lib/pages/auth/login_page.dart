@@ -105,51 +105,58 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
   }
 
   Widget _buildCredentialsSection(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildInput(
-          context,
-          controller: _usernameController,
-          label: 'Username',
-          textInputAction: TextInputAction.next,
-          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-        ),
-        const SizedBox(height: 20),
-        _buildInput(
-          context,
-          controller: _passwordController,
-          label: 'Password',
-          obscureText: true,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _submit(),
-        ),
-        const SizedBox(height: 12),
-        InkWell(
-          mouseCursor: WidgetStateMouseCursor.clickable,
-          onTap: withButtonHaptic(_feature.isSubmitting ? null : () => _feature.setRememberMe(!_feature.rememberMe)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: Row(
-              children: [
-                LucideCheckbox(
-                  value: _feature.rememberMe,
-                  materialTapTargetSize: MaterialTapTargetSize.padded,
-                  visualDensity: VisualDensity.standard,
-                  onChanged: _feature.isSubmitting ? null : (value) => _feature.setRememberMe(value ?? false),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Remember me',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ObsidianPalette.textMuted),
+    // Password managers fill and save the pair together. The context is committed only after a
+    // successful sign-in (_submit); leaving or a failed attempt never offers to save.
+    return AutofillGroup(
+      onDisposeAction: AutofillContextAction.cancel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildInput(
+            context,
+            controller: _usernameController,
+            label: 'Username',
+            autofillHints: const [AutofillHints.username],
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+          ),
+          const SizedBox(height: 20),
+          _buildInput(
+            context,
+            controller: _passwordController,
+            label: 'Password',
+            obscureText: true,
+            autofillHints: const [AutofillHints.password],
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            mouseCursor: WidgetStateMouseCursor.clickable,
+            onTap: withButtonHaptic(_feature.isSubmitting ? null : () => _feature.setRememberMe(!_feature.rememberMe)),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 56),
+              child: Row(
+                children: [
+                  LucideCheckbox(
+                    value: _feature.rememberMe,
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    visualDensity: VisualDensity.standard,
+                    onChanged: _feature.isSubmitting ? null : (value) => _feature.setRememberMe(value ?? false),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Remember me',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ObsidianPalette.textMuted),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -159,6 +166,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
     required String label,
     String? hintText,
     bool obscureText = false,
+    Iterable<String> autofillHints = const <String>[],
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
     TextInputAction? textInputAction,
@@ -173,6 +181,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
       isDense: true,
       enabled: !_feature.isSubmitting,
       obscureText: obscureText,
+      autofillHints: autofillHints,
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       textInputAction: textInputAction,
@@ -230,6 +239,11 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
       username: _usernameController.text,
       password: _passwordController.text,
     );
+
+    if (authorized) {
+      // The credentials worked: let the platform's password manager offer to save them.
+      TextInput.finishAutofillContext();
+    }
 
     if (mounted && authorized && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();

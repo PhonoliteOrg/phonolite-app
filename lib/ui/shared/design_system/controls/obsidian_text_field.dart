@@ -13,6 +13,9 @@ class ObsidianTextField extends StatefulWidget {
   final String? label;
   final String? hintText;
   final bool obscureText;
+
+  /// Matches [TextField]'s default: an empty list keeps the field in its autofill group, while
+  /// null would disable autofill for it on Android and the web (see [EditableText.autofillHints]).
   final Iterable<String>? autofillHints;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
@@ -35,7 +38,7 @@ class ObsidianTextField extends StatefulWidget {
     this.label,
     this.hintText,
     this.obscureText = false,
-    this.autofillHints,
+    this.autofillHints = const <String>[],
     this.prefixIcon,
     this.suffixIcon,
     this.height = searchHudHeight,
@@ -56,6 +59,14 @@ class ObsidianTextField extends StatefulWidget {
   State<ObsidianTextField> createState() => _ObsidianTextFieldState();
 }
 
+const _credentialHints = {
+  AutofillHints.username,
+  AutofillHints.email,
+  AutofillHints.password,
+  AutofillHints.newPassword,
+  AutofillHints.newUsername,
+};
+
 class _ObsidianTextFieldState extends State<ObsidianTextField> {
   final FocusNode _focusNode = FocusNode();
 
@@ -73,7 +84,9 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final singleLine = widget.maxLines == 1;
-    final naturalText = !widget.obscureText && widget.keyboardType != TextInputType.url;
+    // Credentials are typed exactly; autocorrect or suggestions would alter a username.
+    final credential = widget.autofillHints?.any(_credentialHints.contains) ?? false;
+    final naturalText = !widget.obscureText && widget.keyboardType != TextInputType.url && !credential;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

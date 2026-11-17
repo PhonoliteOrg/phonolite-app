@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/auth/password_change_controller.dart';
@@ -82,7 +83,7 @@ class _ResetUserPasswordPageState extends BaseFormPageState<ResetUserPasswordPag
     obscureText: true,
     keyboardType: TextInputType.visiblePassword,
     textInputAction: submit ? TextInputAction.done : TextInputAction.next,
-    autofillHints: autofillHint == null ? null : [autofillHint],
+    autofillHints: autofillHint == null ? const <String>[] : [autofillHint],
     onSubmitted: (_) => _handlePasswordSubmitted(context, submit: submit),
   );
 
@@ -97,6 +98,13 @@ class _ResetUserPasswordPageState extends BaseFormPageState<ResetUserPasswordPag
   void _clearPasswordsAfterAction() {
     if (_feature.clearPasswordsRevision != _lastClearRevision) {
       _lastClearRevision = _feature.clearPasswordsRevision;
+
+      if (_feature.completed) {
+        // Offer the new password to the platform's password manager before the fields are
+        // cleared; the group itself cancels on dispose so abandoned edits are never saved.
+        TextInput.finishAutofillContext();
+      }
+
       _clearPasswords();
     }
   }
@@ -177,6 +185,7 @@ class _ResetUserPasswordPageState extends BaseFormPageState<ResetUserPasswordPag
               key: const ValueKey('confirm-new-password'),
               controller: _confirmation,
               label: 'Confirm new password',
+              autofillHint: AutofillHints.newPassword,
               submit: true,
             ),
           ],
