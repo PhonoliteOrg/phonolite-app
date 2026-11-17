@@ -93,7 +93,7 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
     final response = await httpRequest.close().timeout(timeout);
 
     if (response.statusCode != HttpStatus.ok && response.statusCode != HttpStatus.partialContent) {
-      final body = await response.transform(utf8.decoder).join();
+      final body = await _readDownloadErrorBody(response, timeout);
 
       throw DownloadWorkerHttpError(response.statusCode, 'ApiException(${response.statusCode}): $body');
     }
@@ -142,7 +142,8 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
     );
     var bytesSinceFlush = 0;
 
-    await for (final chunk in response) {
+    // A silently dead connection sends nothing; time out between chunks instead of holding the slot.
+    await for (final chunk in response.timeout(timeout)) {
       throwIfCanceled();
 
       sink.add(chunk);
@@ -233,4 +234,29 @@ Future<void> _downloadWorkerMain(DownloadWorkerStart start) async {
     client?.close(force: true);
     cancelPort.close();
   }
+}
+
+const int _maxDownloadErrorBodyBytes = 4 * 1024;
+
+/// Reads at most a few KiB of an error body and tolerates malformed UTF-8, so a stalled, huge or
+/// non-text body cannot hide the HTTP status the caller acts on (such as 410 for expired renditions).
+Future<String> _readDownloadErrorBody(Stream<List<int>> body, Duration timeout) async {
+  final bytes = BytesBuilder(copy: false);
+
+  try {
+    await for (final chunk in body.timeout(timeout)) {
+      bytes.add(chunk);
+
+      if (bytes.length >= _maxDownloadErrorBodyBytes) {
+        break;
+      }
+    }
+  } on TimeoutException {
+    // Keep whatever arrived; the status code is what matters.
+  }
+
+  final data = bytes.takeBytes();
+  final limited = data.length > _maxDownloadErrorBodyBytes ? data.sublist(0, _maxDownloadErrorBodyBytes) : data;
+
+  return utf8.decode(limited, allowMalformed: true);
 }
