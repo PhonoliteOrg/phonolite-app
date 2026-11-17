@@ -1,9 +1,19 @@
+import java.util.Properties
+
 plugins {
   id("com.android.application")
   id("kotlin-android")
   // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
   id("dev.flutter.flutter-gradle-plugin")
 }
+
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties =
+  Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+      keystorePropertiesFile.inputStream().use { load(it) }
+    }
+  }
 
 android {
   namespace = "com.phonoliteorg.phonolite_app"
@@ -29,11 +39,18 @@ android {
     versionName = flutter.versionName
   }
 
+  signingConfigs {
+    create("release") {
+      keyAlias = keystoreProperties.getProperty("keyAlias")
+      keyPassword = keystoreProperties.getProperty("keyPassword")
+      storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+      storePassword = keystoreProperties.getProperty("storePassword")
+    }
+  }
+
   buildTypes {
     release {
-      // TODO: Add your own signing config for the release build.
-      // Signing with the debug keys for now, so `flutter run --release` works.
-      signingConfig = signingConfigs.getByName("debug")
+      signingConfig = signingConfigs.getByName("release")
     }
   }
 }
@@ -45,6 +62,22 @@ dependencies {
 
 flutter {
   source = "../.."
+}
+
+// Fail only when a release artifact is actually signed, so debug, profile and
+// compile-only tasks still configure without the upload keystore.
+gradle.taskGraph.whenReady {
+  val signsRelease =
+    allTasks.any { task ->
+      task.project == project &&
+        task.name in setOf("packageRelease", "bundleRelease", "signReleaseBundle", "validateSigningRelease")
+    }
+  if (signsRelease && !keystorePropertiesFile.exists()) {
+    throw GradleException(
+      "Release signing needs ${keystorePropertiesFile.path} with storeFile, storePassword, keyAlias and keyPassword. " +
+        "See https://docs.flutter.dev/deployment/android#configure-signing-in-gradle.",
+    )
+  }
 }
 
 val copyReleaseApk by tasks.registering(Copy::class) {
