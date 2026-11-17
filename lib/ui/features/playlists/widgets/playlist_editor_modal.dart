@@ -273,6 +273,8 @@ class _PlaylistImagePicker extends StatelessWidget {
         imageBytes,
         width: size,
         height: size,
+        // Decode at the displayed size instead of the picked file's full resolution.
+        cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => quietPlaceholder,
       );
