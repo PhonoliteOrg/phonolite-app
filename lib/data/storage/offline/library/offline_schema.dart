@@ -440,32 +440,50 @@ class _OfflineSchema {
     db.execute('''CREATE INDEX IF NOT EXISTS idx_local_track_server_matches_local
       ON local_track_server_matches(local_track_id, server_base_url)''');
 
+    // Each data migration commits with its flag in one transaction: atomic, and one journal sync
+    // instead of one per row on the first launch after an upgrade.
     if (!_metadataFlag(db, 'playlist_download_demands_v12')) {
-      db.execute('''INSERT OR IGNORE INTO download_demands
-        SELECT server_base_url, server_track_id, 'legacy', 'existing-download', created_at
-        FROM source_tracks WHERE status != 'downloaded' ''');
-      db.execute('''INSERT OR IGNORE INTO download_demands
-        SELECT server_base_url, server_track_id, 'playlist', playlist_id || ':' || position, created_at
-        FROM pending_playlist_tracks''');
-      db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', ['playlist_download_demands_v12', '1']);
+      _host._transaction(db, () {
+        db.execute('''INSERT OR IGNORE INTO download_demands
+          SELECT server_base_url, server_track_id, 'legacy', 'existing-download', created_at
+          FROM source_tracks WHERE status != 'downloaded' ''');
+        db.execute('''INSERT OR IGNORE INTO download_demands
+          SELECT server_base_url, server_track_id, 'playlist', playlist_id || ':' || position, created_at
+          FROM pending_playlist_tracks''');
+        db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
+          'playlist_download_demands_v12',
+          '1',
+        ]);
+      });
     }
 
     if (!_metadataFlag(db, 'track_match_normalization_v12')) {
-      for (final row in db.select('SELECT id, title, artist, album, duration_ms FROM tracks')) {
-        final track = Track(
-          id: row['id'] as String,
-          title: row['title'] as String,
-          artist: row['artist'] as String,
-          album: row['album'] as String,
-          durationMs: row['duration_ms'] as int,
-          liked: false,
-          inPlaylists: false,
-        );
+      _host._transaction(db, () {
+        final update = db.prepare('UPDATE tracks SET match_key = ? WHERE id = ?');
 
-        db.execute('UPDATE tracks SET match_key = ? WHERE id = ?', [TrackMatching.metadataKey(track), track.id]);
-      }
+        try {
+          for (final row in db.select('SELECT id, title, artist, album, duration_ms FROM tracks')) {
+            final track = Track(
+              id: row['id'] as String,
+              title: row['title'] as String,
+              artist: row['artist'] as String,
+              album: row['album'] as String,
+              durationMs: row['duration_ms'] as int,
+              liked: false,
+              inPlaylists: false,
+            );
 
-      db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', ['track_match_normalization_v12', '1']);
+            update.execute([TrackMatching.metadataKey(track), track.id]);
+          }
+        } finally {
+          update.dispose();
+        }
+
+        db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
+          'track_match_normalization_v12',
+          '1',
+        ]);
+      });
     }
 
     db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [
