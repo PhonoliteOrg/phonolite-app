@@ -620,29 +620,30 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     final localResults = _feature.localResults(offlineTracks, offlineGroups, revision: offlineSnapshot.revision);
     final selectedGroups = _feature.selectedOfflineArtists(offlineGroups);
 
-    final localSlivers = query.isEmpty
-        ? _downloadedMusicSlivers(
-            controller: controller,
-            tracks: offlineTracks,
-            groups: offlineGroups,
-            emptyTitle: 'No downloaded tracks',
-            emptyMessage: 'Download tracks from a connected server to keep them here.',
-            showCollectionList: showCollectionList,
-          )
-        : _localSearchSlivers(controller, results: localResults);
-    final serverSlivers = query.isEmpty
-        ? _serverArtistSlivers(
-            controller,
-            artists: artists,
-            authHeadersMap: authHeadersMap,
-            showCollectionList: showCollectionList,
-            isLoading: isLoading,
-          )
-        : _connectedSearchSlivers(controller, query: query, results: results, isSearchLoading: isSearchLoading);
+    // Build the source slivers inside the builder: server artist rows capture display settings
+    // for their visibility callbacks, so a settings change must rebuild them too.
+    Widget assembleContent(BuildContext context, Widget? _) {
+      final localSlivers = query.isEmpty
+          ? _downloadedMusicSlivers(
+              controller: controller,
+              tracks: offlineTracks,
+              groups: offlineGroups,
+              emptyTitle: 'No downloaded tracks',
+              emptyMessage: 'Download tracks from a connected server to keep them here.',
+              showCollectionList: showCollectionList,
+            )
+          : _localSearchSlivers(controller, results: localResults);
+      final serverSlivers = query.isEmpty
+          ? _serverArtistSlivers(
+              controller,
+              artists: artists,
+              authHeadersMap: authHeadersMap,
+              showCollectionList: showCollectionList,
+              isLoading: isLoading,
+            )
+          : _connectedSearchSlivers(controller, query: query, results: results, isSearchLoading: isSearchLoading);
 
-    return ListenableBuilder(
-      listenable: _displaySettings,
-      builder: (context, _) => assemble(
+      return assemble(
         context,
         navbar: LibraryHeader(
           trailing: _libraryActions(
@@ -679,8 +680,10 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
             ),
           ],
         ),
-      ),
-    );
+      );
+    }
+
+    return ListenableBuilder(listenable: _displaySettings, builder: assembleContent);
   }
 
   Widget _offlineLibraryContent(
