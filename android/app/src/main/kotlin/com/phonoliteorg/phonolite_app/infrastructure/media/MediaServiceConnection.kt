@@ -8,12 +8,22 @@ internal class MediaServiceConnection(private val startService: () -> Unit, priv
   private var startedOrRequested = false
   private var clearedSincePublication = false
 
+  // A foreground start the service has not received yet. Stopping it then would break the
+  // startForeground contract, so clear() leaves it to the service, which stops itself when empty.
+  private var startPending = false
+
   fun attach(observer: MediaServiceObserver) {
     activeService = WeakReference(observer)
   }
 
   fun markStarted(observer: MediaServiceObserver) {
-    if (activeService?.get() === observer && !clearedSincePublication) {
+    if (activeService?.get() !== observer) {
+      return
+    }
+
+    startPending = false
+
+    if (!clearedSincePublication) {
       startedOrRequested = true
     }
   }
@@ -25,14 +35,15 @@ internal class MediaServiceConnection(private val startService: () -> Unit, priv
 
     activeService = null
     startedOrRequested = false
+    startPending = false
     clearedSincePublication = false
   }
 
-  fun publish() {
+  fun publish(startIfNeeded: Boolean) {
     clearedSincePublication = false
     activeService?.get()?.applyState()
 
-    if (startedOrRequested) {
+    if (startedOrRequested || !startIfNeeded) {
       return
     }
 
@@ -40,6 +51,7 @@ internal class MediaServiceConnection(private val startService: () -> Unit, priv
 
     try {
       startService()
+      startPending = true
     } catch (error: Throwable) {
       startedOrRequested = false
       throw error
@@ -51,7 +63,9 @@ internal class MediaServiceConnection(private val startService: () -> Unit, priv
     startedOrRequested = false
     clearedSincePublication = true
 
-    stopService()
+    if (!startPending) {
+      stopService()
+    }
   }
 
   fun sourcesChanged() {

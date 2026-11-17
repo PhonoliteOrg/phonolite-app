@@ -7,7 +7,7 @@ import android.content.Intent
 class MediaPendingIntents(
   private val context: Context,
   private val activityIntent: () -> Intent,
-  private val serviceIntent: () -> Intent
+  private val actionIntent: () -> Intent
 ) {
   fun content(): PendingIntent {
     val intent = activityIntent()
@@ -17,10 +17,11 @@ class MediaPendingIntents(
     return PendingIntent.getActivity(context, 100, intent, flags)
   }
 
-  fun service(action: String, requestCode: Int): PendingIntent {
-    val intent = serviceIntent().setAction(action)
+  // Transport actions target a non-exported receiver so other apps cannot send them.
+  fun action(action: String, requestCode: Int): PendingIntent {
+    val intent = actionIntent().setAction(action)
     val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
-    return PendingIntent.getService(context, requestCode, intent, flags)
+    return PendingIntent.getBroadcast(context, requestCode, intent, flags)
   }
 }

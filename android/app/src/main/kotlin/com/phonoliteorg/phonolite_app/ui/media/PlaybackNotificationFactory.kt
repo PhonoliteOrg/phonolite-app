@@ -15,7 +15,7 @@ import com.phonoliteorg.phonolite_app.infrastructure.media.MediaServiceActions
 class PlaybackNotificationFactory(
   private val context: Context,
   private val contentIntent: () -> PendingIntent,
-  private val serviceIntent: (String, Int) -> PendingIntent,
+  private val actionIntent: (String, Int) -> PendingIntent,
   private val decodeArtwork: (ByteArray?) -> Bitmap?
 ) {
   val channelName = "Phonolite playback"
@@ -28,7 +28,7 @@ class PlaybackNotificationFactory(
   ).build()
 
   private fun action(icon: Int, title: String, action: String): NotificationCompat.Action =
-    NotificationCompat.Action.Builder(icon, title, serviceIntent(action, action.hashCode())).build()
+    NotificationCompat.Action.Builder(icon, title, actionIntent(action, action.hashCode())).build()
 
   private fun playPauseAction(isPlaying: Boolean): NotificationCompat.Action {
     if (isPlaying) {
@@ -37,6 +37,16 @@ class PlaybackNotificationFactory(
 
     return action(R.drawable.ic_lucide_play, "Play", MediaServiceActions.PLAY)
   }
+
+  // Minimal notification that satisfies a foreground start before any now-playing state exists.
+  fun placeholder(): Notification = NotificationCompat.Builder(context, MediaServiceActions.NOTIFICATION_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_lucide_audio_lines)
+    .setContentTitle("Phonolite")
+    .setContentIntent(contentIntent())
+    .setOnlyAlertOnce(true)
+    .setShowWhen(false)
+    .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+    .build()
 
   fun build(state: NativeNowPlayingState, sessionToken: MediaSessionCompat.Token): Notification? {
     if (state.trackId.isBlank()) {
@@ -55,7 +65,7 @@ class PlaybackNotificationFactory(
       .setContentTitle(if (state.title.isBlank()) "Phonolite" else state.title)
       .setContentText(subtitle)
       .setContentIntent(contentIntent())
-      .setDeleteIntent(serviceIntent(MediaServiceActions.PAUSE, 10))
+      .setDeleteIntent(actionIntent(MediaServiceActions.PAUSE, 10))
       .setOnlyAlertOnce(true)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setCategory(NotificationCompat.CATEGORY_TRANSPORT)

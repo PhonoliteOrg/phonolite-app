@@ -68,7 +68,8 @@ void main() {
       service.indexOf('host.mediaServiceGateway.detach(this)'),
       lessThan(service.indexOf('mediaSession.release()')),
     );
-    expect(service, contains('return START_STICKY'));
+    // A sticky restart after process death would boot a headless engine with no notification.
+    expect(service, contains('return START_NOT_STICKY'));
   });
 
   test('Android transport shares handler lifecycle and keeps wire identities', () {

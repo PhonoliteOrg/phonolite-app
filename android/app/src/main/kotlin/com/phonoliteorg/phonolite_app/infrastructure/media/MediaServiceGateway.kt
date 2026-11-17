@@ -28,8 +28,9 @@ class MediaServiceGateway(context: Context, private val serviceIntent: () -> Int
     connection.detach(observer)
   }
 
-  fun publish(@Suppress("UNUSED_PARAMETER") state: NativeNowPlayingState) {
-    connection.publish()
+  // A blank state has nothing to show, so it never starts the foreground service.
+  fun publish(state: NativeNowPlayingState) {
+    connection.publish(startIfNeeded = state.trackId.isNotBlank())
   }
 
   fun clear() {
