@@ -71,27 +71,31 @@ class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
       );
     }
 
-    return Scrollbar(
-      controller: _listController,
-      thumbVisibility: true,
-      child: ListView.separated(
+    // The explicit scrollbar keeps its thumb visible; disable the one the
+    // desktop scroll behavior would add so only one is drawn.
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: Scrollbar(
         controller: _listController,
-        shrinkWrap: true,
-        padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-        itemCount: _feature.devices.length,
-        separatorBuilder: (context, index) =>
-            Divider(height: 1, color: ObsidianPalette.textMuted.withByteOpacity(0.25)),
-        itemBuilder: (context, index) {
-          final device = _feature.devices[index];
-          final isSelected = device.id == widget.selectedId;
+        thumbVisibility: true,
+        child: ListView.separated(
+          controller: _listController,
+          padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
+          itemCount: _feature.devices.length,
+          separatorBuilder: (context, index) =>
+              Divider(height: 1, color: ObsidianPalette.textMuted.withByteOpacity(0.25)),
+          itemBuilder: (context, index) {
+            final device = _feature.devices[index];
+            final isSelected = device.id == widget.selectedId;
 
-          return ObsidianModalListRow(
-            title: device.name,
-            isSelected: isSelected,
-            enabled: !_feature.selecting,
-            onTap: () => _selectDevice(context, device),
-          );
-        },
+            return ObsidianModalListRow(
+              title: device.name,
+              isSelected: isSelected,
+              enabled: !_feature.selecting,
+              onTap: () => _selectDevice(context, device),
+            );
+          },
+        ),
       ),
     );
   }

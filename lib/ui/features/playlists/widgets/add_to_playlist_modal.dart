@@ -260,20 +260,24 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
                       ),
                       const SizedBox(height: 12),
                       Expanded(
-                        child: Scrollbar(
-                          controller: _listController,
-                          thumbVisibility: true,
-                          child: ListView.separated(
+                        // The explicit scrollbar keeps its thumb visible; disable the one the
+                        // desktop scroll behavior would add so only one is drawn.
+                        child: ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                          child: Scrollbar(
                             controller: _listController,
-                            shrinkWrap: true,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-                            itemCount: filteredPlaylists.length,
-                            separatorBuilder: (context, index) =>
-                                Divider(height: 1, color: ObsidianPalette.textMuted.withValues(alpha: 0.25)),
-                            itemBuilder: (context, index) {
-                              return _buildPlaylistRow(context, filteredPlaylists[index]);
-                            },
+                            thumbVisibility: true,
+                            child: ListView.separated(
+                              controller: _listController,
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
+                              itemCount: filteredPlaylists.length,
+                              separatorBuilder: (context, index) =>
+                                  Divider(height: 1, color: ObsidianPalette.textMuted.withValues(alpha: 0.25)),
+                              itemBuilder: (context, index) {
+                                return _buildPlaylistRow(context, filteredPlaylists[index]);
+                              },
+                            ),
                           ),
                         ),
                       ),
