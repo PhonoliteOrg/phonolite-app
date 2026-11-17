@@ -816,14 +816,20 @@ ffi.DynamicLibrary _loadLibrary() {
     final frameworkPath = Platform.isMacOS
         ? '${exec.parent.parent.path}/Frameworks/phonolite_quic.framework/phonolite_quic'
         : '${exec.parent.path}/Frameworks/phonolite_quic.framework/phonolite_quic';
-    try {
-      if (File(frameworkPath).existsSync()) {
-        return ffi.DynamicLibrary.open(frameworkPath);
-      }
-    } catch (_) {
-      // Fall back to process lookup below.
+    if (File(frameworkPath).existsSync()) {
+      return ffi.DynamicLibrary.open(frameworkPath);
     }
-    return ffi.DynamicLibrary.process();
+    // The CocoaPods integration links a static archive into the app (always
+    // on iOS; on macOS when the build hook's framework is absent), so the
+    // symbols may be in the process itself. Fail loudly when they are not.
+    final process = ffi.DynamicLibrary.process();
+    if (!process.providesSymbol('phonolite_quic_connect')) {
+      throw QuicException(
+        'phonolite_quic native library not found: expected $frameworkPath '
+        'or statically linked symbols',
+      );
+    }
+    return process;
   }
   if (Platform.isAndroid) {
     return ffi.DynamicLibrary.open('libphonolite_quic.so');
