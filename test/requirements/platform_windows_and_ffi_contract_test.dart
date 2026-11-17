@@ -26,7 +26,8 @@ void main() {
       ]);
       expectContainsAll(win32Source, const [
         'DWMWA_USE_IMMERSIVE_DARK_MODE',
-        'AppsUseLightTheme',
+        'DWMWA_CAPTION_COLOR',
+        'WTNCA_NODRAWCAPTION',
         'DwmSetWindowAttribute',
       ]);
     });

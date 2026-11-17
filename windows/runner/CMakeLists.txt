@@ -68,7 +68,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
-target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib" "shell32.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib" "shell32.lib" "uxtheme.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "windowsapp.lib" "runtimeobject.lib" "shcore.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "propsys.lib" "advapi32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "version.lib")
