@@ -49,7 +49,7 @@ class _ServerAvailabilityCoordinator {
       if (!_host._disposed && _connectivityReads.isCurrent(request)) {
         _queueConnectivityChange(state);
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (!_host._disposed && _connectivityReads.isCurrent(request)) {
         AppLogger.debug('Network state check deferred (${error.runtimeType}).');
       }
@@ -267,7 +267,7 @@ class _ServerAvailabilityCoordinator {
       } else {
         _quicPort = null;
       }
-    } catch (err) {
+    } on Object catch (err) {
       _quicPort = null;
       _host._pushMessage('Failed to load server ports: $err', level: LogLevel.warning);
     }
@@ -275,8 +275,9 @@ class _ServerAvailabilityCoordinator {
 
   void _startHealthMonitor() {
     _healthTimer?.cancel();
-    _healthTimer = Timer.periodic(const Duration(seconds: 12), (_) => _pollHealth());
-    _pollHealth();
+    // Detached like the timer ticks: an availability refresh records its own failures.
+    _healthTimer = Timer.periodic(const Duration(seconds: 12), (_) => unawaited(_pollHealth()));
+    unawaited(_pollHealth());
   }
 
   Future<void> _refreshServerAvailability({bool reconnectAttempt = false}) async {
@@ -382,7 +383,7 @@ class _ServerAvailabilityCoordinator {
           reconnectAttempt: reconnectAttempt,
         );
       }
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) return;
       _recordServerAvailabilityFailure(error: 'Server unavailable: $err', reconnectAttempt: reconnectAttempt);
     } finally {

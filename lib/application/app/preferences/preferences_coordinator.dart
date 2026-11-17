@@ -347,7 +347,7 @@ class _PreferencesCoordinator {
       final settings = await _host.connection.fetchPlaybackSettings();
 
       await _adoptLegacyRepeatMode(settings.repeatMode, sessionRevision: revision);
-    } catch (err) {
+    } on Object catch (err) {
       if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
       _host._pushMessage('Failed to load playback settings: $err', level: LogLevel.warning);
     }
@@ -377,7 +377,7 @@ class _PreferencesCoordinator {
 
     try {
       await _saveRepeatMode(mode);
-    } catch (err) {
+    } on Object catch (err) {
       if (_host._disposed) return;
       _host._pushMessage('Failed to update playback settings: $err');
     }

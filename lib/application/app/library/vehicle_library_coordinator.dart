@@ -84,8 +84,17 @@ class _VehicleLibraryCoordinator {
 
     final payload = _carPlayStatePayload();
 
-    _host._vehicleSurface.notifySourceState(payload).catchError((_) {});
-    _host._vehicleSurface.notifyAuthorization(payload.serverAvailable).catchError((_) {});
+    // State pushes are fire-and-forget; the next state change pushes a fresh snapshot.
+    unawaited(
+      _host._vehicleSurface.notifySourceState(payload).catchError((Object error) {
+        AppLogger.debug('Could not push vehicle source state: $error');
+      }),
+    );
+    unawaited(
+      _host._vehicleSurface.notifyAuthorization(payload.serverAvailable).catchError((Object error) {
+        AppLogger.debug('Could not push vehicle authorization state: $error');
+      }),
+    );
   }
 
   VehicleCommandResult _carPlayOk() => const VehicleCommandResult.ok();

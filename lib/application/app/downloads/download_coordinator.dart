@@ -64,7 +64,7 @@ class _DownloadCoordinator {
       } else {
         _host._pushMessage('${track.title} is already downloaded or queued.');
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue ${track.title}: $err', level: LogLevel.warning);
     }
   }
@@ -100,7 +100,7 @@ class _DownloadCoordinator {
       );
 
       _host._pushMessage('Saved local copy of $name.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to download playlist $name: $err', level: LogLevel.warning);
 
       rethrow;
@@ -130,7 +130,7 @@ class _DownloadCoordinator {
       final queuedTrackLabel = queuedCount == 1 ? 'track' : 'tracks';
 
       _host._pushMessage('Queued $queuedCount $queuedTrackLabel for ${artist.name}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue downloads for ${artist.name}: $err', level: LogLevel.warning);
     }
   }
@@ -158,7 +158,7 @@ class _DownloadCoordinator {
       await _host._offlineDownloadManager.pauseDownloadJob(job);
 
       _host._pushMessage('Paused downloads for ${_jobLabel(job)}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to pause downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
     }
   }
@@ -168,7 +168,7 @@ class _DownloadCoordinator {
       await _host._offlineDownloadManager.resumeDownloadJob(job);
 
       _host._pushMessage('Resumed downloads for ${_jobLabel(job)}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to resume downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
     }
   }
@@ -200,7 +200,7 @@ class _DownloadCoordinator {
   Future<void> retryOfflineDownload(OfflineTrackDownload download) async {
     try {
       await _host._offlineDownloadManager.retryDownload(download);
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to retry download of ${download.track.title}: $err', level: LogLevel.warning);
     }
   }
@@ -215,7 +215,7 @@ class _DownloadCoordinator {
       await _host._offlineDownloadManager.cancelDownloadJob(job);
 
       _host._pushMessage('Canceled downloads for ${_jobLabel(job)}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to cancel downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
     }
   }
@@ -311,7 +311,7 @@ class _DownloadCoordinator {
       await _host.loadOfflineStorageLocations();
 
       _host._pushMessage('Cleared unfinished download jobs and partial cache.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to clear download jobs and cache: $err', level: LogLevel.warning);
     }
   }
@@ -549,7 +549,7 @@ class _DownloadCoordinator {
       final queuedTrackLabel = queuedCount == 1 ? 'track' : 'tracks';
 
       _host._pushMessage('Queued $queuedCount $queuedTrackLabel for $label.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue downloads for $label: $err', level: LogLevel.warning);
     }
   }

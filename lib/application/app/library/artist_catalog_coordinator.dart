@@ -87,7 +87,7 @@ class _ArtistCatalogCoordinator {
     } on ApiException catch (error) {
       _library._catalogueReadFailures++;
       _host._handleApiError(error, context: 'artists');
-    } catch (error) {
+    } on Object catch (error) {
       if (!_host._disposed) {
         AppLogger.debug('Artist browse page unavailable (${error.runtimeType})');
       }
@@ -180,7 +180,7 @@ class _ArtistCatalogCoordinator {
         _library._catalogueReadFailures++;
         _host._handleApiError(error, context: 'artists');
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (!_host._disposed && requests.isCurrent(generation)) {
         _library._catalogueReadFailures++;
         _host._pushMessage('Failed to load artists: $error', level: LogLevel.warning);

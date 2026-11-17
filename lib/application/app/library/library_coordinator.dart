@@ -197,7 +197,7 @@ class _LibraryCoordinator {
 
       _catalogueReadFailures++;
       _host._handleApiError(err, context: 'artist releases');
-    } catch (err) {
+    } on Object catch (err) {
       if (_host._disposed ||
           !_artistReleasesRequests.isCurrent(epoch) ||
           sessionRevision != _host.connection.sessionRevision) {
@@ -255,7 +255,7 @@ class _LibraryCoordinator {
 
       _catalogueReadFailures++;
       _host._handleApiError(err, context: 'albums');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -311,7 +311,7 @@ class _LibraryCoordinator {
 
       _catalogueReadFailures++;
       _host._handleApiError(err, context: 'tracks');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -372,7 +372,7 @@ class _LibraryCoordinator {
 
       _catalogueReadFailures++;
       _host._handleApiError(err, context: 'search');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -557,7 +557,7 @@ class _LibraryCoordinator {
       if (_artistReleasesArtistId == artistId) {
         await loadArtistReleases(artistId, refresh: true);
       }
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Failed to refresh artist metadata for $artistId (${error.runtimeType})');
     }
   }
@@ -662,7 +662,7 @@ class _LibraryCoordinator {
           await loadAlbums(artistId, refresh: true);
         }
       }
-    } catch (err) {
+    } on Object catch (err) {
       AppLogger.debug('Failed to refresh album metadata for $albumId: $err');
     }
   }
@@ -773,7 +773,10 @@ class _LibraryCoordinator {
       if (artist.name.trim().isNotEmpty) {
         return album.copyWith(artist: artist.name);
       }
-    } catch (_) {}
+    } on Object catch (error) {
+      // Best-effort display enrichment: the album stays usable without an artist name.
+      AppLogger.debug('Could not resolve display artist for album ${album.id}: $error');
+    }
 
     return album;
   }

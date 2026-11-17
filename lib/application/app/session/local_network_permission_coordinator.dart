@@ -25,14 +25,18 @@ class _LocalNetworkPermissionCoordinator {
     }
 
     _host._localNetworkPermissions.setStatusHandler(_handleLocalNetworkPermissionStatus);
-    _refreshLocalNetworkPermission();
+    // Detached: the refresh logs its own failure and the status handler reports later changes.
+    unawaited(_refreshLocalNetworkPermission());
   }
 
   Future<void> _refreshLocalNetworkPermission() async {
     try {
       await _host._localNetworkPermissions.refreshPermission();
       _handleLocalNetworkPermissionStatus(await _host._localNetworkPermissions.getPermission());
-    } catch (_) {}
+    } on Object catch (error) {
+      // Best-effort probe: the last known state stays until the platform reports a status.
+      AppLogger.debug('Could not refresh local network permission: $error');
+    }
   }
 
   void _handleLocalNetworkPermissionStatus(String status) {
