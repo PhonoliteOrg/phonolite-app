@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
@@ -27,6 +26,7 @@ import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
 
@@ -263,8 +263,6 @@ Widget _statsContent(StatsResponse stats) =>
     BackdropGroup(child: SingleChildScrollView(child: StatsCardsContent(stats: stats)));
 
 void main() {
-  setUp(configureTestFonts);
-
   for (final status in SessionStatus.values) {
     testWidgets(
       'one statistics reset is available for connection state $status',
@@ -495,7 +493,7 @@ void main() {
     tester,
   ) async {
     final font = FontLoader(
-      GoogleFonts.rajdhani(fontWeight: FontWeight.w700).fontFamily!,
+      ObsidianFonts.display,
     )..addFont(rootBundle.load('assets/fonts/Rajdhani-Bold.ttf'));
     await font.load();
     _viewport(tester, const Size(1280, 900));

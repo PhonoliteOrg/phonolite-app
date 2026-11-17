@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
@@ -9,6 +8,7 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class ObsidianMenuAction {
@@ -148,7 +148,8 @@ class ObsidianOverflowActionButton extends StatelessWidget {
         Flexible(
           child: Text(
             action.label,
-            style: GoogleFonts.rajdhani(
+            style: TextStyle(
+              fontFamily: ObsidianFonts.display,
               fontSize: compact ? 16 : 13,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.8,

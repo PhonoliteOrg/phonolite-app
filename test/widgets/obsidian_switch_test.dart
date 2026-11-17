@@ -12,8 +12,6 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.d
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('the complete touch target activates once and the parent owns the value', (tester) async {
     final changes = <bool>[];
 

@@ -7,8 +7,6 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_fie
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('playlist fields limit length by user-perceived characters', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 1000);

@@ -45,8 +45,6 @@ import '../support/source_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   group('widget contracts', () {
     test('display genre separators use a shared unicode bullet formatter', () {
       final source = [

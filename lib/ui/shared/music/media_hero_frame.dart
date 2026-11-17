@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/expandable_summary_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 
 /// The common responsive frame for music detail headers.
 /// Background treatment and content are supplied by the album/artist variant.
@@ -53,7 +53,8 @@ class MediaHeroTitle extends StatelessWidget {
       title,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
-      style: GoogleFonts.rajdhani(
+      style: TextStyle(
+        fontFamily: ObsidianFonts.display,
         color: Colors.white,
         fontSize: compact ? 24 : desktopFontSize * scale,
         fontWeight: FontWeight.w700,
@@ -84,7 +85,12 @@ class MediaHeroSummary extends StatelessWidget {
 
     return ExpandableSummaryText(
       text: text,
-      style: GoogleFonts.poppins(color: Colors.white70, fontSize: fontSize * scale, height: lineHeight),
+      style: TextStyle(
+        fontFamily: ObsidianFonts.body,
+        color: Colors.white70,
+        fontSize: fontSize * scale,
+        height: lineHeight,
+      ),
       toggleColor: accentGold,
       collapsedMaxHeight: collapsedMaxHeight * scale,
       togglePadding: EdgeInsets.symmetric(vertical: 4 * scale),

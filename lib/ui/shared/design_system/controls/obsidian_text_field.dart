@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class ObsidianTextField extends StatefulWidget {
@@ -138,7 +138,8 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
                   textAlignVertical: singleLine || widget.isDense ? TextAlignVertical.center : null,
                   maxLines: widget.maxLines,
                   minLines: widget.minLines,
-                  style: GoogleFonts.rajdhani(
+                  style: TextStyle(
+                    fontFamily: ObsidianFonts.display,
                     fontSize: ObsidianModalScope.usesTouchTargets(context) ? 16 : null,
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -150,7 +151,8 @@ class _ObsidianTextFieldState extends State<ObsidianTextField> {
                     isDense: singleLine || widget.isDense,
                     contentPadding: singleLine || widget.isDense ? EdgeInsets.zero : null,
                     hintText: widget.hintText,
-                    hintStyle: GoogleFonts.rajdhani(
+                    hintStyle: TextStyle(
+                      fontFamily: ObsidianFonts.display,
                       fontSize: ObsidianModalScope.usesTouchTargets(context) ? 16 : null,
                       color: Colors.white54,
                       letterSpacing: 1.0,

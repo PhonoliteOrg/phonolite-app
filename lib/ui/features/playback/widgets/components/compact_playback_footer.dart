@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
@@ -7,6 +6,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/components/playback_s
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_volume_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_slider_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class PlaybackCompactFooterRow extends PlaybackScrubber {
@@ -90,7 +90,8 @@ class PlaybackCompactFooterRowState extends PlaybackScrubberState<PlaybackCompac
                 children: [
                   Text(
                     playbackFormatTime(displayPosition),
-                    style: GoogleFonts.rajdhani(
+                    style: TextStyle(
+                      fontFamily: ObsidianFonts.display,
                       fontSize: s(12),
                       letterSpacing: s(0.8),
                       color: ObsidianPalette.textMuted,
@@ -98,7 +99,8 @@ class PlaybackCompactFooterRowState extends PlaybackScrubberState<PlaybackCompac
                   ),
                   Text(
                     playbackFormatTime(widget.duration),
-                    style: GoogleFonts.rajdhani(
+                    style: TextStyle(
+                      fontFamily: ObsidianFonts.display,
                       fontSize: s(12),
                       letterSpacing: s(0.8),
                       color: ObsidianPalette.textMuted,

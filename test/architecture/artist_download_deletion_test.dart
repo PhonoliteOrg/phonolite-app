@@ -185,8 +185,6 @@ Future<void> _seedArtist(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(configureTestFonts);
-
   test('removal retires unversioned job downloads and preserves direct batch semantics', () async {
     final root = await Directory.systemTemp.createTemp('phonolite_job_url_delete_');
     addTearDown(() => root.delete(recursive: true));

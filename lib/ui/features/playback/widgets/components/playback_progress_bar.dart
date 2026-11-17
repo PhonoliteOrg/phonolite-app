@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
@@ -7,6 +6,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/components/playback_s
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_slider_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class PlaybackProgressBar extends PlaybackScrubber {
@@ -68,7 +68,8 @@ class PlaybackProgressBarState extends PlaybackScrubberState<PlaybackProgressBar
     Widget timeLabel(Duration time) => Text(
       playbackFormatTime(time),
       textAlign: TextAlign.center,
-      style: GoogleFonts.rajdhani(
+      style: TextStyle(
+        fontFamily: ObsidianFonts.display,
         fontSize: timeFontSize,
         // Keep the footer height stable before and after font loading.
         height: 1.0,

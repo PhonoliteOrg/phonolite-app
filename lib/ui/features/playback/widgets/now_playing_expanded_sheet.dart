@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/playback/playback_controls_controller.dart';
@@ -24,6 +23,7 @@ import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoi
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
@@ -234,7 +234,12 @@ class NowPlayingExpandedSheet extends StatelessWidget {
     final details = <Widget>[
       MarqueeText(
         text: track?.title ?? 'Nothing playing',
-        style: GoogleFonts.rajdhani(fontSize: s(26), fontWeight: FontWeight.w700, letterSpacing: s(1.1)),
+        style: TextStyle(
+          fontFamily: ObsidianFonts.display,
+          fontSize: s(26),
+          fontWeight: FontWeight.w700,
+          letterSpacing: s(1.1),
+        ),
         velocity: s(28),
         gap: s(28),
       ),
@@ -247,7 +252,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             child: MarqueeText(
               text: '${track.artist} - ${track.album}',
-              style: GoogleFonts.poppins(fontSize: s(15), color: ObsidianPalette.textMuted),
+              style: TextStyle(fontFamily: ObsidianFonts.body, fontSize: s(15), color: ObsidianPalette.textMuted),
               velocity: s(28 * playbackSubtitleMarqueeSpeedFactor),
               gap: s(24),
             ),

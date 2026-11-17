@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_module_shell.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/genre_text.dart';
 
@@ -115,7 +115,8 @@ class _GenreBar extends StatelessWidget {
           SizedBox(width: s(12)),
           Text(
             timeLabel,
-            style: GoogleFonts.rajdhani(
+            style: TextStyle(
+              fontFamily: ObsidianFonts.display,
               fontSize: s(12),
               fontWeight: FontWeight.w700,
               color: ObsidianPalette.gold,

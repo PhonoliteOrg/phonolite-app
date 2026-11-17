@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shell/toolbars/base_page_toolbar.dart';
 
 class LibraryHeader extends BasePageToolbar {
@@ -27,7 +27,8 @@ class LibraryHeader extends BasePageToolbar {
       title,
       maxLines: maxLines,
       overflow: TextOverflow.ellipsis,
-      style: GoogleFonts.rajdhani(
+      style: TextStyle(
+        fontFamily: ObsidianFonts.display,
         color: accentGold,
         fontSize: isCompact ? 36 : 56,
         fontWeight: FontWeight.w700,

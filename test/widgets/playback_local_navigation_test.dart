@@ -48,9 +48,9 @@ import '../support/accessibility_update_binding.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  final binding = AccessibilityUpdateBinding();
+  setUpAll(loadBundledFonts);
 
-  setUpAll(configureTestFonts);
+  final binding = AccessibilityUpdateBinding();
 
   setUp(() {
     binding.resetAccessibilityTree();

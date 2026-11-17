@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
@@ -8,6 +7,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/components/playback_s
 import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
@@ -75,7 +75,12 @@ class PlaybackIntelZone extends StatelessWidget {
               MarqueeText(
                 key: ValueKey('title-${track?.id ?? 'idle'}'),
                 text: track?.title ?? 'NO TRACK PLAYING',
-                style: GoogleFonts.rajdhani(fontSize: s(17), fontWeight: FontWeight.w700, letterSpacing: s(1.0)),
+                style: TextStyle(
+                  fontFamily: ObsidianFonts.display,
+                  fontSize: s(17),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: s(1.0),
+                ),
                 velocity: s(32),
                 gap: s(24),
               ),
@@ -83,7 +88,7 @@ class PlaybackIntelZone extends StatelessWidget {
               MarqueeText(
                 key: ValueKey('subtitle-${track?.id ?? 'idle'}'),
                 text: subtitle,
-                style: GoogleFonts.poppins(fontSize: s(11), color: ObsidianPalette.textMuted),
+                style: TextStyle(fontFamily: ObsidianFonts.body, fontSize: s(11), color: ObsidianPalette.textMuted),
                 velocity: s(32 * playbackSubtitleMarqueeSpeedFactor),
                 gap: s(24),
               ),
@@ -142,7 +147,7 @@ class PlaybackAlbumArtThumb extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         (track?.title.isNotEmpty == true) ? track!.title.substring(0, 1).toUpperCase() : '?',
-        style: GoogleFonts.rajdhani(fontSize: s(20), fontWeight: FontWeight.w700),
+        style: TextStyle(fontFamily: ObsidianFonts.display, fontSize: s(20), fontWeight: FontWeight.w700),
       ),
     );
 

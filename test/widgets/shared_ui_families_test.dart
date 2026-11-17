@@ -16,8 +16,6 @@ import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final family in [
     'album row',
     'artist row',

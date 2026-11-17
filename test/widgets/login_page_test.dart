@@ -13,7 +13,6 @@ import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 import '../support/auth_test_helpers.dart';
-import '../support/widget_test_helpers.dart';
 
 Finder _field(String label) => find.byWidgetPredicate(
   (widget) => widget is ObsidianTextField && widget.label == label,
@@ -67,8 +66,6 @@ Future<void> _pump(
 }
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('forced sign-in retains the server and opens password entry directly', (tester) async {
     final controller = _LoginController().._auth = AuthState(
       baseUrl: 'https://rotated.test:8443/api', requiresSignIn: true,

@@ -13,7 +13,6 @@ void main() {
       ]);
 
       expectContainsAll(source, const [
-        'GoogleFonts.config.allowRuntimeFetching = false;',
         "'PHONOLITE_URL'",
         "'https://127.0.0.1:3000/api'",
         'await Future.wait([_controller.initialize(), _settings.display.initialize()]);',

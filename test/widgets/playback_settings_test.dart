@@ -10,8 +10,6 @@ import 'package:phonolite_app/ui/features/settings/sections/playback_settings_se
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final width in [320.0, 1280.0]) {
     testWidgets('the playback setting title wraps when space is limited at viewport width $width', (tester) async {
       tester.view.devicePixelRatio = 1;

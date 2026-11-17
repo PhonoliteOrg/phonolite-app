@@ -118,7 +118,7 @@ DownloadManagerPanel _downloadManager([
 );
 
 void main() {
-  setUp(configureTestFonts);
+  setUpAll(loadBundledFonts);
 
   for (final platform in TargetPlatform.values) {
     testWidgets('wide $platform modal preserves its input sizing and dialog placement', (tester) async {

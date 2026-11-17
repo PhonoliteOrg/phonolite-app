@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:phonolite_app/data/models/library/artist_releases.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
@@ -10,7 +9,6 @@ import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 import 'package:phonolite_app/ui/features/library/widgets/artist_release_sections.dart';
 
 void main() {
-  GoogleFonts.config.allowRuntimeFetching = false;
   final sharedAlbum = Album(
     id: 'shared',
     title: 'Joint album',

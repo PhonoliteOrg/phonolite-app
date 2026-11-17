@@ -10,11 +10,7 @@ import 'package:phonolite_app/ui/shell/toolbars/base_page_toolbar.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final width in [320.0, 1280.0]) {
     testWidgets('toolbar slots retain actions and a constrained title at $width', (tester) async {
       _setSize(tester, width);

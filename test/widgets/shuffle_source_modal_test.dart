@@ -14,11 +14,7 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/ui/shared/music/local_server_toggle.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final layout in [
     (width: 320.0, textScale: 1.4),
     (width: 390.0, textScale: 1.0),

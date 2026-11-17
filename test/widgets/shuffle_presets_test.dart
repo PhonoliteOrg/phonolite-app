@@ -52,7 +52,7 @@ Future<void> _mount(
 }
 
 void main() {
-  setUp(configureTestFonts);
+  setUpAll(loadBundledFonts);
 
   testWidgets('preset list applies rules explicitly and imports only on request', (tester) async {
     final app = PresetTestApp();

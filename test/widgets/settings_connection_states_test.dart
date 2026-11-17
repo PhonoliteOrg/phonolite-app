@@ -24,7 +24,7 @@ import '../support/widget_test_helpers.dart';
 
 // These are isolated UI fixtures, not evidence of a real network outage.
 void main() {
-  setUpAll(configureTestFonts);
+  setUpAll(loadBundledFonts);
 
   testWidgets('compact settings show full descriptions across multiple lines', (tester) async {
     final controller = _Controller(SessionStatus.offline);

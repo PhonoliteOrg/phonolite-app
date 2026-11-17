@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/dismissible_selection_area.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artist_avatar.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_image.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
@@ -54,7 +54,12 @@ class ArtistHero extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     artistDetailLabel(artist, genreLimit: 0),
-                    style: GoogleFonts.rajdhani(color: Colors.white54, fontSize: 11, letterSpacing: 0.3),
+                    style: TextStyle(
+                      fontFamily: ObsidianFonts.display,
+                      color: Colors.white54,
+                      fontSize: 11,
+                      letterSpacing: 0.3,
+                    ),
                   ),
                 ],
               ),
@@ -161,7 +166,12 @@ class ArtistHero extends StatelessWidget {
                         child: DismissibleSelectionArea(
                           child: Text(
                             detailsLine,
-                            style: GoogleFonts.rajdhani(color: Colors.white54, fontSize: s(12), letterSpacing: s(1.4)),
+                            style: TextStyle(
+                              fontFamily: ObsidianFonts.display,
+                              color: Colors.white54,
+                              fontSize: s(12),
+                              letterSpacing: s(1.4),
+                            ),
                           ),
                         ),
                       ),

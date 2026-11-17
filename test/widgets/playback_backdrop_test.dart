@@ -15,8 +15,6 @@ import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart'
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
 
-import '../support/widget_test_helpers.dart';
-
 const _viewportKey = ValueKey('page-viewport');
 const _finalRowKey = ValueKey('final-row');
 const _firstRowKey = ValueKey('first-row');
@@ -24,8 +22,6 @@ const _safeAreaBottom = 24.0;
 const _navigationHeight = 64.0;
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final layout in const [
     (size: Size(375, 667), topInset: 20.0),
     (size: Size(390, 844), topInset: 44.0),

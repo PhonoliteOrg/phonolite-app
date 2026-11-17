@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 
 /// The shared initial, gold gradient and typography for missing artwork.
 class ArtworkPlaceholder extends StatelessWidget {
@@ -33,7 +33,12 @@ class ArtworkPlaceholder extends StatelessWidget {
     alignment: Alignment.center,
     child: Text(
       label,
-      style: GoogleFonts.rajdhani(color: Colors.black, fontSize: fontSize, fontWeight: FontWeight.w700),
+      style: TextStyle(
+        fontFamily: ObsidianFonts.display,
+        color: Colors.black,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+      ),
     ),
   );
 }

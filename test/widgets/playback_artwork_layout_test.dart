@@ -16,8 +16,6 @@ import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('play button keeps its icon while disabled and enables when available', (tester) async {
     var plays = 0;
 

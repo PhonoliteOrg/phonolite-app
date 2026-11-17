@@ -8,7 +8,6 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_fie
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUp(configureTestFonts);
   final platforms = TargetPlatformVariant({TargetPlatform.windows, TargetPlatform.android});
 
   for (final width in [430.0, 700.0, 1280.0]) {

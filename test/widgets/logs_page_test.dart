@@ -54,8 +54,6 @@ class CountingLogEntry extends LogEntry {
 }
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets(
     '3000 entries build lazily and Copy All includes offscreen history',
     (tester) async {

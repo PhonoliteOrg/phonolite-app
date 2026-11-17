@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 
 /// Common catalog card arrangement, title design and compact size boost.
 class MediaCardBody extends StatelessWidget {
@@ -42,7 +42,8 @@ class MediaCardBody extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: GoogleFonts.rajdhani(
+          style: TextStyle(
+            fontFamily: ObsidianFonts.display,
             color: Colors.white,
             fontSize: textSize(context, fontSize),
             fontWeight: FontWeight.w700,

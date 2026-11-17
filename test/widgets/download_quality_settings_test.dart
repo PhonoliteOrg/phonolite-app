@@ -20,8 +20,6 @@ import 'package:phonolite_app/ui/features/settings/widgets/download_quality_sele
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('retry restores download quality choices after a storage read error', (tester) async {
     final storage = _MemoryStorage()..failRead = true;
     final controller = DownloadSettingsController(storage: storage);

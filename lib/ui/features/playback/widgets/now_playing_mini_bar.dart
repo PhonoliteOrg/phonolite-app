@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/playback/playback_controls_controller.dart';
@@ -17,6 +16,7 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
@@ -164,7 +164,8 @@ class NowPlayingMiniBar extends StatelessWidget {
                       children: [
                         MarqueeText(
                           text: track?.title ?? 'NO TRACK PLAYING',
-                          style: GoogleFonts.rajdhani(
+                          style: TextStyle(
+                            fontFamily: ObsidianFonts.display,
                             fontSize: s(16),
                             fontWeight: FontWeight.w700,
                             letterSpacing: s(0.8),
@@ -176,7 +177,11 @@ class NowPlayingMiniBar extends StatelessWidget {
                           SizedBox(height: s(2)),
                           MarqueeText(
                             text: subtitle,
-                            style: GoogleFonts.poppins(fontSize: s(12), color: ObsidianPalette.textMuted),
+                            style: TextStyle(
+                              fontFamily: ObsidianFonts.body,
+                              fontSize: s(12),
+                              color: ObsidianPalette.textMuted,
+                            ),
                             velocity: s(26 * playbackSubtitleMarqueeSpeedFactor),
                             gap: s(18),
                           ),

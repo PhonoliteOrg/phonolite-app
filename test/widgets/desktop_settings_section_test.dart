@@ -13,8 +13,6 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.d
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('both desktop switches remain enabled while changes are saved', (tester) async {
     final storage = _DelayedStorage();
     final controller = DesktopSettingsController(storage: storage, platform: _Platform(), isSupported: () => true);

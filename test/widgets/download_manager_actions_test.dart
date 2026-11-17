@@ -16,7 +16,6 @@ import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart'
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
   const unfinishedStates = [
     OfflineDownloadStatus.queued,
     OfflineDownloadStatus.preparing,

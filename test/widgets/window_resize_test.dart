@@ -11,11 +11,7 @@ import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_su
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('retained tabs preserve and update the device top inset', (
     tester,
   ) async {

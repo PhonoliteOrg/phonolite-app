@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/command_link_button.dart';
 
@@ -76,7 +75,6 @@ void main() {
   testWidgets('back commands remain findable when their text is uppercased', (
     tester,
   ) async {
-    GoogleFonts.config.allowRuntimeFetching = false;
     var taps = 0;
     await tester.pumpWidget(
       MaterialApp(

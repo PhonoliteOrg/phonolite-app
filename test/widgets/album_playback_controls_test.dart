@@ -26,8 +26,6 @@ import 'package:phonolite_app/ui/shared/music/tracks/track_sliver_list.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final isLocal in [false, true]) {
     for (final width in [430.0, 1280.0]) {
       testWidgets('${isLocal ? 'local' : 'server'} album track actions share one modal at width $width', (

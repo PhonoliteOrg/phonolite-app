@@ -16,8 +16,6 @@ import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('local addition becomes normal membership only after persistence succeeds', (tester) async {
     final saved = Completer<void>();
     await tester.pumpWidget(

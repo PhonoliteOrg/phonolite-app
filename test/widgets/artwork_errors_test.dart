@@ -45,8 +45,6 @@ class _MissingImageResponse extends Fake implements HttpClientResponse {
 }
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('artist tint is final on its first frame and after a URL change', (tester) async {
     final original = debugNetworkImageHttpClientProvider;
     debugNetworkImageHttpClientProvider = () => _ImageClient();

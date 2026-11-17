@@ -30,8 +30,6 @@ final _albums = [
 ];
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final width in [390.0, 1280.0]) {
     for (final queuedAlbums in [1, 2]) {
       testWidgets(

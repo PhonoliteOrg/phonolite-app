@@ -14,8 +14,6 @@ import 'package:phonolite_app/ui/features/playback/widgets/custom_shuffle_filter
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-import '../support/widget_test_helpers.dart';
-
 const _serverAlpha = 'Alpha artist with a very long name for narrow screens';
 const _localAlpha = 'Alpha downloaded artist with a very long name';
 
@@ -182,8 +180,6 @@ Future<void> _mount(
 }
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('large artist catalogs build only rows near the viewport', (tester) async {
     final controller = _ShuffleController();
     controller._artists

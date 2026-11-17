@@ -8,11 +8,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart'
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets(
     'dragging the tray reuses its unchanged foreground paint',
     (tester) async {

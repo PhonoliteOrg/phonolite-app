@@ -19,8 +19,6 @@ import '../support/offline_library_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   const tooltip = 'Create playlist from liked tracks';
 
   testWidgets('the liked-tracks playlist button is disabled without liked tracks', (tester) async {

@@ -22,8 +22,6 @@ import '../support/offline_library_test_helpers.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final entry in [
     (
       name: 'Library',

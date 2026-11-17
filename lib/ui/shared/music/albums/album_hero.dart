@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/backdrop_color.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
@@ -88,12 +88,17 @@ class AlbumHero extends StatelessWidget {
                       album.artist,
                       maxLines: isCompact ? 1 : null,
                       overflow: isCompact ? TextOverflow.ellipsis : null,
-                      style: GoogleFonts.poppins(color: Colors.white70, fontSize: isCompact ? 12 : s(14)),
+                      style: TextStyle(
+                        fontFamily: ObsidianFonts.body,
+                        color: Colors.white70,
+                        fontSize: isCompact ? 12 : s(14),
+                      ),
                     ),
                     SizedBox(height: isCompact ? 4 : s(6)),
                     Text(
                       isCompact ? albumDetailLabel(album, genreLimit: 0) : detailsLine,
-                      style: GoogleFonts.rajdhani(
+                      style: TextStyle(
+                        fontFamily: ObsidianFonts.display,
                         color: Colors.white54,
                         fontSize: isCompact ? 11 : s(12),
                         letterSpacing: isCompact ? 0.3 : s(1.4),

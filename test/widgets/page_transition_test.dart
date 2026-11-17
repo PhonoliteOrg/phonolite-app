@@ -7,11 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets(
     'iOS back swipe can be cancelled or completed without losing page content',
     (tester) async {

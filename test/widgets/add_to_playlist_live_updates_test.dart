@@ -17,8 +17,6 @@ import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_moda
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('open playlist choices follow authoritative changes and clear optimistic membership', (tester) async {
     final updates = StreamController<List<Playlist>>.broadcast();
     addTearDown(updates.close);

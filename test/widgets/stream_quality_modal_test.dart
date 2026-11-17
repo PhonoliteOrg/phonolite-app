@@ -8,8 +8,6 @@ import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('chooser exposes Auto and fixed qualities without duplicate selections', (tester) async {
     var current = StreamMode.high;
     var selections = 0;

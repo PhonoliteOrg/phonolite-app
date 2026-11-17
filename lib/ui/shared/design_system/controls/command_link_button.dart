@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 
 class CommandLinkButton extends StatelessWidget {
   final String label;
@@ -39,7 +39,9 @@ class CommandLinkButton extends StatelessWidget {
           minimumSize: WidgetStateProperty.all(const Size(0, 40)),
           tapTargetSize: MaterialTapTargetSize.padded,
           shape: WidgetStateProperty.all(const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
-          textStyle: WidgetStateProperty.all(GoogleFonts.rajdhani(fontWeight: FontWeight.w600, letterSpacing: 1.6)),
+          textStyle: WidgetStateProperty.all(
+            TextStyle(fontFamily: ObsidianFonts.display, fontWeight: FontWeight.w600, letterSpacing: 1.6),
+          ),
         ),
         icon: const Icon(PhonoliteIcons.chevronLeft, size: 18),
         label: Text(label.toUpperCase()),

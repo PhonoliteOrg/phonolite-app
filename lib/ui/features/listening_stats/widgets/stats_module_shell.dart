@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 
 class StatsModuleShell extends StatelessWidget {
   final String title;
@@ -29,7 +29,12 @@ class StatsModuleShell extends StatelessWidget {
                 title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.rajdhani(fontSize: s(14), fontWeight: FontWeight.w700, letterSpacing: s(1.6)),
+                style: TextStyle(
+                  fontFamily: ObsidianFonts.display,
+                  fontSize: s(14),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: s(1.6),
+                ),
               ),
             ),
             SizedBox(height: s(12)),

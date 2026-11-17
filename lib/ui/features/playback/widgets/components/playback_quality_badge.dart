@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class PlaybackQualityBadge extends StatefulWidget {
@@ -56,7 +56,8 @@ class PlaybackQualityBadgeState extends State<PlaybackQualityBadge> {
               child: AnimatedDefaultTextStyle(
                 duration: _transition,
                 curve: Curves.easeOut,
-                style: GoogleFonts.rajdhani(
+                style: TextStyle(
+                  fontFamily: ObsidianFonts.display,
                   fontSize: s(13),
                   fontWeight: FontWeight.w600,
                   letterSpacing: s(1.2),

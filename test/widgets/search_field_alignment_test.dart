@@ -7,8 +7,6 @@ import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUp(configureTestFonts);
-
   for (final height in [48.0, 54.0]) {
     for (final textScale in [1.0, 1.4]) {
       testWidgets(

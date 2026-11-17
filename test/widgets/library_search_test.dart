@@ -24,8 +24,6 @@ import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final layout in const [
     (platform: TargetPlatform.iOS, topInset: 59.0),
     (platform: TargetPlatform.android, topInset: 24.0),

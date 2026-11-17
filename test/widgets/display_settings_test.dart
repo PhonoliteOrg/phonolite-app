@@ -23,8 +23,6 @@ import '../support/widget_test_helpers.dart';
 const _toggleKeys = ['display-library-local-first', 'display-playlists-local-first', 'display-likes-local-first'];
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final width in [320.0, 390.0, 1280.0]) {
     for (final status in SessionStatus.values) {
       testWidgets('Display settings require a connected session at $width in $status', (tester) async {

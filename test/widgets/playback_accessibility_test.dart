@@ -12,8 +12,6 @@ import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('transport icon controls announce their action and toggle state', (tester) async {
     final semantics = tester.ensureSemantics();
     final controller = await _controller(tester);

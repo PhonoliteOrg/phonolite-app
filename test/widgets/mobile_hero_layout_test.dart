@@ -18,7 +18,6 @@ const genres = ['alternative rock', 'trip hop', 'downtempo'];
 const genreLine = 'Alternative Rock • Trip Hop • Downtempo';
 
 void main() {
-  setUpAll(configureTestFonts);
   final artist = Artist(
     id: 'artist',
     name: 'An artist with a fairly long name',

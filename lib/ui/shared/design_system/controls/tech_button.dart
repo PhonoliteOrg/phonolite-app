@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 enum TechButtonVariant { standard, danger }
@@ -107,7 +107,8 @@ class _TechButtonState extends State<TechButton> with PointerInteraction<TechBut
         : null;
     final trailingIconWidth = widget.trailingIconWidth;
 
-    final textStyle = GoogleFonts.rajdhani(
+    final textStyle = TextStyle(
+      fontFamily: ObsidianFonts.display,
       fontSize: textSize,
       fontWeight: FontWeight.w700,
       letterSpacing: letterSpacing,

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../support/widget_test_helpers.dart';
 import 'app_driver.dart';
 import 'feature_world.dart';
 import 'platform_profile.dart';
@@ -54,8 +53,6 @@ void runFeatureScenarios(
   List<FeatureScenario> scenarios, {
   List<PlatformProfile> profiles = allPlatformProfiles,
 }) {
-  setUpAll(configureTestFonts);
-
   group(feature, () {
     for (final scenario in scenarios) {
       group(scenario.id, () {

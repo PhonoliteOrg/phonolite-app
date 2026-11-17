@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/application/workflows/restore_storage_access.dart';
 import 'package:phonolite_app/bootstrap/app_error_reporting.dart';
@@ -32,7 +31,6 @@ Future<void> runPhonolite() async {
   installArtworkErrorHandler();
   PhonoliteIcons.registerLicense();
   BundledFontLicenses.register();
-  GoogleFonts.config.allowRuntimeFetching = false;
 
   await _startApp();
 }

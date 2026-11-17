@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
@@ -8,6 +7,7 @@ import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
@@ -175,7 +175,8 @@ class _TemporalSelector extends StatelessWidget {
                   child: Text(
                     label,
                     maxLines: 1,
-                    style: GoogleFonts.rajdhani(
+                    style: TextStyle(
+                      fontFamily: ObsidianFonts.display,
                       fontSize: s(14),
                       fontWeight: FontWeight.w700,
                       letterSpacing: s(1.2),

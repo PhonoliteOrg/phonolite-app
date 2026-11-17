@@ -23,8 +23,6 @@ import '../support/widget_test_helpers.dart';
 const _lightImpact = 'HapticFeedbackType.lightImpact';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets(
     'enabled button families give one iOS pulse; disabled ones stay silent',
     (tester) async {

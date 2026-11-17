@@ -10,13 +10,11 @@ import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.d
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 import '../support/accessibility_update_binding.dart';
-import '../support/widget_test_helpers.dart';
 
 void main() {
   final binding = AccessibilityUpdateBinding();
 
   setUp(() {
-    configureTestFonts();
     binding.resetAccessibilityTree();
 
     final semantics = binding.ensureSemantics();

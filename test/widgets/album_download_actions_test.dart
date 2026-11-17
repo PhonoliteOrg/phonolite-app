@@ -25,8 +25,6 @@ final _tracks = [
 ];
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final width in [390.0, 1280.0]) {
     testWidgets('album action follows job-only updates before track transfers at $width', (tester) async {
       final controller = (await tester.runAsync(() async => _AlbumController()))!;

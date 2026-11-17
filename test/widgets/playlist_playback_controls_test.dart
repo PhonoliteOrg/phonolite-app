@@ -29,7 +29,7 @@ import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
+  setUpAll(loadBundledFonts);
 
   testWidgets('failed local entry remains visible and retryable while playback stays unavailable', (tester) async {
     final controller = (await tester.runAsync(() async => _PlaylistController()))!;

@@ -11,11 +11,7 @@ import 'package:phonolite_app/ui/structures/modals/base_alert_modal.dart';
 import 'package:phonolite_app/ui/structures/sections/base_section.dart';
 import 'package:phonolite_app/ui/structures/sections/base_sliver_section.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('page hooks render navigation and own controller cleanup', (
     tester,
   ) async {

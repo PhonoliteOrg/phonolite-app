@@ -8,8 +8,6 @@ import 'package:phonolite_app/ui/features/settings/widgets/account_sessions_sett
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('other-device confirmation preserves this device and admin console sessions', (tester) async {
     var requests = 0;
 

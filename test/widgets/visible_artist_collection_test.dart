@@ -10,8 +10,6 @@ import 'package:phonolite_app/ui/shared/music/artwork/artist_avatar.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUp(configureTestFonts);
-
   testWidgets('a visible placeholder gets artwork without opening the artist', (tester) async {
     final source = Artist(id: 'bb', name: 'B.B. King', albumCount: 1);
     final updates = StreamController<Artist>.broadcast(sync: true);

@@ -26,7 +26,8 @@ import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
+  setUpAll(loadBundledFonts);
+
   final desktopPlatforms = TargetPlatformVariant({TargetPlatform.windows, TargetPlatform.macOS, TargetPlatform.linux});
 
   for (final playback in const ['server', 'local', 'idle']) {

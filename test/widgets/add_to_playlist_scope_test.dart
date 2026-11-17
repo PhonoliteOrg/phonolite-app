@@ -19,8 +19,6 @@ import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final presentation in ['desktop', 'compact', 'expanded']) {
     for (final local in [false, true]) {
       for (final empty in [false, true]) {

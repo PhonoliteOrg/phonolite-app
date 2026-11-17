@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 class StatsKpiGrid extends StatelessWidget {
@@ -97,7 +97,8 @@ class _KpiCard extends StatelessWidget {
           children: [
             Text(
               label,
-              style: GoogleFonts.rajdhani(
+              style: TextStyle(
+                fontFamily: ObsidianFonts.display,
                 fontSize: labelSize,
                 fontWeight: FontWeight.w700,
                 letterSpacing: s(1.4),
@@ -110,7 +111,8 @@ class _KpiCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 value,
-                style: GoogleFonts.rajdhani(
+                style: TextStyle(
+                  fontFamily: ObsidianFonts.display,
                   fontSize: valueSize,
                   fontWeight: FontWeight.w700,
                   color: ObsidianPalette.gold,

@@ -23,13 +23,10 @@ import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart'
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 
 import '../support/auth_test_helpers.dart';
-import '../support/widget_test_helpers.dart';
 
 const _newPassword = 'a new long passphrase';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final platform in TargetPlatform.values) {
     testWidgets('desktop settings visibility on $platform', (tester) async {
       debugDefaultTargetPlatformOverride = platform;

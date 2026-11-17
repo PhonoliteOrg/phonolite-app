@@ -7,11 +7,7 @@ import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
 import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 import 'package:phonolite_app/ui/structures/collections/collection_sliver.dart';
 
-import '../support/widget_test_helpers.dart';
-
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('scrolling page preserves controller, gutter and overlay space', (
     tester,
   ) async {

@@ -13,8 +13,6 @@ const _switchKey = ValueKey('listening-statistics-switch');
 const _resetKey = ValueKey('reset-listening-statistics');
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets('preference saves keep the switch enabled and reset waits for every save', (tester) async {
     final fixture = _Fixture();
     addTearDown(fixture.finishSaves);

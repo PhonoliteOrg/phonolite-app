@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
@@ -7,6 +6,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 List<Widget> playbackBuildTechTags(PlaybackState state) {
@@ -184,7 +184,12 @@ class PlaybackTechTag extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.rajdhani(fontSize: s(9.5), fontWeight: FontWeight.w600, letterSpacing: s(0.6)),
+        style: TextStyle(
+          fontFamily: ObsidianFonts.display,
+          fontSize: s(9.5),
+          fontWeight: FontWeight.w600,
+          letterSpacing: s(0.6),
+        ),
       ),
     );
   }

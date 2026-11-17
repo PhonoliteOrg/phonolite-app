@@ -19,8 +19,6 @@ const _server = 'https://downloads.test/api';
 final _now = DateTime.utc(2026);
 
 void main() {
-  setUpAll(configureTestFonts);
-
   for (final width in [390.0, 1280.0]) {
     testWidgets('queued tracks appear on snapshot updates before transfer files exist at $width', (tester) async {
       _setViewport(tester, width);
