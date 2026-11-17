@@ -251,13 +251,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
     return authHeaders(controller);
   }
 
-  AppController? _maybeAppController(BuildContext context) {
-    try {
-      return AppScope.of(context);
-    } catch (_) {
-      return null;
-    }
-  }
+  AppController? _maybeAppController(BuildContext context) => AppScope.maybeOf(context);
 
   String? _downloadTitleStatus(OfflineDownloadStatus? status) => switch (status) {
     OfflineDownloadStatus.queued => 'Queued',

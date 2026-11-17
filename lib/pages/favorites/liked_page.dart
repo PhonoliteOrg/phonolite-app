@@ -53,8 +53,8 @@ class _LikedPageState extends BasePageState<LikedPage> {
     }
   }
 
-  void _openCreatePlaylist({required List<Track> localTracks, required List<Track> serverTracks}) {
-    showDialog<void>(
+  Future<void> _openCreatePlaylist({required List<Track> localTracks, required List<Track> serverTracks}) {
+    return showDialog<void>(
       context: context,
       builder: (context) => PlaylistEditorModal(
         title: 'Create playlist from liked tracks',

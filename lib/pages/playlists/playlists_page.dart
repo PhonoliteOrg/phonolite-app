@@ -45,8 +45,8 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
     );
   }
 
-  void _openCreate({required bool canCreateServer}) {
-    showDialog<void>(
+  Future<void> _openCreate({required bool canCreateServer}) {
+    return showDialog<void>(
       context: context,
       builder: (context) => PlaylistEditorModal(
         title: 'Create playlist',

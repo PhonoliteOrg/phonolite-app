@@ -12,14 +12,14 @@ bool settingsUsesManagedOfflineStoragePaths(BuildContext context) {
   return Theme.of(context).platform == TargetPlatform.iOS;
 }
 
-void settingsOpenStoragePathDialog(
+Future<void> settingsOpenStoragePathDialog(
   BuildContext context, {
   required String title,
   required String initialPath,
   required bool isDefault,
   required Future<void> Function(String? path) onSave,
 }) {
-  showDialog<void>(
+  return showDialog<void>(
     context: context,
     builder: (context) =>
         StoragePathDialog(title: title, initialPath: initialPath, isDefault: isDefault, onSave: onSave),

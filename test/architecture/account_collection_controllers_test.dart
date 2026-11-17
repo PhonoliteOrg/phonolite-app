@@ -17,7 +17,7 @@ void main() {
     final playlists = PlaylistsController(app);
     addTearDown(liked.dispose);
     addTearDown(playlists.dispose);
-    addTearDown(app.authEvents.close);
+    addTearDown(app.closeAuthEvents);
     await Future.wait([liked.initialize(), playlists.initialize()]);
     expect(app.likeLoads, 1);
     expect(app.playlistLoads, 1);
@@ -69,6 +69,8 @@ class _App extends Fake implements AppController {
   AuthState get authState => AuthState(isAuthorized: true, baseUrl: 'https://music.test/api');
   @override
   Stream<AuthState> get authStream => authEvents.stream;
+
+  Future<void> closeAuthEvents() => authEvents.close();
   @override
   Future<void> loadLikedTracks() async => likeLoads++;
   @override

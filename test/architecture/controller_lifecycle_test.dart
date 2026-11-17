@@ -3768,7 +3768,7 @@ void main() {
     ]) {
       expect(list.clear, throwsUnsupportedError);
     }
-    controller.clearMessages();
+    await controller.clearMessages();
     final message = controller.messageStream.first;
     AppLogger.info('snapshot one');
     final emitted = await message;
@@ -5594,7 +5594,8 @@ class _Audio implements AudioEngine {
   Future<void> resetOutput() async {
     try {
       await stop(waitForRelease: true);
-    } catch (_) {
+    } on Object catch (_) {
+      // Mirrors the engine: a failed stop still leaves the output reset.
       active = false;
       paused = false;
     }

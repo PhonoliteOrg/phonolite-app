@@ -1,18 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
 
 void main() {
-  const desktops = TargetPlatformVariant({
-    TargetPlatform.windows,
-    TargetPlatform.macOS,
-    TargetPlatform.linux,
-  });
+  const desktops = TargetPlatformVariant({TargetPlatform.windows, TargetPlatform.macOS, TargetPlatform.linux});
 
-  testWidgets('Space toggles once per press, including when held', (
-    tester,
-  ) async {
+  testWidgets('Space toggles once per press, including when held', (tester) async {
     var toggles = 0;
     await tester.pumpWidget(_app(onToggle: () => toggles++));
     await tester.pumpAndSettle();
@@ -27,9 +23,7 @@ void main() {
     expect(toggles, 2);
   }, variant: desktops);
 
-  testWidgets('modified Space and other keys do not toggle playback', (
-    tester,
-  ) async {
+  testWidgets('modified Space and other keys do not toggle playback', (tester) async {
     var toggles = 0;
     await tester.pumpWidget(_app(onToggle: () => toggles++));
     await tester.pumpAndSettle();
@@ -50,9 +44,7 @@ void main() {
 
   testWidgets('focused text inputs keep Space for typing', (tester) async {
     var toggles = 0;
-    await tester.pumpWidget(
-      _app(onToggle: () => toggles++, child: const TextField()),
-    );
+    await tester.pumpWidget(_app(onToggle: () => toggles++, child: const TextField()));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(TextField));
     await tester.pumpAndSettle();
@@ -62,9 +54,7 @@ void main() {
     expect(toggles, 0);
   }, variant: desktops);
 
-  testWidgets('focused buttons and checkboxes retain Space activation', (
-    tester,
-  ) async {
+  testWidgets('focused buttons and checkboxes retain Space activation', (tester) async {
     var toggles = 0;
     var activations = 0;
     var checks = 0;
@@ -77,16 +67,8 @@ void main() {
         onToggle: () => toggles++,
         child: Column(
           children: [
-            TextButton(
-              focusNode: buttonFocus,
-              onPressed: () => activations++,
-              child: const Text('Action'),
-            ),
-            Checkbox(
-              focusNode: checkboxFocus,
-              value: false,
-              onChanged: (_) => checks++,
-            ),
+            TextButton(focusNode: buttonFocus, onPressed: () => activations++, child: const Text('Action')),
+            Checkbox(focusNode: checkboxFocus, value: false, onChanged: (_) => checks++),
           ],
         ),
       ),
@@ -106,15 +88,16 @@ void main() {
     expect(toggles, 0);
   }, variant: desktops);
 
-  testWidgets('modal dialogs do not toggle playback behind them', (
-    tester,
-  ) async {
+  testWidgets('modal dialogs do not toggle playback behind them', (tester) async {
     var toggles = 0;
     await tester.pumpWidget(_app(onToggle: () => toggles++));
     await tester.pumpAndSettle();
-    showDialog<void>(
-      context: tester.element(find.text('Content')),
-      builder: (_) => const AlertDialog(content: Text('Dialog')),
+    // The dialog stays open while the test sends keys behind it.
+    unawaited(
+      showDialog<void>(
+        context: tester.element(find.text('Content')),
+        builder: (_) => const AlertDialog(content: Text('Dialog')),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
@@ -125,29 +108,21 @@ void main() {
     expect(toggles, 1);
   }, variant: desktops);
 
-  testWidgets(
-    'mobile platforms do not get the playback shortcut',
-    (tester) async {
-      var toggles = 0;
-      await tester.pumpWidget(
-        _app(
-          onToggle: () => toggles++,
-          child: const Focus(autofocus: true, child: SizedBox.shrink()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.space);
-      expect(toggles, 0);
-    },
-    variant: const TargetPlatformVariant({
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-    }),
-  );
+  testWidgets('mobile platforms do not get the playback shortcut', (tester) async {
+    var toggles = 0;
+    await tester.pumpWidget(
+      _app(
+        onToggle: () => toggles++,
+        child: const Focus(autofocus: true, child: SizedBox.shrink()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    expect(toggles, 0);
+  }, variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}));
 }
 
 Widget _app({required VoidCallback onToggle, Widget? child}) => MaterialApp(
-  builder: (_, navigator) =>
-      DesktopPlaybackShortcuts(onTogglePlayPause: onToggle, child: navigator!),
+  builder: (_, navigator) => DesktopPlaybackShortcuts(onTogglePlayPause: onToggle, child: navigator!),
   home: Scaffold(body: child ?? const Center(child: Text('Content'))),
 );

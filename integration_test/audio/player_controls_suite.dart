@@ -124,7 +124,8 @@ class PlayerControlsSuite {
           },
         ),
       );
-    } catch (error, stack) {
+    } on Object catch (error, stack) {
+      // Recorded per journey; the suite reports all failures together.
       failures.add(id);
       debugPrint('[controls] $id failed: $error');
       debugPrintStack(stackTrace: stack);
@@ -553,7 +554,8 @@ class PlayerControlsSuite {
     Future<void> attempt(String name, Future<void> Function() action) async {
       try {
         await action();
-      } catch (_) {
+      } on Object catch (_) {
+        // Each cleanup step runs; failed step names are reported together.
         errors.add(name);
       }
     }

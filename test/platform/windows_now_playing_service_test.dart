@@ -31,7 +31,7 @@ void main() {
 
   Future<void> incoming(String method, Map<String, dynamic> arguments) async {
     final response = Completer<ByteData?>();
-    messenger.handlePlatformMessage(
+    await messenger.handlePlatformMessage(
       channel.name,
       const StandardMethodCodec().encodeMethodCall(MethodCall(method, arguments)),
       response.complete,

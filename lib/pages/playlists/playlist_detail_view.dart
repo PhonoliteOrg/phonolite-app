@@ -79,8 +79,8 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
     );
   }
 
-  void _openRename(AppController controller, Playlist playlist) {
-    showDialog<void>(
+  Future<void> _openRename(AppController controller, Playlist playlist) {
+    return showDialog<void>(
       context: context,
       builder: (context) => PlaylistEditorModal(
         title: 'Rename playlist',
@@ -94,8 +94,8 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
     );
   }
 
-  void _openDownload(AppController controller, Playlist playlist, List<Track> tracks) {
-    showDialog<void>(
+  Future<void> _openDownload(AppController controller, Playlist playlist, List<Track> tracks) {
+    return showDialog<void>(
       context: context,
       builder: (context) => PlaylistEditorModal(
         title: 'Download playlist',

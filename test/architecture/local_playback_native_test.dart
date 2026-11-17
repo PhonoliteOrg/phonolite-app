@@ -91,7 +91,8 @@ void main() {
       await _waitForSession(session, () => idleCalls > 0, 'the decoder to reach EOF');
       final writesAtEof = output.writes;
       expect(writesAtEof, greaterThan(0));
-      session.pause();
+      // Left in flight: the seeks below must supersede the pending pause.
+      unawaited(session.pause());
       final superseded = session.seek(const Duration(milliseconds: 50));
       final latest = session.seek(const Duration(milliseconds: 200));
       holdIdle = false;
@@ -151,7 +152,8 @@ void main() {
       addTearDown(session.close);
       session.start();
       await _waitForSession(session, () => output.writeAttempts > 0, 'the first PCM write');
-      session.pause();
+      // Left in flight: the seek below runs while the pause is pending.
+      unawaited(session.pause());
       expect(await session.seek(const Duration(milliseconds: 200)).timeout(const Duration(seconds: 2)), isTrue);
       expect(session.paused, isTrue);
       expect(output.writes, 0);

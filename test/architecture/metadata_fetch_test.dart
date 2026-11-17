@@ -79,7 +79,8 @@ void main() {
     Future<({Object error, StackTrace stackTrace})> captureFailure(Future<Map<String, dynamic>> pending) async {
       try {
         await pending;
-      } catch (error, stackTrace) {
+      } on Object catch (error, stackTrace) {
+        // The helper hands any failure back to the test for inspection.
         return (error: error, stackTrace: stackTrace);
       }
 

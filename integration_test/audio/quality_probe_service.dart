@@ -7,35 +7,23 @@ import 'quality_wire_probe.dart';
 /// Only the test entry point registers this. It permits diagnostic repeats
 /// against the current fixture without an AOT rebuild or production hooks.
 void registerQualityProbe(AudioProbe probe) {
-  developer.registerExtension('ext.phonolite.inspectQuality', (
-    _,
-    parameters,
-  ) async {
+  developer.registerExtension('ext.phonolite.inspectQuality', (_, parameters) async {
     final quality = parameters['quality'] ?? 'high';
     if (!qualityTargets.containsKey(quality) || probe.lastRequest == null) {
-      return developer.ServiceExtensionResponse.error(
-        -32000,
-        'No valid quality/fixture',
-      );
+      return developer.ServiceExtensionResponse.error(-32000, 'No valid quality/fixture');
     }
     try {
       final result = await inspectQualityWire(
         probe.lastRequest!,
         quality,
-        sampleMs: (int.tryParse(parameters['sample_ms'] ?? '') ?? 2000).clamp(
-          100,
-          12000,
-        ),
-        timeoutMs: (int.tryParse(parameters['timeout_ms'] ?? '') ?? 10000)
-            .clamp(500, 20000),
+        sampleMs: (int.tryParse(parameters['sample_ms'] ?? '') ?? 2000).clamp(100, 12000),
+        timeoutMs: (int.tryParse(parameters['timeout_ms'] ?? '') ?? 10000).clamp(500, 20000),
         sendPlaybackReport: parameters['send_playback'] == 'true',
       );
       return developer.ServiceExtensionResponse.result(jsonEncode(result));
-    } catch (_) {
-      return developer.ServiceExtensionResponse.error(
-        -32000,
-        'Quality probe failed; inspect the test output',
-      );
+    } on Object catch (_) {
+      // The probe answers the driver with a failure; details stay in the test output.
+      return developer.ServiceExtensionResponse.error(-32000, 'Quality probe failed; inspect the test output');
     }
   });
 }

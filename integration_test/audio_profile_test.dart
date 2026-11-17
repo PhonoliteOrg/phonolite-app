@@ -163,7 +163,8 @@ void main() {
               },
             ),
           );
-        } catch (error, stack) {
+        } on Object catch (error, stack) {
+          // Recorded per journey; the run reports all failures together.
           failures.add(id);
           debugPrint('[audio] $id failed: $error');
           debugPrintStack(stackTrace: stack);

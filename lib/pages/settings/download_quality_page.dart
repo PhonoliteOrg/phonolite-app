@@ -46,16 +46,16 @@ class _DownloadQualityPageState extends BasePageState<DownloadQualityPage> {
   Future<void> _initialize() async {
     try {
       await _controller.initialize();
-    } catch (_) {
-      // The controller exposes a recoverable error on this page.
+    } on Object catch (_) {
+      // The controller has already reported the failure and exposes it on this page with Retry.
     }
   }
 
   Future<void> _retry() async {
     try {
       await _controller.retryInitialization();
-    } catch (_) {
-      // Keep the last error visible if device storage is still unavailable.
+    } on Object catch (_) {
+      // The controller has already reported the failure; its error stays visible with Retry.
     }
   }
 

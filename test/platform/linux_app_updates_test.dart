@@ -295,6 +295,7 @@ class _Process extends LinuxUpdateProcess {
   }
 
   Future<void> cleanup() async {
+    await child?.close();
     for (final path in stages) {
       final directory = Directory(path);
       if (await directory.exists()) await directory.delete(recursive: true);
@@ -307,12 +308,16 @@ class _Child implements Process {
   final String response;
   final String correlation;
   bool killed = false;
-  late final IOSink _stdin;
+  final _stdinBytes = StreamController<List<int>>();
+  late final IOSink _stdin = IOSink(_stdinBytes.sink);
 
   _Child(this.response, this.correlation) {
-    final bytes = StreamController<List<int>>();
-    bytes.stream.transform(utf8.decoder).listen(input.add);
-    _stdin = IOSink(bytes.sink);
+    _stdinBytes.stream.transform(utf8.decoder).listen(input.add);
+  }
+
+  Future<void> close() async {
+    await _stdin.close();
+    await _stdinBytes.close();
   }
 
   @override

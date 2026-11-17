@@ -111,6 +111,7 @@ void main() {
 
         if (attempts == 1) {
           final body = StreamController<List<int>>(onCancel: () => released.add(true));
+          addTearDown(body.close);
 
           return http.StreamedResponse(body.stream, 503, headers: {HttpHeaders.retryAfterHeader: '0'});
         }
