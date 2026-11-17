@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
@@ -6,8 +7,6 @@ import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 import '../support/widget_test_helpers.dart';
 
 void main() {
-  setUpAll(configureTestFonts);
-
   testWidgets(
     'idle row starts independent playing bars, then stops and resumes',
     (tester) async {
@@ -63,19 +62,32 @@ Future<void> _pumpRow(WidgetTester tester, {required bool isPlaying}) async {
   );
 }
 
+/// Heights of the now-playing bars as the row's painters currently draw them.
 List<double> _barHeights(WidgetTester tester) {
-  final bars = find.descendant(
-    of: find.byType(TrackRowTile),
-    matching: find.byWidgetPredicate(
-      (widget) =>
-          widget is Container &&
-          widget.decoration is BoxDecoration &&
-          (widget.decoration! as BoxDecoration).color ==
-              const Color(0xFFFFA33A),
-    ),
-  );
-  return [
-    for (var i = 0; i < bars.evaluate().length; i++)
-      tester.getSize(bars.at(i)).height,
-  ];
+  const barColor = Color(0xFFFFA33A);
+  final heights = <double>[];
+  final painters = find.descendant(of: find.byType(TrackRowTile), matching: find.byType(CustomPaint));
+
+  for (final element in painters.evaluate()) {
+    final renderObject = element.renderObject! as RenderCustomPaint;
+    final painter = renderObject.painter;
+
+    if (painter == null) {
+      continue;
+    }
+
+    final canvas = TestRecordingCanvas();
+    painter.paint(canvas, renderObject.size);
+
+    for (final recorded in canvas.invocations) {
+      final invocation = recorded.invocation;
+
+      if (invocation.memberName == #drawRRect &&
+          (invocation.positionalArguments[1] as Paint).color.toARGB32() == barColor.toARGB32()) {
+        heights.add((invocation.positionalArguments[0] as RRect).height);
+      }
+    }
+  }
+
+  return heights;
 }

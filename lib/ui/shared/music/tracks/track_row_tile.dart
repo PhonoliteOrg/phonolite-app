@@ -668,42 +668,48 @@ class _NowPlayingBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final t = controller.value * 2 * math.pi;
-        final heights = <double>[
-          6 + 8 * (0.5 + 0.5 * math.sin(t)),
-          6 + 10 * (0.5 + 0.5 * math.sin(t + 1.6)),
-          6 + 7 * (0.5 + 0.5 * math.sin(t + 3.2)),
-        ];
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _Bar(height: heights[0]),
-            const SizedBox(width: 2),
-            _Bar(height: heights[1]),
-            const SizedBox(width: 2),
-            _Bar(height: heights[2]),
-          ],
-        );
-      },
+    // The painter repaints from the animation directly, so ticks skip build and
+    // layout, and the boundary keeps them from repainting the rest of the row.
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: _NowPlayingBarsPainter.extent,
+        painter: _NowPlayingBarsPainter(animation: controller),
+      ),
     );
   }
 }
 
-class _Bar extends StatelessWidget {
-  final double height;
+class _NowPlayingBarsPainter extends CustomPainter {
+  static const double _barWidth = 3;
+  static const double _barGap = 2;
+  static const double _barMinHeight = 6;
+  static const List<double> _barRanges = <double>[8, 10, 7];
+  static const List<double> _barPhases = <double>[0, 1.6, 3.2];
+  static const Radius _barRadius = Radius.circular(2);
+  static const Color _barColor = Color(0xFFFFA33A);
+  static const Size extent = Size(
+    _barWidth * 3 + _barGap * 2,
+    _barMinHeight + 10, // The tallest bar's full range.
+  );
 
-  const _Bar({required this.height});
+  final Animation<double> animation;
+
+  _NowPlayingBarsPainter({required this.animation}) : super(repaint: animation);
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 3,
-      height: height,
-      decoration: BoxDecoration(color: const Color(0xFFFFA33A), borderRadius: BorderRadius.circular(2)),
-    );
+  void paint(Canvas canvas, Size size) {
+    final t = animation.value * 2 * math.pi;
+    final paint = Paint()..color = _barColor;
+    final left = (size.width - extent.width) / 2;
+
+    for (var index = 0; index < _barRanges.length; index++) {
+      final height = _barMinHeight + _barRanges[index] * (0.5 + 0.5 * math.sin(t + _barPhases[index]));
+      final rect = Rect.fromLTWH(left + index * (_barWidth + _barGap), (size.height - height) / 2, _barWidth, height);
+
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, _barRadius), paint);
+    }
   }
+
+  @override
+  bool shouldRepaint(_NowPlayingBarsPainter oldDelegate) => oldDelegate.animation != animation;
 }

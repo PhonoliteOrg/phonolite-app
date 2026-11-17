@@ -69,7 +69,9 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
           tween: Tween<double>(end: glowOpacity),
           duration: _transition,
           curve: Curves.easeOut,
-          builder: (context, animatedGlow, _) {
+          // Only the glow painter follows the glow value; the face below is
+          // built once per state change rather than on every glow tick.
+          builder: (context, animatedGlow, face) {
             return CustomPaint(
               painter: animatedGlow > 0
                   ? PlaybackHudPlayButtonBorderPainter(
@@ -79,41 +81,43 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
                     )
                   : null,
               foregroundPainter: PlaybackHudPlayButtonBorderPainter(color: baseColor, width: borderWidth),
-              child: ClipPath(
-                clipper: const PlaybackOctagonClipper(cutFraction: 0.3),
-                child: TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(end: highlight ? ObsidianPalette.gold.withValues(alpha: 0.75) : idleFill),
-                  duration: _transition,
-                  curve: Curves.easeOut,
-                  builder: (context, animatedFill, __) {
-                    final fill = animatedFill ?? idleFill;
-
-                    return maybeBlur(
-                      sigma: s(12 * scaleFactor),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color.alphaBlend(Colors.white.withValues(alpha: 0.06), fill), fill],
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: TweenAnimationBuilder<Color?>(
-                          tween: ColorTween(end: highlight ? Colors.black : idleIcon),
-                          duration: _transition,
-                          curve: Curves.easeOut,
-                          builder: (context, animatedIconColor, ___) {
-                            return Icon(widget.icon, color: animatedIconColor, size: iconSize);
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+              child: face,
             );
           },
+          child: ClipPath(
+            clipper: const PlaybackOctagonClipper(cutFraction: 0.3),
+            child: TweenAnimationBuilder<Color?>(
+              tween: ColorTween(end: highlight ? ObsidianPalette.gold.withValues(alpha: 0.75) : idleFill),
+              duration: _transition,
+              curve: Curves.easeOut,
+              builder: (context, animatedFill, icon) {
+                final fill = animatedFill ?? idleFill;
+
+                return maybeBlur(
+                  sigma: s(12 * scaleFactor),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color.alphaBlend(Colors.white.withValues(alpha: 0.06), fill), fill],
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: icon,
+                  ),
+                );
+              },
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: highlight ? Colors.black : idleIcon),
+                duration: _transition,
+                curve: Curves.easeOut,
+                builder: (context, animatedIconColor, _) {
+                  return Icon(widget.icon, color: animatedIconColor, size: iconSize);
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );
