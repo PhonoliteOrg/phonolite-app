@@ -18,16 +18,20 @@ final class AudioSessionService: NSObject {
     NotificationCenter.default.removeObserver(self)
   }
 
-  func configureInitialSession() { _ = activateForPlayback() }
+  // Launch only declares the category. Activating a non-mixable playback session here would
+  // interrupt other apps' audio before the user plays anything; activateForPlayback does that.
+  func configureInitialSession() {
+    do {
+      try configureCategory()
+    } catch {
+      NSLog("Failed to configure audio session: %@", "\(error)")
+    }
+  }
 
   func activateForPlayback() -> Bool {
     do {
-      let session = AVAudioSession.sharedInstance()
-
-      // Playback already supports AirPlay and Bluetooth A2DP. Explicit
-      // allowAirPlay is only valid for the playAndRecord category.
-      try session.setCategory(.playback, mode: .default, options: [])
-      try session.setActive(true)
+      try configureCategory()
+      try AVAudioSession.sharedInstance().setActive(true)
 
       return true
     } catch {
@@ -35,6 +39,14 @@ final class AudioSessionService: NSObject {
 
       return false
     }
+  }
+
+  private func configureCategory() throws {
+    // Playback already supports AirPlay and Bluetooth A2DP. Explicit
+    // allowAirPlay is only valid for the playAndRecord category.
+    let session = AVAudioSession.sharedInstance()
+
+    try session.setCategory(.playback, mode: .default, options: [])
   }
 
   func configureObservers() {
@@ -103,6 +115,15 @@ final class AudioSessionService: NSObject {
     }
 
     let reasonValue = (information[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue ?? 0
+
+    // Route changes are posted on a background thread; playback state and the channel
+    // are main-thread only.
+    DispatchQueue.main.async { [weak self] in
+      self?.applyRouteChange(reasonValue: reasonValue)
+    }
+  }
+
+  private func applyRouteChange(reasonValue: UInt) {
 
     guard let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
       return
