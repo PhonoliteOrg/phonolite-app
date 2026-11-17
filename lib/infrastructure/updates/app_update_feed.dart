@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -74,14 +75,14 @@ class HttpAppUpdateFeed implements AppUpdateFeed {
     if ((response.contentLength ?? 0) > _maximumBytes) {
       throw const FormatException('The update feed is too large.');
     }
-    final bytes = <int>[];
+    final bytes = BytesBuilder(copy: false);
     await for (final chunk in response.stream) {
       if (bytes.length + chunk.length > _maximumBytes) {
         throw const FormatException('The update feed is too large.');
       }
-      bytes.addAll(chunk);
+      bytes.add(chunk);
     }
-    return utf8.decode(bytes);
+    return utf8.decode(bytes.takeBytes());
   }
 }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -22,9 +23,10 @@ class AppUpdateTransport {
   }
 
   Future<List<int>> metadata(Uri url, {int maximum = 1024 * 1024}) async {
-    final bytes = <int>[];
-    await _read(url, maximum: maximum, deadline: const Duration(seconds: 30), onChunk: bytes.addAll);
-    return bytes;
+    final bytes = BytesBuilder(copy: false);
+    await _read(url, maximum: maximum, deadline: const Duration(seconds: 30), onChunk: bytes.add);
+
+    return bytes.takeBytes();
   }
 
   Future<void> download(

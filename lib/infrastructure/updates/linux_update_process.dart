@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class LinuxUpdateProcess {
   static const coordinator = '/usr/libexec/phonolite-update-coordinator';
@@ -70,15 +71,15 @@ class LinuxUpdateProcess {
   }
 
   Future<String> _bounded(Stream<List<int>> input) async {
-    final bytes = <int>[];
+    final bytes = BytesBuilder(copy: false);
     await for (final chunk in input) {
       if (bytes.length + chunk.length > 1024 * 1024) {
         throw const FormatException('Updater output exceeded its limit.');
       }
 
-      bytes.addAll(chunk);
+      bytes.add(chunk);
     }
 
-    return utf8.decode(bytes);
+    return utf8.decode(bytes.takeBytes());
   }
 }
