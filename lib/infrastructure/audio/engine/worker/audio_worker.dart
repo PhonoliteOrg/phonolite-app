@@ -17,6 +17,9 @@ void _audioWorkerMain(AudioWorkerInit init) {
   final engine = _AudioWorkerEngine(send: init.sendPort.send);
   const defaultSettings = StreamSettings.original();
 
+  // The listener is async and the isolate's errors are fatal, so an uncaught throw here (for
+  // example an output-stall timeout while cancelling a prepared track) would kill playback.
+  // A failed command is reported instead, and replies the main side waits on are always sent.
   Future<void> handleCommand(Object? message) async {
     if (message is! Map) {
       return;
@@ -24,128 +27,145 @@ void _audioWorkerMain(AudioWorkerInit init) {
 
     final cmd = message['cmd'];
 
-    switch (cmd) {
-      case 'network_changed':
-        engine.notifyNetworkChange(
-          playbackId: (message['playback_id'] as num?)?.toInt() ?? 0,
-          routeGeneration: (message['route_generation'] as num?)?.toInt() ?? 0,
-        );
-        break;
-      case 'commit_gapless':
-        if (message['playback_id'] == engine._playbackId) {
-          engine.acknowledge((message['preparation_id'] as num?)?.toInt() ?? 0);
-        }
-        break;
-      case 'gapless_resampling':
-        engine.gaplessResampling = message['enabled'] == true;
-        break;
-      case 'prepare_next':
-        await engine.prepareNext(message);
-        break;
-      case 'cancel_prepared':
-        if (message['playback_id'] == engine._playbackId || message['playback_id'] == engine._requestedPlaybackId) {
-          await engine.cancelPreparedNext(preparationId: (message['preparation_id'] as num?)?.toInt());
-        }
-        if (message['release_request_id'] != null) {
+    try {
+      await _runAudioWorkerCommand(engine, message, cmd, defaultSettings);
+    } catch (error) {
+      init.sendPort.send({'type': 'message', 'text': 'Audio worker command $cmd failed: $error'});
+    } finally {
+      switch (cmd) {
+        case 'cancel_prepared' when message['release_request_id'] != null:
           init.sendPort.send({'type': 'prepared_released', 'release_request_id': message['release_request_id']});
-        }
-        break;
-      case 'listening_context':
-        final context = message['context'];
-
-        engine.configureListening(
-          context is Map ? Map<String, dynamic>.from(context) : null,
-          discardPending: message['discard_pending'] != false,
-        );
-        break;
-      case 'play':
-        final rawQueue = message['queue'];
-        final queue = rawQueue is List ? rawQueue.map((item) => item.toString()).toList() : const <String>[];
-        final playbackId = (message['playback_id'] as num?)?.toInt() ?? 0;
-
-        if (playbackId <= 0) {
-          break;
-        }
-
-        final context = message['listening_context'];
-
-        await engine.playTrack(
-          playbackId: playbackId,
-          trackId: message['track_id']?.toString() ?? '',
-          trackTitle: message['track_title']?.toString() ?? '',
-          baseUrl: message['base_url']?.toString() ?? '',
-          token: message['token']?.toString() ?? '',
-          serverPin: message['server_pin']?.toString() ?? '',
-          quicPort: (message['quic_port'] as num?)?.toInt(),
-          settings: StreamSettings(
-            mode: message['mode']?.toString() ?? defaultSettings.mode,
-            quality: message['quality']?.toString() ?? defaultSettings.quality,
-            frameMs: (message['frame_ms'] as num?)?.toInt() ?? defaultSettings.frameMs,
-          ),
-          startOffset: Duration(milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0),
-          queueTrackIds: queue,
-          quickStart: message['quick_start'] != false,
-          initialPaused: message['initial_paused'] == true,
-          listeningContext: context is Map ? Map<String, dynamic>.from(context) : null,
-        );
-        break;
-      case 'play_local':
-        final playbackId = (message['playback_id'] as num?)?.toInt() ?? 0;
-
-        if (playbackId <= 0) {
-          break;
-        }
-
-        final context = message['listening_context'];
-
-        await engine.playLocalFile(
-          playbackId: playbackId,
-          trackId: message['track_id']?.toString() ?? '',
-          trackTitle: message['track_title']?.toString() ?? '',
-          filePath: message['file_path']?.toString() ?? '',
-          startOffset: Duration(milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0),
-          initialPaused: message['initial_paused'] == true,
-          listeningContext: context is Map ? Map<String, dynamic>.from(context) : null,
-        );
-        break;
-      case 'stop':
-        await engine.stop();
-        init.sendPort.send({'type': 'listening_flushed', 'flush_request_id': message['flush_request_id']});
-        break;
-      case 'pause':
-        await engine.pause(playbackId: (message['playback_id'] as num?)?.toInt());
-        break;
-      case 'resume':
-        engine.resume(playbackId: (message['playback_id'] as num?)?.toInt());
-        break;
-      case 'volume':
-        final value = (message['value'] as num?)?.toDouble() ?? 1.0;
-
-        engine.setVolume(value);
-        break;
-      case 'device':
-        final deviceId = (message['device_id'] as num?)?.toInt() ?? kDefaultOutputDeviceId;
-
-        engine.setOutputDevice(deviceId);
-        break;
-      case 'seek':
-        final ms = (message['position_ms'] as num?)?.toInt() ?? 0;
-
-        await engine.seekTo(
-          Duration(milliseconds: ms),
-          playbackId: (message['playback_id'] as num?)?.toInt(),
-          requestId: (message['request_id'] as num?)?.toInt() ?? 0,
-        );
-        break;
-      case 'dispose':
-        await engine.dispose();
-        init.sendPort.send({'type': 'disposed'});
-        receivePort.close();
-        Isolate.exit();
-      default:
-        break;
+        case 'stop':
+          init.sendPort.send({'type': 'listening_flushed', 'flush_request_id': message['flush_request_id']});
+        case 'dispose':
+          init.sendPort.send({'type': 'disposed'});
+          receivePort.close();
+          Isolate.exit();
+      }
     }
   }
 
   receivePort.listen(handleCommand);
+}
+
+Future<void> _runAudioWorkerCommand(
+  _AudioWorkerEngine engine,
+  Map<dynamic, dynamic> message,
+  Object? cmd,
+  StreamSettings defaultSettings,
+) async {
+  switch (cmd) {
+    case 'network_changed':
+      engine.notifyNetworkChange(
+        playbackId: (message['playback_id'] as num?)?.toInt() ?? 0,
+        routeGeneration: (message['route_generation'] as num?)?.toInt() ?? 0,
+      );
+      break;
+    case 'commit_gapless':
+      if (message['playback_id'] == engine._playbackId) {
+        engine.acknowledge((message['preparation_id'] as num?)?.toInt() ?? 0);
+      }
+      break;
+    case 'gapless_resampling':
+      engine.gaplessResampling = message['enabled'] == true;
+      break;
+    case 'prepare_next':
+      await engine.prepareNext(message);
+      break;
+    case 'cancel_prepared':
+      if (message['playback_id'] == engine._playbackId || message['playback_id'] == engine._requestedPlaybackId) {
+        await engine.cancelPreparedNext(preparationId: (message['preparation_id'] as num?)?.toInt());
+      }
+      break;
+    case 'listening_context':
+      final context = message['context'];
+
+      engine.configureListening(
+        context is Map ? Map<String, dynamic>.from(context) : null,
+        discardPending: message['discard_pending'] != false,
+      );
+      break;
+    case 'play':
+      final rawQueue = message['queue'];
+      final queue = rawQueue is List ? rawQueue.map((item) => item.toString()).toList() : const <String>[];
+      final playbackId = (message['playback_id'] as num?)?.toInt() ?? 0;
+
+      if (playbackId <= 0) {
+        break;
+      }
+
+      final context = message['listening_context'];
+
+      await engine.playTrack(
+        playbackId: playbackId,
+        trackId: message['track_id']?.toString() ?? '',
+        trackTitle: message['track_title']?.toString() ?? '',
+        baseUrl: message['base_url']?.toString() ?? '',
+        token: message['token']?.toString() ?? '',
+        serverPin: message['server_pin']?.toString() ?? '',
+        quicPort: (message['quic_port'] as num?)?.toInt(),
+        settings: StreamSettings(
+          mode: message['mode']?.toString() ?? defaultSettings.mode,
+          quality: message['quality']?.toString() ?? defaultSettings.quality,
+          frameMs: (message['frame_ms'] as num?)?.toInt() ?? defaultSettings.frameMs,
+        ),
+        startOffset: Duration(milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0),
+        queueTrackIds: queue,
+        quickStart: message['quick_start'] != false,
+        initialPaused: message['initial_paused'] == true,
+        listeningContext: context is Map ? Map<String, dynamic>.from(context) : null,
+      );
+      break;
+    case 'play_local':
+      final playbackId = (message['playback_id'] as num?)?.toInt() ?? 0;
+
+      if (playbackId <= 0) {
+        break;
+      }
+
+      final context = message['listening_context'];
+
+      await engine.playLocalFile(
+        playbackId: playbackId,
+        trackId: message['track_id']?.toString() ?? '',
+        trackTitle: message['track_title']?.toString() ?? '',
+        filePath: message['file_path']?.toString() ?? '',
+        startOffset: Duration(milliseconds: (message['start_ms'] as num?)?.toInt() ?? 0),
+        initialPaused: message['initial_paused'] == true,
+        listeningContext: context is Map ? Map<String, dynamic>.from(context) : null,
+      );
+      break;
+    case 'stop':
+      await engine.stop();
+      break;
+    case 'pause':
+      await engine.pause(playbackId: (message['playback_id'] as num?)?.toInt());
+      break;
+    case 'resume':
+      engine.resume(playbackId: (message['playback_id'] as num?)?.toInt());
+      break;
+    case 'volume':
+      final value = (message['value'] as num?)?.toDouble() ?? 1.0;
+
+      engine.setVolume(value);
+      break;
+    case 'device':
+      final deviceId = (message['device_id'] as num?)?.toInt() ?? kDefaultOutputDeviceId;
+
+      engine.setOutputDevice(deviceId);
+      break;
+    case 'seek':
+      final ms = (message['position_ms'] as num?)?.toInt() ?? 0;
+
+      await engine.seekTo(
+        Duration(milliseconds: ms),
+        playbackId: (message['playback_id'] as num?)?.toInt(),
+        requestId: (message['request_id'] as num?)?.toInt() ?? 0,
+      );
+      break;
+    case 'dispose':
+      await engine.dispose();
+    default:
+      break;
+  }
 }

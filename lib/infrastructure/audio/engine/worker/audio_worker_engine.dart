@@ -550,7 +550,8 @@ class _AudioWorkerEngine {
 
     if (type == 'state' && message['active'] == false && identical(entry, _current)) {
       _stopping = true;
-      unawaited(stop(notify: false).then((_) => _send(message)));
+      // A failed teardown is reported, and the end-of-playback state is still delivered.
+      unawaited(stop(notify: false).catchError(_reportBackgroundFailure).then((_) => _send(message)));
 
       return;
     }
@@ -579,9 +580,13 @@ class _AudioWorkerEngine {
     }
   }
 
+  void _reportBackgroundFailure(Object error) {
+    _send({'type': 'message', 'text': 'Audio cleanup failed: $error', 'playback_id': _playbackId});
+  }
+
   void _preparationFailed(_GaplessOccurrence entry) {
     unawaited(
-      cancelPreparedNext(preparationId: entry.preparationId).then((_) {
+      cancelPreparedNext(preparationId: entry.preparationId).catchError(_reportBackgroundFailure).then((_) {
         _send({
           'type': 'gapless_preparation_failed',
           'preparation_id': entry.preparationId,
