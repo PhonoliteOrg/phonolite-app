@@ -106,18 +106,24 @@ class DownloadsApi extends JsonApiEndpoint {
     String? ifRange,
     Duration timeout = ApiTransport.defaultRequestTimeout,
   }) async {
-    final request = http.Request('GET', Uri.parse(_trackDownloadUrl(trackId)));
-    request.headers.addAll(transport.buildHeaders());
+    void configure(http.AbortableRequest request) {
+      request.headers.addAll(transport.buildHeaders());
 
-    if (startByte != null && startByte > 0) {
-      request.headers[HttpHeaders.rangeHeader] = 'bytes=$startByte-';
+      if (startByte != null && startByte > 0) {
+        request.headers[HttpHeaders.rangeHeader] = 'bytes=$startByte-';
 
-      if (ifRange != null && ifRange.trim().isNotEmpty) {
-        request.headers[HttpHeaders.ifRangeHeader] = ifRange.trim();
+        if (ifRange != null && ifRange.trim().isNotEmpty) {
+          request.headers[HttpHeaders.ifRangeHeader] = ifRange.trim();
+        }
       }
     }
 
-    final response = await transport.client.send(request).timeout(timeout);
+    final response = await transport.sendStreamed(
+      'GET',
+      Uri.parse(_trackDownloadUrl(trackId)),
+      timeout: timeout,
+      configure: configure,
+    );
 
     if (response.statusCode != 200 && response.statusCode != 206) {
       final body = await response.stream.bytesToString();

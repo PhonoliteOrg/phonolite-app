@@ -125,10 +125,14 @@ class ServerConnection {
       return Future.error(StateError('Artwork must use the authenticated server origin'));
     }
 
-    final request = http.Request('GET', uri)..followRedirects = false;
-    request.headers.addAll({...headers, ..._transport.authorizationHeaders});
-
-    return _transport.client.send(request).timeout(ApiTransport.defaultRequestTimeout);
+    return _transport.sendStreamed(
+      'GET',
+      uri,
+      timeout: ApiTransport.defaultRequestTimeout,
+      configure: (request) => request
+        ..followRedirects = false
+        ..headers.addAll({...headers, ..._transport.authorizationHeaders}),
+    );
   }
 
   void setTrust(ServerTrust value) => _transport.setTrust(value);

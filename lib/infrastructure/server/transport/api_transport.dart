@@ -368,6 +368,31 @@ class ApiTransport {
     _responses.requireSuccess(response);
   }
 
+  /// Sends a streamed request that is aborted, not merely abandoned, when its response headers
+  /// miss [timeout], so the connection is released. Throws [TimeoutException] like [Future.timeout].
+  Future<http.StreamedResponse> sendStreamed(
+    String method,
+    Uri url, {
+    required Duration timeout,
+    void Function(http.AbortableRequest request)? configure,
+  }) {
+    final abort = Completer<void>();
+    final request = http.AbortableRequest(method, url, abortTrigger: abort.future);
+
+    configure?.call(request);
+
+    return client
+        .send(request)
+        .timeout(
+          timeout,
+          onTimeout: () {
+            abort.complete();
+
+            throw TimeoutException('$method ${url.path} timed out', timeout);
+          },
+        );
+  }
+
   Future<void> delete(String path) async {
     final response = await executeRequest(
       () => client.delete(Uri.parse('$_baseUrl$path'), headers: buildHeaders()),

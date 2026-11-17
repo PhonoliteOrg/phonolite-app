@@ -104,19 +104,25 @@ class AuthApi {
         _transport.trust?.spki == pin.spki &&
         _transport.trust?.opaqueKey == pin.opaqueKey;
 
-    final request = http.Request('POST', Uri.parse('$url/auth/password'));
-    request.followRedirects = false;
-    request.headers.addAll({
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-    });
-    request.body = jsonEncode({'current_password': currentPassword, 'new_password': newPassword});
+    void configure(http.AbortableRequest request) {
+      request.followRedirects = false;
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      });
+      request.body = jsonEncode({'current_password': currentPassword, 'new_password': newPassword});
+    }
 
     late final http.StreamedResponse response;
 
     try {
-      response = await _transport.client.send(request).timeout(timeout);
+      response = await _transport.sendStreamed(
+        'POST',
+        Uri.parse('$url/auth/password'),
+        timeout: timeout,
+        configure: configure,
+      );
     } catch (_) {
       if (!sessionIsCurrent()) {
         throw PasswordChangeException.forReason(PasswordChangeFailure.sessionChanged);

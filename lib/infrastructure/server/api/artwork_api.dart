@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
-
 import 'package:phonolite_app/data/models/server/server_artwork.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_urls.dart';
@@ -71,12 +69,14 @@ class ArtworkApi {
     final headers = _transport.buildHeaders();
     final revision = _transport.sessionRevision;
     final response = await _transport.executeRequest(
-      () {
-        final request = http.Request('GET', uri)..followRedirects = false;
-        request.headers.addAll(headers);
-
-        return _transport.client.send(request);
-      },
+      () => _transport.sendStreamed(
+        'GET',
+        uri,
+        timeout: timeout,
+        configure: (request) => request
+          ..followRedirects = false
+          ..headers.addAll(headers),
+      ),
       retryable: true,
       timeout: timeout,
       label: 'GET artwork',
