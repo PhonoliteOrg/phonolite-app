@@ -3385,6 +3385,24 @@ void main() {
     expect(connection.creates, 1);
   });
 
+  test('CarPlay reports liked songs as unavailable instead of empty when the liked read fails', () async {
+    final connection = _LikedReadFailureConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.vehicle.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+
+    final status = await harness.vehicle.handler!('getLibraryStatus', {'scope': 'server'}) as Map;
+    final home = await harness.vehicle.handler!('getHomeActions', {}) as Map;
+    final liked = (home['items'] as List).cast<Map>().singleWhere((item) => item['title'] == 'Start Liked Shuffle');
+
+    expect(status['likedAvailable'], isFalse);
+    expect(status['error'], 'server_unavailable');
+    expect(liked['subtitle'], 'Liked songs unavailable');
+    expect(liked['enabled'], isFalse);
+  });
+
   test('CarPlay server artists include authenticated pinned logo artwork', () async {
     final connection = _Connection()
       ..artistsPageResponse = [
@@ -6583,4 +6601,9 @@ class _ProjectionFailureConnection extends _Connection {
 
     return super.projectServerTrack(track);
   }
+}
+
+class _LikedReadFailureConnection extends _Connection {
+  @override
+  Future<List<Track>> fetchLikedTracks() async => throw ApiException(503, 'Liked tracks unavailable');
 }
