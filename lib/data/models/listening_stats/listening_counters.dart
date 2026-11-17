@@ -13,7 +13,7 @@ class ListeningCounterCheckpoint {
   });
 
   factory ListeningCounterCheckpoint.fromJson(Map<String, dynamic> json) => ListeningCounterCheckpoint._(
-    lastSequence: json['last_sequence'] as int? ?? 0,
+    lastSequence: (json['last_sequence'] as num?)?.toInt() ?? 0,
     lastHash: json['last_hash'] as String?,
     upgraded: json['upgraded'] == true,
     payload: _CounterPayload(json),
@@ -30,8 +30,11 @@ class ListeningCounterMonth {
 
   const ListeningCounterMonth({required this.year, required this.month, required this.revision});
 
-  factory ListeningCounterMonth.fromJson(Map<String, dynamic> json) =>
-      ListeningCounterMonth(year: json['year'] as int, month: json['month'] as int, revision: json['revision'] as int);
+  factory ListeningCounterMonth.fromJson(Map<String, dynamic> json) => ListeningCounterMonth(
+    year: (json['year'] as num).toInt(),
+    month: (json['month'] as num).toInt(),
+    revision: (json['revision'] as num).toInt(),
+  );
 
   String get key => '$year:$month';
 
@@ -57,7 +60,7 @@ class ListeningCounterBatch {
   ListeningCounterBatch._({required this.batchSequence, required this._payload});
 
   factory ListeningCounterBatch.fromJson(Map<String, dynamic> json) =>
-      ListeningCounterBatch._(batchSequence: json['batch_sequence'] as int, payload: _CounterPayload(json));
+      ListeningCounterBatch._(batchSequence: (json['batch_sequence'] as num).toInt(), payload: _CounterPayload(json));
 
   Map<String, dynamic> toJson() => _payload.toJson();
 }
@@ -84,10 +87,10 @@ class ListeningCounterPage {
   });
 
   factory ListeningCounterPage.fromJson(Map<String, dynamic> json) => ListeningCounterPage._(
-    historyGeneration: json['history_generation'] as int,
-    year: json['year'] as int,
-    month: json['month'] as int,
-    revision: json['revision'] as int,
+    historyGeneration: (json['history_generation'] as num).toInt(),
+    year: (json['year'] as num).toInt(),
+    month: (json['month'] as num).toInt(),
+    revision: (json['revision'] as num).toInt(),
     hasMore: json['has_more'] == true,
     nextKey: json['next_key'] as String,
     payload: _CounterPayload(json),
