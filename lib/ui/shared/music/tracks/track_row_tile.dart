@@ -143,14 +143,14 @@ class TrackRowTile extends StatefulWidget {
 
 class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderStateMixin {
   AnimationController? _controller;
+  bool _animationsDisabled = false;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-    if (widget.isPlaying) {
-      _startBars();
-    }
+    _animationsDisabled = MediaQuery.disableAnimationsOf(context);
+    _syncBars();
   }
 
   @override
@@ -158,11 +158,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
     super.didUpdateWidget(oldWidget);
 
     if (widget.isPlaying != oldWidget.isPlaying) {
-      if (widget.isPlaying) {
-        _startBars();
-      } else {
-        _controller?.stop();
-      }
+      _syncBars();
     }
   }
 
@@ -173,7 +169,14 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
     super.dispose();
   }
 
-  void _startBars() {
+  void _syncBars() {
+    // Reduced motion keeps the bars as a static now-playing marker.
+    if (!widget.isPlaying || _animationsDisabled) {
+      _controller?.stop();
+
+      return;
+    }
+
     // Most rows never play. Allocate a ticker only when this row needs bars,
     // and keep it for subsequent pause/resume transitions.
     (_controller ??= AnimationController(vsync: this, duration: const Duration(milliseconds: 900))).repeat();

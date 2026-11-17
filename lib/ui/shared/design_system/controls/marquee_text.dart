@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+/// A single-line label that scrolls in a loop when it overflows, or ellipsizes when it fits,
+/// is unbounded, or the platform asks to disable animations.
 class MarqueeText extends StatefulWidget {
   final String text;
   final TextStyle style;
@@ -175,7 +177,9 @@ class _MarqueeTextState extends State<MarqueeText> {
         _measurementPainter.layout();
 
         final textWidth = _measurementPainter.width;
-        final shouldScroll = constraints.hasBoundedWidth && textWidth > constraints.maxWidth;
+        // Reduced-motion users get the static ellipsized label and no loop timers.
+        final animationsAllowed = !MediaQuery.disableAnimationsOf(context);
+        final shouldScroll = animationsAllowed && constraints.hasBoundedWidth && textWidth > constraints.maxWidth;
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -198,7 +202,8 @@ class _MarqueeTextState extends State<MarqueeText> {
                 children: [
                   Text(widget.text, style: widget.style, maxLines: 1),
                   SizedBox(width: widget.gap),
-                  Text(widget.text, style: widget.style, maxLines: 1),
+                  // The trailing copy only closes the visual loop; assistive technology reads the title once.
+                  ExcludeSemantics(child: Text(widget.text, style: widget.style, maxLines: 1)),
                 ],
               ),
             ),
