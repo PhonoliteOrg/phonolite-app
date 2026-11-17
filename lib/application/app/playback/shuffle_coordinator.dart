@@ -148,7 +148,7 @@ class _ShuffleCoordinator {
       if (!isCurrent()) return;
       _clearServerShuffleSession();
       _host._handleApiError(err, context: 'queue shuffle');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) return;
       _clearServerShuffleSession();
       _host._pushMessage('Failed to queue shuffle: $err');
@@ -202,7 +202,7 @@ class _ShuffleCoordinator {
         if (_host._sessionCoordinator._isServerSessionCurrent(revision) && identical(_serverDeck, deck)) {
           _applyServerShuffleWindow(deck);
         }
-      } catch (error) {
+      } on Object catch (error) {
         if (identical(_serverDeck, deck) && error is ApiException && error.statusCode == 404) {
           _serverDeckExpired = true;
         }
@@ -421,7 +421,7 @@ class _ShuffleCoordinator {
       if (play) {
         await _host._playCurrent();
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue local shuffle: $err');
     } finally {
       playback._finishShuffleSelection(selection);
@@ -527,18 +527,11 @@ class _ShuffleCoordinator {
     }
 
     if (_host._playbackState.shuffleMode == ShuffleMode.album) {
-      var albumId = _host._playbackState.track?.albumId ?? _host._lastAlbumId;
+      final current = _host._playbackState.track;
+      var albumId = current?.albumId ?? _host._lastAlbumId;
 
-      if (albumId == null || albumId.isEmpty) {
-        final current = _host._playbackState.track;
-
-        if (current != null) {
-          try {
-            final full = await _host.connection.fetchTrackById(current.id);
-
-            albumId = full.albumId;
-          } catch (_) {}
-        }
+      if ((albumId == null || albumId.isEmpty) && current != null) {
+        albumId = await _fetchShuffleAlbumId(current);
       }
 
       if (albumId == null || albumId.isEmpty) {
@@ -558,11 +551,7 @@ class _ShuffleCoordinator {
         var albumId = current.albumId;
 
         if (albumId == null || albumId.isEmpty) {
-          try {
-            final full = await _host.connection.fetchTrackById(current.id);
-
-            albumId = full.albumId;
-          } catch (_) {}
+          albumId = await _fetchShuffleAlbumId(current);
         }
 
         if (albumId != null && albumId.isNotEmpty) {
@@ -570,7 +559,7 @@ class _ShuffleCoordinator {
             final album = await _host.connection.fetchAlbumById(albumId);
 
             artistId = album.artistId;
-          } catch (err) {
+          } on Object catch (err) {
             _host._pushMessage('Failed to resolve artist for shuffle: $err');
           }
         }
@@ -602,6 +591,17 @@ class _ShuffleCoordinator {
     }
 
     return const ShuffleContext(scope: 'library');
+  }
+
+  /// The server's album id for [track]; null on failure, which callers handle with a fallback.
+  Future<String?> _fetchShuffleAlbumId(Track track) async {
+    try {
+      return (await _host.connection.fetchTrackById(track.id)).albumId;
+    } on Object catch (error) {
+      _host._pushMessage('Shuffle track lookup failed: $error', level: LogLevel.debug);
+
+      return null;
+    }
   }
 
   Future<bool> _ensureShuffleQueue({bool play = true}) async {
@@ -713,7 +713,7 @@ class _ShuffleCoordinator {
         final full = await _host.connection.fetchTrackById(current.id);
 
         albumId = full.albumId;
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Failed to resolve album for track: $err');
       }
     }
@@ -758,7 +758,7 @@ class _ShuffleCoordinator {
 
         artistId = album.artistId;
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to resolve shuffle context: $err');
     }
 
@@ -799,7 +799,7 @@ class _ShuffleCoordinator {
         final full = await _host.connection.fetchTrackById(trackId);
 
         return !full.liked;
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Failed to confirm liked status: $err');
 
         return true;
@@ -867,14 +867,15 @@ class _ShuffleCoordinator {
               if (artist.id == artistId && matchesGenre(artist.genres)) {
                 return false;
               }
-            } catch (_) {
+            } on Object catch (error) {
               // A missing profile must not hide another contributor's genres.
+              _host._pushMessage('Shuffle artist genre lookup failed for $artistId: $error', level: LogLevel.debug);
             }
           }
         }
 
         return true;
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Failed to resolve custom shuffle match: $err');
 
         return true;

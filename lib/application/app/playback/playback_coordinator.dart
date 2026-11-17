@@ -101,7 +101,7 @@ class _PlaybackCoordinator {
       await _playCurrent();
     } on ApiException catch (err) {
       _host._handleApiError(err, context: 'next track');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to move to next track: $err');
     } finally {
       _finishShuffleSelection(selection);
@@ -163,7 +163,7 @@ class _PlaybackCoordinator {
       await _playCurrent();
     } on ApiException catch (err) {
       _host._handleApiError(err, context: 'previous track');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to move to previous track: $err');
     } finally {
       _finishShuffleSelection(selection);
@@ -187,7 +187,7 @@ class _PlaybackCoordinator {
         _updatePlayback(isPlaying: false, isLoading: false);
         try {
           await audioReset;
-        } catch (error) {
+        } on Object catch (error) {
           if (_playbackStarts.isCurrent(generation)) _host._nativeCoordinator._reportAudioResetFailure(error);
           return;
         }
@@ -254,7 +254,7 @@ class _PlaybackCoordinator {
       _host._resumeCoordinator.changed();
     } on ApiException catch (err) {
       _host._handleApiError(err, context: 'pause');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to pause: $err');
     } finally {
       _finishShuffleSelection(selection);
@@ -412,7 +412,7 @@ class _PlaybackCoordinator {
       if (requireFileRelease) {
         rethrow;
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to stop: $err');
 
       if (requireFileRelease) {
@@ -524,7 +524,7 @@ class _PlaybackCoordinator {
                 duration: Duration(milliseconds: full.durationMs),
               );
             }
-          } catch (error) {
+          } on Object catch (error) {
             _host._pushMessage('Playback metadata lookup failed: $error');
           }
         }
@@ -621,7 +621,8 @@ class _PlaybackCoordinator {
     }
 
     if (nowPlaying) {
-      _host._pushNowPlayingUpdate();
+      // The push logs its own platform failures; state updates must not wait on the platform.
+      unawaited(_host._pushNowPlayingUpdate());
     }
   }
 
@@ -651,7 +652,7 @@ class _PlaybackCoordinator {
       if (audioReset != null) {
         try {
           await audioReset;
-        } catch (error) {
+        } on Object catch (error) {
           if (_playbackStarts.isCurrent(startGeneration)) _host._nativeCoordinator._reportAudioResetFailure(error);
           return;
         }
@@ -726,7 +727,7 @@ class _PlaybackCoordinator {
           initialPaused: initialPaused,
         );
         if (_playbackStarts.isCurrent(startGeneration)) _host._gaplessCoordinator.prepare();
-      } catch (err) {
+      } on Object catch (err) {
         if (_host._disposed || !_playbackStarts.isCurrent(startGeneration)) {
           return;
         }
@@ -794,7 +795,7 @@ class _PlaybackCoordinator {
         initialPaused: initialPaused,
       );
       if (_playbackStarts.isCurrent(startGeneration)) _host._gaplessCoordinator.prepare();
-    } catch (err) {
+    } on Object catch (err) {
       if (_host._disposed || !_playbackStarts.isCurrent(startGeneration)) {
         return;
       }
@@ -821,7 +822,10 @@ class _PlaybackCoordinator {
             level: LogLevel.warning,
           );
         }
-      } catch (_) {}
+      } on FormatException catch (error) {
+        // Diagnostic only: an unparsable base URL is reported by the request that uses it.
+        _host._pushMessage('Server base URL could not be parsed for diagnostics: $error', level: LogLevel.debug);
+      }
     }
   }
 

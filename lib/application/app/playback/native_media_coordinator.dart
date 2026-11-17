@@ -92,7 +92,8 @@ class _NativeMediaCoordinator {
     }
 
     _host._nowPlayingPlatform.setRemoteCommandHandler(handleRemoteCommand);
-    _pushNowPlayingUpdate(force: true);
+    // The push logs its own platform failures, so the initial publish can be detached.
+    unawaited(_pushNowPlayingUpdate(force: true));
   }
 
   /// Selecting a track is an explicit playback request, just like pressing Play.
@@ -130,7 +131,7 @@ class _NativeMediaCoordinator {
       } else if (!activated) {
         AppLogger.debug('Audio session activation declined; playback remains interrupted until another Play request.');
       }
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Audio session reactivation was not accepted: $error');
     }
   }
@@ -183,7 +184,10 @@ class _NativeMediaCoordinator {
 
     try {
       await _host._nowPlayingPlatform.clearNowPlaying();
-    } catch (_) {}
+    } on Object catch (error) {
+      // Best effort: a stale system Now Playing entry does not affect app playback.
+      AppLogger.debug('Clearing native Now Playing failed: $error');
+    }
   }
 
   Future<void> _pushNowPlayingUpdate({bool force = false}) async {
@@ -268,7 +272,10 @@ class _NativeMediaCoordinator {
       _lastNowPlayingIsPlaying = isPlaying;
       _lastNowPlayingPositionMs = positionMs;
       _lastNowPlayingEpochSent = _nowPlayingEpoch;
-    } catch (_) {}
+    } on Object catch (error) {
+      // Best effort: the throttle state stays unchanged, so the next update retries.
+      AppLogger.debug('Publishing native Now Playing failed: $error');
+    }
   }
 
   void _maybeLoadNowPlayingArtwork({required String? artworkUrl, required String? localPath, required String token}) {

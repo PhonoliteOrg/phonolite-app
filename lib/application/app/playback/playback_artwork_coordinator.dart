@@ -25,7 +25,7 @@ class _PlaybackArtworkCoordinator {
           resolved = _host.connection.projectServerTrack(
             full.copyWith(liked: track.liked, inPlaylists: track.inPlaylists),
           );
-        } catch (error) {
+        } on Object catch (error) {
           _host._pushMessage('Playback cover lookup unavailable: $error', level: LogLevel.debug);
         }
       }
@@ -52,7 +52,7 @@ class _PlaybackArtworkCoordinator {
       }
 
       await preloader.prepare(request);
-    } catch (error) {
+    } on Object catch (error) {
       if (isCurrent()) {
         _host._pushMessage('Playback artwork unavailable: $error', level: LogLevel.debug);
       }

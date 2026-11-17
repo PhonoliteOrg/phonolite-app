@@ -203,7 +203,7 @@ class _PlaybackResumeRestorer {
         _host._playIndex = currentIndex >= 0 ? currentIndex : max(-1, oldIndex - removedBefore - 1);
       }
       _owner.changed();
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Local playback reconciliation deferred: $error');
     } finally {
       _reconciling = false;

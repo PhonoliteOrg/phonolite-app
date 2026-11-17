@@ -207,7 +207,7 @@ class _PlaybackQueue {
     } on ApiException catch (err) {
       if (!isCurrent()) return;
       _host._handleApiError(err, context: 'queue album');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) return;
       _host._pushMessage('Failed to queue album: $err');
     }
@@ -311,7 +311,7 @@ class _PlaybackQueue {
     } on ApiException catch (err) {
       if (!isCurrent()) return;
       _host._handleApiError(err, context: 'queue playlist');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) return;
       _host._pushMessage('Failed to queue playlist: $err');
     }
@@ -403,7 +403,7 @@ class _PlaybackQueue {
     } on ApiException catch (err) {
       if (!isCurrent()) return;
       _host._handleApiError(err, context: 'queue liked');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) return;
       _host._pushMessage('Failed to queue liked: $err');
     }
@@ -638,7 +638,8 @@ class _PlaybackQueue {
       return;
     }
 
-    _host.nextTrack(fromAutoAdvance: true);
+    // nextTrack contains and reports its own failures and clears the auto-advance flag.
+    unawaited(_host.nextTrack(fromAutoAdvance: true));
   }
 
   void _maybeAutoAdvance(Duration position, Duration bufferedAhead) {

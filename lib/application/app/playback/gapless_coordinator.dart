@@ -115,7 +115,7 @@ class _GaplessCoordinator {
       _host._audioEngine.setGaplessResampling(_host.gaplessResampling);
       await _sendCandidate(candidate);
       if (identical(_candidate, candidate)) _prepareLookahead(candidate);
-    } catch (error) {
+    } on Object catch (error) {
       if (_revision == revision) {
         _failedRevision = revision;
         if (identical(_candidate, candidate)) _candidate = null;
@@ -178,7 +178,7 @@ class _GaplessCoordinator {
         _candidate = candidate;
       }
       await _sendCandidate(candidate);
-    } catch (error) {
+    } on Object catch (error) {
       if (candidate != null && (identical(_candidate, candidate) || identical(_lookahead, candidate))) {
         preparationFailed(candidate.id);
       } else {
@@ -329,7 +329,7 @@ class _GaplessCoordinator {
         return null;
       }
       return next;
-    } catch (_) {
+    } on Object catch (_) {
       next.close();
       shuffle._releaseServerShuffleSession(first.sessionId, session);
       rethrow;

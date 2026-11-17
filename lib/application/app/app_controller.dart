@@ -460,7 +460,10 @@ class AppController
 
     try {
       await _localNetworkPermissions.openAppSettings();
-    } catch (_) {}
+    } on Object catch (error) {
+      // Best effort: the settings shortcut is a convenience; the user can open Settings manually.
+      AppLogger.warning('Opening app settings failed: $error');
+    }
   }
 
   void handleAppLifecycleState(AppLifecycleState state) {
@@ -484,7 +487,12 @@ class AppController
 
     if (state == AppLifecycleState.detached) {
       _accountServices.stopPlaybackPresence();
-      _audioEngine.stop();
+      // The process is being detached, so nothing can wait for the stop; report its failure here.
+      unawaited(
+        _audioEngine.stop().catchError((Object error) {
+          AppLogger.warning('Stopping audio on app detach failed: $error');
+        }),
+      );
       _closeStreamControl();
     }
 
@@ -558,7 +566,7 @@ class AppController
       if (!_disposed) {
         _initialized = true;
       }
-    } catch (_) {
+    } on Object catch (_) {
       if (_disposed) {
         return;
       }
@@ -634,7 +642,8 @@ class AppController
       _queueCoordinator._ignoreCompleteUntil = null;
       _accountServices.reportStartedTrack();
       _updatePlayback(isLoading: false);
-      _pushNowPlayingUpdate(force: true);
+      // The push logs its own platform failures, so the engine callback does not wait on it.
+      unawaited(_pushNowPlayingUpdate(force: true));
     }
     _gaplessCoordinator.prepare();
   }
@@ -698,29 +707,35 @@ class AppController
     _messageUpdateTimer?.cancel();
     _messageUpdateTimer = null;
 
-    _artistsController.close();
-    _albumsController.close();
-    _artistReleasesController.close();
-    _tracksController.close();
-    _playlistsController.close();
-    _playlistTracksController.close();
-    _likedController.close();
-    _statsController.close();
-    _statsCollectionController.close();
-    _searchController.close();
-    _artistUpdatesController.close();
-    _albumUpdatesController.close();
-    _messageController.close();
-    _playbackController.close();
-    _authController.close();
-    _localNetworkPermissionController.close();
-    _offlineStorageLocationsController.close();
-    _customShuffleSettingsController.close();
-    _collectionListModeController.close();
-    _artistsLoadingController.close();
-    _albumsLoadingController.close();
-    _tracksLoadingController.close();
-    _searchLoadingController.close();
+    // Broadcast controllers complete close() once the done event is delivered; it cannot
+    // fail, and listeners that never finish must not stall shutdown, so it is not awaited.
+    for (final controller in <StreamController<Object?>>[
+      _artistsController,
+      _albumsController,
+      _artistReleasesController,
+      _tracksController,
+      _playlistsController,
+      _playlistTracksController,
+      _likedController,
+      _statsController,
+      _statsCollectionController,
+      _searchController,
+      _artistUpdatesController,
+      _albumUpdatesController,
+      _messageController,
+      _playbackController,
+      _authController,
+      _localNetworkPermissionController,
+      _offlineStorageLocationsController,
+      _customShuffleSettingsController,
+      _collectionListModeController,
+      _artistsLoadingController,
+      _albumsLoadingController,
+      _tracksLoadingController,
+      _searchLoadingController,
+    ]) {
+      unawaited(controller.close());
+    }
     _closeStreamControl();
 
     try {
