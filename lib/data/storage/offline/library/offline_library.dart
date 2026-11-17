@@ -86,6 +86,7 @@ class OfflineLibraryStorage
 
   final bool keepDatabaseOpen;
   static final Map<String, Future<Database>> _openDatabases = {};
+  static final Map<String, String> _databaseKeysByConfiguration = {};
   final Directory? baseDirectory;
   final Future<Directory> Function()? defaultDirectoryProvider;
   final Directory? metadataDirectory;

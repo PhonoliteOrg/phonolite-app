@@ -71,9 +71,13 @@ class _OfflineStorageRelocator {
     final nextMetadataPath = next.metadataDirectory ?? defaultRoot.path;
 
     if (currentLocations.metadataDirectory != nextMetadataPath) {
+      // The live library always wins: a database already in the target folder
+      // (for example from an earlier move away from it) is stale and is moved
+      // aside instead of being adopted.
       await _copyMetadataFilesIfNeeded(
         fromDirectory: Directory(currentLocations.metadataDirectory),
         toDirectory: Directory(nextMetadataPath),
+        replaceExistingDatabase: true,
       );
     }
 
@@ -151,33 +155,84 @@ class _OfflineStorageRelocator {
     return Directory(_host._join(supportDir.path, 'Phonolite'));
   }
 
-  Future<void> _copyMetadataFilesIfNeeded({required Directory fromDirectory, required Directory toDirectory}) async {
+  Future<void> _copyMetadataFilesIfNeeded({
+    required Directory fromDirectory,
+    required Directory toDirectory,
+    bool replaceExistingDatabase = false,
+  }) async {
     if (fromDirectory.absolute.path == toDirectory.absolute.path) {
       return;
     }
 
     await toDirectory.create(recursive: true);
 
-    for (final fileName in [OfflineLibraryStorage._databaseFileName, OfflineLibraryStorage._indexFileName]) {
-      final source = File(_host._join(fromDirectory.path, fileName));
+    await _snapshotDatabase(
+      source: File(_host._join(fromDirectory.path, OfflineLibraryStorage._databaseFileName)),
+      target: File(_host._join(toDirectory.path, OfflineLibraryStorage._databaseFileName)),
+      replaceExisting: replaceExistingDatabase,
+    );
 
-      if (!await source.exists()) {
-        continue;
-      }
+    final indexSource = File(_host._join(fromDirectory.path, OfflineLibraryStorage._indexFileName));
+    final indexTarget = File(_host._join(toDirectory.path, OfflineLibraryStorage._indexFileName));
 
-      final target = File(_host._join(toDirectory.path, fileName));
-
-      if (await target.exists()) {
-        continue;
-      }
-
-      await source.copy(target.path);
+    if (await indexSource.exists() && !await indexTarget.exists()) {
+      await indexSource.copy(indexTarget.path);
     }
 
     await _copyDirectoryIfNeeded(
       fromDirectory: Directory(_host._join(fromDirectory.path, OfflineLibraryStorage._artDirName)),
       toDirectory: Directory(_host._join(toDirectory.path, OfflineLibraryStorage._artDirName)),
     );
+  }
+
+  /// Copies [source] to [target] as one consistent SQLite snapshot.
+  ///
+  /// `VACUUM INTO` reads inside a single read transaction, so writers on other
+  /// connections (the download actor) cannot tear the copy. The snapshot is
+  /// written to a temporary file beside [target] and renamed into place only
+  /// once complete, so an interrupted copy is never opened as the library. An
+  /// existing [target] is kept unless [replaceExisting]; when replaced, it and
+  /// its journal files are moved aside with a timestamp rather than deleted.
+  Future<void> _snapshotDatabase({required File source, required File target, required bool replaceExisting}) async {
+    if (!await source.exists()) {
+      if (await target.exists()) {
+        AppLogger.warning('No offline library at ${source.path}; keeping the existing library at ${target.path}');
+      }
+
+      return;
+    }
+
+    if (!replaceExisting && await target.exists()) {
+      return;
+    }
+
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final temp = File('${target.path}.relocating-$stamp');
+
+    try {
+      final db = sqlite3.open(source.path);
+
+      try {
+        db.execute('PRAGMA busy_timeout = 5000');
+        db.execute('VACUUM INTO ?', [temp.path]);
+      } finally {
+        db.dispose();
+      }
+
+      for (final suffix in const ['', '-wal', '-shm', '-journal']) {
+        final existing = File('${target.path}$suffix');
+
+        if (await existing.exists()) {
+          await existing.rename('${target.path}$suffix.replaced-$stamp');
+        }
+      }
+
+      await temp.rename(target.path);
+    } finally {
+      if (await temp.exists()) {
+        await temp.delete();
+      }
+    }
   }
 
   Future<void> _copyServerDownloadDirectoriesIfNeeded({

@@ -13,6 +13,7 @@ class _OfflineDatabase {
     final pending = OfflineLibraryStorage._openDatabases.values.toList();
 
     OfflineLibraryStorage._openDatabases.clear();
+    OfflineLibraryStorage._databaseKeysByConfiguration.clear();
 
     for (final opening in pending) {
       (await opening).dispose();
@@ -33,6 +34,9 @@ class _OfflineDatabase {
     }
 
     final key = file.absolute.path;
+
+    _retireRelocatedDatabase(key);
+
     final existing = OfflineLibraryStorage._openDatabases[key];
     if (existing != null) {
       return existing;
@@ -50,6 +54,32 @@ class _OfflineDatabase {
       rethrow;
     }
   }
+
+  /// Closes the cached handle this configuration used before its metadata
+  /// folder moved, so a relocation does not leave the old library open.
+  void _retireRelocatedDatabase(String key) {
+    final configuration = _configurationKey();
+    final previous = OfflineLibraryStorage._databaseKeysByConfiguration[configuration];
+
+    OfflineLibraryStorage._databaseKeysByConfiguration[configuration] = key;
+
+    if (previous == null || previous == key) {
+      return;
+    }
+
+    final retired = OfflineLibraryStorage._openDatabases.remove(previous);
+
+    if (retired != null) {
+      unawaited(retired.then((db) => db.dispose(), onError: (Object _) {}));
+    }
+  }
+
+  String _configurationKey() => [
+    _host.baseDirectory?.absolute.path,
+    _host.metadataDirectory?.absolute.path,
+    _host.downloadsDirectory?.absolute.path,
+    identityHashCode(_host.settingsStorage),
+  ].join('|');
 
   void _releaseDatabase(Database? db) {
     if (!_host.keepDatabaseOpen) {

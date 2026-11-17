@@ -2425,4 +2425,227 @@ void main() {
       expect(await storage.readPendingFileDeletes(), isEmpty);
     });
   });
+
+  group('offline library data-loss guards', () {
+    const serverBaseUrl = 'http://server-one.test/api';
+
+    Future<OfflineTrackDownload> likedDownload(
+      OfflineLibraryStorage storage,
+      String filePath,
+      String playlistId,
+    ) async {
+      final prepared = await storage.prepareDownload(
+        offlineTestDownload(
+          serverBaseUrl: serverBaseUrl,
+          track: offlineTestTrack(id: 'server-track-1'),
+          filePath: filePath,
+        ).copyWith(contentType: 'audio/mpeg'),
+      );
+      await storage.upsertDownload(prepared);
+      await storage.setLocalLike(prepared.localTrackId!, true);
+      await storage.addLocalTrackToPlaylist(playlistId, prepared.localTrackId!);
+      return prepared;
+    }
+
+    Future<void> loadManager(OfflineLibraryStorage storage) async {
+      final manager = OfflineDownloadManager(
+        connection: ServerConnection(baseUrl: serverBaseUrl),
+        storage: storage,
+      );
+      await manager.load();
+      await manager.dispose();
+    }
+
+    test(
+      'missing completed file keeps likes and playlist entries until it returns',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'phonolite_offline_missing_keeps_likes_',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        final storage = OfflineLibraryStorage(baseDirectory: temp);
+        final trackFile = await storage.trackFile(
+          serverBaseUrl: serverBaseUrl,
+          trackId: 'server-track-1',
+          extension: 'mp3',
+        );
+        await trackFile.writeAsBytes(<int>[1, 2, 3]);
+        final playlist = await storage.createLocalPlaylist('Local Mix');
+        await likedDownload(storage, trackFile.path, playlist.id);
+        final hidden = await trackFile.rename('${trackFile.path}.hidden');
+
+        await loadManager(storage);
+
+        final corrupt = (await storage.readDownloads()).single;
+        expect(corrupt.status, OfflineDownloadStatus.corrupt);
+        expect(corrupt.filePath, isNull);
+
+        await hidden.rename(trackFile.path);
+        await loadManager(storage);
+
+        expect(
+          (await storage.readDownloads()).single.status,
+          OfflineDownloadStatus.downloaded,
+        );
+        expect(await storage.readLocalLikedTracks(), hasLength(1));
+        expect(await storage.readLocalPlaylistTracks(playlist.id), hasLength(1));
+      },
+    );
+
+    test('unavailable downloads folder skips missing-file recovery', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_unmounted_root_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final unmounted = Directory(offlineTestJoin(temp.path, 'unmounted'));
+      final storage = OfflineLibraryStorage(
+        metadataDirectory: Directory(offlineTestJoin(temp.path, 'metadata')),
+        downloadsDirectory: unmounted,
+      );
+      final playlist = await storage.createLocalPlaylist('Local Mix');
+      final missingPath = offlineTestJoin(unmounted.path, 'track.mp3');
+      await unmounted.create(recursive: true);
+      await File(missingPath).writeAsBytes(<int>[1, 2, 3]);
+      await likedDownload(storage, missingPath, playlist.id);
+      await unmounted.delete(recursive: true);
+
+      await loadManager(storage);
+
+      final download = (await storage.readDownloads()).single;
+      expect(download.status, OfflineDownloadStatus.downloaded);
+      expect(download.filePath, missingPath);
+      expect(await storage.readLocalLikedTracks(), hasLength(1));
+      expect(await storage.readLocalPlaylistTracks(playlist.id), hasLength(1));
+    });
+
+    test('stale pending delete never removes a re-downloaded file', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_stale_pending_delete_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: temp);
+      final trackFile = await storage.trackFile(
+        serverBaseUrl: serverBaseUrl,
+        trackId: 'server-track-1',
+        extension: 'mp3',
+      );
+      await trackFile.writeAsBytes(<int>[1, 2, 3]);
+      final download = await storage.prepareDownload(
+        offlineTestDownload(
+          serverBaseUrl: serverBaseUrl,
+          track: offlineTestTrack(id: 'server-track-1'),
+          filePath: trackFile.path,
+        ),
+      );
+
+      await storage.recordPendingFileDeletes([trackFile.path]);
+      await storage.upsertDownload(download);
+
+      expect(await storage.readPendingFileDeletes(), isEmpty);
+
+      // A row that survives anyway (an older build, another writer) is dropped
+      // by cleanup without touching the referenced file.
+      await storage.recordPendingFileDeletes([trackFile.path]);
+      expect(await storage.readPendingFileDeletes(), hasLength(1));
+
+      await loadManager(storage);
+      await offlineTestWaitFor(
+        () async => (await storage.readPendingFileDeletes()).isEmpty,
+      );
+
+      expect(await trackFile.exists(), isTrue);
+      expect(
+        (await storage.readDownloads()).single.status,
+        OfflineDownloadStatus.downloaded,
+      );
+    });
+
+    test('accented artist names keep artist artwork', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_accented_artist_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final storage = OfflineLibraryStorage(baseDirectory: temp);
+      final mediaFile = await offlineTestMediaFile(temp, 'completed.mp3');
+      final track = offlineTestTrack(
+        id: 'server-track-1',
+        artist: 'Ólafur Arnalds',
+        artistId: '',
+      );
+      final prepared = await storage.prepareDownload(
+        offlineTestDownload(
+          serverBaseUrl: serverBaseUrl,
+          track: track,
+          filePath: mediaFile.path,
+        ),
+      );
+      await storage.upsertDownload(prepared);
+      final artistLogo = await storage.artistArtFile(
+        artistId: 'olafur',
+        kind: 'logo',
+        extension: 'png',
+      );
+      await artistLogo.writeAsBytes(<int>[4, 5, 6]);
+
+      await storage.updateTrackArtPaths(
+        prepared.localTrackId!,
+        artistArtPath: artistLogo.path,
+        artworkSource: track,
+      );
+
+      expect(
+        (await storage.readDownloads()).single.track.artistArtPath,
+        artistLogo.path,
+      );
+
+      // A later metadata upsert without artwork keeps the same artist's art.
+      await storage.upsertDownload(prepared);
+
+      expect(
+        (await storage.readDownloads()).single.track.artistArtPath,
+        artistLogo.path,
+      );
+    });
+
+    test('moving metadata back to a folder replaces its stale library', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'phonolite_offline_relocate_back_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final settingsFiles = offlineTestSettingsFiles(
+        offlineTestJoin(temp.path, 'app_support'),
+      );
+      final storage = OfflineLibraryStorage(
+        defaultDirectoryProvider: settingsFiles.directoryProvider,
+        settingsStorage: OfflineStorageSettingsStorage(
+          files: settingsFiles,
+          usesManagedStoragePaths: () => false,
+        ),
+      );
+      final original = Directory(
+        (await storage.resolveStorageLocations()).metadataDirectory,
+      );
+      final moved = offlineTestJoin(temp.path, 'moved_metadata');
+
+      await storage.createLocalPlaylist('Before Move');
+      await storage.updateStorageLocations(metadataDirectory: moved);
+      await storage.createLocalPlaylist('After Move');
+      await storage.updateStorageLocations(metadataDirectory: null);
+
+      final names = (await storage.readLocalPlaylists()).map((p) => p.name);
+      expect(names, containsAll(<String>['Before Move', 'After Move']));
+      expect(
+        original.listSync().map((entity) => entity.path).where(
+          (path) => path.contains('phonolite_offline.sqlite.replaced-'),
+        ),
+        isNotEmpty,
+      );
+      expect(
+        original.listSync().where(
+          (entity) => entity.path.contains('.relocating-'),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }
