@@ -210,7 +210,8 @@ class NowPlayingExpandedSheet extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (track != null) AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers),
+            if (track != null)
+              AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers, thumbnail: false),
             if (state.isLoading)
               ColoredBox(
                 color: Colors.black.withByteOpacity(0.34),

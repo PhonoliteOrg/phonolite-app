@@ -152,6 +152,7 @@ class PlaybackAlbumArtThumb extends StatelessWidget {
       imageUrl: imageUrl,
       headers: hasLocalImage || imageUrl == null ? const <String, String>{} : authHeaders(AppScope.of(context)),
       placeholder: placeholder,
+      thumbnail: false,
     );
 
     return ClipRect(

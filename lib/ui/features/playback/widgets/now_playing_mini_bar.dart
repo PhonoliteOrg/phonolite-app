@@ -118,7 +118,13 @@ class NowPlayingMiniBar extends StatelessWidget {
                           children: [
                             track == null
                                 ? Icon(PhonoliteIcons.music, color: ObsidianPalette.textMuted, size: artSize * 0.5)
-                                : AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers),
+                                : AlbumArt(
+                                    title: track.album,
+                                    size: artSize,
+                                    imageUrl: imageUrl,
+                                    headers: headers,
+                                    thumbnail: false,
+                                  ),
                             if (state.isLoading)
                               ColoredBox(
                                 color: Colors.black.withByteOpacity(0.34),
