@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_settings_controllers.dart';
@@ -22,6 +23,21 @@ class PhonoliteAppShell extends StatelessWidget {
 
   const PhonoliteAppShell({super.key, required this.controller, this.settings});
 
+  /// The app's own copy is English, so only English locales are offered: Material's built-in
+  /// strings stay in the same language while dates and times follow the user's region.
+  static const supportedLocales = <Locale>[
+    Locale('en', 'US'),
+    Locale('en', 'GB'),
+    Locale('en', 'AU'),
+    Locale('en', 'CA'),
+    Locale('en', 'IE'),
+    Locale('en', 'IN'),
+    Locale('en', 'NZ'),
+    Locale('en', 'SG'),
+    Locale('en', 'ZA'),
+    Locale('en'),
+  ];
+
   void _togglePlayback() => unawaited(controller.pause(controller.playbackState.isPlaying));
 
   @override
@@ -32,6 +48,8 @@ class PhonoliteAppShell extends StatelessWidget {
         settings: settings ?? AppSettingsControllers.shared,
         child: MaterialApp(
           title: 'Phonolite',
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          supportedLocales: supportedLocales,
           theme: ObsidianTheme.build(),
           themeAnimationStyle: AnimationStyle.noAnimation,
           builder: (context, child) => DesktopPlaybackShortcuts(
