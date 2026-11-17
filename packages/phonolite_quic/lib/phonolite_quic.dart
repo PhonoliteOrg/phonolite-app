@@ -610,7 +610,7 @@ class QuicClient implements ffi.Finalizable {
     final trackPtr = trackId.toNativeUtf8();
     final modePtr = (mode ?? '').toNativeUtf8();
     final qualityPtr = (quality ?? '').toNativeUtf8();
-    final queueJson = queue.isEmpty ? '' : _encodeJsonArray(queue);
+    final queueJson = queue.isEmpty ? '' : jsonEncode(queue);
     final queuePtr = queueJson.toNativeUtf8();
     final result = _bindings.openTrack(
       _handle,
@@ -841,21 +841,6 @@ ffi.DynamicLibrary _loadLibrary() {
     return ffi.DynamicLibrary.open('libphonolite_quic.so');
   }
   throw QuicException('unsupported platform');
-}
-
-String _encodeJsonArray(List<String> items) {
-  final escaped = items.map(_escapeJsonString).join(',');
-  return '[$escaped]';
-}
-
-String _escapeJsonString(String value) {
-  final escaped = value
-      .replaceAll('\\', r'\\')
-      .replaceAll('"', r'\"')
-      .replaceAll('\n', r'\n')
-      .replaceAll('\r', r'\r')
-      .replaceAll('\t', r'\t');
-  return '"$escaped"';
 }
 
 final class _QuicHandle extends ffi.Opaque {}
