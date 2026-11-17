@@ -108,7 +108,7 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
     final descriptionLength = _descriptionController.text.characters.length.clamp(0, _maxDescriptionLength);
     final canSave = _nameController.text.trim().isNotEmpty && !_feature.saving;
 
-    final dialogWidth = (MediaQuery.of(context).size.width - ObsidianModalScope.insetsOf(context).horizontal)
+    final dialogWidth = (MediaQuery.sizeOf(context).width - ObsidianModalScope.insetsOf(context).horizontal)
         .clamp(0.0, 760.0)
         .toDouble();
     final extraTextHeight = (MediaQuery.textScalerOf(context).scale(16) - 16).clamp(0.0, double.infinity);

@@ -51,7 +51,7 @@ class StatsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     double s(double value) => statsScaled(context, value);
 
-    final isCompact = MediaQuery.of(context).size.width < 520;
+    final isCompact = MediaQuery.sizeOf(context).width < 520;
     final actions = PageToolbarActionLayout.of(context);
     final selectorScale = isCompact ? 1.3 : 1.0;
 

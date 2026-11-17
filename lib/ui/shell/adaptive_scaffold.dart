@@ -61,8 +61,9 @@ class AdaptiveScaffold extends StatelessWidget {
 
     double s(double value) => value * scale;
 
-    final media = MediaQuery.of(context);
-    final screenWidth = media.size.width;
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final screenWidth = size.width;
     final layoutMode = obsidianLayoutModeOf(context);
     final isWide = layoutMode != ObsidianLayoutMode.compact;
     final compactPlayer = layoutMode == ObsidianLayoutMode.narrow;
@@ -77,7 +78,7 @@ class AdaptiveScaffold extends StatelessWidget {
 
     final playerWidth = screenWidth - (isWide ? AppSideNavigation.widthFor(context) : 0);
     final desktopLayout = DesktopPlaybackLayout.supports(platform)
-        ? DesktopPlaybackLayout.resolve(availableSize: Size(playerWidth, media.size.height - media.padding.vertical))
+        ? DesktopPlaybackLayout.resolve(availableSize: Size(playerWidth, size.height - padding.vertical))
         : null;
     final nowPlayingHeight = NowPlayingBar.heightForWidth(
       playerWidth,
@@ -91,11 +92,11 @@ class AdaptiveScaffold extends StatelessWidget {
         ? desktopLayout?.height ?? nowPlayingHeight + s(_nowPlayingPadding)
         : miniBarHeight;
 
-    final navPad = AppBottomNavigation.height + media.padding.bottom;
+    final navPad = AppBottomNavigation.height + padding.bottom;
     final double navigationInset;
 
     if (edgeToEdge) {
-      navigationInset = isWide ? media.padding.bottom : navPad;
+      navigationInset = isWide ? padding.bottom : navPad;
     } else {
       navigationInset = 0;
     }
@@ -109,7 +110,7 @@ class AdaptiveScaffold extends StatelessWidget {
       removeBottom: true,
       child: SafeArea(
         bottom: false,
-        child: PlaybackContentInset(top: topEdgeToEdge ? media.padding.top : 0, bottom: bottomInset, child: page),
+        child: PlaybackContentInset(top: topEdgeToEdge ? padding.top : 0, bottom: bottomInset, child: page),
       ),
     );
 
@@ -147,7 +148,7 @@ class AdaptiveScaffold extends StatelessWidget {
                 children: [
                   Positioned.fill(child: pageContent),
                   if (showWideBar)
-                    Positioned(left: 0, right: 0, bottom: edgeToEdge ? media.padding.bottom : 0, child: nowPlaying),
+                    Positioned(left: 0, right: 0, bottom: edgeToEdge ? padding.bottom : 0, child: nowPlaying),
                 ],
               ),
             ),

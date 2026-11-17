@@ -45,7 +45,7 @@ class ConfirmationModal extends StatelessWidget {
   }
 
   Widget _buildDialog(BuildContext context) {
-    final dialogWidth = (MediaQuery.of(context).size.width - 48).clamp(0.0, 420.0).toDouble();
+    final dialogWidth = (MediaQuery.sizeOf(context).width - 48).clamp(0.0, 420.0).toDouble();
 
     return ObsidianAlertDialog(
       scrollable: true,

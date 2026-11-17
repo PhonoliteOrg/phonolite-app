@@ -160,8 +160,8 @@ class NowPlayingExpandedSheet extends StatelessWidget {
 
     final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final track = state.track;
-    final size = MediaQuery.of(context).size;
-    final padding = MediaQuery.of(context).padding;
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
     final height = useNativeMobileTreatment ? size.height : size.height * 0.92;
 
     final maxSeconds = state.duration.inMilliseconds <= 0 ? 1.0 : state.duration.inMilliseconds / 1000.0;

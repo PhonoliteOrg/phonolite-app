@@ -23,7 +23,7 @@ class StatsAnalysisSection extends StatelessWidget {
   Widget build(BuildContext context) {
     double s(double value) => statsScaled(context, value);
 
-    final isWide = MediaQuery.of(context).size.width >= 900;
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
 
     final left = StatsTopGenresSection(
       genres: stats.topGenres,
