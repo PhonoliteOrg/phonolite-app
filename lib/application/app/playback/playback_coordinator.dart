@@ -451,7 +451,7 @@ class _PlaybackCoordinator {
     _host._volumeSaveQueued = false;
     final value = _host._pendingVolumeSave;
 
-    _host._volumeSaveChain = _host._volumeSaveChain.then((_) => _host._playbackPreferencesStorage.writeVolume(value));
+    _host._persistPreference(_host._volumeSaves, 'Volume', () => _host._playbackPreferencesStorage.writeVolume(value));
   }
 
   Future<void> _playCurrent() async {

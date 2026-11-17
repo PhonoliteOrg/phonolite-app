@@ -16,7 +16,8 @@ class _PreferencesCoordinator {
   bool _repeatModeTouched = false;
   bool _repeatModeHasLocalValue = false;
   final _volumeSaveDebounce = DebouncedAction();
-  Future<void> _volumeSaveChain = Future.value();
+  // Volume and collection list mode share one queue because both write the playback preferences file.
+  final _volumeSaves = SerialActionQueue();
   double _pendingVolumeSave = 1.0;
   bool _volumeSaveQueued = false;
   bool _volumeTouched = false;
@@ -27,9 +28,18 @@ class _PreferencesCoordinator {
   bool _gaplessResampling = false;
   bool _gaplessResamplingTouched = false;
   final _gaplessResamplingController = StreamController<bool>.broadcast();
-  Future<void> _gaplessResamplingSaveChain = Future.value();
+  final _gaplessResamplingSaves = SerialActionQueue();
 
   _PreferencesCoordinator(this._host);
+
+  /// Queues a preference write. A failed write is logged and never blocks later writes or shutdown.
+  void _persistPreference(SerialActionQueue queue, String label, Future<void> Function() write) {
+    unawaited(
+      queue.add(write).catchError((Object error) {
+        AppLogger.debug('$label preference save failed: $error');
+      }),
+    );
+  }
 
   Stream<CustomShuffleSettings> get customShuffleSettingsStream => _customShuffleSettingsController.stream;
 
@@ -58,10 +68,13 @@ class _PreferencesCoordinator {
     _host._audio?.setGaplessResampling(enabled);
     _gaplessResamplingController.add(enabled);
     if (persist) {
-      _gaplessResamplingSaveChain = _gaplessResamplingSaveChain.then(
-        (_) => _host._playbackPreferencesStorage.writeGaplessResampling(enabled),
+      _persistPreference(
+        _gaplessResamplingSaves,
+        'Gapless resampling',
+        () => _host._playbackPreferencesStorage.writeGaplessResampling(enabled),
       );
     }
+
     final track = _host._playbackState.track;
     if (track != null && (_host._audio?.hasActivePlayer == true || _host._wantsPlayback)) {
       _host._startPlayback(track, startOffset: _host._playbackState.position);
@@ -70,7 +83,7 @@ class _PreferencesCoordinator {
 
   Future<void> close() async {
     await _gaplessResamplingController.close();
-    await Future.wait([_customShuffleSaveChain, _repeatModeSaveChain, _gaplessResamplingSaveChain]);
+    await Future.wait([_customShuffleSaveChain, _repeatModeSaveChain, _gaplessResamplingSaves.drain()]);
   }
 
   Future<void> loadCustomShuffleSettings() async {
@@ -211,7 +224,11 @@ class _PreferencesCoordinator {
   }
 
   void _persistCollectionListMode(bool value) {
-    _volumeSaveChain = _volumeSaveChain.then((_) => _host._playbackPreferencesStorage.writeCollectionListMode(value));
+    _persistPreference(
+      _volumeSaves,
+      'Collection list mode',
+      () => _host._playbackPreferencesStorage.writeCollectionListMode(value),
+    );
   }
 
   Future<void> _loadCustomShuffleSettings({bool loadLocal = true}) async {
@@ -402,9 +419,10 @@ mixin _PreferencesFacade {
 
   DebouncedAction get _volumeSaveDebounce => _preferencesCoordinator._volumeSaveDebounce;
 
-  Future<void> get _volumeSaveChain => _preferencesCoordinator._volumeSaveChain;
+  SerialActionQueue get _volumeSaves => _preferencesCoordinator._volumeSaves;
 
-  set _volumeSaveChain(Future<void> value) => _preferencesCoordinator._volumeSaveChain = value;
+  void _persistPreference(SerialActionQueue queue, String label, Future<void> Function() write) =>
+      _preferencesCoordinator._persistPreference(queue, label, write);
 
   double get _pendingVolumeSave => _preferencesCoordinator._pendingVolumeSave;
 

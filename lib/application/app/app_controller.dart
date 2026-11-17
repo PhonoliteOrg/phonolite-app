@@ -21,6 +21,7 @@ import 'package:phonolite_app/application/playback/playback_presence_reporter.da
 import 'package:phonolite_app/application/playback/server_shuffle_deck.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/application/workflows/request_generation.dart';
+import 'package:phonolite_app/application/workflows/serial_action_queue.dart';
 import 'package:phonolite_app/application/workflows/revision_snapshot_sync.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_preloader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
@@ -732,7 +733,7 @@ class AppController
       ...cancellations,
       if (_audio != null) _audio!.dispose(),
       _offlineDownloadManager.dispose(),
-      _volumeSaveChain,
+      _volumeSaves.drain(),
     ]);
 
     _listeningClosed = true;
