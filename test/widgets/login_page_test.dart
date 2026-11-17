@@ -408,6 +408,129 @@ void main() {
     );
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
   });
+
+  testWidgets('tapping outside the fields dismisses the keyboard', (tester) async {
+    await _pump(tester, _LoginController());
+    await tester.tap(_input('Server address'));
+    await tester.pump();
+    expect(_hasFocus(tester, 'Server address'), isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.tap(find.text('Enter the address of the server you want to use.'));
+    await tester.pump();
+
+    expect(_hasFocus(tester, 'Server address'), isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('dragging the form dismisses the keyboard', (tester) async {
+    await _pump(tester, _LoginController(), width: 320, height: 640, keyboardHeight: 280, textScale: 1.4);
+    await tester.ensureVisible(_input('Server address'));
+    await tester.pumpAndSettle();
+    await tester.tap(_input('Server address'));
+    await tester.pump();
+    expect(_hasFocus(tester, 'Server address'), isTrue);
+
+    final form = tester.getRect(find.byType(Scrollable).first);
+    final gesture = await tester.startGesture(Offset(form.center.dx, form.top + 40));
+    await gesture.moveBy(const Offset(0, 32));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, 128));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'Server address'), isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets(
+    'on iOS the local-network prompt opens app settings until permission is granted',
+    (tester) async {
+      final controller = _LoginController()..permission = LocalNetworkPermissionState.denied;
+      await _pump(tester, controller);
+      expect(find.text('Local network permission: denied'), findsOneWidget);
+
+      await tester.tap(find.text('Open iOS Settings'));
+      await tester.pump();
+      expect(controller.appSettingsOpened, 1);
+
+      controller.permissionChanges.add(LocalNetworkPermissionState.granted);
+      await tester.pumpAndSettle();
+      expect(find.text('Open iOS Settings'), findsNothing);
+      expect(find.textContaining('Local network permission'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
+    'the local-network prompt is hidden off iOS when the permission does not apply',
+    (tester) async {
+      final controller = _LoginController()..permission = LocalNetworkPermissionState.denied;
+      await _pump(tester, controller);
+      expect(find.text('Open iOS Settings'), findsNothing);
+      expect(find.textContaining('Local network permission'), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets('the back link returns to the page that opened sign-in', (tester) async {
+    await _pumpOpenedFromSettings(tester, _LoginController());
+
+    await tester.tap(find.text('BACK TO SETTINGS'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoginPage), findsNothing);
+    expect(find.text('Settings stand-in'), findsOneWidget);
+  });
+
+  testWidgets('a successful sign-in returns to the page that opened it', (tester) async {
+    final controller = _LoginController();
+    await _pumpOpenedFromSettings(tester, controller);
+
+    await tester.enterText(_input('Server address'), 'server.test');
+    await _tapAction(tester, 'Connect');
+    expect(find.byType(LoginPage), findsOneWidget);
+    await tester.enterText(_input('Username'), 'listener');
+    await tester.enterText(_input('Password'), 'password');
+    await _tapAction(tester, 'Sign in');
+
+    expect(controller.authState.isAuthorized, isTrue);
+    expect(find.byType(LoginPage), findsNothing);
+    expect(find.text('Settings stand-in'), findsOneWidget);
+  });
+}
+
+bool _hasFocus(WidgetTester tester, String label) => tester
+    .widget<EditableText>(find.descendant(of: _input(label), matching: find.byType(EditableText)))
+    .focusNode
+    .hasFocus;
+
+Future<void> _pumpOpenedFromSettings(WidgetTester tester, _LoginController controller) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(390, 844);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPhysicalSize);
+  final scale = ObsidianScale.compute(390);
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: ObsidianTheme.build(scale: scale),
+      builder: (context, child) => ObsidianScale(scale: scale, child: child!),
+      home: Scaffold(
+        body: Navigator(
+          onGenerateRoute: (_) => MaterialPageRoute<void>(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(LoginPage.route(controller)),
+              child: const Text('Settings stand-in'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Settings stand-in'));
+  await tester.pumpAndSettle();
+  expect(find.byType(LoginPage), findsOneWidget);
 }
 
 class _LoginController extends Fake implements AppController {
@@ -422,16 +545,23 @@ class _LoginController extends Fake implements AppController {
   @override
   AuthState get authState => _auth;
 
-  @override
-  bool get localNetworkPermissionSupported => false;
+  bool permissionSupported = false;
+  LocalNetworkPermissionState permission = LocalNetworkPermissionState.unknown;
+  final permissionChanges = StreamController<LocalNetworkPermissionState>.broadcast();
+  int appSettingsOpened = 0;
 
   @override
-  LocalNetworkPermissionState get localNetworkPermissionState =>
-      LocalNetworkPermissionState.unknown;
+  bool get localNetworkPermissionSupported => permissionSupported;
+
+  @override
+  LocalNetworkPermissionState get localNetworkPermissionState => permission;
 
   @override
   Stream<LocalNetworkPermissionState> get localNetworkPermissionStream =>
-      const Stream.empty();
+      permissionChanges.stream;
+
+  @override
+  Future<void> openAppSettings() async => appSettingsOpened++;
 
   @override
   Future<AuthCredentials?> loadSavedCredentials() async => saved;

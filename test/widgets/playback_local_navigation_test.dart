@@ -148,6 +148,55 @@ void main() {
     }
   });
 
+  testWidgets('Home forwards app lifecycle changes to the controller', (tester) async {
+    final controller = (await tester.runAsync(() async => _LifecycleController()))!;
+    try {
+      await _pumpHome(tester, controller, width: 1280);
+
+      const backgroundAndReturn = [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ];
+      for (final state in backgroundAndReturn) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pump();
+
+      expect(controller.lifecycleStates, backgroundAndReturn);
+    } finally {
+      await _dispose(tester, controller);
+    }
+  });
+
+  for (final (width, player) in [(390.0, NowPlayingMiniBar), (1280.0, NowPlayingBar)]) {
+    testWidgets('player chrome is hidden while sign-in is open and returns after it closes at $width', (tester) async {
+      final controller = (await tester.runAsync(() async => _SignInController(playing: _track)))!;
+      try {
+        await _pumpHome(tester, controller, width: width);
+        expect(find.byType(player), findsOneWidget);
+
+        controller.invalidate();
+        await tester.pumpAndSettle();
+        expect(find.byType(LoginPage), findsOneWidget);
+        expect(find.byType(NowPlayingBar), findsNothing);
+        expect(find.byType(NowPlayingMiniBar), findsNothing);
+
+        Navigator.of(tester.element(find.byType(LoginPage))).pop();
+        await tester.pumpAndSettle();
+        expect(find.byType(LoginPage), findsNothing);
+        expect(find.byType(player), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await _dispose(tester, controller);
+        await controller.authUpdates.close();
+      }
+    });
+  }
+
   testWidgets('system back bubbles at the active tab root and requests app exit', (tester) async {
     await _withHomeNavigation(tester, (root, tab) async {
       expect(await root.maybePop(), isFalse);
@@ -1228,7 +1277,7 @@ class _Controller extends AppController {
 }
 
 class _SignInController extends _Controller {
-  _SignInController() : super(connected: false, tracks: [], playing: null);
+  _SignInController({super.playing}) : super(connected: false, tracks: []);
   final authUpdates = StreamController<AuthState>.broadcast();
   bool invalidated = false;
   @override
@@ -1245,6 +1294,15 @@ class _SignInController extends _Controller {
     invalidated = true;
     authUpdates.add(authState);
   }
+}
+
+class _LifecycleController extends _Controller {
+  _LifecycleController() : super(connected: false, tracks: [], playing: null);
+
+  final lifecycleStates = <AppLifecycleState>[];
+
+  @override
+  void handleAppLifecycleState(AppLifecycleState state) => lifecycleStates.add(state);
 }
 
 class _PlaybackController extends _Controller {
