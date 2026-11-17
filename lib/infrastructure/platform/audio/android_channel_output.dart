@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
@@ -98,7 +99,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
       return;
     }
 
-    androidAudioOutputChannel.invokeMethod<void>('setVolume', {'id': handle, 'value': _pendingVolume});
+    _sendControl('setVolume', {'id': handle, 'value': _pendingVolume});
   }
 
   @override
@@ -110,7 +111,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
       return;
     }
 
-    androidAudioOutputChannel.invokeMethod<void>('pause', {'id': handle});
+    _sendControl('pause', {'id': handle});
   }
 
   @override
@@ -122,7 +123,18 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
       return;
     }
 
-    androidAudioOutputChannel.invokeMethod<void>('resume', {'id': handle});
+    _sendControl('resume', {'id': handle});
+  }
+
+  /// Volume, pause and resume are fire-and-forget. A native failure (for example
+  /// AudioTrack.play on an invalidated track) is logged rather than left as an uncaught
+  /// error, which would kill the audio worker isolate; the next write reports a dead track.
+  void _sendControl(String method, Map<String, Object?> arguments) {
+    unawaited(
+      androidAudioOutputChannel.invokeMethod<void>(method, arguments).catchError((Object error) {
+        developer.log('Android audio $method failed: $error', name: 'AndroidChannelPlayer');
+      }),
+    );
   }
 
   @override
