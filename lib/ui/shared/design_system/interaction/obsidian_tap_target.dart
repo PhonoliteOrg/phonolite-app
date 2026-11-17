@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/focus_highlight.dart';
 
 /// A custom-painted tappable region that behaves as a real button.
 ///
@@ -67,10 +67,7 @@ class _ObsidianTapTargetState extends State<ObsidianTapTarget> {
             child: DecoratedBox(
               position: DecorationPosition.foreground,
               decoration: _focusHighlighted
-                  ? BoxDecoration(
-                      borderRadius: widget.focusRingRadius,
-                      border: Border.all(color: ObsidianPalette.gold, width: 1.5),
-                    )
+                  ? obsidianFocusRing(borderRadius: widget.focusRingRadius)
                   : const BoxDecoration(),
               child: widget.child,
             ),

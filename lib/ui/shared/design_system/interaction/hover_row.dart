@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/focus_highlight.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hoverable.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
-class ObsidianHoverRow extends StatelessWidget {
+/// A list row whose pointer hover and keyboard focus share one highlight: a leading accent border
+/// and a soft gradient.
+class ObsidianHoverRow extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -39,15 +42,25 @@ class ObsidianHoverRow extends StatelessWidget {
   });
 
   @override
+  State<ObsidianHoverRow> createState() => _ObsidianHoverRowState();
+}
+
+class _ObsidianHoverRowState extends State<ObsidianHoverRow> with InkFocusHighlight<ObsidianHoverRow> {
+  @override
   Widget build(BuildContext context) {
+    final enabled = widget.enabled;
+    final onTap = widget.onTap;
+    final onLongPress = widget.onLongPress;
+    final hoverGradient = widget.hoverGradient;
     final actionable = enabled && (onTap != null || onLongPress != null);
     final cursor = actionable ? SystemMouseCursors.click : SystemMouseCursors.basic;
 
     return ObsidianHoverBuilder(
       cursor: cursor,
-      builder: (context, hovered) {
-        final highlight = isActive || hovered;
-        final activeBorder = highlight ? borderColor : Colors.transparent;
+      builder: (context, pointerHovered) {
+        final hovered = pointerHovered || focusHighlighted;
+        final highlight = widget.isActive || hovered;
+        final activeBorder = highlight ? widget.borderColor : Colors.transparent;
         final resolvedGradient = hovered
             ? hoverGradient ??
                   LinearGradient(
@@ -56,28 +69,29 @@ class ObsidianHoverRow extends StatelessWidget {
                     end: Alignment.centerRight,
                   )
             : null;
-        final resolvedColor = hovered && hoverGradient == null ? hoverColor : null;
+        final resolvedColor = hovered && hoverGradient == null ? widget.hoverColor : null;
 
         return Material(
           color: Colors.transparent,
           child: InkWell(
             mouseCursor: WidgetStateMouseCursor.clickable,
-            canRequestFocus: canRequestFocus,
+            canRequestFocus: widget.canRequestFocus,
             onTap: withButtonHaptic(enabled ? onTap : null),
             onLongPress: enabled ? onLongPress : null,
+            onFocusChange: handleInkFocusChange,
             child: AnimatedContainer(
               constraints: ObsidianModalScope.usesTouchTargets(context) ? const BoxConstraints(minHeight: 56) : null,
-              duration: duration,
-              curve: curve,
-              padding: padding,
+              duration: widget.duration,
+              curve: widget.curve,
+              padding: widget.padding,
               decoration: BoxDecoration(
                 border: Border(
-                  left: BorderSide(color: activeBorder, width: borderWidth),
+                  left: BorderSide(color: activeBorder, width: widget.borderWidth),
                 ),
                 gradient: resolvedGradient,
                 color: resolvedColor,
               ),
-              child: child,
+              child: widget.child,
             ),
           ),
         );
