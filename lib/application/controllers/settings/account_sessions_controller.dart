@@ -48,7 +48,7 @@ class AccountSessionsController extends FeatureController {
       if (!isDisposed && sessionIsCurrent()) {
         update(() => _message = message);
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (!isDisposed && sessionIsCurrent()) {
         update(() {
           _message = _failureMessage(error);

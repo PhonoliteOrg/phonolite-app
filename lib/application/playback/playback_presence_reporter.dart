@@ -72,7 +72,7 @@ class PlaybackPresenceReporter {
             _heartbeat?.cancel();
             _heartbeat = null;
           }
-        } catch (_) {
+        } on Object catch (_) {
           // The next heartbeat retries active playback. Lost stop reports
           // expire on the server without affecting audio or authentication.
         }

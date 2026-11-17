@@ -7,6 +7,7 @@ import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 export 'package:phonolite_app/data/models/library/library_destination.dart';
 
@@ -117,7 +118,10 @@ class LibraryNavigationController extends FeatureController {
               artistName: album.artist.isNotEmpty ? album.artist : track?.artist ?? '',
             )
           : null;
-    } catch (_) {
+    } on Object catch (error) {
+      // No destination leaves the user on the search results, which stay usable.
+      AppLogger.warning('Could not open search result ${result.kind} ${result.id}: $error');
+
       return null;
     }
   }
@@ -173,7 +177,10 @@ class LibraryNavigationController extends FeatureController {
         if (app.authState.isAuthorized) {
           return LibraryDestination(artist: artist);
         }
-      } catch (_) {}
+      } on Object catch (error) {
+        // Best-effort: the downloaded library may still hold this artist.
+        AppLogger.warning('Could not load stats artist ${item.id} from the server: $error');
+      }
     }
 
     if (!_current(revision, generation)) {
@@ -203,7 +210,10 @@ class LibraryNavigationController extends FeatureController {
         if (destination != null) {
           return destination;
         }
-      } catch (_) {}
+      } on Object catch (error) {
+        // Best-effort: the downloaded library may still hold this track.
+        AppLogger.warning('Could not load stats track ${item.id} from the server: $error');
+      }
     }
 
     if (!_current(revision, generation)) {

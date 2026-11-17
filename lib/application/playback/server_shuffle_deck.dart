@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 
@@ -289,7 +291,8 @@ class ServerShuffleDeck {
 
         return page;
       } finally {
-        _loading.remove(offset);
+        // The removed entry is this operation's own future, already returned to its waiters.
+        unawaited(_loading.remove(offset));
       }
     });
   }

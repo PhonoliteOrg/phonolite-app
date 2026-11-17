@@ -33,7 +33,7 @@ class DisplaySettingsController extends PersistedSettingsController<DisplaySetti
 
     try {
       await loadSettings(_storage.read);
-    } catch (_) {
+    } on Object catch (_) {
       // Reported by loadSettings; the pages keep their local-first defaults.
     }
   }

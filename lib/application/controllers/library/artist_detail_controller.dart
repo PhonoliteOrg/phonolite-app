@@ -188,7 +188,9 @@ class ArtistDetailController extends FeatureController {
 
       _artworkDiagnostics.refreshed(initial, updated, elapsedMs: stopwatch.elapsedMilliseconds);
       update(() => _artist = updated);
-    } catch (error) {
+    } on Object catch (error) {
+      // Best-effort refresh: the already loaded artist stays on screen, and the
+      // artwork diagnostics record the failure while the screen is alive.
       if (!isDisposed) {
         _artworkDiagnostics.failed(initial, error, elapsedMs: stopwatch.elapsedMilliseconds);
       }

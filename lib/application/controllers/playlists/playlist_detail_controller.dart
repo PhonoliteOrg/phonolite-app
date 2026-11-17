@@ -11,6 +11,7 @@ import 'package:phonolite_app/data/models/downloads/offline_track_download.dart'
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/rules/library/track_identity.dart' as identity;
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class PlaylistDetailController extends FeatureController {
   final AppController app;
@@ -228,7 +229,11 @@ class PlaylistDetailController extends FeatureController {
       update(() => _tracksLoading = false);
     }
 
-    unawaited(loadFuture.whenComplete(finishTrackLoading).catchError((Object _) {}));
+    unawaited(loadFuture.whenComplete(finishTrackLoading).catchError(_reportTrackLoadFailure));
+  }
+
+  void _reportTrackLoadFailure(Object error) {
+    AppLogger.warning('Could not load playlist tracks: $error');
   }
 
   String? serverPlaylistCoverUrl(AppController controller, Playlist playlist) {

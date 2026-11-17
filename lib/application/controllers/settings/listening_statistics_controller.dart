@@ -21,7 +21,7 @@ class ListeningStatisticsController extends FeatureController {
 
     try {
       await save(enabled);
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Could not save the statistics setting: $error');
     } finally {
       update(() => _pendingChanges--);
@@ -57,7 +57,7 @@ class ListeningStatisticsController extends FeatureController {
 
     try {
       await action();
-    } catch (error) {
+    } on Object catch (error) {
       final message = serverConnected && error is ApiException && (error.statusCode == 404 || error.statusCode == 405)
           ? 'This server needs an update to reset listening statistics.'
           : 'Could not reset listening statistics. Check your connection and try again.';

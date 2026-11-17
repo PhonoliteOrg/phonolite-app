@@ -84,7 +84,7 @@ class PlaybackControlsController {
 
         loadFuture = controller.loadLocalLikedTracks();
       }
-    } catch (err, stack) {
+    } on Object catch (err, stack) {
       developer.log('Failed to start shuffle liked-state warmup', name: 'NowPlayingBar', error: err, stackTrace: stack);
 
       return;

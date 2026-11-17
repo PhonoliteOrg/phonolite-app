@@ -4,6 +4,7 @@ import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_urls.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
@@ -103,7 +104,10 @@ class CatalogController {
       final id = track.albumId;
 
       return id == null || id.isEmpty ? null : buildAlbumCoverUrl(id);
-    } catch (_) {
+    } on Object catch (error) {
+      // Best-effort artwork: the result tile falls back to its placeholder.
+      AppLogger.warning('Could not resolve search result artwork for track ${result.id}: $error');
+
       return null;
     }
   }

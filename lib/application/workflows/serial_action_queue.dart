@@ -7,6 +7,7 @@ class SerialActionQueue {
   Future<void> add(Future<void> Function() action) {
     final result = _tail.then((_) => action());
 
+    // The caller receives [result] and owns its error; the tail only orders work.
     _tail = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
 
     return result;

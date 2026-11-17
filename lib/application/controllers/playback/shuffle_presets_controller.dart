@@ -8,6 +8,7 @@ import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset_deletion.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class ShufflePresetsController extends FeatureController {
   final AppController app;
@@ -128,7 +129,8 @@ class ShufflePresetsController extends FeatureController {
 
     try {
       await action();
-    } catch (error) {
+    } on Object catch (error) {
+      AppLogger.warning('Could not update custom shuffles: $error');
       update(() {
         _error = error is ApiException && error.statusCode == 409
             ? 'A preset changed on another device. Review the updated list and try again.'

@@ -35,7 +35,7 @@ class StatsController extends FeatureController {
   Future<void> importLocalHistory() async {
     try {
       await app.importLocalListeningHistory();
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Could not add listening history: $error');
     }
   }

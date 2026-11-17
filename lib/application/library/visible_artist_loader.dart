@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 /// Short-lived metadata for the artists currently on screen. Detail reads also
 /// trigger the server's enrichment path; push updates normally finish the load.
@@ -66,7 +67,7 @@ class VisibleArtistLoader {
       },
       onError: (Object error) {
         if (_isCurrent(entry)) {
-          onError?.call(artist.id, error);
+          _report(artist.id, error);
         }
       },
     );
@@ -90,9 +91,18 @@ class VisibleArtistLoader {
 
   static bool _hasLogo(Artist artist) => artist.logoRef?.trim().isNotEmpty == true;
 
+  void _report(String artistId, Object error) {
+    final report = onError;
+
+    if (report != null) {
+      report(artistId, error);
+    } else {
+      AppLogger.warning('Could not load visible artist $artistId: $error');
+    }
+  }
+
   void _release(_VisibleArtist entry) {
-    entry.timer?.cancel();
-    unawaited(entry.subscription?.cancel());
+    entry.release();
     _queue.remove(entry);
     // No notification: a tile leaving the viewport needs no metadata rebuild.
   }
@@ -127,13 +137,15 @@ class VisibleArtistLoader {
       if (_isCurrent(entry) && entry.revision == revision && updated.id == entry.artist.id) {
         _apply(entry, updated);
       }
-    } catch (error) {
+    } on Object catch (error) {
+      // Visible-artist metadata is best effort: the tile keeps its list
+      // metadata, and retryable failures are read again below.
       if (error is ApiException) {
         retryable = !const [401, 403, 404, 410].contains(error.statusCode);
         retryAfter = error.retryAfter;
       }
       if (_isCurrent(entry)) {
-        onError?.call(entry.artist.id, error);
+        _report(entry.artist.id, error);
       }
     } finally {
       entry.inFlight = false;
@@ -166,4 +178,9 @@ class _VisibleArtist {
   bool inFlight = false;
 
   _VisibleArtist(this.artist);
+
+  void release() {
+    timer?.cancel();
+    unawaited(subscription?.cancel());
+  }
 }

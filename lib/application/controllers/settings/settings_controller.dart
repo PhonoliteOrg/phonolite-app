@@ -24,7 +24,7 @@ class SettingsController {
       await const DesktopDirectoryService().openDirectory(path);
 
       return true;
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Could not open storage folder: $error');
 
       return false;
@@ -36,7 +36,7 @@ class SettingsController {
       await updateStorageDirectory(null);
 
       return true;
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Could not reset logs storage: $error');
 
       return false;
