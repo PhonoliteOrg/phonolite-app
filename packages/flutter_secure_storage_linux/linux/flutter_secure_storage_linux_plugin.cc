@@ -146,11 +146,13 @@ static void flutter_secure_storage_linux_plugin_handle_method_call(
         response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
       }
     }
-    catch (const gchar *e)
+    // Covers the libsecret errors from Secret.hpp and nlohmann::json errors
+    // (malformed stored JSON, non-string values).
+    catch (const std::exception &e)
     {
-      g_warning("libsecret_error: %s", e);
+      g_warning("libsecret_error: %s", e.what());
       response = FL_METHOD_RESPONSE(
-          fl_method_error_response_new("Libsecret error", e, nullptr));
+          fl_method_error_response_new("Libsecret error", e.what(), nullptr));
     }
     fl_method_call_respond(method_call, response, nullptr);
   }

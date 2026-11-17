@@ -2,6 +2,7 @@
 #include "json.hpp"
 #include <libsecret/secret.h>
 #include <memory>
+#include <stdexcept>
 
 #define secret_autofree _GLIB_CLEANUP(secret_cleanup_free)
 static inline void secret_cleanup_free(gchar **p) { secret_password_free(*p); }
@@ -16,7 +17,11 @@ public:
   void setLabel(const char *label) { this->label = label; }
 
   SecretStorage(const char *_label = "default") : label(_label) {
-    the_schema = {label.c_str(),
+    // The schema name is stored with each item and matched on lookup. It used
+    // to alias `label`'s buffer, which effectively stayed "default" after
+    // setLabel(); keep that value so existing items still match, but give it
+    // static storage instead of a pointer that setLabel() can invalidate.
+    the_schema = {"default",
                   SECRET_SCHEMA_NONE,
                   {
                       {"account", SECRET_SCHEMA_ATTRIBUTE_STRING},
@@ -52,7 +57,8 @@ public:
       }
       root.erase(key);
       storeToKeyring(root);
-    } catch (const std::exception& e) {
+    } catch (const nlohmann::json::exception& e) {
+        // Only JSON errors are ignored; libsecret errors still reach the caller.
         return;
     }
   }
@@ -68,7 +74,8 @@ public:
         output.c_str(), nullptr, &err);
 
     if (err) {
-      throw err->message;
+      // Copy the message: `err` is freed while the exception unwinds.
+      throw std::runtime_error(err->message);
     }
 
     return result;
@@ -84,7 +91,7 @@ public:
         &the_schema, m_attributes.getGHashTable(), nullptr, &err);
 
     if (err) {
-      throw err->message;
+      throw std::runtime_error(err->message);
     }
     if(result != NULL && strcmp(result, "") != 0){
       value = nlohmann::json::parse(result);
@@ -116,7 +123,7 @@ private:
         "The meaning of life", nullptr, &err);
 
     if (!success) {
-      throw "Failed to unlock the keyring";
+      throw std::runtime_error("Failed to unlock the keyring");
     }
   }
 };
