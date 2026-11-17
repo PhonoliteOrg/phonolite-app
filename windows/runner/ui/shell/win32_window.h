@@ -47,7 +47,7 @@ class Win32Window {
   // subsequent messages reach the instance's specialization hook.
   static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) noexcept;
   static Win32Window* get_this_from_handle(HWND window) noexcept;
-  static void update_theme(HWND window);
+  static void apply_frame_style(HWND window);
 };
 
 #endif // RUNNER_UI_SHELL_WIN32_WINDOW_H_
