@@ -56,6 +56,8 @@ class _OfflineActorClient {
       }
     }
 
+    // Errors (a [error, stack] list) and exit (null) arrive on the same port, so a crashed actor
+    // fails its pending commands instead of leaving them waiting forever.
     Isolate.spawn(
       _offlineDownloadActorMain,
       OfflineActorInit(
@@ -66,6 +68,8 @@ class _OfflineActorClient {
         storageConfig: _host._storageConfig,
         rootIsolateToken: _rootIsolateToken,
       ),
+      onError: _receivePort!.sendPort,
+      onExit: _receivePort!.sendPort,
       debugName: 'OfflineDownloadActor',
     ).then(retainActor).catchError(failStartup);
 
@@ -84,6 +88,18 @@ class _OfflineActorClient {
   }
 
   void _handleActorMessage(Object? message) {
+    if (message == null) {
+      _failActor('Offline download actor exited');
+
+      return;
+    }
+
+    if (message is List) {
+      _failActor('Offline download actor failed: ${message.isEmpty ? 'unknown error' : message.first}');
+
+      return;
+    }
+
     if (message is OfflineActorReady) {
       _actorPort = message.commandPort;
 
@@ -119,6 +135,24 @@ class _OfflineActorClient {
         completer.completeError(StateError(message.error!));
       } else {
         completer.complete(message.result);
+      }
+    }
+  }
+
+  /// Fails every waiting command and forgets the actor so the next command starts a fresh one.
+  void _failActor(String reason) {
+    final pending = List.of(_pending.values);
+
+    _pending.clear();
+    _actorPort = null;
+    _receivePort?.close();
+    _receivePort = null;
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+
+    for (final completer in pending) {
+      if (!completer.isCompleted) {
+        completer.completeError(StateError(reason));
       }
     }
   }

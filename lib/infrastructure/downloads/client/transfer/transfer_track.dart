@@ -335,13 +335,25 @@ class _TrackDownloadTransfer {
     Isolate? isolate;
 
     try {
+      // Errors (a [error, stack] list) and exit (null) arrive here too, so a crashed worker ends the
+      // download instead of leaving this loop waiting forever.
       isolate = await Isolate.spawn(
         _downloadWorkerMain,
         DownloadWorkerStart(request, receivePort.sendPort),
+        onError: receivePort.sendPort,
+        onExit: receivePort.sendPort,
         debugName: 'phonolite-download-worker',
       );
 
       await for (final message in receivePort) {
+        if (message == null) {
+          break;
+        }
+
+        if (message is List) {
+          throw Exception('download worker failed: ${message.isEmpty ? 'unknown error' : message.first}');
+        }
+
         if (message is DownloadWorkerReady) {
           _host._activeCancelPorts[key] = message.cancelPort;
 
