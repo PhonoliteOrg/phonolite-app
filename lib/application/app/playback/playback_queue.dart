@@ -605,10 +605,16 @@ class _PlaybackQueue {
           return;
         }
 
-        await _host._playCurrent();
+        try {
+          await _host._playCurrent();
+        } on Object catch (error) {
+          // Detached from the completion callback, so the failure is reported here.
+          _autoAdvanceInFlight = false;
+          _host._pushMessage('Failed to repeat track: $error', level: LogLevel.warning);
+        }
       }
 
-      repeatFinishedTrack();
+      unawaited(repeatFinishedTrack());
 
       return;
     }
@@ -616,7 +622,13 @@ class _PlaybackQueue {
     if (_playQueue.isEmpty) {
       if (_host._playbackState.shuffleMode != ShuffleMode.off) {
         Future<void> continueShuffle() async {
-          final ensured = await _host._ensureShuffleQueue(play: true);
+          var ensured = false;
+          try {
+            ensured = await _host._ensureShuffleQueue(play: true);
+          } on Object catch (error) {
+            // Detached from the completion callback, so the failure is reported here.
+            _host._pushMessage('Failed to continue shuffle: $error', level: LogLevel.warning);
+          }
 
           if (!ensured) {
             _host._wantsPlayback = false;
@@ -626,7 +638,7 @@ class _PlaybackQueue {
           _autoAdvanceInFlight = false;
         }
 
-        continueShuffle();
+        unawaited(continueShuffle());
 
         return;
       }

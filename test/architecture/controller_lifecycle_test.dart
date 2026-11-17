@@ -295,6 +295,25 @@ void main() {
     expect(harness.audio.starts.every((start) => start.offset == Duration.zero), isTrue);
   });
 
+  test('a repeat-one restart failure is reported and the next completion still repeats', () async {
+    final connection = _ProjectionFailureConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.controller.toggleRepeatMode();
+    await Future<void>.delayed(Duration.zero);
+    connection.failProjections = 1;
+
+    harness.onComplete!();
+    await _resumeUntil(
+      () => harness.controller.messages.any((entry) => entry.message.startsWith('Failed to repeat track:')),
+    );
+    harness.onComplete!();
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+
+    expect(harness.audio.starts.last.trackId, harness.controller.playbackState.track?.id);
+  });
+
   test('statistics opt-out cancels prepared listening context before another occurrence is armed', () async {
     final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
     final harness = _Harness(authenticated: true, connection: connection);
@@ -6529,4 +6548,18 @@ class _WindowShuffleConnection extends _Connection {
   @override
   Future<ServerLikeState?> setLikeState(String trackId, bool liked) async =>
       ServerLikeState(trackId: trackId, liked: liked, updatedAt: 1);
+}
+
+class _ProjectionFailureConnection extends _Connection {
+  int failProjections = 0;
+
+  @override
+  Track projectServerTrack(Track track) {
+    if (failProjections > 0) {
+      failProjections--;
+      throw StateError('track projection failed');
+    }
+
+    return super.projectServerTrack(track);
+  }
 }
