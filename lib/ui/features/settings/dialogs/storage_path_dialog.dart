@@ -32,6 +32,9 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
   bool get modalScrollable => true;
 
   @override
+  bool get modalCanPop => !_feature.busy;
+
+  @override
   void initState() {
     super.initState();
 
@@ -51,7 +54,8 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
   Future<void> settingsSave() async {
     final saved = await _feature.save(_controller.text);
 
-    if (mounted && saved) {
+    // A dismissed dialog stays mounted through its exit animation; popping then would close the route below.
+    if (mounted && saved && (ModalRoute.of(context)?.isCurrent ?? false)) {
       Navigator.of(context).pop();
     }
   }

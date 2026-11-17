@@ -6,6 +6,7 @@ class DevicePickerController extends FeatureController {
   late final _requests = createRequestGeneration();
   List<OutputDevice> _devices = const [];
   bool _loading = true;
+  bool _selecting = false;
   String? _error;
 
   DevicePickerController(this.fetchDevices);
@@ -13,6 +14,8 @@ class DevicePickerController extends FeatureController {
   List<OutputDevice> get devices => List.unmodifiable(_devices);
 
   bool get loading => _loading;
+
+  bool get selecting => _selecting;
 
   String? get error => _error;
 
@@ -51,5 +54,25 @@ class DevicePickerController extends FeatureController {
 
       update(publishFailure);
     }
+  }
+
+  /// Applies [device] once at a time; returns whether it completed while this picker is still alive.
+  Future<bool> selectDevice(OutputDevice device, Future<void> Function(OutputDevice device) apply) async {
+    if (_selecting || isDisposed) {
+      return false;
+    }
+
+    void beginSelecting() => _selecting = true;
+    void endSelecting() => _selecting = false;
+
+    update(beginSelecting);
+
+    try {
+      await apply(device);
+    } finally {
+      update(endSelecting);
+    }
+
+    return !isDisposed;
   }
 }

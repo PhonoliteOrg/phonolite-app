@@ -14,6 +14,10 @@ abstract class BaseAlertModalState<T extends BaseAlertModal> extends State<T> wi
   @protected
   bool get modalScrollable => false;
 
+  /// Whether Esc, system back and barrier taps may dismiss the modal, e.g. false while a save is running.
+  @protected
+  bool get modalCanPop => true;
+
   @protected
   Widget modalTitle(BuildContext context);
 
@@ -25,12 +29,15 @@ abstract class BaseAlertModalState<T extends BaseAlertModal> extends State<T> wi
 
   @override
   @nonVirtual
-  Widget build(BuildContext context) => ObsidianModalScope(
-    builder: (context) => ObsidianAlertDialog(
-      scrollable: modalScrollable,
-      title: modalTitle(context),
-      content: modalContent(context),
-      actions: modalActions(context),
+  Widget build(BuildContext context) => PopScope(
+    canPop: modalCanPop,
+    child: ObsidianModalScope(
+      builder: (context) => ObsidianAlertDialog(
+        scrollable: modalScrollable,
+        title: modalTitle(context),
+        content: modalContent(context),
+        actions: modalActions(context),
+      ),
     ),
   );
 }

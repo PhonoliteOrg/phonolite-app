@@ -120,7 +120,8 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
   Future<void> _submit() async {
     final saved = await _feature.submit(_nameController.text, _descriptionController.text);
 
-    if (mounted && saved) {
+    // A dismissed dialog stays mounted through its exit animation; popping then would close the route below.
+    if (mounted && saved && (ModalRoute.of(context)?.isCurrent ?? false)) {
       Navigator.of(context).pop();
     }
   }
@@ -242,17 +243,20 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
       ],
     );
 
-    return ObsidianEditorDialog(
-      title: Text(widget.title),
-      width: dialogWidth,
-      content: content,
-      actions: [
-        ModalActionButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
-        ModalActionButton(
-          label: _feature.saving ? 'Saving' : 'Save',
-          onPressed: canSave ? () => unawaited(_submit()) : null,
-        ),
-      ],
+    return PopScope(
+      canPop: !_feature.saving,
+      child: ObsidianEditorDialog(
+        title: Text(widget.title),
+        width: dialogWidth,
+        content: content,
+        actions: [
+          ModalActionButton(label: 'Close', onPressed: _feature.saving ? null : () => Navigator.of(context).pop()),
+          ModalActionButton(
+            label: _feature.saving ? 'Saving' : 'Save',
+            onPressed: canSave ? () => unawaited(_submit()) : null,
+          ),
+        ],
+      ),
     );
   }
 

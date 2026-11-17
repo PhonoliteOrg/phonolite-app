@@ -43,9 +43,10 @@ class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
   Widget modalTitle(BuildContext context) => const Text('Select output device');
 
   Future<void> _selectDevice(BuildContext context, OutputDevice device) async {
-    await widget.onSelected(device);
+    final selected = await _feature.selectDevice(device, widget.onSelected);
 
-    if (!context.mounted) {
+    // A dismissed dialog stays mounted through its exit animation; popping then would close the route below.
+    if (!selected || !context.mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) {
       return;
     }
 
@@ -87,6 +88,7 @@ class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
           return ObsidianModalListRow(
             title: device.name,
             isSelected: isSelected,
+            enabled: !_feature.selecting,
             onTap: () => _selectDevice(context, device),
           );
         },
