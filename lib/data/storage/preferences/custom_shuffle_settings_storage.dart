@@ -15,7 +15,7 @@ class CustomShuffleSettingsStorage {
 
   const CustomShuffleSettingsStorage({this._files = const SettingsFiles(cacheFirst: true)});
 
-  JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files);
+  JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files, atomicWrites: true);
 
   Future<CustomShuffleSettings> read() async {
     return _read(_file);
@@ -54,7 +54,7 @@ class CustomShuffleSettingsStorage {
 
     final digest = sha256.convert(utf8.encode(scope));
 
-    return JsonSettingsFile(name: 'shuffle_settings_account_$digest.json', files: _files);
+    return JsonSettingsFile(name: 'shuffle_settings_account_$digest.json', files: _files, atomicWrites: true);
   }
 
   Future<CustomShuffleSettings> _read(JsonSettingsFile file) async {

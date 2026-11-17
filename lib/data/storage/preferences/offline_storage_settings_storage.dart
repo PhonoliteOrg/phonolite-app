@@ -19,7 +19,7 @@ class OfflineStorageSettingsStorage {
 
   bool get usesManagedStoragePaths => _usesManagedStoragePaths?.call() ?? (!kIsWeb && Platform.isIOS);
 
-  JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files);
+  JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files, atomicWrites: true);
 
   Future<OfflineStorageSettings> read() async {
     if (kIsWeb) {

@@ -16,7 +16,7 @@ class PlaybackPreferencesStorage {
 
   const PlaybackPreferencesStorage({this._files = const SettingsFiles()});
 
-  JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files);
+  JsonSettingsFile get _file => JsonSettingsFile(name: _fileName, files: _files, atomicWrites: true);
 
   Future<double?> readVolume() async {
     final map = await _readPreferences();

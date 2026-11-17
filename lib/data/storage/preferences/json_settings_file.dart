@@ -28,10 +28,12 @@ class JsonSettingsFile {
     return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
   }
 
+  /// Replace the whole file, queued behind any in-flight [write] or [update] to the same file so
+  /// concurrent writers never share the temporary file of an atomic replacement.
   Future<void> write(Map<String, dynamic> value) async {
     final file = await files.resolve(name, createDirectory: true);
 
-    await _write(file, value);
+    await _serialized(file, () => _write(file, value));
   }
 
   /// Preserve unrelated keys and serialize updates across store instances.
@@ -45,11 +47,8 @@ class JsonSettingsFile {
     void Function(Object error)? onReadError,
   }) async {
     final file = await files.resolve(name, createDirectory: true);
-    final path = file.absolute.path;
-    final key = Platform.isWindows ? path.toLowerCase() : path;
-    final previous = _updates[key] ?? Future<void>.value();
 
-    final next = previous.then((_) async {
+    await _serialized(file, () async {
       Map<String, dynamic>? value;
 
       try {
@@ -64,9 +63,18 @@ class JsonSettingsFile {
 
       await _write(file, payload);
     });
+  }
+
+  /// Runs [action] after every queued operation on the same physical file.
+  Future<void> _serialized(File file, Future<void> Function() action) async {
+    final path = file.absolute.path;
+    final key = Platform.isWindows ? path.toLowerCase() : path;
+    final previous = _updates[key] ?? Future<void>.value();
+
+    final next = previous.then((_) => action());
 
     // Store a successful tail so callers can handle their own errors without
-    // preventing another queued update from running.
+    // preventing another queued operation from running.
     final tail = next.then<void>((_) {}, onError: (Object _, StackTrace __) {});
 
     _updates[key] = tail;
