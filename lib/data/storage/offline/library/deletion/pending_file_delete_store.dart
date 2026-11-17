@@ -27,9 +27,6 @@ class _PendingFileDeleteStore {
           _recordPendingFileDeletes(db, pendingPaths, DateTime.now().millisecondsSinceEpoch);
         });
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to record pending file deletes: $err');
-      },
     );
   }
 
@@ -74,11 +71,6 @@ class _PendingFileDeleteStore {
             .where((path) => path.trim().isNotEmpty)
             .toList(growable: false);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read pending file deletes: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -104,9 +96,6 @@ class _PendingFileDeleteStore {
             db.execute('DELETE FROM pending_file_deletes WHERE path = ?', [path]);
           }
         });
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to clear pending file deletes: $err');
       },
     );
   }

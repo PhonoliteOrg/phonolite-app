@@ -112,8 +112,7 @@ class _SessionCoordinator {
 
       await _host._loadPlaybackSettings();
       if (!isCurrent()) return;
-      unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
-      unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+      _host._resumeOfflineWorkInBackground();
 
       if (rememberMe) {
         final credentials = AuthCredentials(
@@ -197,7 +196,7 @@ class _SessionCoordinator {
       if (!_isServerSessionCurrent(sessionRevision)) return;
       await _host._offlineDownloadManager.resumePausedForCurrentServer();
       if (!_isServerSessionCurrent(sessionRevision)) return;
-      unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+      _host._repairOfflineMetadataInBackground();
     }
 
     Future<void> initializeTokenSessionSafely() async {
@@ -614,8 +613,7 @@ class _SessionCoordinator {
         return;
       }
 
-      unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
-      unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+      _host._resumeOfflineWorkInBackground();
       unawaited(_host._refreshServerPorts(timeout: AppController._storedSessionRequestTimeout, retryable: false));
     } on ApiException catch (err) {
       if (!_isRestoreSessionCurrent(revision)) {

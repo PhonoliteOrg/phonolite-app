@@ -157,9 +157,7 @@ class _OfflineDownloadActorCore
     await _ownerPlaylistDownloads.dispose();
     await _pendingFileCleanupFuture;
 
-    while (_pendingStorageOperations.isNotEmpty) {
-      await Future.wait(_pendingStorageOperations.toList(), eagerError: false);
-    }
+    await _storageOperationsSettled();
 
     await _controller.close();
     await _batchController.close();
@@ -239,7 +237,12 @@ class _OfflineDownloadActorCore
     _schedule();
 
     unawaited(_cleanupPendingFileDeletes());
-    unawaited(_repairOfflineMetadataFragments());
+    // Repair is background upkeep that the next load or reconnect retries, so its failure is logged here.
+    unawaited(
+      _repairOfflineMetadataFragments().catchError(
+        (Object error) => AppLogger.warning('Failed to repair offline metadata after load: $error'),
+      ),
+    );
     await _resumePendingPlaylistDownloads();
   }
 

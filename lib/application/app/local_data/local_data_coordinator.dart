@@ -59,6 +59,16 @@ class _LocalDataCoordinator {
     }
   }
 
+  /// Loads the offline library during startup. An unreadable library is reported instead of failing startup,
+  /// so streaming keeps working; the library stays unloaded and each offline command retries the load.
+  Future<void> _loadOfflineLibraryAtStartup() async {
+    try {
+      await _host._offlineDownloadManager.load();
+    } on Object catch (err) {
+      _host._pushMessage('Failed to load the offline library: $err', level: LogLevel.warning);
+    }
+  }
+
   Future<void> loadOfflineStorageLocations() async {
     try {
       final locations = await _host._offlineStorage.resolveStorageLocations();
@@ -133,6 +143,8 @@ mixin _LocalDataFacade {
   Future<void> refreshLibrary() => _localDataCoordinator.refreshLibrary();
 
   Future<void> loadOfflineStorageLocations() => _localDataCoordinator.loadOfflineStorageLocations();
+
+  Future<void> _loadOfflineLibraryAtStartup() => _localDataCoordinator._loadOfflineLibraryAtStartup();
 
   Future<void> updateOfflineMetadataDirectory(String? path) =>
       _localDataCoordinator.updateOfflineMetadataDirectory(path);

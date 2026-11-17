@@ -88,9 +88,6 @@ class _OfflineMetadataStore {
           ]);
         });
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to update offline artwork metadata: $err');
-      },
     );
   }
 
@@ -102,11 +99,6 @@ class _OfflineMetadataStore {
     return await _host._withDatabase(
       (db) {
         return _readLocalTracks(db, whereDownloaded: true);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read local downloaded tracks: $err');
-
-        return const [];
       },
     );
   }
@@ -155,11 +147,6 @@ class _OfflineMetadataStore {
               ),
             )
             .toList(growable: false);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read offline metadata repair queue: $err');
-
-        return const [];
       },
     );
   }

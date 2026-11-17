@@ -14,11 +14,6 @@ class _OfflineDownloadJobStore {
       (db) {
         return _readDownloadBatches(db);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read offline download batches: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -31,11 +26,6 @@ class _OfflineDownloadJobStore {
       (db) {
         return _readDownloadJobs(db);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read offline download jobs: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -47,11 +37,6 @@ class _OfflineDownloadJobStore {
     return await _host._withDatabase(
       (db) {
         return _readDownloadJobItems(db, jobId);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read offline download job items: $err');
-
-        return const [];
       },
     );
   }
@@ -72,11 +57,6 @@ class _OfflineDownloadJobStore {
         'offline.sqlite.readJobItemsLean',
         () => _readDownloadJobItems(open, jobId, includeTrackJson: false),
       );
-    } on Object catch (err) {
-      // Same recovery policy as the other job readers in this store.
-      AppLogger.warning('Failed to read offline download job items: $err');
-
-      return const [];
     } finally {
       _host._releaseDatabase(db);
     }
@@ -125,11 +105,6 @@ class _OfflineDownloadJobStore {
       (db) {
         return _readDownloadJobSources(db, jobId);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read offline download job sources: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -142,9 +117,6 @@ class _OfflineDownloadJobStore {
       (db) {
         _upsertDownloadBatch(db, batch);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to persist offline download batch: $err');
-      },
     );
   }
 
@@ -156,9 +128,6 @@ class _OfflineDownloadJobStore {
     return await _host._withDatabase(
       (db) {
         _upsertDownloadJob(db, job);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to persist offline download job: $err');
       },
     );
   }
@@ -239,9 +208,6 @@ class _OfflineDownloadJobStore {
           }
         });
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to persist offline download jobs: $err');
-      },
     );
   }
 
@@ -257,9 +223,6 @@ class _OfflineDownloadJobStore {
             _upsertDownloadJobItem(db, item);
           }
         });
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to persist offline download job items: $err');
       },
     );
   }
@@ -277,9 +240,6 @@ class _OfflineDownloadJobStore {
           }
         });
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to persist offline download job sources: $err');
-      },
     );
   }
 
@@ -291,9 +251,6 @@ class _OfflineDownloadJobStore {
     return await _host._withDatabase(
       (db) {
         db.execute('DELETE FROM download_batches WHERE batch_id = ?', [batchId]);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to delete offline download batch: $err');
       },
     );
   }
@@ -321,9 +278,6 @@ class _OfflineDownloadJobStore {
         database.execute('DELETE FROM download_jobs WHERE job_id = ?', [trimmed]);
         database.execute('DELETE FROM download_batches WHERE batch_id = ?', [trimmed]);
       });
-    } on Object catch (err) {
-      // Same recovery policy as deleteDownloadBatch in this store.
-      AppLogger.warning('Failed to delete offline download job: $err');
     } finally {
       _host._releaseDatabase(db);
     }

@@ -273,6 +273,36 @@ class _DownloadCoordinator {
     await _removeOfflineDownloads(downloads, label: label ?? fallbackLabel, scope: scope);
   }
 
+  /// Pauses [serverBaseUrl]'s offline downloads without waiting, for a server that just became unreachable.
+  /// The connection change does not depend on it, so a failure is logged rather than thrown.
+  void _pauseServerDownloadsInBackground(String serverBaseUrl) {
+    unawaited(
+      _host._offlineDownloadManager.pauseDownloadsForServer(serverBaseUrl).catchError(
+        (Object error) => AppLogger.warning('Failed to pause offline downloads for $serverBaseUrl: $error'),
+      ),
+    );
+  }
+
+  /// Resumes paused offline downloads and repairs offline metadata without waiting, for a server that just
+  /// became reachable. The session does not depend on either, so each failure is logged rather than thrown.
+  void _resumeOfflineWorkInBackground() {
+    unawaited(
+      _host._offlineDownloadManager.resumePausedForCurrentServer().catchError(
+        (Object error) => AppLogger.warning('Failed to resume paused offline downloads: $error'),
+      ),
+    );
+    _repairOfflineMetadataInBackground();
+  }
+
+  /// Repairs offline metadata without waiting; a failure is logged, and the next reconnect retries it.
+  void _repairOfflineMetadataInBackground() {
+    unawaited(
+      _host._offlineDownloadManager.repairOfflineMetadataFragments().catchError(
+        (Object error) => AppLogger.warning('Failed to repair offline metadata: $error'),
+      ),
+    );
+  }
+
   Future<void> clearFailedOfflineDownloads() async {
     await _host._offlineDownloadManager.clearFailedAndCorrupt();
   }
@@ -656,6 +686,13 @@ mixin _DownloadFacade {
   Future<void> clearFailedOfflineDownloads() => _downloadsCoordinator.clearFailedOfflineDownloads();
 
   Future<void> resumePausedOfflineDownloads() => _downloadsCoordinator.resumePausedOfflineDownloads();
+
+  void _pauseServerDownloadsInBackground(String serverBaseUrl) =>
+      _downloadsCoordinator._pauseServerDownloadsInBackground(serverBaseUrl);
+
+  void _resumeOfflineWorkInBackground() => _downloadsCoordinator._resumeOfflineWorkInBackground();
+
+  void _repairOfflineMetadataInBackground() => _downloadsCoordinator._repairOfflineMetadataInBackground();
 
   Future<void> clearUnfinishedOfflineDownloads() => _downloadsCoordinator.clearUnfinishedOfflineDownloads();
 

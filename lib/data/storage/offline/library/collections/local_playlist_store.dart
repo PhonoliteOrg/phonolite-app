@@ -14,11 +14,6 @@ class _LocalPlaylistStore {
       (db) {
         return _readLocalPlaylists(db);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read local playlists: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -59,11 +54,6 @@ class _LocalPlaylistStore {
               ),
             )
             .toList(growable: false);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read local playlist tracks: $err');
-
-        return const [];
       },
     );
   }

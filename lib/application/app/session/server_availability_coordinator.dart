@@ -221,7 +221,7 @@ class _ServerAvailabilityCoordinator {
     _serverHealthFailureCount = max(_serverHealthFailureCount, AppController._serverUnavailableHealthFailureThreshold);
     _serverReconnectAttempt = 0;
     _quicPort = null;
-    unawaited(_host._offlineDownloadManager.pauseDownloadsForServer(_host.connection.baseUrl));
+    _host._pauseServerDownloadsInBackground(_host.connection.baseUrl);
     _host._setSessionStatus(SessionStatus.serverUnavailable, error: error);
     _host._pushMessage(error, level: LogLevel.warning);
   }
@@ -253,8 +253,7 @@ class _ServerAvailabilityCoordinator {
     _host._pushMessage('Server connection restored.');
     unawaited(_refreshServerPorts(timeout: const Duration(seconds: 4)));
     unawaited(_host._loadPlaybackSettings());
-    unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
-    unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+    _host._resumeOfflineWorkInBackground();
     _host._retryPlaybackAfterServerReconnect();
   }
 

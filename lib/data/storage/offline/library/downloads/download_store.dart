@@ -32,11 +32,6 @@ class _OfflineDownloadStore {
       (db) {
         return _readDownloads(db);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read offline library: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -85,9 +80,6 @@ class _OfflineDownloadStore {
           _host._pruneRemovedLocalUserData(db);
         });
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to persist offline library: $err');
-      },
     );
   }
 
@@ -109,6 +101,8 @@ class _OfflineDownloadStore {
         return _host._withLocalTrack(download, localTrackId);
       },
       onError: (err, stackTrace) {
+        // Best-effort: an unresolved download still saves, because the upsert resolves its local track
+        // inside its own write, and that write reports its own failure.
         AppLogger.warning('Failed to prepare offline metadata: $err');
 
         return download;
@@ -138,6 +132,8 @@ class _OfflineDownloadStore {
             .toList(growable: false);
       },
       onError: (err, stackTrace) {
+        // Best-effort: an unresolved download still saves, because the upsert resolves its local track
+        // inside its own write, and that write reports its own failure.
         AppLogger.warning('Failed to prepare offline metadata batch: $err');
 
         return downloads;
@@ -157,9 +153,6 @@ class _OfflineDownloadStore {
           _host._pruneRemovedLocalUserData(db);
         });
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to upsert offline download: $err');
-      },
     );
   }
 
@@ -177,9 +170,6 @@ class _OfflineDownloadStore {
 
           _host._pruneRemovedLocalUserData(db);
         });
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to upsert offline downloads: $err');
       },
     );
   }

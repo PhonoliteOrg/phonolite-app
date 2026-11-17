@@ -44,7 +44,17 @@ class _DownloadDataReset {
   }
 
   Future<void> _resetLocalData({bool unfinishedOnly = false}) async {
-    await _host._ensureLoaded();
+    try {
+      await _host._ensureLoaded();
+    } on Object catch (error) {
+      // A full reset deletes the library files without opening them, so it is how an unreadable library
+      // is recovered and must not require one. A failed load schedules no work that would need canceling.
+      if (unfinishedOnly) {
+        rethrow;
+      }
+
+      AppLogger.warning('Resetting local data although the offline library failed to load: $error');
+    }
 
     _host._resettingLocalData = true;
     _host._localDataRevision++;
@@ -69,16 +79,15 @@ class _DownloadDataReset {
         _host._activeCancelPorts[key]?.send(null);
       }
 
-      await _loadFuture;
+      // A failed load already reached the caller that awaited it; the reset only waits for it to end.
+      await _loadFuture?.then<void>((_) {}, onError: (Object _) {});
       await _host._ownerPlaylistDownloads.mutationsDrained;
       await _host._topUpFuture;
       await Future.wait(_host._active.values.toList(), eagerError: false);
       await _host._localUserDataReloadChain;
       await _host._pendingFileCleanupFuture;
 
-      while (_pendingStorageOperations.isNotEmpty) {
-        await Future.wait(_pendingStorageOperations.toList(), eagerError: false);
-      }
+      await _storageOperationsSettled();
 
       await _host._storage.close();
 
@@ -141,6 +150,16 @@ class _DownloadDataReset {
   bool _localDataCurrent(int revision) =>
       !_host._disposed && !_host._resettingLocalData && revision == _host._localDataRevision;
 
+  /// Completes once every tracked storage operation has finished, including ones started meanwhile.
+  /// Each failure belongs to the command awaiting that operation, so it is not rethrown here.
+  Future<void> _storageOperationsSettled() async {
+    while (_pendingStorageOperations.isNotEmpty) {
+      await Future.wait(
+        _pendingStorageOperations.map((pending) => pending.then<void>((_) {}, onError: (Object _) {})),
+      );
+    }
+  }
+
   Future<T> _storageOperation<T>(Future<T> Function() operation) async {
     final pending = operation();
 
@@ -164,7 +183,7 @@ mixin _DownloadDataResetFacade {
 
   Future<void>? get _resetLocalDataFuture => _ownerReset._resetLocalDataFuture;
 
-  Set<Future<dynamic>> get _pendingStorageOperations => _ownerReset._pendingStorageOperations;
+  Future<void> _storageOperationsSettled() => _ownerReset._storageOperationsSettled();
 
   Timer? get _localUserDataReloadTimer => _ownerReset._localUserDataReloadTimer;
 

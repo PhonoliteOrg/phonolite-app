@@ -640,7 +640,12 @@ class _LibraryCoordinator {
 
       _albumUpdatesController.add(updated);
 
-      unawaited(_host._offlineDownloadManager.refreshOfflineMetadataForAlbum(albumId));
+      // Refreshing the offline copy is background upkeep; the album already shows the server's version.
+      unawaited(
+        _host._offlineDownloadManager
+            .refreshOfflineMetadataForAlbum(albumId)
+            .catchError((Object error) => AppLogger.warning('Failed to refresh offline album metadata: $error')),
+      );
       await _refreshLoadedTracksForAlbum(albumId, sessionRevision);
 
       if (_host._disposed || !_host._authState.isAuthorized || _host.connection.sessionRevision != sessionRevision) {

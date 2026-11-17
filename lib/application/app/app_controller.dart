@@ -555,7 +555,7 @@ class AppController
 
       await Future.wait([
         _initializeListeningStats(),
-        _offlineDownloadManager.load(),
+        _loadOfflineLibraryAtStartup(),
         loadOfflineStorageLocations(),
         _customShuffleLoadFuture!,
         _loadPlaybackPreferences(),

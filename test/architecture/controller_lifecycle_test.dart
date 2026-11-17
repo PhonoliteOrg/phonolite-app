@@ -3781,7 +3781,7 @@ void main() {
 
   test('startup failure releases partially created resources', () async {
     final harness = _Harness();
-    harness.downloads.failLoad = true;
+    harness.preferences.failCollectionListModeRead = true;
     await expectLater(harness.controller.initialize(), throwsStateError);
     expect(harness.controller.isInitialized, isFalse);
     expect(harness.audio.disposals, 1);
@@ -3789,6 +3789,21 @@ void main() {
     expect(harness.connection.onTransportFailure, isNull);
     await harness.controller.close();
     expect(harness.audio.disposals, 1);
+  });
+
+  test('an unreadable offline library is reported and startup continues', () async {
+    final harness = _Harness();
+    addTearDown(harness.controller.close);
+    harness.downloads.failLoad = true;
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.isInitialized, isTrue);
+    expect(harness.downloads.disposals, 0);
+    expect(
+      harness.controller.messages.map((entry) => entry.message),
+      contains(startsWith('Failed to load the offline library:')),
+    );
   });
 
   test('audio factory failure releases subscriptions and the connection callback', () async {
@@ -6230,6 +6245,7 @@ class _Preferences extends PlaybackPreferencesStorage {
   bool? gaplessResampling;
   int gaplessReads = 0;
   Future<bool?>? pendingGapless;
+  bool failCollectionListModeRead = false;
   final gaplessWrites = <bool>[];
   @override
   Future<bool?> readGaplessResampling() {
@@ -6269,9 +6285,10 @@ class _Preferences extends PlaybackPreferencesStorage {
   }
 
   @override
-  Future<bool?> readCollectionListMode() {
+  Future<bool?> readCollectionListMode() async {
     reads++;
-    return pending ?? Future.value(true);
+    if (failCollectionListModeRead) throw StateError('preferences unavailable');
+    return pending ?? true;
   }
 
   @override

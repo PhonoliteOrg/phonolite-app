@@ -42,11 +42,6 @@ class _LocalFavoritesStore {
             )
             .toList(growable: false);
       },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read local liked tracks: $err');
-
-        return const [];
-      },
     );
   }
 
@@ -80,11 +75,6 @@ class _LocalFavoritesStore {
               ),
             )
             .toList(growable: false);
-      },
-      onError: (err, stackTrace) {
-        AppLogger.warning('Failed to read local like states: $err');
-
-        return const [];
       },
     );
   }
