@@ -31,6 +31,8 @@ class ObsidianAdaptiveModal {
     if (useCompactSheet && size.width < compactBreakpoint) {
       return showModalBottomSheet<T>(
         context: context,
+        // Match showDialog's default so both presentations sit above the shell.
+        useRootNavigator: true,
         isScrollControlled: true,
         isDismissible: barrierDismissible,
         useSafeArea: true,
