@@ -19,13 +19,14 @@ class AuthStorage {
 
   /// Before connecting, retain only security data owned by a remembered session.
   /// A saved server may be offline; cleanup never probes or authenticates it.
-  /// Storage failures propagate instead of being mistaken for absent credentials.
+  /// A vault that can never be decrypted is cleared so startup continues signed out;
+  /// other storage failures propagate instead of being mistaken for absent credentials.
   Future<void> removeOrphanedCredentials() async {
     if (kIsWeb) {
       return;
     }
 
-    final stored = await _vault.readAll(iOptions: CredentialVault.allIOSAccessibilities);
+    final stored = await _readVaultOrReset();
     AuthCredentials? credentials;
     final rawSession = stored[_vaultKey];
 
@@ -163,6 +164,24 @@ class AuthStorage {
     if (credentials != null &&
         ServerTrust.origin(Uri.parse(credentials.baseUrl)) == ServerTrust.origin(Uri.parse(url))) {
       await _vault.delete(key: _vaultKey, iOptions: CredentialVault.allIOSAccessibilities);
+    }
+  }
+
+  Future<Map<String, String>> _readVaultOrReset() async {
+    try {
+      return await _vault.readAll(iOptions: CredentialVault.allIOSAccessibilities);
+    } catch (error) {
+      if (!CredentialVault.isUndecryptable(error)) {
+        rethrow;
+      }
+
+      AppLogger.warning(
+        'Saved server credentials could not be decrypted on this device and were removed. Sign in again.',
+      );
+      AppLogger.debug('Credential vault reset after decryption failure: $error');
+      await _vault.deleteAll();
+
+      return const {};
     }
   }
 }
