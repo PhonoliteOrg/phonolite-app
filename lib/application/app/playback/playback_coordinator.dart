@@ -807,7 +807,7 @@ class _PlaybackCoordinator {
   void _logPlaybackContext() {
     _host._pushMessage('Server base URL: ${_host.connection.baseUrl}');
 
-    if (Platform.isIOS) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       _host._pushMessage('Local network permission: ${_host._localNetworkPermissionState.name}');
 
       try {
