@@ -9,21 +9,23 @@ std::string utf8_from_utf16(const wchar_t* utf16_string) {
     return std::string();
   }
 
-  // Remove the trailing null character from the required output length.
-  const unsigned int target_length =
-      ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16_string, -1, nullptr, 0, nullptr, nullptr) - 1;
+  // The size includes the trailing null. A failed conversion (for example a lone surrogate)
+  // returns 0, so check before subtracting; unsigned arithmetic would wrap to UINT_MAX.
+  const int required_size =
+      ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16_string, -1, nullptr, 0, nullptr, nullptr);
   const int input_length = static_cast<int>(std::wcslen(utf16_string));
   std::string utf8_string;
 
-  if (target_length == 0 || target_length > utf8_string.max_size()) {
+  if (required_size <= 1) {
     return utf8_string;
   }
 
-  utf8_string.resize(target_length);
+  const int target_length = required_size - 1;
 
-  const int converted_length =
-      ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16_string, input_length, utf8_string.data(),
-                            static_cast<int>(target_length), nullptr, nullptr);
+  utf8_string.resize(static_cast<size_t>(target_length));
+
+  const int converted_length = ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16_string, input_length,
+                                                     utf8_string.data(), target_length, nullptr, nullptr);
 
   if (converted_length == 0) {
     return std::string();
