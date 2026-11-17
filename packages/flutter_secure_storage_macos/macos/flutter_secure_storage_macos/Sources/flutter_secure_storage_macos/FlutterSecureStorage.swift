@@ -30,9 +30,11 @@ class FlutterSecureStorage{
     }
 
     private func baseQuery(key: String?, groupId: String?, accountName: String?, synchronizable: Bool, accessibility: String?, useDataProtectionKeyChain: Bool, returnData: Bool?) -> Dictionary<CFString, Any> {
+        // Accessibility is deliberately not a match attribute: items stored with a
+        // different accessibility must still be found (and updated by write()).
+        // write() sets kSecAttrAccessible itself when adding or updating.
         var keychainQuery: [CFString: Any] = [
             kSecClass : kSecClassGenericPassword,
-            kSecAttrAccessible : parseAccessibleAttr(accessibility: accessibility),
             kSecAttrSynchronizable : synchronizable,
         ]
         if #available(macOS 10.15, *) {
@@ -137,7 +139,7 @@ class FlutterSecureStorage{
     }
 
     internal func delete(key: String, groupId: String?, accountName: String?, synchronizable: Bool, accessibility: String?, useDataProtectionKeyChain: Bool) -> FlutterSecureStorageResponse {
-        let keychainQuery = baseQuery(key: key, groupId: groupId, accountName: accountName, synchronizable: synchronizable, accessibility: accessibility, useDataProtectionKeyChain: useDataProtectionKeyChain, returnData: true)
+        let keychainQuery = baseQuery(key: key, groupId: groupId, accountName: accountName, synchronizable: synchronizable, accessibility: accessibility, useDataProtectionKeyChain: useDataProtectionKeyChain, returnData: nil)
         let status = SecItemDelete(keychainQuery as CFDictionary)
 
         // Return nil if the key is not found

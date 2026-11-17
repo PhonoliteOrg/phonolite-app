@@ -108,6 +108,7 @@ public class FlutterSecureStoragePlugin: NSObject, FlutterPlugin {
         let values = parseCall(call)
         if (values.key == nil) {
             result(FlutterError.init(code: "Missing Parameter", message: "containsKey requires key parameter", details: nil))
+            return
         }
         
         let response = flutterSecureStorageManager.containsKey(key: values.key!, groupId: values.groupId, accountName: values.accountName, synchronizable: values.synchronizable, accessibility: values.accessibility, useDataProtectionKeyChain: values.useDataProtectionKeyChain)
