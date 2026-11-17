@@ -882,8 +882,10 @@ class _AudioWorkerEngine {
 
     final id = _playbackId;
     await _retiringOutput;
-    _timeline?.pause();
     try {
+      // A failed device (unplugged USB DAC or Bluetooth) rejects pause forever; teardown must
+      // continue, or the timeline is never released and every later play or stop fails here.
+      _timeline?.pause();
       await _timeline?.poll();
     } catch (_) {
       /* Output failure still releases every source. */
@@ -899,10 +901,15 @@ class _AudioWorkerEngine {
       entry.output.cancel();
     }
 
-    await timeline?.close();
-    await Future.wait(entries.map((entry) => entry.session.requestStop(outcome: notify ? 'cancelled' : 'superseded')));
-    if (notify) {
-      _send({'type': 'state', 'active': false, 'paused': false, 'playback_id': id});
+    try {
+      await timeline?.close();
+    } finally {
+      await Future.wait(
+        entries.map((entry) => entry.session.requestStop(outcome: notify ? 'cancelled' : 'superseded')),
+      );
+      if (notify) {
+        _send({'type': 'state', 'active': false, 'paused': false, 'playback_id': id});
+      }
     }
   }
 }

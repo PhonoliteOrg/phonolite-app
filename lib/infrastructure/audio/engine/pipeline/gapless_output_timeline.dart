@@ -328,8 +328,9 @@ class _GaplessOutputTimeline {
   Future<void> abort() => _abortCompletion ??= _abort();
   Future<void> _abort() async {
     _aborting = true;
-    _output?.pause();
     try {
+      // A failed device may reject pause; the timeline must still close.
+      _output?.pause();
       await poll();
     } catch (_) {
       /* A failed output must still close. */
