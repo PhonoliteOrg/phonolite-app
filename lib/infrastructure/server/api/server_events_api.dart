@@ -8,7 +8,12 @@ class ServerEventsApi {
   ServerEventsApi(ApiTransport transport) : _events = SseTransport(transport);
 
   Stream<MetadataUpdateEvent> streamMetadataEvents() =>
-      _events.openJson(path: '/library/metadata-events', decode: _decodeMetadata);
+      // The server sends a keep-alive comment every 15 s; silence for 45 s means a dead connection.
+      _events.openJson(
+        path: '/library/metadata-events',
+        decode: _decodeMetadata,
+        idleTimeout: const Duration(seconds: 45),
+      );
 
   MetadataUpdateEvent? _decodeMetadata(Map<String, dynamic> json) {
     final event = MetadataUpdateEvent.fromJson(json);

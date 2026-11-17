@@ -16,8 +16,13 @@ class SseTransport {
 
   SseTransport(this._transport);
 
-  Stream<T> openJson<T>({required String path, required T? Function(Map<String, dynamic>) decode}) =>
-      _SseRequest<T>(transport: _transport, path: path, decode: decode).stream;
+  /// With [idleTimeout], a body that delivers nothing (not even a keep-alive comment) for that
+  /// long fails the stream with a [TimeoutException], so callers notice a half-open connection.
+  Stream<T> openJson<T>({
+    required String path,
+    required T? Function(Map<String, dynamic>) decode,
+    Duration? idleTimeout,
+  }) => _SseRequest<T>(transport: _transport, path: path, decode: decode, idleTimeout: idleTimeout).stream;
 }
 
 class _SseRequest<T> {
@@ -27,12 +32,14 @@ class _SseRequest<T> {
   final ApiTransport _transport;
   final String _path;
   final T? Function(Map<String, dynamic>) _decode;
+  final Duration? _idleTimeout;
   late final StreamController<T> _controller;
   StreamSubscription<String>? _bodySubscription;
+  Timer? _idleTimer;
   bool _cancelled = false;
   String _buffer = '';
 
-  _SseRequest({required this._transport, required this._path, required this._decode}) {
+  _SseRequest({required this._transport, required this._path, required this._decode, required this._idleTimeout}) {
     _controller = StreamController<T>(onListen: _start, onPause: _pause, onResume: _resume, onCancel: _cancel);
   }
 
@@ -40,12 +47,19 @@ class _SseRequest<T> {
 
   void _start() => unawaited(_open());
 
-  void _pause() => _bodySubscription?.pause();
+  void _pause() {
+    _idleTimer?.cancel();
+    _bodySubscription?.pause();
+  }
 
-  void _resume() => _bodySubscription?.resume();
+  void _resume() {
+    _bodySubscription?.resume();
+    _watchIdle();
+  }
 
   Future<void> _cancel() async {
     _cancelled = true;
+    _idleTimer?.cancel();
     final subscription = _bodySubscription;
     _bodySubscription = null;
 
@@ -53,9 +67,29 @@ class _SseRequest<T> {
   }
 
   void _close() {
+    _idleTimer?.cancel();
+
     if (!_controller.isClosed) {
       unawaited(_controller.close());
     }
+  }
+
+  void _watchIdle() {
+    final timeout = _idleTimeout;
+
+    _idleTimer?.cancel();
+
+    if (timeout == null || _bodySubscription == null || _controller.isPaused) {
+      return;
+    }
+
+    _idleTimer = Timer(timeout, () {
+      final subscription = _bodySubscription;
+      _bodySubscription = null;
+
+      unawaited(subscription?.cancel());
+      _fail(TimeoutException('SSE stream idle', timeout), StackTrace.current);
+    });
   }
 
   void _fail(Object error, StackTrace stackTrace) {
@@ -137,6 +171,9 @@ class _SseRequest<T> {
       final errorBody = StringBuffer();
 
       void receive(String chunk) {
+        // Any bytes, including keep-alive comments, prove the connection is alive.
+        _watchIdle();
+
         if (successful) {
           _receive(chunk);
         } else if (errorBody.length < _maximumErrorCharacters) {
@@ -165,6 +202,8 @@ class _SseRequest<T> {
       if (_controller.isPaused) {
         _bodySubscription?.pause();
       }
+
+      _watchIdle();
     } catch (error, stackTrace) {
       _fail(error, stackTrace);
     }
