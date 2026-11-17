@@ -37,6 +37,9 @@ class PlaylistDetailView extends BasePage {
 
   const PlaylistDetailView({super.key, required this.playlistId, this.isLocal = false});
 
+  static String routeNameFor(String playlistId, {required bool isLocal}) =>
+      '/playlists/${isLocal ? 'local' : 'server'}/playlist/$playlistId';
+
   @override
   State<PlaylistDetailView> createState() => _PlaylistDetailViewState();
 }

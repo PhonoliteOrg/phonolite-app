@@ -407,7 +407,7 @@ class _HomePageState extends BasePageState<HomePage> with WidgetsBindingObserver
         _pushDetails(
           1,
           sourceTabIndex,
-          '/playback/${isLocal ? 'local' : 'server'}/playlist/${playback.queueSourcePlaylistId}',
+          PlaylistDetailView.routeNameFor(playback.queueSourcePlaylistId!, isLocal: isLocal),
           (_) => PlaylistDetailView(playlistId: playback.queueSourcePlaylistId!, isLocal: isLocal),
         );
 

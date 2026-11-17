@@ -39,6 +39,7 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
   void _openDetail(BuildContext context, Playlist playlist, {required bool isLocal}) {
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: RouteSettings(name: PlaylistDetailView.routeNameFor(playlist.id, isLocal: isLocal)),
         builder: (context) => PlaylistDetailView(playlistId: playlist.id, isLocal: isLocal),
       ),
     );

@@ -513,19 +513,34 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     final localArtist = destination.localArtist;
 
     if (localArtist != null) {
-      navigator.push(MaterialPageRoute(builder: (_) => LocalArtistDetailScreen(group: localArtist)));
+      navigator.push(
+        MaterialPageRoute(
+          settings: RouteSettings(name: LocalArtistDetailScreen.routeNameFor(localArtist.id)),
+          builder: (_) => LocalArtistDetailScreen(group: localArtist),
+        ),
+      );
     }
 
     final localAlbum = destination.localAlbum;
 
     if (localAlbum != null) {
-      navigator.push(MaterialPageRoute(builder: (_) => LocalAlbumDetailScreen(album: localAlbum)));
+      navigator.push(
+        MaterialPageRoute(
+          settings: RouteSettings(name: LocalAlbumDetailScreen.routeNameFor(localAlbum.id)),
+          builder: (_) => LocalAlbumDetailScreen(album: localAlbum),
+        ),
+      );
     }
 
     final artist = destination.artist;
 
     if (artist != null) {
-      navigator.push(MaterialPageRoute(builder: (_) => ArtistDetailScreen(artist: artist)));
+      navigator.push(
+        MaterialPageRoute(
+          settings: RouteSettings(name: ArtistDetailScreen.routeNameFor(artist.id)),
+          builder: (_) => ArtistDetailScreen(artist: artist),
+        ),
+      );
     }
 
     final album = destination.album;
@@ -533,6 +548,7 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     if (album != null) {
       navigator.push(
         MaterialPageRoute(
+          settings: RouteSettings(name: AlbumDetailScreen.routeNameFor(album.id)),
           builder: (_) => AlbumDetailScreen(album: album, artistName: destination.artistName),
         ),
       );
