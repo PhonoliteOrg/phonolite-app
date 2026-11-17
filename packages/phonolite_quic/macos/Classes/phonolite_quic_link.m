@@ -52,6 +52,7 @@ extern int64_t phonolite_quic_source_read_range(void *, uint64_t, uint8_t *, siz
 extern int32_t phonolite_quic_source_error_code(const void *);
 extern size_t phonolite_quic_source_error(const void *, uint8_t *, size_t);
 extern void phonolite_quic_source_close(void *);
+extern void phonolite_quic_source_close_finalizer(void *);
 
 __attribute__((used)) static void *phonolite_quic_keep_symbols[] = {
   (void *)phonolite_security_login,
@@ -89,4 +90,5 @@ __attribute__((used)) static void *phonolite_quic_keep_symbols[] = {
   (void *)phonolite_quic_source_error_code,
   (void *)phonolite_quic_source_error,
   (void *)phonolite_quic_source_close,
+  (void *)phonolite_quic_source_close_finalizer,
 };

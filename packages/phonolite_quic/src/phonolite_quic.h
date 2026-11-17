@@ -82,6 +82,8 @@ int64_t phonolite_quic_source_read_range(void* handle, uint64_t offset, uint8_t*
 int32_t phonolite_quic_source_error_code(const void* handle);
 size_t phonolite_quic_source_error(const void* handle, uint8_t* output, size_t capacity);
 void phonolite_quic_source_close(void* handle);
+// Non-blocking close for NativeFinalizer; detaches the worker thread.
+void phonolite_quic_source_close_finalizer(void* handle);
 
 #ifdef __cplusplus
 }

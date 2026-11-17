@@ -373,8 +373,10 @@ class QuicOwnerLease implements ffi.Finalizable {
 /// Transfers a native, version-pinned source connection to the file decoder.
 /// Function pointers stay native across decoder reads; Dart is never called back.
 class QuicSourceTransport implements ffi.Finalizable {
+  // Finalizers must not block, so this close detaches the native worker;
+  // explicit close() still joins it.
   static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
-    _loadLibrary().lookup('phonolite_quic_source_close'),
+    _loadLibrary().lookup('phonolite_quic_source_close_finalizer'),
   );
   final int readRangeAddress;
   final int errorCodeAddress;

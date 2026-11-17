@@ -52,4 +52,5 @@ __attribute__((used)) static void *phonolite_quic_keep_symbols[] = {
   (void *)phonolite_quic_source_error_code,
   (void *)phonolite_quic_source_error,
   (void *)phonolite_quic_source_close,
+  (void *)phonolite_quic_source_close_finalizer,
 };

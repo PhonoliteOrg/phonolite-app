@@ -545,6 +545,19 @@ pub extern "C" fn phonolite_quic_source_close(handle: *mut c_void) {
     }
 }
 
+/// NativeFinalizer entry point. Finalizers must not block, so this signals the
+/// worker exactly like `phonolite_quic_source_close` but detaches it instead
+/// of joining; the worker exits on its own after observing the cancellation.
+#[no_mangle]
+pub extern "C" fn phonolite_quic_source_close_finalizer(handle: *mut c_void) {
+    if !handle.is_null() {
+        let mut source = unsafe { Box::from_raw(handle.cast::<SourceHandle>()) };
+        // Dropping a JoinHandle detaches its thread.
+        drop(source.worker.take());
+        drop(source);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{handle_control_bytes, test_handle, AudioSender, ClientState};
