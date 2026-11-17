@@ -121,8 +121,17 @@ class RawOpusHeader {
   }
 }
 
-class OpusDecoder {
-  OpusDecoder._(this.sampleRate, this.channels, this._bindings, this._handle);
+class OpusDecoder implements ffi.Finalizable {
+  OpusDecoder._(this.sampleRate, this.channels, this._bindings, this._handle) {
+    _finalizer.attach(this, _handle.cast(), detach: this);
+  }
+
+  static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
+    _loadLibrary().lookup('phonolite_opus_decoder_destroy'),
+  );
+  static final ffi.NativeFinalizer _bufferFinalizer = ffi.NativeFinalizer(
+    calloc.nativeFree,
+  );
 
   factory OpusDecoder({required int sampleRate, required int channels}) {
     if (!_isSupportedRate(sampleRate)) {
@@ -152,6 +161,8 @@ class OpusDecoder {
   int _packetCapacity = 0;
   ffi.Pointer<ffi.Int16> _outputBuffer = ffi.nullptr;
   int _outputCapacity = 0;
+  final Object _packetDetach = Object();
+  final Object _outputDetach = Object();
 
   int get maxFrameSize => _bindings.maxFrameSize();
 
@@ -167,17 +178,29 @@ class OpusDecoder {
     }
 
     if (packet.length > _packetCapacity) {
-      if (_packetBuffer != ffi.nullptr) calloc.free(_packetBuffer);
+      _freeBuffer(_packetBuffer, _packetDetach);
       _packetCapacity = packet.length;
       _packetBuffer = calloc<ffi.Uint8>(_packetCapacity);
+      _bufferFinalizer.attach(
+        this,
+        _packetBuffer.cast(),
+        detach: _packetDetach,
+        externalSize: _packetCapacity,
+      );
     }
     _packetBuffer.asTypedList(packet.length).setAll(0, packet);
 
     final outputSamples = effectiveFrameSize * channels;
     if (outputSamples > _outputCapacity) {
-      if (_outputBuffer != ffi.nullptr) calloc.free(_outputBuffer);
+      _freeBuffer(_outputBuffer, _outputDetach);
       _outputCapacity = outputSamples;
       _outputBuffer = calloc<ffi.Int16>(_outputCapacity);
+      _bufferFinalizer.attach(
+        this,
+        _outputBuffer.cast(),
+        detach: _outputDetach,
+        externalSize: _outputCapacity * ffi.sizeOf<ffi.Int16>(),
+      );
     }
     final decodedFrames = _bindings.decode(
       _handle,
@@ -202,13 +225,22 @@ class OpusDecoder {
     if (_disposed) {
       return;
     }
+    _finalizer.detach(this);
     _bindings.decoderDestroy(_handle);
-    if (_packetBuffer != ffi.nullptr) calloc.free(_packetBuffer);
-    if (_outputBuffer != ffi.nullptr) calloc.free(_outputBuffer);
+    _freeBuffer(_packetBuffer, _packetDetach);
+    _freeBuffer(_outputBuffer, _outputDetach);
     _packetBuffer = ffi.nullptr;
     _outputBuffer = ffi.nullptr;
+    _packetCapacity = 0;
+    _outputCapacity = 0;
     _handle = ffi.nullptr;
     _disposed = true;
+  }
+
+  static void _freeBuffer(ffi.Pointer<ffi.NativeType> buffer, Object detach) {
+    if (buffer == ffi.nullptr) return;
+    _bufferFinalizer.detach(detach);
+    calloc.free(buffer);
   }
 
   void _ensureActive() {

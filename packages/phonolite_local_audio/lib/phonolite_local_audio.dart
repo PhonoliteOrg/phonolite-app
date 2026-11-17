@@ -39,7 +39,14 @@ class LocalAudioException implements Exception {
   }
 }
 
-class LocalAudioDecoder {
+class LocalAudioDecoder implements ffi.Finalizable {
+  static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
+    _loadLibrary().lookup('phonolite_local_audio_close'),
+  );
+  static final ffi.NativeFinalizer _bufferFinalizer = ffi.NativeFinalizer(
+    calloc.nativeFree,
+  );
+
   final int sampleRate;
   final int channels;
 
@@ -53,6 +60,11 @@ class LocalAudioDecoder {
   ffi.Pointer<_LocalAudioHandle> _handle;
   bool _closed = false;
 
+  /// Native PCM buffer reused by readInto/readInto32, grown as needed.
+  ffi.Pointer<ffi.Uint8> _readBuffer = ffi.nullptr;
+  int _readCapacityBytes = 0;
+  final Object _bufferDetach = Object();
+
   LocalAudioDecoder._(
     this._bindings,
     this._handle, {
@@ -61,7 +73,9 @@ class LocalAudioDecoder {
     required this.bitDepth,
     required this.duration,
     required this.playableFrames,
-  });
+  }) {
+    _finalizer.attach(this, _handle.cast(), detach: this);
+  }
 
   factory LocalAudioDecoder.open(
     String filePath, {
@@ -212,9 +226,35 @@ class LocalAudioDecoder {
       return;
     }
 
+    _finalizer.detach(this);
     _bindings.close(_handle);
     _handle = ffi.nullptr;
     _closed = true;
+    if (_readBuffer != ffi.nullptr) {
+      _bufferFinalizer.detach(_bufferDetach);
+      calloc.free(_readBuffer);
+    }
+    _readBuffer = ffi.nullptr;
+    _readCapacityBytes = 0;
+  }
+
+  ffi.Pointer<ffi.Uint8> _readBufferOf(int bytes) {
+    if (bytes > _readCapacityBytes) {
+      if (_readBuffer != ffi.nullptr) {
+        _bufferFinalizer.detach(_bufferDetach);
+        calloc.free(_readBuffer);
+      }
+      _readBuffer = calloc<ffi.Uint8>(bytes);
+      _bufferFinalizer.attach(
+        this,
+        _readBuffer.cast(),
+        detach: _bufferDetach,
+        externalSize: bytes,
+      );
+      _readCapacityBytes = bytes;
+    }
+
+    return _readBuffer;
   }
 
   int readInto(Int16List buffer) {
@@ -228,19 +268,16 @@ class LocalAudioDecoder {
       return 0;
     }
 
-    final outPtr = calloc<ffi.Int16>(alignedLength);
-
-    try {
-      final read = _bindings.read(_handle, outPtr, alignedLength);
-      _checkRead(read, alignedLength);
-      if (read > 0) {
-        buffer.setRange(0, read, outPtr.asTypedList(read));
-      }
-
-      return read;
-    } finally {
-      calloc.free(outPtr);
+    final outPtr = _readBufferOf(
+      alignedLength * ffi.sizeOf<ffi.Int16>(),
+    ).cast<ffi.Int16>();
+    final read = _bindings.read(_handle, outPtr, alignedLength);
+    _checkRead(read, alignedLength);
+    if (read > 0) {
+      buffer.setRange(0, read, outPtr.asTypedList(read));
     }
+
+    return read;
   }
 
   Int16List read(int maxSamples) {
@@ -269,19 +306,16 @@ class LocalAudioDecoder {
       return 0;
     }
 
-    final outPtr = calloc<ffi.Int32>(alignedLength);
-
-    try {
-      final read = _bindings.read32(_handle, outPtr, alignedLength);
-      _checkRead(read, alignedLength);
-      if (read > 0) {
-        buffer.setRange(0, read, outPtr.asTypedList(read));
-      }
-
-      return read;
-    } finally {
-      calloc.free(outPtr);
+    final outPtr = _readBufferOf(
+      alignedLength * ffi.sizeOf<ffi.Int32>(),
+    ).cast<ffi.Int32>();
+    final read = _bindings.read32(_handle, outPtr, alignedLength);
+    _checkRead(read, alignedLength);
+    if (read > 0) {
+      buffer.setRange(0, read, outPtr.asTypedList(read));
     }
+
+    return read;
   }
 
   Int32List read32(int maxSamples) {
