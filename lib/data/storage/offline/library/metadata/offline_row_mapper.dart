@@ -284,15 +284,7 @@ class _OfflineRowMapper {
     );
   }
 
-  static OfflineDownloadStatus _parseStatus(String value) {
-    for (final status in OfflineDownloadStatus.values) {
-      if (status.name == value) {
-        return status;
-      }
-    }
-
-    return OfflineDownloadStatus.queued;
-  }
+  static OfflineDownloadStatus _parseStatus(String value) => OfflineDownloadStatus.fromName(value);
 
   static DateTime _dateFromMs(int value) {
     if (value <= 0) {

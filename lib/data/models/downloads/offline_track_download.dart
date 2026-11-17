@@ -179,17 +179,7 @@ class OfflineTrackDownload {
     'priority': priority,
   };
 
-  static OfflineDownloadStatus _parseStatus(Object? value) {
-    final text = value?.toString();
-
-    for (final status in OfflineDownloadStatus.values) {
-      if (status.name == text) {
-        return status;
-      }
-    }
-
-    return OfflineDownloadStatus.queued;
-  }
+  static OfflineDownloadStatus _parseStatus(Object? value) => OfflineDownloadStatus.fromName(value?.toString());
 
   static DateTime _parseDate(Object? value) {
     final ms = _parseInt(value);

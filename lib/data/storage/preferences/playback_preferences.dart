@@ -10,6 +10,7 @@ class PlaybackPreferencesStorage {
   static const String _volumeKey = 'volume';
   static const String _collectionListModeKey = 'collection_list_mode';
   static const String _repeatModeKey = 'repeat_mode';
+  static final Map<String, PlaybackRepeatMode> _repeatModesByName = PlaybackRepeatMode.values.asNameMap();
   static const String _gaplessResamplingKey = 'gapless_resampling';
 
   final SettingsFiles _files;
@@ -65,11 +66,7 @@ class PlaybackPreferencesStorage {
   Future<PlaybackRepeatMode?> readRepeatMode() async {
     final map = await _readPreferences();
 
-    return switch (map?[_repeatModeKey]) {
-      'off' => PlaybackRepeatMode.off,
-      'one' => PlaybackRepeatMode.one,
-      _ => null,
-    };
+    return _repeatModesByName[map?[_repeatModeKey]];
   }
 
   Future<void> writeRepeatMode(PlaybackRepeatMode mode) => _writePreference(_repeatModeKey, mode.name);

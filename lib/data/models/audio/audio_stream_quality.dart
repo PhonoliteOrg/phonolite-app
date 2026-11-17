@@ -12,11 +12,7 @@ enum AudioStreamQuality {
     _ => null,
   };
 
-  static AudioStreamQuality? tryParse(Object? value) => switch (value) {
-    'original' => original,
-    'high' => high,
-    'medium' => medium,
-    'low' => low,
-    _ => null,
-  };
+  static final Map<String, AudioStreamQuality> _byName = values.asNameMap();
+
+  static AudioStreamQuality? tryParse(Object? value) => _byName[value];
 }
