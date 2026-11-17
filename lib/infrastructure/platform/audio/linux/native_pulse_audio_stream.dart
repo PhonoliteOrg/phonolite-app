@@ -27,6 +27,9 @@ class NativePulseAudioStream implements PulseAudioStream {
   double _volume = 1;
   bool _paused = false;
   bool _ready = false;
+  // playedSamples is polled often; its latency out-parameters are allocated once and freed in close.
+  Pointer<Uint64> _latencyCell = nullptr;
+  Pointer<Int32> _negativeCell = nullptr;
 
   NativePulseAudioStream({this.library});
 
@@ -36,26 +39,26 @@ class NativePulseAudioStream implements PulseAudioStream {
       return _playedFrames * _channels;
     }
 
-    final latency = calloc<Uint64>();
-    final negative = calloc<Int32>();
-
-    try {
-      if (_api.streamLatency(_stream, latency, negative) < 0) {
-        // Timing arrives asynchronously shortly after connection/flush.
-        if (_api.contextError(_context) == 16) {
-          return _playedFrames * _channels;
-        }
-        throw _error('Read playback latency');
-      }
-
-      final pendingFrames = negative.value != 0 ? 0 : (latency.value * _rate / 1000000).ceil();
-      _playedFrames = math.max(_playedFrames, (_writtenFrames - pendingFrames).clamp(0, _writtenFrames));
-
-      return _playedFrames * _channels;
-    } finally {
-      calloc.free(latency);
-      calloc.free(negative);
+    if (_latencyCell == nullptr) {
+      _latencyCell = calloc<Uint64>();
+      _negativeCell = calloc<Int32>();
     }
+
+    final latency = _latencyCell;
+    final negative = _negativeCell;
+
+    if (_api.streamLatency(_stream, latency, negative) < 0) {
+      // Timing arrives asynchronously shortly after connection/flush.
+      if (_api.contextError(_context) == 16) {
+        return _playedFrames * _channels;
+      }
+      throw _error('Read playback latency');
+    }
+
+    final pendingFrames = negative.value != 0 ? 0 : (latency.value * _rate / 1000000).ceil();
+    _playedFrames = math.max(_playedFrames, (_writtenFrames - pendingFrames).clamp(0, _writtenFrames));
+
+    return _playedFrames * _channels;
   }
 
   @override
@@ -87,7 +90,7 @@ class NativePulseAudioStream implements PulseAudioStream {
     try {
       _context = _api.contextNew(_api.mainloopApi(_mainloop), name);
     } finally {
-      calloc.free(name);
+      malloc.free(name);
     }
 
     if (_context == nullptr) {
@@ -266,6 +269,12 @@ class NativePulseAudioStream implements PulseAudioStream {
       _api.mainloopFree(_mainloop);
       _mainloop = nullptr;
     }
+    if (_latencyCell != nullptr) {
+      calloc.free(_latencyCell);
+      calloc.free(_negativeCell);
+      _latencyCell = nullptr;
+      _negativeCell = nullptr;
+    }
   }
 
   void _connectStream() {
@@ -301,7 +310,7 @@ class NativePulseAudioStream implements PulseAudioStream {
     } finally {
       calloc.free(spec);
       calloc.free(attributes);
-      calloc.free(name);
+      malloc.free(name);
     }
   }
 
