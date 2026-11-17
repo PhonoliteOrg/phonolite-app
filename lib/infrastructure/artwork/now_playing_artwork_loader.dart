@@ -51,12 +51,32 @@ class NowPlayingArtworkLoader {
     }
   }
 
+  static const int _maxArtworkDimension = 1024;
+
+  static ui.TargetImageSize _fitWithinLimit(int width, int height) {
+    final longest = width > height ? width : height;
+
+    if (longest <= _maxArtworkDimension) {
+      return ui.TargetImageSize(width: width, height: height);
+    }
+
+    final scale = _maxArtworkDimension / longest;
+
+    return ui.TargetImageSize(width: (width * scale).round(), height: (height * scale).round());
+  }
+
   static Future<Uint8List?> _decodePng(Uint8List bytes) async {
     if (bytes.isEmpty) {
       return null;
     }
 
-    final codec = await ui.instantiateImageCodec(bytes, targetWidth: 1024, targetHeight: 1024);
+    // Fit within the limit keeping aspect ratio and never upscale; passing both targetWidth and
+    // targetHeight would force exactly 1024x1024, stretching non-square art and inflating small art.
+    // instantiateImageCodecWithSize takes ownership of the buffer and disposes it.
+    final codec = await ui.instantiateImageCodecWithSize(
+      await ui.ImmutableBuffer.fromUint8List(bytes),
+      getTargetSize: _fitWithinLimit,
+    );
 
     try {
       final frame = await codec.getNextFrame();
