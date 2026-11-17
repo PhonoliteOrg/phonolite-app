@@ -266,9 +266,7 @@ class _DownloadArtworkHydrator {
       extension: OfflineLibraryStorage.extensionFromImageContentType(artwork.contentType),
     );
 
-    await file.writeAsBytes(artwork.bytes, flush: true);
-
-    return file.path;
+    return _writeArtworkAtomically(file, artwork);
   }
 
   Future<String> _storeArtistArtwork(String artistId, String kind, ServerArtwork artwork) async {
@@ -278,7 +276,16 @@ class _DownloadArtworkHydrator {
       extension: OfflineLibraryStorage.extensionFromImageContentType(artwork.contentType),
     );
 
-    await file.writeAsBytes(artwork.bytes, flush: true);
+    return _writeArtworkAtomically(file, artwork);
+  }
+
+  /// Writes beside the target and renames into place: an existing artwork file is treated as valid
+  /// and reused, so a write interrupted in place would leave truncated art for good.
+  Future<String> _writeArtworkAtomically(File file, ServerArtwork artwork) async {
+    final temporary = File('${file.path}.tmp');
+
+    await temporary.writeAsBytes(artwork.bytes, flush: true);
+    await temporary.rename(file.path);
 
     return file.path;
   }

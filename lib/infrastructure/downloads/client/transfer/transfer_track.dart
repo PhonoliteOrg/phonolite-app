@@ -150,17 +150,16 @@ class _TrackDownloadTransfer {
         extension: download.profile == 'original' ? extension : 'opus',
       );
 
-      developer.Timeline.startSync('offline.download.promote');
+      // TimelineTask, not Timeline.startSync: this span crosses awaits.
+      final promoteSpan = developer.TimelineTask()..start('offline.download.promote');
       late final File promoted;
 
       try {
-        if (await finalFile.exists()) {
-          await finalFile.delete();
-        }
-
+        // rename replaces an existing final file atomically; deleting it first would open a window
+        // with no file at all if the app died in between.
         promoted = await _promotePartial(partialFile, finalFile);
       } finally {
-        developer.Timeline.finishSync();
+        promoteSpan.finish();
       }
 
       final completed = download.copyWith(
