@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:phonolite_app/application/workflows/request_generation.dart';
 import 'package:phonolite_app/data/models/updates/app_update_configuration.dart';
 import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 import 'package:phonolite_app/data/models/updates/app_update_release.dart';
@@ -25,7 +26,7 @@ class AppUpdatesController extends ChangeNotifier {
   AppUpdateRelease? _latestRelease;
   bool _busy = false;
   bool _openingUpdater = false;
-  int _generation = 0;
+  final _requests = RequestGeneration();
   String? _error;
   String? _disabledReason;
 
@@ -75,7 +76,7 @@ class AppUpdatesController extends ChangeNotifier {
   }
 
   Future<void> shutdown() async {
-    ++_generation;
+    _requests.advance();
     _checkTimer?.cancel();
     _checkTimer = null;
     _feed.close();
@@ -113,7 +114,7 @@ class AppUpdatesController extends ChangeNotifier {
       return;
     }
 
-    final generation = _generation;
+    final generation = _requests.current;
 
     _busy = true;
     _openingUpdater = true;
@@ -123,11 +124,11 @@ class AppUpdatesController extends ChangeNotifier {
     try {
       await _platform.showUpdate();
     } catch (error) {
-      if (generation == _generation) {
+      if (_requests.isCurrent(generation)) {
         _report('Could not update the app', error);
       }
     } finally {
-      if (generation == _generation) {
+      if (_requests.isCurrent(generation)) {
         _busy = false;
         _openingUpdater = false;
         notifyListeners();
@@ -140,7 +141,7 @@ class AppUpdatesController extends ChangeNotifier {
       return;
     }
 
-    final generation = _generation;
+    final generation = _requests.current;
 
     _busy = true;
     _error = null;
@@ -149,12 +150,12 @@ class AppUpdatesController extends ChangeNotifier {
     try {
       final configuration = await _platform.initialize(
         onInstall: () {
-          if (generation != _generation) throw StateError('The updater was closed before shutdown preparation.');
+          if (!_requests.isCurrent(generation)) throw StateError('The updater was closed before shutdown preparation.');
           return _installation ??= Future<void>.sync(onInstall);
         },
       );
 
-      if (generation != _generation) {
+      if (!_requests.isCurrent(generation)) {
         return;
       }
 
@@ -170,19 +171,19 @@ class AppUpdatesController extends ChangeNotifier {
         _error = 'Update checks are unavailable in this build.';
       }
     } catch (error) {
-      if (generation != _generation) {
+      if (!_requests.isCurrent(generation)) {
         return;
       }
 
       _report('Could not check for app updates', error);
     } finally {
-      if (generation == _generation) {
+      if (_requests.isCurrent(generation)) {
         _busy = false;
         notifyListeners();
       }
     }
 
-    if (generation == _generation && _ready && progress?.phase != AppUpdatePhase.recoveryRequired) {
+    if (_requests.isCurrent(generation) && _ready && progress?.phase != AppUpdatePhase.recoveryRequired) {
       await checkForUpdates();
     }
   }
@@ -194,7 +195,7 @@ class AppUpdatesController extends ChangeNotifier {
       return;
     }
 
-    final generation = _generation;
+    final generation = _requests.current;
 
     _busy = true;
     _error = null;
@@ -203,16 +204,16 @@ class AppUpdatesController extends ChangeNotifier {
     try {
       final release = await _feed.latest(configuration);
 
-      if (generation == _generation) {
+      if (_requests.isCurrent(generation)) {
         _latestRelease = release;
       }
     } catch (error) {
-      if (generation == _generation) {
+      if (_requests.isCurrent(generation)) {
         _latestRelease = null;
         _report('Could not check for app updates', error);
       }
     } finally {
-      if (generation == _generation) {
+      if (_requests.isCurrent(generation)) {
         _busy = false;
         notifyListeners();
       }
