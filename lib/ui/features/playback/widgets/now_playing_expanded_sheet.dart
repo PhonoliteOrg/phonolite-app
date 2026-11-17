@@ -19,6 +19,7 @@ import 'package:phonolite_app/ui/features/playback/widgets/modals/shuffle_picker
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
@@ -197,35 +198,34 @@ class NowPlayingExpandedSheet extends StatelessWidget {
       secondaryActiveTrackColor: ObsidianPalette.gold.withByteOpacity(0.35),
     );
 
-    Widget artwork(double artSize) => MouseRegion(
-      cursor: canOpenAlbum ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      child: GestureDetector(
-        onTap: withButtonHaptic(canOpenAlbum ? onOpenAlbum : null),
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          width: artSize,
-          height: artSize,
-          color: ObsidianPalette.obsidianGlass.withByteOpacity(0.6),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (track != null) AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers),
-              if (state.isLoading)
-                ColoredBox(
-                  color: Colors.black.withByteOpacity(0.34),
-                  child: Center(
-                    child: SizedBox(
-                      width: s(28),
-                      height: s(28),
-                      child: CircularProgressIndicator(
-                        strokeWidth: s(2.6),
-                        valueColor: const AlwaysStoppedAnimation<Color>(ObsidianPalette.gold),
-                      ),
+    // The artwork is the keyboard and screen-reader path to the album; the subtitle below repeats
+    // the same action for pointer users only, so it is not a second focus stop.
+    Widget artwork(double artSize) => ObsidianTapTarget(
+      onTap: canOpenAlbum ? onOpenAlbum : null,
+      semanticLabel: track == null ? null : 'Open ${track.album}',
+      child: Container(
+        width: artSize,
+        height: artSize,
+        color: ObsidianPalette.obsidianGlass.withByteOpacity(0.6),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (track != null) AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers),
+            if (state.isLoading)
+              ColoredBox(
+                color: Colors.black.withByteOpacity(0.34),
+                child: Center(
+                  child: SizedBox(
+                    width: s(28),
+                    height: s(28),
+                    child: CircularProgressIndicator(
+                      strokeWidth: s(2.6),
+                      valueColor: const AlwaysStoppedAnimation<Color>(ObsidianPalette.gold),
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

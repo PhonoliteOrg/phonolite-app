@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hoverable.dart';
 
 class ObsidianHoverCard extends StatelessWidget {
@@ -38,12 +39,8 @@ class ObsidianHoverCard extends StatelessWidget {
         }
 
         if (enableHover) {
-          return GestureDetector(
-            onTap: withButtonHaptic(onTap),
-            onLongPress: onLongPress,
-            behavior: HitTestBehavior.opaque,
-            child: card,
-          );
+          // Desktop paints its own hover; the tap target still makes the card keyboard-reachable.
+          return ObsidianTapTarget(onTap: onTap, onLongPress: onLongPress, child: card);
         }
 
         return Material(

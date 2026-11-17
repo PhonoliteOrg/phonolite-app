@@ -314,11 +314,17 @@ void main() {
         ObsidianPalette.textMuted,
       );
 
+      // The button's focus detector adds its own region (deferring the cursor); drive the
+      // button's hover region, which owns the click cursor.
       tester
           .widget<MouseRegion>(
             find.descendant(
               of: find.byType(TechButton),
-              matching: find.byType(MouseRegion),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is MouseRegion &&
+                    widget.cursor == SystemMouseCursors.click,
+              ),
             ),
           )
           .onEnter

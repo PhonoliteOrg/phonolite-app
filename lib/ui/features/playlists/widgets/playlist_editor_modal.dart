@@ -8,7 +8,7 @@ import 'package:phonolite_app/data/models/playback/playback_state.dart';
 import 'package:phonolite_app/ui/controller_binding.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_editor_dialog.dart';
@@ -312,38 +312,35 @@ class _PlaylistImagePicker extends StatelessWidget {
             message: 'Choose image',
             preferBelow: true,
             verticalOffset: 10,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: withButtonHaptic(onTap),
-                behavior: HitTestBehavior.opaque,
-                child: ClipRect(
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(width: size, height: size, child: art),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            border: Border.all(color: ObsidianPalette.border),
-                          ),
+            child: ObsidianTapTarget(
+              onTap: onTap,
+              focusRingRadius: BorderRadius.zero,
+              child: ClipRect(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(width: size, height: size, child: art),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          border: Border.all(color: ObsidianPalette.border),
                         ),
                       ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(PhonoliteIcons.imagePlus, color: ObsidianPalette.textMuted, size: 34),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Choose image',
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(color: ObsidianPalette.textMuted, fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(PhonoliteIcons.imagePlus, color: ObsidianPalette.textMuted, size: 34),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Choose image',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(color: ObsidianPalette.textMuted, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),

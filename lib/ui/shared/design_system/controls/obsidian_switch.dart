@@ -137,6 +137,8 @@ class _ObsidianSwitchState extends State<ObsidianSwitch> with PointerInteraction
             builder: (context) => pointerRegion(
               onTap: () => _pointerActivate(context),
               behavior: HitTestBehavior.opaque,
+              // The switch owns focus, activation and toggle semantics above.
+              focusable: false,
               child: _control(duration),
             ),
           ),

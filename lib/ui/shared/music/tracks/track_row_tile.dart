@@ -15,7 +15,7 @@ import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/svg_asset_icon.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
@@ -635,22 +635,19 @@ class _DownloadStatusButton extends StatelessWidget {
 
     return Tooltip(
       message: tooltip,
-      child: MouseRegion(
-        cursor: onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
-        child: GestureDetector(
-          onTap: withButtonHaptic(onTap),
-          behavior: HitTestBehavior.opaque,
-          child: SizedBox(
-            width: isCompact ? 44 : _trackActionButtonExtent,
-            height: isCompact ? 44 : _trackActionButtonExtent,
-            child: Center(
-              child: _statusIndicator(
-                iconSize: iconSize,
-                color: color,
-                progress: progress,
-                showProgressRing: showProgressRing,
-                showReload: showsReload,
-              ),
+      child: ObsidianTapTarget(
+        onTap: onTap,
+        semanticLabel: tooltip,
+        child: SizedBox(
+          width: isCompact ? 44 : _trackActionButtonExtent,
+          height: isCompact ? 44 : _trackActionButtonExtent,
+          child: Center(
+            child: _statusIndicator(
+              iconSize: iconSize,
+              color: color,
+              progress: progress,
+              showProgressRing: showProgressRing,
+              showReload: showsReload,
             ),
           ),
         ),

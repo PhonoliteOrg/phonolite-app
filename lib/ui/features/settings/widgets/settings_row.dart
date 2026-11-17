@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_list_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
@@ -64,20 +64,12 @@ class SettingsIconAction extends StatelessWidget {
 
     return Tooltip(
       message: tooltip,
-      child: Semantics(
-        button: true,
-        enabled: enabled,
-        label: tooltip,
-        child: MouseRegion(
-          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-          child: GestureDetector(
-            onTap: withButtonHaptic(onPressed),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Icon(icon, size: 22, color: color),
-            ),
-          ),
+      child: ObsidianTapTarget(
+        onTap: onPressed,
+        semanticLabel: tooltip,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 22, color: color),
         ),
       ),
     );

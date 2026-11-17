@@ -6,7 +6,7 @@ import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presenta
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
@@ -163,7 +163,12 @@ class _TemporalSelector extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: s(10), vertical: s(8)),
         child: Row(
           children: [
-            _SelectorIconButton(icon: PhonoliteIcons.chevronLeft, onTap: onPrev, size: iconSize),
+            _SelectorIconButton(
+              icon: PhonoliteIcons.chevronLeft,
+              label: 'Previous period',
+              onTap: onPrev,
+              size: iconSize,
+            ),
             SizedBox(width: s(6)),
             Expanded(
               child: Center(
@@ -183,7 +188,7 @@ class _TemporalSelector extends StatelessWidget {
               ),
             ),
             SizedBox(width: s(6)),
-            _SelectorIconButton(icon: PhonoliteIcons.chevronRight, onTap: onNext, size: iconSize),
+            _SelectorIconButton(icon: PhonoliteIcons.chevronRight, label: 'Next period', onTap: onNext, size: iconSize),
           ],
         ),
       ),
@@ -193,23 +198,21 @@ class _TemporalSelector extends StatelessWidget {
 
 class _SelectorIconButton extends StatelessWidget {
   final IconData icon;
+  final String label;
   final VoidCallback onTap;
   final double size;
 
-  const _SelectorIconButton({required this.icon, required this.onTap, required this.size});
+  const _SelectorIconButton({required this.icon, required this.label, required this.onTap, required this.size});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: size,
       height: size,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: withButtonHaptic(onTap),
-          behavior: HitTestBehavior.opaque,
-          child: Icon(icon, color: ObsidianPalette.gold, size: size),
-        ),
+      child: ObsidianTapTarget(
+        onTap: onTap,
+        semanticLabel: label,
+        child: Icon(icon, color: ObsidianPalette.gold, size: size),
       ),
     );
   }
