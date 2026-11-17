@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,8 +8,6 @@ import 'package:http/testing.dart';
 import 'package:phonolite_app/data/models/library/track_match.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
-
-import '../support/source_test_helpers.dart';
 
 void main() {
   group('server connection behavior', () {
@@ -613,6 +612,53 @@ void main() {
       expect(metadata.artist.name, 'Artist');
     });
 
+    test('session, liked track and player setting requests use their server routes', () async {
+      final requests = <String>[];
+      final bodies = <String>[];
+      final authHeaders = <String?>[];
+      final connection = ServerConnection(
+        baseUrl: 'http://example.test/api',
+        client: MockClient((request) async {
+          requests.add('${request.method} ${request.url}');
+          bodies.add(request.body);
+          authHeaders.add(request.headers['authorization']);
+          return switch (request.url.path) {
+            '/api/browse/likes' => http.Response('[{"id":"track-1","title":"One"}]', 200),
+            '/api/player/settings' when request.method == 'GET' => http.Response('{"repeat_mode":"one"}', 200),
+            _ => http.Response('{}', 200),
+          };
+        }),
+      )..setToken('token-1');
+
+      final liked = await connection.fetchLikedTracks();
+      final settings = await connection.fetchPlaybackSettings();
+      await connection.updatePlaybackSettings(repeatMode: 'off');
+      await connection.logout();
+
+      expect(requests, <String>[
+        'GET http://example.test/api/browse/likes',
+        'GET http://example.test/api/player/settings',
+        'POST http://example.test/api/player/settings',
+        'POST http://example.test/api/auth/logout',
+      ]);
+      expect(liked.map((track) => track.id), <String>['track-1']);
+      expect(settings.repeatMode, 'one');
+      expect(jsonDecode(bodies[2]), <String, Object?>{'repeat_mode': 'off'});
+      expect(authHeaders, everyElement('Bearer token-1'));
+    });
+
+    test('logout gives up when the server does not answer within its timeout', () async {
+      final connection = ServerConnection(
+        baseUrl: 'http://example.test/api',
+        client: MockClient((_) => Completer<http.Response>().future),
+      )..setToken('token-1');
+      final stopwatch = Stopwatch()..start();
+
+      await expectLater(connection.logout(timeout: const Duration(milliseconds: 50)), throwsA(anything));
+
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+    });
+
     test('fetchServerPorts retries retryable failures before succeeding', () async {
       var attempts = 0;
       final connection = ServerConnection(
@@ -632,42 +678,6 @@ void main() {
       expect(ports.httpPort, 3000);
       expect(ports.quicPort, 3001);
       expect(ports.quicEnabled, isTrue);
-    });
-  });
-
-  group('server connection source contracts', () {
-    final source = readProjectModule('lib/infrastructure/server/server_connection.dart');
-
-    test('defines expected endpoints, timeouts, and retry behavior', () {
-      expectContainsAll(source, const [
-        "static const Duration defaultRequestTimeout = Duration(seconds: 8);",
-        "static const Duration healthRequestTimeout = Duration(seconds: 2);",
-        "static const int maxGetAttempts = 3;",
-        "authenticateServer(",
-        "'/auth/logout'",
-        'Future<void> logout({',
-        "Duration timeout = defaultRequestTimeout,",
-        "await _transport.postVoid('/auth/logout', {}, timeout: timeout);",
-        "Duration timeout = defaultRequestTimeout,",
-        'timeout: timeout,',
-        "'/browse/artists?limit=\$limit&offset=\$offset&include_contributors=\$includeContributors'",
-        "'/library/playlists'",
-        "'/browse/likes'",
-        "'/library/shuffle?mode=\${Uri.encodeComponent(mode)}'",
-        "'/library/search?query=\$encoded&limit=50'",
-        "'/library/tracks/\$encoded/offline-metadata'",
-        "'/download/batches'",
-        "return '\${transport.baseUrl}/download/tracks/\$encoded';",
-        'Future<ServerArtwork?> fetchAlbumCoverBytes',
-        'Future<ServerArtwork?> fetchArtistCoverBytes',
-        "Future<ServerArtwork?> fetchArtworkUrl",
-        "'/player/settings'",
-        "'/server/ports'",
-        "'Authorization': 'Bearer \$_token'",
-        "request.headers[HttpHeaders.rangeHeader] = 'bytes=\$startByte-';",
-        "request.headers[HttpHeaders.ifRangeHeader] = ifRange.trim();",
-        'final maxAttempts = retryable ? ApiTransport.maxGetAttempts : 1;',
-      ]);
     });
   });
 }
