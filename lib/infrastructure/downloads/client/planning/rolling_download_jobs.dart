@@ -418,7 +418,8 @@ class _RollingDownloadJobs {
   }
 
   Future<void> _topUpRollingJob(OfflineDownloadJob job) async {
-    developer.Timeline.startSync('offline.job.topUp');
+    // TimelineTask, not Timeline.startSync: this span crosses awaits.
+    final span = developer.TimelineTask()..start('offline.job.topUp');
 
     try {
       final latestJob = _jobById(job.jobId);
@@ -469,7 +470,7 @@ class _RollingDownloadJobs {
 
       await _host._materializeJobItems(job, candidates);
     } finally {
-      developer.Timeline.finishSync();
+      span.finish();
     }
   }
 

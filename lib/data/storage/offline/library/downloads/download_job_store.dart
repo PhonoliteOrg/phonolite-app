@@ -64,16 +64,19 @@ class _OfflineDownloadJobStore {
     Database? db;
 
     try {
-      developer.Timeline.startSync('offline.sqlite.readJobItemsLean');
-      db = await _host._openDatabase();
+      final open = await _host._openDatabase();
+      db = open;
 
-      return _readDownloadJobItems(db, jobId, includeTrackJson: false);
+      // A synchronous span must not cross an await, so it times only the query.
+      return developer.Timeline.timeSync<List<OfflineDownloadJobItem>>(
+        'offline.sqlite.readJobItemsLean',
+        () => _readDownloadJobItems(open, jobId, includeTrackJson: false),
+      );
     } catch (err) {
       AppLogger.warning('Failed to read offline download job items: $err');
 
       return const [];
     } finally {
-      developer.Timeline.finishSync();
       _host._releaseDatabase(db);
     }
   }
@@ -95,16 +98,18 @@ class _OfflineDownloadJobStore {
     Database? db;
 
     try {
-      developer.Timeline.startSync('offline.sqlite.readJobItemsWindow');
-      db = await _host._openDatabase();
+      final open = await _host._openDatabase();
+      db = open;
 
-      return _readDownloadJobItemsForTracks(db, jobId, ids);
+      return developer.Timeline.timeSync<List<OfflineDownloadJobItem>>(
+        'offline.sqlite.readJobItemsWindow',
+        () => _readDownloadJobItemsForTracks(open, jobId, ids),
+      );
     } catch (err) {
       AppLogger.warning('Failed to read offline download job item window: $err');
 
       return const [];
     } finally {
-      developer.Timeline.finishSync();
       _host._releaseDatabase(db);
     }
   }
