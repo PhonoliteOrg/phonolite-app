@@ -40,7 +40,7 @@ Each host adds other areas, using the same naming, only when real work for them 
 
 | Language | Tool | Configuration |
 | --- | --- | --- |
-| Dart | `dart format` and `flutter analyze` from the repository's Flutter SDK; `flutter_lints` plus `always_use_package_imports` | `analysis_options.yaml` |
+| Dart | `dart format` and `flutter analyze` from the repository's Flutter SDK; `flutter_lints` plus `always_use_package_imports` and the async and error-handling rules of [4.1](FLUTTER-STANDARDS.md#41-dart-and-flutter) | `analysis_options.yaml` |
 | Swift | `swift-format` | `ios/.swift-format`, `macos/.swift-format` |
 | Kotlin | ktlint | `android/.editorconfig` |
 | C++ | clang-format | `windows/.clang-format`, `linux/.clang-format` |
