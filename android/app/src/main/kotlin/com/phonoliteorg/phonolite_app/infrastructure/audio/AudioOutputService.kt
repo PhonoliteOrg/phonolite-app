@@ -8,7 +8,7 @@ import com.phonoliteorg.phonolite_app.data.models.audio.OutputDevice
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-class AudioOutputService(context: Context, onPauseRequested: () -> Unit) {
+class AudioOutputService(context: Context, onPauseRequested: () -> Unit, onResumeRequested: () -> Unit) {
   private val appContext = context.applicationContext
   private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
   private val nextSessionId = AtomicInteger(1)
@@ -18,7 +18,13 @@ class AudioOutputService(context: Context, onPauseRequested: () -> Unit) {
       .setUsage(AudioAttributes.USAGE_MEDIA)
       .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
       .build()
-  private val focusController = AudioFocusController(appContext, audioManager, audioAttributes, onPauseRequested)
+  private val focusController = AudioFocusController(
+    appContext,
+    audioManager,
+    audioAttributes,
+    onPauseRequested,
+    onResumeRequested
+  )
   private val deviceCatalog = OutputDeviceCatalog(audioManager)
 
   fun open(configuration: AudioOutputConfiguration): Int {

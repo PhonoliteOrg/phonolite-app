@@ -92,7 +92,7 @@ void main() {
 
   test('Android focus loss permits reacquisition while preserving final registration cleanup', () {
     final focus = _native('infrastructure/audio/AudioFocusController.kt');
-    final loss = focus.substring(focus.indexOf('AUDIOFOCUS_LOSS,'), focus.indexOf('AUDIOFOCUS_GAIN ->'));
+    final loss = focus.substring(focus.indexOf('AUDIOFOCUS_LOSS ->'), focus.indexOf('AUDIOFOCUS_GAIN ->'));
 
     expect(loss.indexOf('hasFocus = false'), greaterThanOrEqualTo(0));
     expect(loss.indexOf('hasFocus = false'), lessThan(loss.indexOf('onPauseRequested()')));

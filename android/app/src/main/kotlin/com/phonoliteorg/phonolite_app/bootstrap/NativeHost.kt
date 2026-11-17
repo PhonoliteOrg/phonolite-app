@@ -19,7 +19,11 @@ class NativeHost(context: Context) {
     mediaServiceGateway::sourcesChanged
   )
   private val audioOutput by lazy {
-    AudioOutputService(appContext) { sendRemoteCommand(NativeRemoteCommand.Pause) }
+    AudioOutputService(
+      appContext,
+      onPauseRequested = { sendRemoteCommand(NativeRemoteCommand.Pause) },
+      onResumeRequested = { sendRemoteCommand(NativeRemoteCommand.Play) }
+    )
   }
   private val engineOwner = FlutterEngineOwner(appContext) { messenger ->
     FlutterEngineBinding(messenger, mediaController, audioOutput, NetworkRouteMonitor(appContext))

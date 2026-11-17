@@ -13,24 +13,40 @@ internal class AudioFocusController(
   private val appContext: Context,
   private val audioManager: AudioManager,
   audioAttributes: AudioAttributes,
-  private val onPauseRequested: () -> Unit
+  private val onPauseRequested: () -> Unit,
+  private val onResumeRequested: () -> Unit
 ) {
+  // Callbacks arrive on the main looper. Ducking is left to the system (API 26+), so CAN_DUCK only
+  // drops ownership; on older releases the stream simply keeps its volume during short prompts.
   private val focusListener =
     AudioManager.OnAudioFocusChangeListener { change ->
       when (change) {
-        AudioManager.AUDIOFOCUS_LOSS,
-        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+        AudioManager.AUDIOFOCUS_LOSS -> {
           hasFocus = false
+          pausedByTransientLoss = false
           onPauseRequested()
         }
-        AudioManager.AUDIOFOCUS_GAIN -> hasFocus = true
+        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+          hasFocus = false
+          pausedByTransientLoss = true
+          onPauseRequested()
+        }
+        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> hasFocus = false
+        AudioManager.AUDIOFOCUS_GAIN -> {
+          hasFocus = true
+
+          if (pausedByTransientLoss) {
+            pausedByTransientLoss = false
+            onResumeRequested()
+          }
+        }
       }
     }
   private val noisyReceiver =
     object : BroadcastReceiver() {
       override fun onReceive(context: Context?, intent: Intent?) {
         if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+          pausedByTransientLoss = false
           onPauseRequested()
         }
       }
@@ -45,12 +61,17 @@ internal class AudioFocusController(
   @Volatile
   private var focusRegistered = false
 
+  // Set only by a transient loss so the matching gain resumes. A user pause during the loss cannot be told
+  // apart from the pause this controller requested; a user play re-requests focus and clears it instead.
+  @Volatile
+  private var pausedByTransientLoss = false
+
   private val focusRequest: AudioFocusRequest? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(audioAttributes)
         .setOnAudioFocusChangeListener(focusListener)
-        .setWillPauseWhenDucked(true)
+        .setWillPauseWhenDucked(false)
         .build()
     } else {
       null
@@ -75,6 +96,7 @@ internal class AudioFocusController(
 
     if (granted) {
       focusRegistered = true
+      pausedByTransientLoss = false
     }
 
     hasFocus = granted
@@ -96,6 +118,7 @@ internal class AudioFocusController(
 
     focusRegistered = false
     hasFocus = false
+    pausedByTransientLoss = false
   }
 
   fun registerNoisyReceiver() {
