@@ -106,7 +106,8 @@ class _MessageLogState extends State<MessageLog> {
                       itemBuilder: (context, index) {
                         final entry = widget.messages[widget.messages.length - index - 1];
 
-                        return SelectableText(
+                        // Plain Text joins the surrounding SelectableRegion, so a drag selects across entries.
+                        return Text(
                           entry.format(),
                           style: baseStyle.copyWith(color: _colorForLevel(entry.level, theme)),
                         );

@@ -78,7 +78,7 @@ void main() {
       );
       await tester.pumpWidget(wrapInTestApp(MessageLog(messages: entries)));
       await tester.pumpAndSettle();
-      expect(find.byType(SelectableText).evaluate().length, lessThan(50));
+      expect(find.byType(Text).evaluate().length, lessThan(50));
       expect(entries.first.formats, 0);
       expect(entries.last.formats, greaterThan(0));
       expect(entries.where((entry) => entry.formats > 0).length, lessThan(50));
@@ -89,7 +89,7 @@ void main() {
       );
       scrollable.position.jumpTo(1500);
       await tester.pumpAndSettle();
-      expect(find.byType(SelectableText).evaluate().length, lessThan(50));
+      expect(find.byType(Text).evaluate().length, lessThan(50));
       expect(entries.first.formats, 0);
 
       await tester.tap(find.text('Copy All'));
@@ -126,7 +126,7 @@ void main() {
 
       final logLines = find.byWidgetPredicate(
         (widget) =>
-            widget is SelectableText &&
+            widget is Text &&
             widget.data != null &&
             widget.data!.contains('only'),
       );
@@ -164,7 +164,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.byWidgetPredicate(
           (widget) =>
-              widget is SelectableText &&
+              widget is Text &&
               widget.data?.endsWith('[WARN] warning only') == true,
         ),
         100,
