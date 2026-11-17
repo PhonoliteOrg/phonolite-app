@@ -70,3 +70,4 @@ Checklists for [2.12](FLUTTER-STANDARDS.md#212-host-release-readiness). Check ev
 
 - `Changelog:` categories match the section headings of the release notes in `changelog/`: `Added`, `Changed`, `Fixed`, `Compatibility`, `Maintenance` or `None`.
 - `Platforms:` values: `all`, `android`, `ios`, `macos`, `windows`, `linux`. Use `all` for shared Dart behavior.
+- Integration branch: `main`. Contributors fork the repository; feature branches are optional, and every change merges into `main`.

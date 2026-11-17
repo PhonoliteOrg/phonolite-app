@@ -47,6 +47,7 @@ Before reporting the work as finished:
 1. Check the diff against every trigger above that applies, and confirm its evidence is present.
 2. Apply the [review checklist](FLUTTER-STANDARDS.md#52-review-checklist).
 3. If you find a rule broken in more than one place, say so and propose a mechanical check ([5.3](FLUTTER-STANDARDS.md#53-verification)).
+4. If files changed on `main`, end the report with the commit offer described under [Commits and approval](#commits-and-approval).
 
 ## Verification limits
 
@@ -56,7 +57,8 @@ Before reporting the work as finished:
 
 ## Commits and approval
 
-- After a coherent set of changes, offer to commit and wait for explicit approval. Never commit, amend, rebase, force-push or push without it.
+- Work and commit on the current branch, normally `main`. Do not create, switch, merge or delete branches, or use worktrees, unless the developer asks ([5.4](FLUTTER-STANDARDS.md#54-commits)).
+- After any change to files on `main`, offer to commit: propose the message and list the files, then wait for explicit approval. Never commit, amend, rebase, force-push or push without it.
 - Follow [5.4](FLUTTER-STANDARDS.md#54-commits) for the message, with `Changelog:` and `Platforms:` values from the [profile](PROJECT-PROFILE.md#commit-vocabulary).
 - Commit only with the configured git identity. Do not pass `--author`, set `GIT_AUTHOR_*` or `GIT_COMMITTER_*`, or change `user.name` or `user.email`. If none is configured, ask the developer to set one.
 - Never mention an agent, LLM or tool in commits: no `Co-Authored-By` trailers, tool or model names, or "Generated with" lines in messages, trailers or branch names.

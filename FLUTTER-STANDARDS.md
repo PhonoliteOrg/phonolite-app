@@ -854,6 +854,12 @@ Platforms: <scope from the profile>
 - Commit messages, trailers and branch names contain no tool, model or assistant attribution: no `Co-Authored-By` lines for tools, no "Generated with" lines, no product names.
 - Do not bypass hooks or signing.
 
+**Branches**
+
+- The project has one integration branch, named in the profile. Every change lands there; a release is cut from it.
+- External contributors work in their own fork. Branches in a fork or the main repository are optional and short-lived, and all of them merge back into the integration branch.
+- Work happens on the current branch unless the developer chooses another. A branch is created, switched or deleted only on the developer's request.
+
 How coding agents obtain approval and commit is defined by the agent instructions ([5.6](#56-agent-instructions)).
 
 ### 5.5 Keeping this document healthy
