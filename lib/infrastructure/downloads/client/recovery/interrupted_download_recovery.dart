@@ -8,6 +8,7 @@ class _InterruptedDownloadRecovery {
   Future<List<OfflineTrackDownload>> _recoverInterruptedDownloads(List<OfflineTrackDownload> downloads) async {
     final now = DateTime.now();
     final recovered = <OfflineTrackDownload>[];
+    final downloadsRootAvailable = await _downloadsRootAvailable();
 
     for (final download in downloads) {
       if (download.status == OfflineDownloadStatus.preparing ||
@@ -26,7 +27,9 @@ class _InterruptedDownloadRecovery {
       }
 
       if (download.status == OfflineDownloadStatus.downloaded || _downloadNeedsMissingFileRepair(download)) {
-        recovered.add(await _recoverCompletedDownload(download, now));
+        // A missing downloads root means the storage (an unmounted drive or
+        // revoked folder) is temporarily unavailable, not that files are gone.
+        recovered.add(downloadsRootAvailable ? await _recoverCompletedDownload(download, now) : download);
         continue;
       }
 
@@ -47,6 +50,16 @@ class _InterruptedDownloadRecovery {
     }
 
     return recovered;
+  }
+
+  Future<bool> _downloadsRootAvailable() async {
+    try {
+      return await (await _host._storage.downloadsRoot()).exists();
+    } catch (err) {
+      AppLogger.warning('Failed to check offline downloads folder: $err');
+
+      return false;
+    }
   }
 
   bool _downloadNeedsMissingFileRepair(OfflineTrackDownload download) {

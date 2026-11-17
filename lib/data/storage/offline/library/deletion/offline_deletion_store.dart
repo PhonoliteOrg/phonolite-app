@@ -315,7 +315,7 @@ class _OfflineDeletionStore {
       draft.removedLocalTrackCount += 1;
     }
 
-    _pruneUnavailableLocalUserData(db);
+    _pruneRemovedLocalUserData(db);
 
     return draft;
   }
@@ -389,7 +389,7 @@ class _OfflineDeletionStore {
       ''',
         [DateTime.now().millisecondsSinceEpoch],
       );
-      _pruneUnavailableLocalUserData(db);
+      _pruneRemovedLocalUserData(db);
     });
     pendingDeletes.addAll(await _host._unusedArtworkFiles(db, deleteRoots));
 
@@ -405,43 +405,20 @@ class _OfflineDeletionStore {
     }
   }
 
-  void _pruneUnavailableLocalUserData(Database db) {
-    db.execute(
-      '''
-      DELETE FROM local_likes
-      WHERE NOT EXISTS (
-        SELECT 1 FROM source_tracks s
-        WHERE s.local_track_id = local_likes.local_track_id
-          AND s.status = ?
-          AND s.file_path IS NOT NULL
-      )
-    ''',
-      [OfflineDownloadStatus.downloaded.name],
-    );
-    db.execute(
-      '''
-      DELETE FROM local_like_states
-      WHERE NOT EXISTS (
-        SELECT 1 FROM source_tracks s
-        WHERE s.local_track_id = local_like_states.local_track_id
-          AND s.status = ?
-          AND s.file_path IS NOT NULL
-      )
-    ''',
-      [OfflineDownloadStatus.downloaded.name],
-    );
-    db.execute(
-      '''
-      DELETE FROM local_playlist_tracks
-      WHERE NOT EXISTS (
-        SELECT 1 FROM source_tracks s
-        WHERE s.local_track_id = local_playlist_tracks.local_track_id
-          AND s.status = ?
-          AND s.file_path IS NOT NULL
-      )
-    ''',
-      [OfflineDownloadStatus.downloaded.name],
-    );
+  /// Remove likes, like states and playlist memberships whose local track no
+  /// longer has any source. Only removal deletes sources, so a download that
+  /// turns corrupt or loses its file (for example on an unmounted drive) keeps
+  /// its user data and shows it again once the file is repaired.
+  void _pruneRemovedLocalUserData(Database db) {
+    for (final table in const ['local_likes', 'local_like_states', 'local_playlist_tracks']) {
+      db.execute('''
+        DELETE FROM $table
+        WHERE NOT EXISTS (
+          SELECT 1 FROM source_tracks s
+          WHERE s.local_track_id = $table.local_track_id
+        )
+      ''');
+    }
   }
 }
 
@@ -462,5 +439,5 @@ mixin _OfflineDeletionStoreFacade {
 
   Future<void> _runStartupGarbageCollection(Database db) => _ownerDeletion._runStartupGarbageCollection(db);
 
-  void _pruneUnavailableLocalUserData(Database db) => _ownerDeletion._pruneUnavailableLocalUserData(db);
+  void _pruneRemovedLocalUserData(Database db) => _ownerDeletion._pruneRemovedLocalUserData(db);
 }
