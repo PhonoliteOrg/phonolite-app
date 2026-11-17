@@ -544,6 +544,12 @@ class QuicClient implements ffi.Finalizable {
     try {
       handle = bindings.connect(hostPtr, port, tokenPtr, pinPtr);
     } finally {
+      final tokenLength = tokenPtr.length;
+      tokenPtr.cast<ffi.Uint8>().asTypedList(tokenLength).fillRange(
+        0,
+        tokenLength,
+        0,
+      );
       calloc.free(hostPtr);
       calloc.free(tokenPtr);
       calloc.free(pinPtr);
