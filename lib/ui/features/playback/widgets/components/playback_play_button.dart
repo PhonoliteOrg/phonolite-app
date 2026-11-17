@@ -10,12 +10,20 @@ import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
+/// The octagonal play/pause control. [semanticLabel] names the action it currently performs.
 class PlaybackHudPlayButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final double size;
+  final String semanticLabel;
 
-  const PlaybackHudPlayButton({super.key, required this.icon, required this.onPressed, this.size = 54});
+  const PlaybackHudPlayButton({
+    super.key,
+    required this.icon,
+    required this.onPressed,
+    required this.semanticLabel,
+    this.size = 54,
+  });
 
   @override
   State<PlaybackHudPlayButton> createState() => PlaybackHudPlayButtonState();
@@ -53,7 +61,7 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
 
     return pointerRegion(
       onTap: widget.onPressed,
-
+      semanticLabel: widget.semanticLabel,
       child: SizedBox(
         width: baseSize,
         height: baseSize,

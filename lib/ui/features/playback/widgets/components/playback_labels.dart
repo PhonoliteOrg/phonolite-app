@@ -118,3 +118,16 @@ String? playbackQueueSourceLabel(PlaybackState state) {
       }
   }
 }
+
+/// Accessible name of the shuffle toggle; its on/off state is reported separately as toggled.
+String playbackShuffleButtonLabel(ShuffleMode mode) {
+  return mode == ShuffleMode.off ? 'Shuffle' : 'Shuffle: ${playbackShuffleLabel(mode)}';
+}
+
+/// Accessible name of the repeat toggle; its on/off state is reported separately as toggled.
+String playbackRepeatButtonLabel(PlaybackRepeatMode mode) {
+  return switch (mode) {
+    PlaybackRepeatMode.off => 'Repeat',
+    PlaybackRepeatMode.one => 'Repeat: Current Track',
+  };
+}

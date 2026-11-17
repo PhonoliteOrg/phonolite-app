@@ -37,13 +37,14 @@ void main() {
             ),
             (
               build: (action) => ObsidianHudIconButton(
+                semanticLabel: 'Download',
                 icon: PhonoliteIcons.download,
                 onPressed: action,
               ),
               target: () => find.byType(ObsidianHudIconButton),
             ),
             (
-              build: (action) => PlaybackHudPlayButton(icon: Icons.play_arrow, onPressed: action),
+              build: (action) => PlaybackHudPlayButton(icon: Icons.play_arrow, semanticLabel: 'Play', onPressed: action),
               target: () => find.byType(PlaybackHudPlayButton),
             ),
             (

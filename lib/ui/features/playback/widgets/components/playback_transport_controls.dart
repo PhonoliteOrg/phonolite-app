@@ -50,13 +50,16 @@ class PlaybackCommandZone extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ObsidianHudIconButton(
+              semanticLabel: playbackShuffleButtonLabel(state.shuffleMode),
               icon: PhonoliteIcons.shuffle,
               isActive: state.shuffleMode != ShuffleMode.off,
+              toggled: state.shuffleMode != ShuffleMode.off,
               onPressed: onShuffle,
               size: s(24),
             ),
             SizedBox(width: s(6)),
             ObsidianHudIconButton(
+              semanticLabel: 'Previous track',
               icon: PhonoliteIcons.skipBack,
               onPressed: transportEnabled ? onPrev : null,
               size: s(26),
@@ -64,24 +67,29 @@ class PlaybackCommandZone extends StatelessWidget {
             SizedBox(width: s(8)),
             PlaybackHudPlayButton(
               icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+              semanticLabel: state.isPlaying ? 'Pause' : 'Play',
               onPressed: playEnabled ? onPlayPause : null,
             ),
             SizedBox(width: s(8)),
             ObsidianHudIconButton(
+              semanticLabel: 'Stop',
               icon: PhonoliteIcons.square,
               onPressed: transportEnabled ? onStop : null,
               size: s(28),
             ),
             SizedBox(width: s(6)),
             ObsidianHudIconButton(
+              semanticLabel: 'Next track',
               icon: PhonoliteIcons.skipForward,
               onPressed: transportEnabled ? onNext : null,
               size: s(26),
             ),
             SizedBox(width: s(6)),
             ObsidianHudIconButton(
+              semanticLabel: playbackRepeatButtonLabel(state.repeatMode),
               icon: PhonoliteIcons.repeat,
               isActive: state.repeatMode == PlaybackRepeatMode.one,
+              toggled: state.repeatMode == PlaybackRepeatMode.one,
               onPressed: onRepeat,
               size: s(24),
             ),
@@ -121,29 +129,35 @@ class PlaybackExpandedControls extends StatelessWidget {
 
     if (ObsidianModalScope.usesTouchTargets(context)) {
       final previous = ObsidianHudIconButton(
+        semanticLabel: 'Previous track',
         icon: PhonoliteIcons.skipBack,
         size: 24,
         onPressed: transportEnabled ? onPrev : null,
       );
       final play = PlaybackHudPlayButton(
         icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+        semanticLabel: state.isPlaying ? 'Pause' : 'Play',
         size: 56,
         onPressed: playEnabled ? onPlayPause : null,
       );
       final next = ObsidianHudIconButton(
+        semanticLabel: 'Next track',
         icon: PhonoliteIcons.skipForward,
         size: 24,
         onPressed: transportEnabled ? onNext : null,
       );
       final stop = ObsidianHudIconButton(
+        semanticLabel: 'Stop',
         icon: PhonoliteIcons.square,
         size: 22,
         onPressed: transportEnabled ? onStop : null,
       );
       final repeat = ObsidianHudIconButton(
+        semanticLabel: playbackRepeatButtonLabel(state.repeatMode),
         icon: PhonoliteIcons.repeat,
         size: 22,
         isActive: state.repeatMode == PlaybackRepeatMode.one,
+        toggled: state.repeatMode == PlaybackRepeatMode.one,
         onPressed: onRepeat,
       );
 
@@ -154,13 +168,20 @@ class PlaybackExpandedControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ObsidianHudIconButton(
+          semanticLabel: playbackShuffleButtonLabel(state.shuffleMode),
           icon: PhonoliteIcons.shuffle,
           isActive: state.shuffleMode != ShuffleMode.off,
+          toggled: state.shuffleMode != ShuffleMode.off,
           onPressed: onShuffle,
           size: s(32),
         ),
         SizedBox(width: s(18)),
-        ObsidianHudIconButton(icon: PhonoliteIcons.skipBack, onPressed: transportEnabled ? onPrev : null, size: s(38)),
+        ObsidianHudIconButton(
+          semanticLabel: 'Previous track',
+          icon: PhonoliteIcons.skipBack,
+          onPressed: transportEnabled ? onPrev : null,
+          size: s(38),
+        ),
       ],
     );
 
@@ -168,16 +189,24 @@ class PlaybackExpandedControls extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ObsidianHudIconButton(
+          semanticLabel: 'Next track',
           icon: PhonoliteIcons.skipForward,
           onPressed: transportEnabled ? onNext : null,
           size: s(38),
         ),
         SizedBox(width: s(18)),
-        ObsidianHudIconButton(icon: PhonoliteIcons.square, onPressed: transportEnabled ? onStop : null, size: s(38)),
+        ObsidianHudIconButton(
+          semanticLabel: 'Stop',
+          icon: PhonoliteIcons.square,
+          onPressed: transportEnabled ? onStop : null,
+          size: s(38),
+        ),
         SizedBox(width: s(18)),
         ObsidianHudIconButton(
+          semanticLabel: playbackRepeatButtonLabel(state.repeatMode),
           icon: PhonoliteIcons.repeat,
           isActive: state.repeatMode == PlaybackRepeatMode.one,
+          toggled: state.repeatMode == PlaybackRepeatMode.one,
           onPressed: onRepeat,
           size: s(32),
         ),
@@ -208,6 +237,7 @@ class PlaybackExpandedControls extends StatelessWidget {
               SizedBox(width: gap),
               PlaybackHudPlayButton(
                 icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                semanticLabel: state.isPlaying ? 'Pause' : 'Play',
                 onPressed: playEnabled ? onPlayPause : null,
                 size: playSize,
               ),
@@ -275,34 +305,47 @@ class PlaybackCompactControls extends StatelessWidget {
       children: [
         for (final control in <Widget>[
           ObsidianHudIconButton(
+            semanticLabel: playbackShuffleButtonLabel(state.shuffleMode),
             icon: PhonoliteIcons.shuffle,
             isActive: state.shuffleMode != ShuffleMode.off,
+            toggled: state.shuffleMode != ShuffleMode.off,
             onPressed: onShuffle,
             size: s(22),
           ),
           ObsidianHudIconButton(
+            semanticLabel: 'Previous track',
             icon: PhonoliteIcons.skipBack,
             onPressed: transportEnabled ? onPrev : null,
             size: s(24),
           ),
           PlaybackHudPlayButton(
             icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+            semanticLabel: state.isPlaying ? 'Pause' : 'Play',
             onPressed: playEnabled ? onPlayPause : null,
             size: playSize,
           ),
-          ObsidianHudIconButton(icon: PhonoliteIcons.square, onPressed: transportEnabled ? onStop : null, size: s(24)),
           ObsidianHudIconButton(
+            semanticLabel: 'Stop',
+            icon: PhonoliteIcons.square,
+            onPressed: transportEnabled ? onStop : null,
+            size: s(24),
+          ),
+          ObsidianHudIconButton(
+            semanticLabel: 'Next track',
             icon: PhonoliteIcons.skipForward,
             onPressed: transportEnabled ? onNext : null,
             size: s(24),
           ),
           ObsidianHudIconButton(
+            semanticLabel: playbackRepeatButtonLabel(state.repeatMode),
             icon: PhonoliteIcons.repeat,
             isActive: state.repeatMode == PlaybackRepeatMode.one,
+            toggled: state.repeatMode == PlaybackRepeatMode.one,
             onPressed: onRepeat,
             size: s(22),
           ),
           ObsidianHudIconButton(
+            semanticLabel: 'Add to playlist',
             iconWidget: const PlaylistAddIcon(),
             onPressed: userActionsEnabled ? onAddToPlaylist : null,
             size: s(22),
@@ -312,7 +355,12 @@ class PlaybackCompactControls extends StatelessWidget {
             onPressed: userActionsEnabled ? onToggleLike : null,
             size: s(22),
           ),
-          ObsidianHudIconButton(icon: PhonoliteIcons.speaker, onPressed: onShowDevicePicker, size: s(22)),
+          ObsidianHudIconButton(
+            semanticLabel: 'Playback device',
+            icon: PhonoliteIcons.speaker,
+            onPressed: onShowDevicePicker,
+            size: s(22),
+          ),
           if (state.track != null && !state.isLocalPlayback)
             PlaybackQualityBadge(label: playbackStreamLabel(state.streamMode), onTap: onShowStreamMode),
         ])

@@ -33,10 +33,11 @@ class SearchHud extends StatelessWidget {
   Widget _clearButton() => Tooltip(
     message: 'Clear search',
     excludeFromSemantics: true,
-    child: Semantics(
-      button: true,
-      label: 'Clear search',
-      child: ObsidianHudIconButton(icon: PhonoliteIcons.x, size: 24, onPressed: _clearSearch),
+    child: ObsidianHudIconButton(
+      semanticLabel: 'Clear search',
+      icon: PhonoliteIcons.x,
+      size: 24,
+      onPressed: _clearSearch,
     ),
   );
 

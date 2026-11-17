@@ -161,7 +161,9 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
                   children: [
                     Tooltip(
                       message: 'Create playlist',
+                      excludeFromSemantics: true,
                       child: ObsidianHudIconButton(
+                        semanticLabel: 'Create playlist',
                         icon: PhonoliteIcons.plus,
                         size: headerActionIconSize,
                         onPressed: () => _openCreate(canCreateServer: authState.isAuthorized),
@@ -169,7 +171,9 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
                     ),
                     Tooltip(
                       message: 'Edit playlists',
+                      excludeFromSemantics: true,
                       child: ObsidianHudIconButton(
+                        semanticLabel: 'Edit playlists',
                         iconWidget: const EditIcon(),
                         size: headerActionIconSize,
                         onPressed: totalPlaylistCount == 0 ? null : _feature.startSelection,

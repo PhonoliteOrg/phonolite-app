@@ -25,16 +25,13 @@ class CollectionViewToggleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: isListView ? showCardTooltip : showListTooltip,
-      child: Semantics(
-        button: true,
+      child: ObsidianHudIconButton(
+        semanticLabel: semanticLabel,
         toggled: isListView,
-        label: semanticLabel,
-        child: ObsidianHudIconButton(
-          icon: PhonoliteIcons.rows3,
-          size: iconSize,
-          isActive: isListView,
-          onPressed: onPressed,
-        ),
+        icon: PhonoliteIcons.rows3,
+        size: iconSize,
+        isActive: isListView,
+        onPressed: onPressed,
       ),
     );
   }

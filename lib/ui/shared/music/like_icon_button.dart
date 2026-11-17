@@ -14,6 +14,8 @@ class LikeIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ObsidianHudIconButton(
+      semanticLabel: isLiked ? 'Unlike' : 'Like',
+      toggled: isLiked,
       icon: isLiked ? null : PhonoliteIcons.heart,
       iconWidget: isLiked ? const SvgAssetIcon(assetName: 'assets/icons/lucide/heart-filled.svg') : null,
       isActive: isLiked,

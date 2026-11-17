@@ -190,7 +190,9 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   Widget _downloadManagerButton({bool enabled = true, double iconSize = PageToolbarActionLayout.regularIconSize}) {
     return Tooltip(
       message: 'Download Manager',
+      excludeFromSemantics: true,
       child: ObsidianHudIconButton(
+        semanticLabel: 'Download Manager',
         icon: PhonoliteIcons.download,
         size: iconSize,
         onPressed: enabled ? () => unawaited(showDownloadManagerPanel(context)) : null,
@@ -201,7 +203,13 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   Widget _editLibraryButton(VoidCallback? onPressed, {double iconSize = PageToolbarActionLayout.regularIconSize}) {
     return Tooltip(
       message: 'Edit',
-      child: ObsidianHudIconButton(iconWidget: const EditIcon(), size: iconSize, onPressed: onPressed),
+      excludeFromSemantics: true,
+      child: ObsidianHudIconButton(
+        semanticLabel: 'Edit',
+        iconWidget: const EditIcon(),
+        size: iconSize,
+        onPressed: onPressed,
+      ),
     );
   }
 
@@ -240,7 +248,9 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   }) {
     return Tooltip(
       message: 'Refresh library',
+      excludeFromSemantics: true,
       child: ObsidianHudIconButton(
+        semanticLabel: 'Refresh library',
         icon: _feature.refreshingLibrary ? PhonoliteIcons.hourglass : null,
         iconWidget: _feature.refreshingLibrary ? null : const ReloadIcon(),
         size: iconSize,

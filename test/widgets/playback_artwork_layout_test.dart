@@ -24,7 +24,7 @@ void main() {
     Future<void> show({required bool enabled, IconData icon = Icons.play_arrow}) => tester.pumpWidget(
       wrapInTestApp(
         Center(
-          child: PlaybackHudPlayButton(icon: icon, onPressed: enabled ? () => plays++ : null),
+          child: PlaybackHudPlayButton(icon: icon, semanticLabel: 'Play', onPressed: enabled ? () => plays++ : null),
         ),
       ),
     );

@@ -139,16 +139,17 @@ class _TechButtonState extends State<TechButton> with PointerInteraction<TechBut
             ),
           );
 
-    final button = pointerRegion(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: child);
+    final button = pointerRegion(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      semanticLabel: widget.iconOnly ? semanticLabel : null,
+      child: child,
+    );
 
     if (!widget.iconOnly) {
       return button;
     }
 
-    return Tooltip(
-      message: semanticLabel,
-      excludeFromSemantics: true,
-      child: Semantics(button: true, enabled: enabled, label: semanticLabel, child: button),
-    );
+    return Tooltip(message: semanticLabel, excludeFromSemantics: true, child: button);
   }
 }

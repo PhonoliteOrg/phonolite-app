@@ -262,7 +262,7 @@ void main() {
 }
 
 Widget _pointerControl(String family, VoidCallback? action) => switch (family) {
-  'HUD' => ObsidianHudIconButton(icon: Icons.play_arrow, onPressed: action),
+  'HUD' => ObsidianHudIconButton(semanticLabel: 'Play', icon: Icons.play_arrow, onPressed: action),
   'Tech' => TechButton(label: 'Play', icon: Icons.play_arrow, onTap: action),
-  _ => PlaybackHudPlayButton(icon: Icons.play_arrow, onPressed: action),
+  _ => PlaybackHudPlayButton(icon: Icons.play_arrow, semanticLabel: 'Play', onPressed: action),
 };

@@ -58,7 +58,9 @@ class DownloadSelectionToolbar extends StatelessWidget {
       ),
       Tooltip(
         message: 'Remove selected',
+        excludeFromSemantics: true,
         child: ObsidianHudIconButton(
+          semanticLabel: 'Remove selected',
           icon: PhonoliteIcons.trash2,
           size: isCompact ? 22 : 26,
           onPressed: selectedCount > 0 ? onRemove : null,
@@ -66,7 +68,13 @@ class DownloadSelectionToolbar extends StatelessWidget {
       ),
       Tooltip(
         message: 'Cancel',
-        child: ObsidianHudIconButton(icon: PhonoliteIcons.x, size: isCompact ? 22 : 26, onPressed: onCancel),
+        excludeFromSemantics: true,
+        child: ObsidianHudIconButton(
+          semanticLabel: 'Cancel',
+          icon: PhonoliteIcons.x,
+          size: isCompact ? 22 : 26,
+          onPressed: onCancel,
+        ),
       ),
     ];
 

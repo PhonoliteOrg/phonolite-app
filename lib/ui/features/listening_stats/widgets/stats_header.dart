@@ -69,14 +69,12 @@ class StatsHeader extends StatelessWidget {
               if (onRefresh != null) ...[
                 Tooltip(
                   message: 'Refresh listening history',
-                  child: Semantics(
-                    button: true,
-                    label: 'Refresh listening history',
-                    child: ObsidianHudIconButton(
-                      iconWidget: const ReloadIcon(),
-                      onPressed: onRefresh,
-                      size: actions.iconSize,
-                    ),
+                  excludeFromSemantics: true,
+                  child: ObsidianHudIconButton(
+                    semanticLabel: 'Refresh listening history',
+                    iconWidget: const ReloadIcon(),
+                    onPressed: onRefresh,
+                    size: actions.iconSize,
                   ),
                 ),
               ],

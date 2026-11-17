@@ -140,7 +140,13 @@ class StatsHistoryStatus extends StatelessWidget {
 
     return Tooltip(
       message: 'Listening history status',
-      child: ObsidianHudIconButton(icon: statusIcon, size: iconSize, onPressed: () => _showStatus(context)),
+      excludeFromSemantics: true,
+      child: ObsidianHudIconButton(
+        semanticLabel: 'Listening history status',
+        icon: statusIcon,
+        size: iconSize,
+        onPressed: () => _showStatus(context),
+      ),
     );
   }
 }

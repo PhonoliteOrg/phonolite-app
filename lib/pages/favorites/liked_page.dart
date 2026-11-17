@@ -87,7 +87,9 @@ class _LikedPageState extends BasePageState<LikedPage> {
       children: [
         Tooltip(
           message: 'Create playlist from liked tracks',
+          excludeFromSemantics: true,
           child: ObsidianHudIconButton(
+            semanticLabel: 'Create playlist from liked tracks',
             iconWidget: const PlaylistAddIcon(),
             size: layout.iconSize,
             onPressed: hasLikedTracks
@@ -97,7 +99,9 @@ class _LikedPageState extends BasePageState<LikedPage> {
         ),
         Tooltip(
           message: 'Edit tracks',
+          excludeFromSemantics: true,
           child: ObsidianHudIconButton(
+            semanticLabel: 'Edit tracks',
             iconWidget: const PlaylistEditIcon(),
             size: layout.iconSize,
             onPressed: removableCount > 0 ? _feature.startSelection : null,

@@ -169,7 +169,9 @@ class NowPlayingMiniBar extends StatelessWidget {
                   ),
                   Tooltip(
                     message: 'Next song',
+                    excludeFromSemantics: true,
                     child: ObsidianHudIconButton(
+                      semanticLabel: 'Next song',
                       icon: PhonoliteIcons.skipForward,
                       onPressed: transportEnabled ? onNext : null,
                       size: s(28),
@@ -185,6 +187,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                         padding: EdgeInsets.all(playPadding),
                         child: PlaybackHudPlayButton(
                           icon: state.isPlaying ? Icons.pause : Icons.play_arrow,
+                          semanticLabel: state.isPlaying ? 'Pause' : 'Play',
                           onPressed: playEnabled ? onPlayPause : null,
                           size: playSize,
                         ),

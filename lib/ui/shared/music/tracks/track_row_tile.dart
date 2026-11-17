@@ -462,6 +462,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
               ],
               if (!selectionMode && !actionsInMenu && !isCompact && widget.onAddToPlaylist != null) ...[
                 ObsidianHudIconButton(
+                  semanticLabel: 'Add to playlist',
                   iconWidget: const PlaylistAddIcon(),
                   onPressed: isDeleting ? null : widget.onAddToPlaylist,
                   size: 22,
@@ -479,6 +480,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
               if (!selectionMode && !actionsInMenu && !isCompact && widget.onDelete != null) ...[
                 SizedBox(width: actionGap),
                 ObsidianHudIconButton(
+                  semanticLabel: 'Delete',
                   icon: PhonoliteIcons.trash2,
                   onPressed: isDeleting ? null : widget.onDelete,
                   size: 22,

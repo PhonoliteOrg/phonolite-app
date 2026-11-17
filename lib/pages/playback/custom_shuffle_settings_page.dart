@@ -94,7 +94,9 @@ class _CustomShuffleSettingsPageState extends BasePageState<CustomShuffleSetting
         if (!local)
           Tooltip(
             message: 'Create custom shuffle',
+            excludeFromSemantics: true,
             child: ObsidianHudIconButton(
+              semanticLabel: 'Create custom shuffle',
               icon: PhonoliteIcons.plus,
               size: layout.iconSize,
               onPressed: available ? () => unawaited(_openEditor()) : null,
@@ -102,7 +104,9 @@ class _CustomShuffleSettingsPageState extends BasePageState<CustomShuffleSetting
           ),
         Tooltip(
           message: local ? 'Edit local filters' : 'Edit custom shuffles',
+          excludeFromSemantics: true,
           child: ObsidianHudIconButton(
+            semanticLabel: local ? 'Edit local filters' : 'Edit custom shuffles',
             iconWidget: const EditIcon(),
             size: layout.iconSize,
             onPressed: local
@@ -131,7 +135,9 @@ class _CustomShuffleSettingsPageState extends BasePageState<CustomShuffleSetting
       trailing: _feature.selectionMode
           ? Tooltip(
               message: 'Edit ${preset.name}',
+              excludeFromSemantics: true,
               child: ObsidianHudIconButton(
+                semanticLabel: 'Edit ${preset.name}',
                 iconWidget: const EditIcon(),
                 size: PageToolbarActionLayout.of(context).iconSize,
                 onPressed: _feature.busy ? null : () => unawaited(_openEditor(preset: preset)),

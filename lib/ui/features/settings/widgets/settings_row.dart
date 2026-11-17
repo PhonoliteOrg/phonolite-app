@@ -50,12 +50,8 @@ class SettingsIconAction extends StatelessWidget {
     if (variant != TechButtonVariant.danger) {
       return Tooltip(
         message: tooltip,
-        child: Semantics(
-          button: true,
-          enabled: onPressed != null,
-          label: tooltip,
-          child: ObsidianHudIconButton(icon: icon, size: 22, onPressed: onPressed),
-        ),
+        excludeFromSemantics: true,
+        child: ObsidianHudIconButton(semanticLabel: tooltip, icon: icon, size: 22, onPressed: onPressed),
       );
     }
 

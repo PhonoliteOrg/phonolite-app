@@ -34,11 +34,16 @@ mixin PointerInteraction<T extends StatefulWidget> on State<T> {
 
   /// Wraps [child] as a button. Pass `focusable: false` when the control already owns its focus,
   /// activation and semantics (for example a switch with its own [FocusableActionDetector]).
+  ///
+  /// [semanticLabel] names the button for assistive technology; icon-only controls must provide it.
+  /// [toggled] reports an on/off state for toggle buttons and stays null for plain actions.
   Widget pointerRegion({
     required Widget child,
     required VoidCallback? onTap,
     HitTestBehavior? behavior,
     bool focusable = true,
+    String? semanticLabel,
+    bool? toggled,
   }) {
     final tap = withButtonHaptic(interactionEnabled ? onTap : null);
     final region = MouseRegion(
@@ -62,6 +67,8 @@ mixin PointerInteraction<T extends StatefulWidget> on State<T> {
     return Semantics(
       button: true,
       enabled: interactionEnabled,
+      label: semanticLabel,
+      toggled: toggled,
       child: FocusableActionDetector(
         enabled: interactionEnabled && tap != null,
         mouseCursor: MouseCursor.defer,

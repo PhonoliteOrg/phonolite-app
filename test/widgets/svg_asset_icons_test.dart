@@ -120,7 +120,11 @@ void main() {
                       children: [
                         RepaintBoundary(
                           key: const ValueKey('playlist'),
-                          child: ObsidianHudIconButton(iconWidget: const PlaylistAddIcon(), size: size),
+                          child: ObsidianHudIconButton(
+                            semanticLabel: 'Add to playlist',
+                            iconWidget: const PlaylistAddIcon(),
+                            size: size,
+                          ),
                         ),
                         RepaintBoundary(
                           key: const ValueKey('heart'),
@@ -128,7 +132,11 @@ void main() {
                         ),
                         RepaintBoundary(
                           key: const ValueKey('device'),
-                          child: ObsidianHudIconButton(icon: PhonoliteIcons.speaker, size: size),
+                          child: ObsidianHudIconButton(
+                            semanticLabel: 'Playback device',
+                            icon: PhonoliteIcons.speaker,
+                            size: size,
+                          ),
                         ),
                       ],
                     ),

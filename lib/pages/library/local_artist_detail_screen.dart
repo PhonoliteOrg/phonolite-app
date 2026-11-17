@@ -78,7 +78,8 @@ class _LocalArtistDetailScreenState extends BasePageState<LocalArtistDetailScree
   Widget _editAlbumSelectionButton(VoidCallback? onPressed) {
     return Tooltip(
       message: 'Edit',
-      child: ObsidianHudIconButton(iconWidget: const EditIcon(), onPressed: onPressed),
+      excludeFromSemantics: true,
+      child: ObsidianHudIconButton(semanticLabel: 'Edit', iconWidget: const EditIcon(), onPressed: onPressed),
     );
   }
 

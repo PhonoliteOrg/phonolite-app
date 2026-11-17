@@ -210,7 +210,9 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
       subtitle: subtitle,
       trailing: Tooltip(
         message: isInPlaylist ? 'Remove from playlist' : 'Add to playlist',
+        excludeFromSemantics: true,
         child: ObsidianHudIconButton(
+          semanticLabel: isInPlaylist ? 'Remove from playlist' : 'Add to playlist',
           icon: isInPlaylist ? PhonoliteIcons.trash2 : PhonoliteIcons.plus,
           size: ObsidianModalScope.usesTouchTargets(context) ? 24 : 20,
           onPressed: isInPlaylist && !mutating && (widget.onRemoved != null || widget.actionsForScope != null)

@@ -58,6 +58,7 @@ class PlaybackOutputZone extends StatelessWidget {
 
         final controls = <Widget>[
           ObsidianHudIconButton(
+            semanticLabel: 'Add to playlist',
             iconWidget: const PlaylistAddIcon(),
             onPressed: userActionsEnabled ? onAddToPlaylist : null,
             size: s(26),
@@ -67,7 +68,12 @@ class PlaybackOutputZone extends StatelessWidget {
             onPressed: userActionsEnabled ? onToggleLike : null,
             size: s(26),
           ),
-          ObsidianHudIconButton(icon: PhonoliteIcons.speaker, onPressed: onShowDevicePicker, size: s(26)),
+          ObsidianHudIconButton(
+            semanticLabel: 'Playback device',
+            icon: PhonoliteIcons.speaker,
+            onPressed: onShowDevicePicker,
+            size: s(26),
+          ),
           if (state.track != null && !state.isLocalPlayback)
             PlaybackQualityBadge(
               label: playbackStreamLabel(state.streamMode),

@@ -168,12 +168,8 @@ class ObsidianOverflowActionButton extends StatelessWidget {
     if (!enabled) {
       return Tooltip(
         message: tooltip,
-        child: Semantics(
-          button: true,
-          enabled: false,
-          label: tooltip,
-          child: ObsidianHudIconButton(icon: icon, size: size),
-        ),
+        excludeFromSemantics: true,
+        child: ObsidianHudIconButton(semanticLabel: tooltip, icon: icon, size: size),
       );
     }
 

@@ -19,12 +19,14 @@ class BannerPlaybackButton extends StatelessWidget {
       maintainSize: true,
       child: Tooltip(
         message: message,
+        excludeFromSemantics: true,
         child: SizedBox.square(
           dimension: 48,
-          child: Semantics(
-            button: true,
-            enabled: onPressed != null,
-            child: ObsidianHudIconButton(icon: PhonoliteIcons.play, size: 28, onPressed: onPressed),
+          child: ObsidianHudIconButton(
+            semanticLabel: message,
+            icon: PhonoliteIcons.play,
+            size: 28,
+            onPressed: onPressed,
           ),
         ),
       ),

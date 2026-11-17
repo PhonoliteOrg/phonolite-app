@@ -5,15 +5,21 @@ import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scop
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
+/// An icon-only HUD control. [semanticLabel] is its accessible name; [toggled] reports an on/off
+/// state for toggle controls such as shuffle, repeat or like, and stays null for plain actions.
 class ObsidianHudIconButton extends StatelessWidget {
   final IconData? icon;
   final Widget? iconWidget;
   final bool isActive;
   final double size;
   final VoidCallback? onPressed;
+  final String semanticLabel;
+  final bool? toggled;
 
   const ObsidianHudIconButton({
     super.key,
+    required this.semanticLabel,
+    this.toggled,
     this.icon,
     this.iconWidget,
     this.isActive = false,
@@ -29,6 +35,8 @@ class ObsidianHudIconButton extends StatelessWidget {
       size: size,
       isActive: isActive,
       onPressed: onPressed,
+      semanticLabel: semanticLabel,
+      toggled: toggled,
     );
   }
 }
@@ -39,6 +47,8 @@ class _HoverHudIconButton extends StatefulWidget {
   final double size;
   final bool isActive;
   final VoidCallback? onPressed;
+  final String semanticLabel;
+  final bool? toggled;
 
   const _HoverHudIconButton({
     required this.icon,
@@ -46,6 +56,8 @@ class _HoverHudIconButton extends StatefulWidget {
     required this.size,
     required this.isActive,
     required this.onPressed,
+    required this.semanticLabel,
+    required this.toggled,
   });
 
   @override
@@ -77,6 +89,8 @@ class _HoverHudIconButtonState extends State<_HoverHudIconButton> with PointerIn
     return pointerRegion(
       onTap: widget.onPressed,
       behavior: HitTestBehavior.opaque,
+      semanticLabel: widget.semanticLabel,
+      toggled: widget.toggled,
       child: Container(
         constraints: ObsidianModalScope.usesTouchTargets(context)
             ? const BoxConstraints(minWidth: 48, minHeight: 48)

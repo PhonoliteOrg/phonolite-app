@@ -174,14 +174,18 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                     ),
                   Tooltip(
                     message: 'Edit details',
+                    excludeFromSemantics: true,
                     child: ObsidianHudIconButton(
+                      semanticLabel: 'Edit details',
                       iconWidget: const EditIcon(),
                       onPressed: () => _openRename(controller, playlist),
                     ),
                   ),
                   Tooltip(
                     message: 'Edit tracks',
+                    excludeFromSemantics: true,
                     child: ObsidianHudIconButton(
+                      semanticLabel: 'Edit tracks',
                       iconWidget: const PlaylistEditIcon(),
                       onPressed: removableTracks.isEmpty ? null : _feature.startSelection,
                     ),

@@ -47,12 +47,15 @@ class PlaybackExpandedExtras extends StatelessWidget {
     final actions = <Widget>[
       if (usesTouchTargets)
         ObsidianHudIconButton(
+          semanticLabel: playbackShuffleButtonLabel(state.shuffleMode),
           icon: PhonoliteIcons.shuffle,
           isActive: state.shuffleMode != ShuffleMode.off,
+          toggled: state.shuffleMode != ShuffleMode.off,
           onPressed: onShuffle,
           size: actionSize,
         ),
       ObsidianHudIconButton(
+        semanticLabel: 'Add to playlist',
         iconWidget: const PlaylistAddIcon(),
         onPressed: userActionsEnabled ? onAddToPlaylist : null,
         size: actionSize,
@@ -62,7 +65,12 @@ class PlaybackExpandedExtras extends StatelessWidget {
         onPressed: userActionsEnabled ? onToggleLike : null,
         size: actionSize,
       ),
-      ObsidianHudIconButton(icon: PhonoliteIcons.speaker, onPressed: onShowDevicePicker, size: actionSize),
+      ObsidianHudIconButton(
+        semanticLabel: 'Playback device',
+        icon: PhonoliteIcons.speaker,
+        onPressed: onShowDevicePicker,
+        size: actionSize,
+      ),
       if (state.track != null && !state.isLocalPlayback)
         PlaybackQualityBadge(
           label: playbackStreamLabel(state.streamMode),

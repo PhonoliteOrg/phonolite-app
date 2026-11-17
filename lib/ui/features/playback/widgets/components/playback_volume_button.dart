@@ -19,18 +19,13 @@ class PlaybackVolumeButton extends StatelessWidget {
     return Tooltip(
       message: label,
       excludeFromSemantics: true,
-      child: Semantics(
-        label: label,
-        button: true,
+      child: ObsidianHudIconButton(
+        semanticLabel: label,
         toggled: muted,
-        onTap: onPressed,
-        excludeSemantics: true,
-        child: ObsidianHudIconButton(
-          icon: muted ? null : PhonoliteIcons.volume2,
-          iconWidget: muted ? const SvgAssetIcon(assetName: 'assets/icons/lucide/volume-x.svg') : null,
-          size: size,
-          onPressed: onPressed,
-        ),
+        icon: muted ? null : PhonoliteIcons.volume2,
+        iconWidget: muted ? const SvgAssetIcon(assetName: 'assets/icons/lucide/volume-x.svg') : null,
+        size: size,
+        onPressed: onPressed,
       ),
     );
   }
