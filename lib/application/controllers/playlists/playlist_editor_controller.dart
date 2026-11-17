@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:characters/characters.dart';
 import 'package:file_selector/file_selector.dart';
 
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
@@ -24,6 +25,13 @@ class PlaylistEditorController extends FeatureController {
   String? _imageError;
 
   PlaylistEditorController(this.onSubmit, this._target);
+
+  /// Keeps at most [max] grapheme clusters of [value].
+  static String limitCharacters(String value, int max) {
+    final characters = value.characters;
+
+    return characters.length > max ? characters.take(max).toString() : value;
+  }
 
   PlaylistEditorTarget get target => _target;
 
@@ -58,9 +66,8 @@ class PlaylistEditorController extends FeatureController {
       return false;
     }
 
-    if (trimmed.length > maxNameLength) {
-      trimmed = trimmed.substring(0, maxNameLength);
-    }
+    // Limits count user-perceived characters, matching the editor fields, so an emoji is never split.
+    trimmed = limitCharacters(trimmed, maxNameLength);
 
     description = description.trim();
 

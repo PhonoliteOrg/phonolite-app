@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/application/controllers/playlists/playlist_editor_controller.dart';
 import 'package:phonolite_app/data/models/playback/playback_state.dart';
@@ -59,25 +59,27 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
   );
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
-  bool _clamping = false;
+
+  // The formatters count grapheme clusters and let IME composition finish before truncating, so
+  // emoji are never split and CJK input is not interrupted.
+  static final List<TextInputFormatter> _nameFormatters = [LengthLimitingTextInputFormatter(_maxNameLength)];
+  static final List<TextInputFormatter> _descriptionFormatters = [
+    LengthLimitingTextInputFormatter(_maxDescriptionLength),
+  ];
 
   @override
   void initState() {
     super.initState();
 
-    final initial = widget.initialValue.trim();
-    final clamped = initial.length > _maxNameLength ? initial.substring(0, _maxNameLength) : initial;
+    _nameController = TextEditingController(
+      text: PlaylistEditorController.limitCharacters(widget.initialValue.trim(), _maxNameLength),
+    );
+    _descriptionController = TextEditingController(
+      text: PlaylistEditorController.limitCharacters(widget.initialDescription.trim(), _maxDescriptionLength),
+    );
 
-    final initialDescription = widget.initialDescription.trim();
-    final clampedDescription = initialDescription.length > _maxDescriptionLength
-        ? initialDescription.substring(0, _maxDescriptionLength)
-        : initialDescription;
-
-    _nameController = TextEditingController(text: clamped);
-    _descriptionController = TextEditingController(text: clampedDescription);
-
-    _nameController.addListener(_handleNameChanged);
-    _descriptionController.addListener(_handleDescriptionChanged);
+    _nameController.addListener(_handleFieldChanged);
+    _descriptionController.addListener(_handleFieldChanged);
   }
 
   @override
@@ -88,34 +90,7 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
     super.dispose();
   }
 
-  void _handleNameChanged() => _handleFieldChanged(_nameController, _maxNameLength);
-
-  void _handleDescriptionChanged() => _handleFieldChanged(_descriptionController, _maxDescriptionLength);
-
-  void _handleFieldChanged(TextEditingController controller, int maxLength) {
-    if (_clamping) {
-      return;
-    }
-
-    final text = controller.text;
-
-    if (text.length > maxLength) {
-      _clamping = true;
-
-      final next = text.substring(0, maxLength);
-      final cursor = controller.selection.baseOffset;
-      final nextCursor = cursor < 0 || cursor > next.length ? next.length : cursor;
-
-      controller.value = TextEditingValue(
-        text: next,
-        selection: TextSelection.collapsed(offset: nextCursor),
-      );
-
-      _clamping = false;
-    }
-
-    setState(() {});
-  }
+  void _handleFieldChanged() => setState(() {});
 
   Future<void> _submit() async {
     final saved = await _feature.submit(_nameController.text, _descriptionController.text);
@@ -128,11 +103,9 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
 
   Widget _buildEditor(BuildContext context) {
     final theme = Theme.of(context);
-    final rawLength = _nameController.text.length;
-    final currentLength = rawLength > _maxNameLength ? _maxNameLength : rawLength;
-    final descriptionLength = _descriptionController.text.length > _maxDescriptionLength
-        ? _maxDescriptionLength
-        : _descriptionController.text.length;
+    // Composing text can briefly exceed the limit until the IME commits, so the counter is clamped.
+    final currentLength = _nameController.text.characters.length.clamp(0, _maxNameLength);
+    final descriptionLength = _descriptionController.text.characters.length.clamp(0, _maxDescriptionLength);
     final canSave = _nameController.text.trim().isNotEmpty && !_feature.saving;
 
     final dialogWidth = (MediaQuery.of(context).size.width - ObsidianModalScope.insetsOf(context).horizontal)
@@ -183,6 +156,7 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
             startPadding: 24,
             isDense: true,
             maxLines: 1,
+            inputFormatters: _nameFormatters,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => FocusScope.of(context).unfocus(),
           ),
@@ -198,6 +172,7 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
                 startPadding: 24,
                 minLines: 1,
                 maxLines: null,
+                inputFormatters: _descriptionFormatters,
                 textInputAction: TextInputAction.done,
                 keyboardType: TextInputType.multiline,
                 onSubmitted: (_) => FocusScope.of(context).unfocus(),
