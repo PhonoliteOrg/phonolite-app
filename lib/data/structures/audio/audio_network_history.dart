@@ -10,15 +10,19 @@ class AudioNetworkHistory {
 
   static Duration Function() _monotonicClock() {
     final clock = Stopwatch()..start();
+
     return () => clock.elapsed;
   }
 
   int levelFor(String endpoint) {
     final entry = _entries[endpoint];
-    if (entry == null) return 0;
+    if (entry == null) {
+      return 0;
+    }
 
     if (_now() - entry.updated >= lifetime) {
       _entries.remove(endpoint);
+
       return 0;
     }
 

@@ -24,7 +24,9 @@ class WindowsUpdateAsset {
     }
 
     try {
-      if (base64.decode(signature).length != 64) return null;
+      if (base64.decode(signature).length != 64) {
+        return null;
+      }
     } on FormatException {
       return null;
     }

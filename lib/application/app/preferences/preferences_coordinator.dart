@@ -60,9 +60,18 @@ class _PreferencesCoordinator {
   Stream<bool> get gaplessResamplingStream => _gaplessResamplingController.stream;
 
   void setGaplessResampling(bool enabled, {bool persist = true}) {
-    if (_host._disposed) return;
-    if (persist) _gaplessResamplingTouched = true;
-    if (_gaplessResampling == enabled) return;
+    if (_host._disposed) {
+      return;
+    }
+
+    if (persist) {
+      _gaplessResamplingTouched = true;
+    }
+
+    if (_gaplessResampling == enabled) {
+      return;
+    }
+
     _host._gaplessCoordinator.invalidate();
     _gaplessResampling = enabled;
     _host._audio?.setGaplessResampling(enabled);
@@ -109,6 +118,7 @@ class _PreferencesCoordinator {
         (active.shuffleScope == ActionScope.local ? changesLocalFilters : changesServerFilters)) {
       _host._gaplessCoordinator.invalidate();
     }
+
     final next = CustomShuffleSettings(
       artistIds: _normalizeCustomList(artistIds ?? _customShuffleSettings.artistIds),
       genres: _normalizeCustomList(genres ?? _customShuffleSettings.genres, lowerCase: true),
@@ -287,8 +297,12 @@ class _PreferencesCoordinator {
     if (storedVolume != null && !_volumeTouched) {
       _host._applyVolume(storedVolume, persist: false);
     }
+
     final storedGaplessResampling = await gaplessRead;
-    if (_host._disposed) return;
+    if (_host._disposed) {
+      return;
+    }
+
     if (!_gaplessResamplingTouched && storedGaplessResampling != null) {
       setGaplessResampling(storedGaplessResampling, persist: false);
     }
@@ -348,7 +362,10 @@ class _PreferencesCoordinator {
 
       await _adoptLegacyRepeatMode(settings.repeatMode, sessionRevision: revision);
     } catch (err) {
-      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
+      if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) {
+        return;
+      }
+
       _host._pushMessage('Failed to load playback settings: $err', level: LogLevel.warning);
     }
   }
@@ -378,7 +395,10 @@ class _PreferencesCoordinator {
     try {
       await _saveRepeatMode(mode);
     } catch (err) {
-      if (_host._disposed) return;
+      if (_host._disposed) {
+        return;
+      }
+
       _host._pushMessage('Failed to update playback settings: $err');
     }
   }

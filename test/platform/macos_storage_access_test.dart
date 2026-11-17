@@ -19,6 +19,10 @@ void main() {
   const access = MacosDirectoryAccess(channel: channel);
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
+  // Saved log folders are read back as host-absolute paths. A Mac path such as
+  // `/old/logs` is already absolute there, but not on a Windows test host.
+  String folder(String macPath) => Directory(macPath).absolute.path;
+
   setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.macOS);
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
@@ -106,21 +110,27 @@ void main() {
     final files = SettingsFiles(directoryProvider: () async => directory);
     final logs = LogStorageSettingsStorage(files: files, usesManagedStoragePaths: () => false);
     final offline = OfflineStorageSettingsStorage(files: files, usesManagedStoragePaths: () => false);
-    await logs.write('/old/logs');
-    await offline.write(const OfflineStorageSettings(metadataDirectory: '/old/db', downloadsDirectory: '/old/audio'));
+    await logs.write(folder('/old/logs'));
+    await offline.write(
+      OfflineStorageSettings(metadataDirectory: folder('/old/db'), downloadsDirectory: folder('/old/audio')),
+    );
     messenger.setMockMethodCallHandler(
       channel,
       (_) async => {
-        'paths': {'/old/logs': '/new/logs', '/old/db': '/new/db', '/old/audio': '/new/audio'},
+        'paths': {
+          folder('/old/logs'): folder('/new/logs'),
+          folder('/old/db'): folder('/new/db'),
+          folder('/old/audio'): folder('/new/audio'),
+        },
         'unavailable': <String>[],
       },
     );
 
     expect(await RestoreStorageAccess(logs: logs, offline: offline).restore(), isEmpty);
-    expect(await logs.read(), '/new/logs');
+    expect(await logs.read(), folder('/new/logs'));
     final restored = await offline.read();
-    expect(restored.metadataDirectory, '/new/db');
-    expect(restored.downloadsDirectory, '/new/audio');
+    expect(restored.metadataDirectory, folder('/new/db'));
+    expect(restored.downloadsDirectory, folder('/new/audio'));
   });
 
   test('unavailable logs fall back while offline library locations remain recoverable', () async {
@@ -129,18 +139,18 @@ void main() {
     final files = SettingsFiles(directoryProvider: () async => directory);
     final logs = LogStorageSettingsStorage(files: files, usesManagedStoragePaths: () => false);
     final offline = OfflineStorageSettingsStorage(files: files, usesManagedStoragePaths: () => false);
-    await logs.write('/volume/logs');
-    await offline.write(const OfflineStorageSettings(downloadsDirectory: '/volume/audio'));
+    await logs.write(folder('/volume/logs'));
+    await offline.write(OfflineStorageSettings(downloadsDirectory: folder('/volume/audio')));
     messenger.setMockMethodCallHandler(
       channel,
       (_) async => {
         'paths': <String, String>{},
-        'unavailable': ['/volume/logs', '/volume/audio'],
+        'unavailable': [folder('/volume/logs'), folder('/volume/audio')],
       },
     );
 
     expect(await RestoreStorageAccess(logs: logs, offline: offline).restore(), hasLength(2));
     expect(await logs.read(), isNull);
-    expect((await offline.read()).downloadsDirectory, '/volume/audio');
+    expect((await offline.read()).downloadsDirectory, folder('/volume/audio'));
   });
 }

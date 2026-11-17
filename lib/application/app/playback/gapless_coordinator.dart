@@ -22,7 +22,10 @@ class _GaplessCoordinator {
   int? get preparedId => _candidate?.id;
 
   void buffering(bool waiting) {
-    if (_host._disposed) return;
+    if (_host._disposed) {
+      return;
+    }
+
     waitingForSuccessor = waiting;
     _host._updatePlayback(
       isLoading: waiting && _host._wantsPlayback && !_host._audioSessionSuspended,
@@ -31,7 +34,10 @@ class _GaplessCoordinator {
   }
 
   void invalidate({bool prepareAgain = false}) {
-    if (waitingForSuccessor) buffering(false);
+    if (waitingForSuccessor) {
+      buffering(false);
+    }
+
     final previous = _candidate;
     final lookahead = _lookahead;
     _candidate = null;
@@ -42,11 +48,19 @@ class _GaplessCoordinator {
     _lastTransitionedId = null;
     _failedRevision = null;
     _revision++;
-    if (previous != null) _host._audio?.cancelPreparedNext(preparationId: previous.id);
-    if (previous == null && lookahead != null) _host._audio?.cancelPreparedNext(preparationId: lookahead.id);
+    if (previous != null) {
+      _host._audio?.cancelPreparedNext(preparationId: previous.id);
+    }
+
+    if (previous == null && lookahead != null) {
+      _host._audio?.cancelPreparedNext(preparationId: lookahead.id);
+    }
+
     _releaseReservation(lookahead);
     _releaseReservation(previous);
-    if (prepareAgain) scheduleMicrotask(prepare);
+    if (prepareAgain) {
+      scheduleMicrotask(prepare);
+    }
   }
 
   void prepare() {
@@ -62,12 +76,18 @@ class _GaplessCoordinator {
         _failedRevision == _revision) {
       return;
     }
+
     final head = _candidate;
     if (head != null) {
       _prepareLookahead(head);
+
       return;
     }
-    if (_preparingLookahead != null) return;
+
+    if (_preparingLookahead != null) {
+      return;
+    }
+
     final revision = _revision;
     _preparing = revision;
     unawaited(_prepare(revision));
@@ -79,7 +99,10 @@ class _GaplessCoordinator {
         !_host._statsCoordinator._suspendedListeningForReset &&
         _host._listeningStats.storageError == null;
     for (final candidate in [_candidate, _lookahead]) {
-      if (candidate == null) continue;
+      if (candidate == null) {
+        continue;
+      }
+
       final context = candidate.listeningContext;
       if ((context != null) != enabled ||
           (context != null &&
@@ -87,6 +110,7 @@ class _GaplessCoordinator {
                   context['history_generation'] != _host._listeningStats.historyGeneration ||
                   context['collection_revision'] != _host._listeningStats.preferenceRevision))) {
         invalidate(prepareAgain: true);
+
         return;
       }
     }
@@ -98,34 +122,54 @@ class _GaplessCoordinator {
       // Restoring membership/cursor is separate from advancing it. A restored
       // queue can invalidate this request; reserve again against its revision.
       if (_host._resumeCoordinator.hasDeferredNavigation) {
-        if (!await _host._resumeCoordinator.prepareNavigation(1)) return;
-        if (revision != _revision) {
-          prepare();
+        if (!await _host._resumeCoordinator.prepareNavigation(1)) {
           return;
         }
-        if (_host._resumeCoordinator.hasDeferredNavigation) return;
+
+        if (revision != _revision) {
+          prepare();
+
+          return;
+        }
+
+        if (_host._resumeCoordinator.hasDeferredNavigation) {
+          return;
+        }
       }
+
       candidate = await _reserve(revision);
-      if (candidate == null) return;
-      if (!_isCurrent(candidate)) {
-        _releaseReservation(candidate);
+      if (candidate == null) {
         return;
       }
+
+      if (!_isCurrent(candidate)) {
+        _releaseReservation(candidate);
+
+        return;
+      }
+
       _candidate = candidate;
       _host._audioEngine.setGaplessResampling(_host.gaplessResampling);
       await _sendCandidate(candidate);
-      if (identical(_candidate, candidate)) _prepareLookahead(candidate);
+      if (identical(_candidate, candidate)) {
+        _prepareLookahead(candidate);
+      }
     } catch (error) {
       if (_revision == revision) {
         _failedRevision = revision;
-        if (identical(_candidate, candidate)) _candidate = null;
+        if (identical(_candidate, candidate)) {
+          _candidate = null;
+        }
+
         _releaseReservation(candidate);
         _host._pushMessage('Next-track preparation deferred: $error', level: LogLevel.debug);
       } else {
         _releaseReservation(candidate);
       }
     } finally {
-      if (_preparing == revision) _preparing = null;
+      if (_preparing == revision) {
+        _preparing = null;
+      }
     }
   }
 
@@ -150,33 +194,43 @@ class _GaplessCoordinator {
         !_host._wantsPlayback) {
       return;
     }
+
     _preparingLookahead = parent.id;
     unawaited(_prepareTail(parent));
   }
 
   Future<void> _prepareTail(_GaplessCandidate parent) async {
     _GaplessCandidate? candidate;
+
     bool isCurrent() =>
         !_host._disposed &&
         _preparingLookahead == parent.id &&
         parent.sourceSession == _host.connection.sessionRevision &&
         (identical(_candidate, parent) || (_lastTransitionedId == parent.id && _candidate == null));
+
     try {
       candidate = await _reserve(_revision, after: parent);
       if (candidate == null) {
-        if (isCurrent()) _failedLookaheadParent = parent.id;
+        if (isCurrent()) {
+          _failedLookaheadParent = parent.id;
+        }
+
         return;
       }
+
       if (!isCurrent()) {
         _releaseReservation(candidate);
+
         return;
       }
+
       candidate.revision = _revision;
       if (identical(_candidate, parent)) {
         _lookahead = candidate;
       } else {
         _candidate = candidate;
       }
+
       await _sendCandidate(candidate);
     } catch (error) {
       if (candidate != null && (identical(_candidate, candidate) || identical(_lookahead, candidate))) {
@@ -184,12 +238,21 @@ class _GaplessCoordinator {
       } else {
         _releaseReservation(candidate);
       }
-      if (isCurrent()) _failedLookaheadParent = parent.id;
+
+      if (isCurrent()) {
+        _failedLookaheadParent = parent.id;
+      }
+
       _host._pushMessage('Short-track lookahead deferred: $error', level: LogLevel.debug);
     } finally {
-      if (_preparingLookahead == parent.id) _preparingLookahead = null;
+      if (_preparingLookahead == parent.id) {
+        _preparingLookahead = null;
+      }
+
       final head = _candidate;
-      if (head != null && !identical(head, parent)) _prepareLookahead(head);
+      if (head != null && !identical(head, parent)) {
+        _prepareLookahead(head);
+      }
     }
   }
 
@@ -209,19 +272,30 @@ class _GaplessCoordinator {
     if (state.repeatMode == PlaybackRepeatMode.one) {
       track = current;
     } else if (state.shuffleMode != ShuffleMode.off && state.shuffleScope == ActionScope.server) {
-      if (deck == null) return null;
+      if (deck == null) {
+        return null;
+      }
+
       if (!shuffle._serverDeckExpired || !identical(deck, shuffle._serverDeck)) {
         reservation = await deck.reserveNext(after: after?.reservation);
       }
+
       if (after == null && revision != _revision) {
-        if (reservation != null) deck.cancelReservation(reservation);
+        if (reservation != null) {
+          deck.cancelReservation(reservation);
+        }
+
         return null;
       }
+
       if (reservation != null) {
         track = reservation.track;
       } else {
         replacementDeck = await _reserveServerPass();
-        if (replacementDeck == null) return null;
+        if (replacementDeck == null) {
+          return null;
+        }
+
         track = replacementDeck.tracks[replacementDeck.queueIndex];
       }
     } else if (queue.isNotEmpty) {
@@ -229,7 +303,10 @@ class _GaplessCoordinator {
           state.shuffleScope == ActionScope.local &&
           index >= queue.length - 1) {
         final tracks = _localShuffleTracks();
-        if (tracks.isEmpty) return null;
+        if (tracks.isEmpty) {
+          return null;
+        }
+
         replacementQueue = shuffle._shuffleTracks(tracks, avoidTrackId: current.id);
         index = 0;
         track = replacementQueue.first;
@@ -238,8 +315,15 @@ class _GaplessCoordinator {
         track = queue[index];
       }
     }
-    if (track == null) return null;
-    if (state.queueSource != PlaybackQueueSource.offline) track = _host.connection.projectServerTrack(track);
+
+    if (track == null) {
+      return null;
+    }
+
+    if (state.queueSource != PlaybackQueueSource.offline) {
+      track = _host.connection.projectServerTrack(track);
+    }
+
     final download = _host.availableOfflineDownloadForTrack(track.id);
     final local = state.queueSource == PlaybackQueueSource.offline || !_host._canAttemptRemotePlayback;
     final filePath = local ? download?.filePath : null;
@@ -252,6 +336,7 @@ class _GaplessCoordinator {
               ? revision == _revision
               : _preparingLookahead == after.id &&
                     (identical(_candidate, after) || (_lastTransitionedId == after.id && _candidate == null)));
+
       _host._playbackArtworkCoordinator.warm(track, local: local, isCurrent: isCurrent);
       if (isCurrent()) {
         final resolved = track;
@@ -259,6 +344,7 @@ class _GaplessCoordinator {
         replacementQueue = replacementQueue?.map((item) => item.id == resolved.id ? resolved : item).toList();
       }
     }
+
     final candidate = _GaplessCandidate(
       id: ++_nextId,
       afterId: after?.id,
@@ -276,8 +362,10 @@ class _GaplessCoordinator {
     );
     if (local && (filePath == null || !File(filePath).existsSync())) {
       _releaseReservation(candidate);
+
       return null;
     }
+
     return candidate;
   }
 
@@ -326,8 +414,10 @@ class _GaplessCoordinator {
       if (session != _host.connection.sessionRevision || !await next.initialize(play: true)) {
         next.close();
         shuffle._releaseServerShuffleSession(first.sessionId, session);
+
         return null;
       }
+
       return next;
     } catch (_) {
       next.close();
@@ -349,10 +439,15 @@ class _GaplessCoordinator {
       _lookahead = null;
       _failedLookaheadParent = tail.afterId;
       _releaseReservation(tail);
+
       return;
     }
+
     final candidate = _candidate;
-    if (candidate == null || candidate.id != id) return;
+    if (candidate == null || candidate.id != id) {
+      return;
+    }
+
     _candidate = null;
     _lookahead = null;
     _preparingLookahead = null;
@@ -361,22 +456,30 @@ class _GaplessCoordinator {
       _host._audio?.cancelPreparedNext(preparationId: tail.id);
       _releaseReservation(tail);
     }
+
     _releaseReservation(candidate);
   }
 
   void transitioned(int id) {
     final candidate = _candidate;
-    if (candidate == null || candidate.id != id) return;
-    if (!_isCurrent(candidate)) {
-      invalidate();
+    if (candidate == null || candidate.id != id) {
       return;
     }
+
+    if (!_isCurrent(candidate)) {
+      invalidate();
+
+      return;
+    }
+
     final shuffle = _host._shuffleCoordinator;
     final reservation = candidate.reservation;
     if (reservation != null && !candidate.deck!.commitReservation(reservation)) {
       invalidate();
+
       return;
     }
+
     _candidate = _lookahead;
     _lookahead = null;
     waitingForSuccessor = false;
@@ -394,14 +497,21 @@ class _GaplessCoordinator {
       shuffle._serverDeckExpired = false;
       shuffle._serverDeckReady = true;
       previous?.close();
-      if (previous != null) shuffle._releaseServerShuffleSession(previous.sessionId, candidate.sourceSession);
+      if (previous != null) {
+        shuffle._releaseServerShuffleSession(previous.sessionId, candidate.sourceSession);
+      }
     }
+
     if (candidate.deck != null || replacement != null) {
       shuffle._applyServerShuffleWindow(replacement ?? candidate.deck!);
     } else {
-      if (candidate.replacementQueue != null) _host._playQueue = candidate.replacementQueue!;
+      if (candidate.replacementQueue != null) {
+        _host._playQueue = candidate.replacementQueue!;
+      }
+
       _host._playIndex = candidate.index;
     }
+
     final indexed = _host._playIndex >= 0 && _host._playIndex < _host._playQueue.length
         ? _host._playQueue[_host._playIndex]
         : null;
@@ -442,9 +552,15 @@ class _GaplessCoordinator {
 
   void _releaseReservation(_GaplessCandidate? candidate) {
     final reservation = candidate?.reservation;
-    if (reservation != null) candidate!.deck?.cancelReservation(reservation);
+    if (reservation != null) {
+      candidate!.deck?.cancelReservation(reservation);
+    }
+
     final next = candidate?.replacementDeck;
-    if (next == null || identical(next, _host._shuffleCoordinator._serverDeck)) return;
+    if (next == null || identical(next, _host._shuffleCoordinator._serverDeck)) {
+      return;
+    }
+
     next.close();
     _host._shuffleCoordinator._releaseServerShuffleSession(next.sessionId, candidate!.sourceSession);
   }

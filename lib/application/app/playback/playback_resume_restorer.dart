@@ -14,6 +14,7 @@ class _PlaybackResumeRestorer {
       if (isCurrent()) {
         _restoreModes(snapshot);
       }
+
       return;
     }
 
@@ -31,6 +32,7 @@ class _PlaybackResumeRestorer {
       source = PlaybackSourceContext(kind: 'standalone');
       members = [if (available[checkpoint.trackId] case final track?) track];
     }
+
     final eligible = {for (final track in members) _localId(track): track};
     final rebuilt = rebuild && checkpoint.shuffleMode != ShuffleMode.off
         ? _host._shuffleCoordinator._shuffleTracks(members)
@@ -49,6 +51,7 @@ class _PlaybackResumeRestorer {
         checkpoint.shuffleMode == ShuffleMode.off ? additions : _host._shuffleCoordinator._shuffleTracks(additions),
       );
     }
+
     if (queue.isEmpty) {
       final mode = source.kind == 'standalone' ? ShuffleMode.off : checkpoint.shuffleMode;
       final context = mode == ShuffleMode.off ? source : checkpoint.shuffleContext;
@@ -76,6 +79,7 @@ class _PlaybackResumeRestorer {
       } finally {
         _owner._restoring = false;
       }
+
       return;
     }
 
@@ -91,6 +95,7 @@ class _PlaybackResumeRestorer {
           savedOrder[checkpoint.cursor] == checkpoint.trackId) {
         _host._playIndex = savedOrder.take(checkpoint.cursor).where(eligible.containsKey).length;
       }
+
       _owner._localAuthority = true;
       _owner._source = source;
       final context = mode == ShuffleMode.off ? source : checkpoint.shuffleContext;
@@ -128,8 +133,10 @@ class _PlaybackResumeRestorer {
       );
       if (!await deck.restorePosition(checkpoint.cursor) || !isCurrent()) {
         deck.close();
+
         return;
       }
+
       tracks = deck.tracks;
       track = tracks[deck.queueIndex];
     } else {
@@ -151,6 +158,7 @@ class _PlaybackResumeRestorer {
         _host._shuffleCoordinator._serverDeckSessionRevision = _host.connection.sessionRevision;
         _host._shuffleCoordinator._serverDeckReady = true;
       }
+
       _installQueue(tracks, source, local: false, track: track, shuffleMode: checkpoint.shuffleMode, deck: deck);
       _owner._localAuthority = false;
       _owner._source = source;
@@ -197,11 +205,15 @@ class _PlaybackResumeRestorer {
             .where((track) => !eligible.contains(_localId(track)))
             .length;
         final nextQueue = oldQueue.where((track) => eligible.contains(_localId(track))).toList();
-        if (nextQueue.length != oldQueue.length) _host._gaplessCoordinator.invalidate(prepareAgain: true);
+        if (nextQueue.length != oldQueue.length) {
+          _host._gaplessCoordinator.invalidate(prepareAgain: true);
+        }
+
         _host._playQueue = nextQueue;
         final currentIndex = _host._playQueue.indexWhere((track) => _localId(track) == _localId(current));
         _host._playIndex = currentIndex >= 0 ? currentIndex : max(-1, oldIndex - removedBefore - 1);
       }
+
       _owner.changed();
     } catch (error) {
       AppLogger.debug('Local playback reconciliation deferred: $error');
@@ -248,11 +260,13 @@ class _PlaybackResumeRestorer {
 
   PlaybackSourceContext? _localAlbumContext(String trackId) {
     final album = _host._localLibrary.albumForTrackId(trackId);
+
     return album == null ? null : PlaybackSourceContext(kind: 'album', id: album.id);
   }
 
   PlaybackSourceContext? _localArtistContext(String trackId) {
     final artist = _host._localLibrary.artistForTrackId(trackId);
+
     return artist == null ? null : PlaybackSourceContext(kind: 'artist', id: artist.id);
   }
 
@@ -263,6 +277,7 @@ class _PlaybackResumeRestorer {
 
   bool _localFileExists(Track track) {
     final path = _host.availableOfflineDownloadForTrack(_localId(track))?.filePath;
+
     return path != null && File(path).existsSync();
   }
 
@@ -300,6 +315,7 @@ class _PlaybackResumeRestorer {
       default:
         tracks = available.values.toList();
     }
+
     return tracks?.where((track) => available.containsKey(_localId(track))).toList();
   }
 
@@ -350,6 +366,7 @@ class _PlaybackResumeRestorer {
     final session = _host.connection.sessionRevision;
     final selection = _owner._selection;
     final request = _host._shuffleCoordinator._serverShuffleRequests.current;
+
     bool isCurrent() =>
         !_owner._closed &&
         _owner._selection == selection &&
@@ -364,6 +381,7 @@ class _PlaybackResumeRestorer {
       if (!isCurrent()) {
         return;
       }
+
       sourceChecked = true;
       final offset = (checkpoint.cursor ~/ ServerShuffleDeck.pageSize) * ServerShuffleDeck.pageSize;
       final first = await _host.connection.fetchAccountPlaybackDeck(deckId, offset: offset);
@@ -377,8 +395,10 @@ class _PlaybackResumeRestorer {
       );
       if (!await deck.restorePosition(checkpoint.cursor) || !isCurrent()) {
         deck.close();
+
         return;
       }
+
       if (deck.tracks[deck.queueIndex].id != (current.serverTrackId ?? current.id)) {
         deck.retainExternalCurrent();
       }
@@ -417,11 +437,13 @@ class _PlaybackResumeRestorer {
           !_host._sessionCoordinator._isServerSessionCurrent(session)) {
         return false;
       }
+
       return _owner._source.kind != 'standalone' || checkpoint.source.kind == 'standalone';
     }
 
     final session = _host.connection.sessionRevision;
     final selection = _owner._selection;
+
     bool isCurrent() =>
         !_owner._closed &&
         _owner._selection == selection &&
@@ -432,6 +454,7 @@ class _PlaybackResumeRestorer {
       if (!_isBroadServerSource(checkpoint.source)) {
         await _validateServerSource(checkpoint.source);
       }
+
       final selection = await _serverSelection(checkpoint.source, checkpoint.trackId);
       final tracks = selection.tracks;
       if (!isCurrent()) {
@@ -461,13 +484,16 @@ class _PlaybackResumeRestorer {
           ? -1
           : 0;
       _owner._deferredAccountDeck = null;
+
       return true;
     } on ApiException catch (error) {
       if (error.statusCode == 404 && isCurrent()) {
         _owner._deferredAccountDeck = null;
         _detachServerSource(current);
+
         return false;
       }
+
       rethrow;
     }
   }
@@ -503,6 +529,7 @@ class _PlaybackResumeRestorer {
     _owner._shuffleContext = selection.source;
     _host._queueShuffleMode = ShuffleMode.off;
     _host._queueShuffleScope = null;
+
     return true;
   }
 
@@ -530,6 +557,7 @@ class _PlaybackResumeRestorer {
         }
       }
     }
+
     return (source: PlaybackSourceContext(kind: 'standalone'), tracks: [track]);
   }
 
@@ -557,6 +585,7 @@ class _PlaybackResumeRestorer {
         return track;
       }
     }
+
     return null;
   }
 

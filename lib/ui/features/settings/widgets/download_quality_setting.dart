@@ -18,7 +18,9 @@ class DownloadQualitySetting extends StatelessWidget {
       return '${quality.label} · ${DownloadQualitySelection.description(quality)}';
     }
 
-    if (controller.error != null) return 'Download settings unavailable';
+    if (controller.error != null) {
+      return 'Download settings unavailable';
+    }
 
     return 'Choose the size of future downloads';
   }

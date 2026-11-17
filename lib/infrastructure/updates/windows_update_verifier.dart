@@ -16,15 +16,22 @@ class WindowsUpdateVerifier {
     final valid = await Isolate.run(() async {
       final key = base64.decode(publicKey);
       final signature = base64.decode(asset.signature);
-      if (key.length != 32 || signature.length != 64) return false;
+      if (key.length != 32 || signature.length != 64) {
+        return false;
+      }
 
       final file = File(path);
-      if (await file.length() != asset.length) return false;
+      if (await file.length() != asset.length) {
+        return false;
+      }
+
       return Ed25519().verify(
         await file.readAsBytes(),
         signature: Signature(signature, publicKey: SimplePublicKey(key, type: KeyPairType.ed25519)),
       );
     });
-    if (!valid) throw const FormatException('The downloaded update has an invalid signature.');
+    if (!valid) {
+      throw const FormatException('The downloaded update has an invalid signature.');
+    }
   }
 }

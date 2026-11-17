@@ -70,10 +70,14 @@ class _NativeMediaCoordinator {
             _host._updatePlayback(isPlaying: false, isLoading: false);
             await _pushNowPlayingUpdate(force: true);
           }
+
           break;
         case NativeRemoteAction.audioInterruptionEnded:
         case NativeRemoteAction.audioInterruptionEndedPaused:
-          if (!_audioInterrupted) break;
+          if (!_audioInterrupted) {
+            break;
+          }
+
           _interruptionRevision++;
           _audioInterrupted = false;
           await _host.pause(command.action == NativeRemoteAction.audioInterruptionEndedPaused || !_host._wantsPlayback);
@@ -85,6 +89,7 @@ class _NativeMediaCoordinator {
           if (_host._playbackState.track != null && (_host._wantsPlayback || _host._audioEngine.hasActivePlayer)) {
             await _resetAudioServices(preservePlaybackIntent: true);
           }
+
           break;
         case NativeRemoteAction.unknown:
           break;
@@ -148,7 +153,10 @@ class _NativeMediaCoordinator {
   }
 
   void _reportAudioResetFailure(Object error) {
-    if (_host._disposed) return;
+    if (_host._disposed) {
+      return;
+    }
+
     _host._wantsPlayback = false;
     _host._updatePlayback(isPlaying: false, isLoading: false);
     _host._pushMessage('Audio output reset failed; press Play to retry: $error', level: LogLevel.warning);
@@ -171,6 +179,7 @@ class _NativeMediaCoordinator {
         _host._playbackState.track?.id == track.id) {
       _host._startPlayback(track, startOffset: position, quickStart: false);
     }
+
     await _pushNowPlayingUpdate(force: true);
   }
 

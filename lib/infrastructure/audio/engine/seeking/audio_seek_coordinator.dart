@@ -44,8 +44,11 @@ class _AudioSeekCoordinator {
       _host._decodedThroughSample = null;
       _pumpSuspended = true;
       await _host._ownerOriginal.reset();
-      if (generation != _seekRequestGeneration || !_host._isActive) return;
+      if (generation != _seekRequestGeneration || !_host._isActive) {
+        return;
+      }
     }
+
     _host._ownerRemote.onSeek(ms);
 
     _pendingSeekRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
@@ -108,6 +111,7 @@ class _AudioSeekCoordinator {
       } catch (_) {
         _host._ownerRemote._repairRequested = true;
       }
+
       _host._waitingForHeader = false;
       _pendingSeekId = null;
       _cachedSeek = cached;
@@ -122,7 +126,10 @@ class _AudioSeekCoordinator {
 
   void _failSeek(String outcome) {
     final completion = _seekCompletion;
-    if (completion != null && !completion.isCompleted) completion.complete(false);
+    if (completion != null && !completion.isCompleted) {
+      completion.complete(false);
+    }
+
     _seekDeadline?.cancel();
     _seekDeadline = null;
 
@@ -136,7 +143,10 @@ class _AudioSeekCoordinator {
 
   void _markSeekReady() {
     final completion = _seekCompletion;
-    if (completion != null && !completion.isCompleted) completion.complete(true);
+    if (completion != null && !completion.isCompleted) {
+      completion.complete(true);
+    }
+
     _seekDeadline?.cancel();
     _seekDeadline = null;
 

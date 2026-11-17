@@ -50,6 +50,7 @@ class _PlaybackCoordinator {
 
       if (_playbackState.shuffleMode != ShuffleMode.off && _playbackState.shuffleScope == ActionScope.server) {
         await _host._shuffleCoordinator._navigateServerShuffle(1);
+
         return;
       }
 
@@ -94,8 +95,10 @@ class _PlaybackCoordinator {
           preserveContext: true,
           avoidTrackId: _playbackState.track?.id,
         );
+
         return;
       }
+
       _host._playIndex = (_host._playIndex + 1) % _host._playQueue.length;
 
       await _playCurrent();
@@ -125,6 +128,7 @@ class _PlaybackCoordinator {
 
       if (_playbackState.shuffleMode != ShuffleMode.off && _playbackState.shuffleScope == ActionScope.server) {
         await _host._shuffleCoordinator._navigateServerShuffle(-1);
+
         return;
       }
 
@@ -188,15 +192,20 @@ class _PlaybackCoordinator {
         try {
           await audioReset;
         } catch (error) {
-          if (_playbackStarts.isCurrent(generation)) _host._nativeCoordinator._reportAudioResetFailure(error);
+          if (_playbackStarts.isCurrent(generation)) {
+            _host._nativeCoordinator._reportAudioResetFailure(error);
+          }
+
           return;
         }
+
         if (!_host._disposed &&
             _wantsPlayback &&
             _playbackStarts.isCurrent(generation) &&
             _playbackIntents.isCurrent(intent)) {
           await pause(false);
         }
+
         return;
       }
 
@@ -276,6 +285,7 @@ class _PlaybackCoordinator {
       _host._queueShuffleAlbumId = null;
       _host._queueShufflePlaylistId = null;
     }
+
     _host._resumeCoordinator.modeChanged();
     _host._gaplessCoordinator.prepare();
   }
@@ -494,6 +504,7 @@ class _PlaybackCoordinator {
         if (queued.id == track.id && _host._shuffleArtworkPreloader != null) {
           continue;
         }
+
         if (!_host._needsTrackHydration(queued)) {
           continue;
         }
@@ -652,13 +663,18 @@ class _PlaybackCoordinator {
         try {
           await audioReset;
         } catch (error) {
-          if (_playbackStarts.isCurrent(startGeneration)) _host._nativeCoordinator._reportAudioResetFailure(error);
+          if (_playbackStarts.isCurrent(startGeneration)) {
+            _host._nativeCoordinator._reportAudioResetFailure(error);
+          }
+
           return;
         }
+
         if (_host._disposed || !_playbackStarts.isCurrent(startGeneration) || _playbackState.track?.id != track.id) {
           return;
         }
       }
+
       _host._playbackArtworkCoordinator.warm(
         track,
         local: shouldUseLocal,
@@ -725,7 +741,9 @@ class _PlaybackCoordinator {
           quickStart: quickStart,
           initialPaused: initialPaused,
         );
-        if (_playbackStarts.isCurrent(startGeneration)) _host._gaplessCoordinator.prepare();
+        if (_playbackStarts.isCurrent(startGeneration)) {
+          _host._gaplessCoordinator.prepare();
+        }
       } catch (err) {
         if (_host._disposed || !_playbackStarts.isCurrent(startGeneration)) {
           return;
@@ -793,7 +811,9 @@ class _PlaybackCoordinator {
         startOffset: startOffset,
         initialPaused: initialPaused,
       );
-      if (_playbackStarts.isCurrent(startGeneration)) _host._gaplessCoordinator.prepare();
+      if (_playbackStarts.isCurrent(startGeneration)) {
+        _host._gaplessCoordinator.prepare();
+      }
     } catch (err) {
       if (_host._disposed || !_playbackStarts.isCurrent(startGeneration)) {
         return;

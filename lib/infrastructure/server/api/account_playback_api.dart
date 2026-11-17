@@ -40,12 +40,17 @@ class AccountPlaybackApi extends JsonApiEndpoint {
         })().timeout(
           timeout,
           onTimeout: () {
-            if (!aborted.isCompleted) aborted.complete();
+            if (!aborted.isCompleted) {
+              aborted.complete();
+            }
+
             throw RequestTimeoutException(timeout);
           },
         );
       } finally {
-        if (!aborted.isCompleted) aborted.complete();
+        if (!aborted.isCompleted) {
+          aborted.complete();
+        }
       }
     };
   }

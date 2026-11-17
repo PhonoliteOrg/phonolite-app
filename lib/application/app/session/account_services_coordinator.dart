@@ -320,7 +320,9 @@ class _AccountServicesCoordinator {
 
   void reportStartedTrack() {
     _host._resumeCoordinator.started();
-    if (_capabilities?.playbackResume ?? false) return;
+    if (_capabilities?.playbackResume ?? false) {
+      return;
+    }
 
     final track = _host._playbackState.track;
 

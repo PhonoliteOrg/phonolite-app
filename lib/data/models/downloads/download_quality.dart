@@ -21,7 +21,9 @@ enum DownloadQuality {
 
   static DownloadQuality? tryFromWireValue(Object? value) {
     for (final quality in values) {
-      if (quality.wireValue == value) return quality;
+      if (quality.wireValue == value) {
+        return quality;
+      }
     }
 
     return null;

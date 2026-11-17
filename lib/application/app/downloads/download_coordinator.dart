@@ -372,7 +372,9 @@ class _DownloadCoordinator {
 
     final preparedId = _host._gaplessCoordinator.preparedId;
     _host._gaplessCoordinator.invalidate();
-    if (preparedId != null) await _host._audio?.releasePreparedNext(preparationId: preparedId);
+    if (preparedId != null) {
+      await _host._audio?.releasePreparedNext(preparationId: preparedId);
+    }
 
     final shouldStopPlayback = uniqueDownloads.any(_downloadMatchesCurrentLocalPlayback);
 

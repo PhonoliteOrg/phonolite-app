@@ -111,6 +111,7 @@ part 'playback/playback_resume_coordinator.dart';
 part 'playback/playback_resume_restorer.dart';
 part 'playback/seek_coordinator.dart';
 part 'playback/shuffle_artwork_preloading.dart';
+part 'playback/shuffle_context_resolution.dart';
 part 'playback/shuffle_coordinator.dart';
 part 'playback/shuffle_facade.dart';
 part 'playback/stream_recovery_coordinator.dart';

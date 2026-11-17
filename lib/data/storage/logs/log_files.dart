@@ -53,10 +53,9 @@ class LogFiles {
     Future<Directory> Function()? supportDirectoryProvider,
   }) async {
     final platform = operatingSystem ?? Platform.operatingSystem;
-    final variables = environment ?? Platform.environment;
 
     if (platform == 'windows') {
-      final root = WindowsAppStorage.directory(environment: variables);
+      final root = WindowsAppStorage.directory(environment: environment);
       if (root != null) {
         return Directory('${root.path}/logs');
       }

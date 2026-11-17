@@ -14,10 +14,15 @@ class _AudioProgressDeadline {
   void check({required bool waiting, bool progressed = false, required String operation}) {
     if (!waiting) {
       reset();
+
       return;
     }
+
     final now = _clock.elapsed;
-    if (progressed || _lastProgress == null) _lastProgress = now;
+    if (progressed || _lastProgress == null) {
+      _lastProgress = now;
+    }
+
     if (now - _lastProgress! >= timeout) {
       throw TimeoutException('$operation stopped making progress.', timeout);
     }

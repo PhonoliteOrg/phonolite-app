@@ -39,10 +39,12 @@ class PlaylistsController extends FeatureController {
     if (isDisposed || !app.authState.isAuthorized) {
       return Future<void>.value();
     }
+
     final revision = app.connection.sessionRevision;
     if (_requestedServerRevision != revision) {
       clearSelection();
     }
+
     if (_requestedServerRevision == revision) {
       return Future<void>.value();
     }
@@ -76,7 +78,10 @@ class PlaylistsController extends FeatureController {
 
     try {
       for (final item in selected) {
-        if (revision != app.connection.sessionRevision) break;
+        if (revision != app.connection.sessionRevision) {
+          break;
+        }
+
         if (item.isLocal) {
           await controller.deleteLocalPlaylist(item.playlist.id);
         } else {

@@ -48,7 +48,10 @@ void main() {
         .whereType<File>()
         .where((file) => RegExp(r'\.(?:cc|h)$').hasMatch(file.path))
         .toList();
-    expect(references.toSet(), files.map((file) => file.path.substring('linux/updater/'.length)).toSet());
+    // Normalized so the layer checks below also apply on a Windows host.
+    String path(File file) => file.path.replaceAll('\\', '/');
+
+    expect(references.toSet(), files.map((file) => path(file).substring('linux/updater/'.length)).toSet());
     expect(references.length, references.toSet().length);
     final privileged = RegExp(r'add_executable\(phonolite-update-installer[^)]*\)').firstMatch(build)![0]!;
     expect(privileged, isNot(contains('ui/')));
@@ -56,11 +59,11 @@ void main() {
     for (final file in files) {
       final source = file.readAsStringSync();
       expect(file.readAsLinesSync().length, lessThanOrEqualTo(1000), reason: file.path);
-      if (file.path.contains('/infrastructure/')) {
+      if (path(file).contains('/infrastructure/')) {
         expect(source, isNot(contains('#include "ui/')), reason: file.path);
         expect(source, isNot(contains('#include "bootstrap/')), reason: file.path);
       }
-      if (file.path.contains('/data/')) {
+      if (path(file).contains('/data/')) {
         expect(source, isNot(matches(r'#include <(?:gtk|gio|glib|flutter_linux)/')), reason: file.path);
       }
     }

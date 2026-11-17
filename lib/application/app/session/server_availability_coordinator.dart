@@ -314,6 +314,7 @@ class _ServerAvailabilityCoordinator {
     final revision = _host.connection.sessionRevision;
     final baseUrl = _host.connection.baseUrl;
     final token = _host.connection.token;
+
     bool isCurrent() =>
         !_host._disposed &&
         _host.connection.sessionRevision == revision &&
@@ -333,9 +334,13 @@ class _ServerAvailabilityCoordinator {
 
       if (rttMs == null && token?.isNotEmpty == true) {
         final identityChanged = await _host.connection.hasServerIdentityChanged();
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
+
         if (identityChanged) {
           await _host._sessionCoordinator.requireSignIn();
+
           return;
         }
       }
@@ -351,7 +356,10 @@ class _ServerAvailabilityCoordinator {
         }
 
         await _host.connection.fetchCapabilities();
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
+
         _serverHealthFailureCount = 0;
         _serverReconnectAttempt = 0;
         _restoreServerAvailability(rttMs: rttMs);
@@ -373,7 +381,10 @@ class _ServerAvailabilityCoordinator {
 
       _recordServerAvailabilityFailure(error: 'Server unavailable', reconnectAttempt: false);
     } on ApiException catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       if (err.statusCode == 401) {
         await _handleReconnectUnauthorized();
       } else {
@@ -383,7 +394,10 @@ class _ServerAvailabilityCoordinator {
         );
       }
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _recordServerAvailabilityFailure(error: 'Server unavailable: $err', reconnectAttempt: reconnectAttempt);
     } finally {
       _healthPingInFlight = false;

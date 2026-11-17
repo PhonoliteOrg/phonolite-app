@@ -116,6 +116,7 @@ class AudioFileDecoder {
     if (routeGeneration <= _routeGeneration) {
       return;
     }
+
     _routeGeneration = routeGeneration;
     _quicOwner?.notifyNetworkChange(routeGeneration);
   }
@@ -134,12 +135,15 @@ class AudioFileDecoder {
     int presentationFrame, {
     required Duration remaining,
     required int attemptsRemaining,
+
     void Function(AudioFileDecoder replacement)? onCreated,
   }) async {
     final metadata = sourceMetadata;
+
     if (_quicHost == null || metadata == null) {
       throw StateError('This source has no pinned Original restart descriptor.');
     }
+
     final replacement =
         AudioFileDecoder.quic(
             host: _quicHost,
@@ -160,6 +164,7 @@ class AudioFileDecoder {
     try {
       await close();
       await replacement.initialize();
+
       return replacement;
     } catch (_) {
       await replacement.close();
@@ -208,6 +213,7 @@ class AudioFileDecoder {
             !_quicOwner!.expectSource(metadata['source_version'] as String, metadata['total_length'] as int)) {
           throw AudioSourceRejected('The expected Original source identity is unavailable.');
         }
+
         final remaining = _recoveryRemaining;
         if (remaining != null) {
           final budget = remaining - (_recoveryTransferClock?.elapsed ?? Duration.zero);
@@ -216,10 +222,12 @@ class AudioFileDecoder {
             attemptsRemaining: _recoveryAttemptsRemaining,
           );
         }
+
         if (_routeGeneration > 0) {
           _quicOwner!.notifyNetworkChange(_routeGeneration);
         }
       }
+
       final configuration = <String, dynamic>{
         'reply': _messages!.sendPort,
         'file_path': _filePath,
@@ -434,6 +442,7 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
       if (ownerId != null && !QuicOwnerLease.beginOperation(ownerId, 0)) {
         throw StateError('Original decoder open was superseded.');
       }
+
       final source = QuicSourceTransport.connect(
         host: quicHost,
         port: configuration['quic_port'] as int,
@@ -513,7 +522,10 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
 
         switch (message['command']) {
           case 'read':
-            if (normalizer != null) throw StateError('Raw and normalized reads cannot be interleaved.');
+            if (normalizer != null) {
+              throw StateError('Raw and normalized reads cannot be interleaved.');
+            }
+
             final samples = activeDecoder.read32(message['max_samples'] as int);
 
             reply.send({
@@ -532,12 +544,14 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
             if (normalizer.outputRate != rate || normalizer.outputChannels != channels) {
               throw StateError('Normalized output format cannot change between seeks.');
             }
+
             var converted = Int32List(0);
             while (!normalizedEnd && converted.isEmpty) {
               final input = activeDecoder.read32(activeDecoder.sampleRate * activeDecoder.channels ~/ 5);
               normalizedEnd = input.isEmpty;
               converted = normalizer.process(input, endOfInput: normalizedEnd) as Int32List;
             }
+
             reply.send({
               'id': requestId,
               'samples': TransferableTypedData.fromList([converted]),

@@ -73,6 +73,7 @@ class _AutoOriginalSource {
     if (_warmAttempted || _disabled || _closed || _resetting != null) {
       return;
     }
+
     _warmAttempted = true;
     final descriptor = _descriptor;
     final history = _host.autoQualityHistory;
@@ -114,6 +115,7 @@ class _AutoOriginalSource {
     if (!_renderingOriginal || _resetting != null) {
       return null;
     }
+
     _cursorFrame = frame;
     final buffer = _buffer;
     buffer?.discardBefore(frame);
@@ -121,6 +123,7 @@ class _AutoOriginalSource {
     if (frames <= 0) {
       return null;
     }
+
     final samples = buffer!.readAt(frame, frames)!;
     _cursorFrame = frame + frames;
 
@@ -206,6 +209,7 @@ class _AutoOriginalSource {
         !(_host.autoQualityHistory?.mayProbeOriginal(_host._autoQualityScope) ?? true)) {
       return;
     }
+
     final prepared = _host._gaplessSource;
     final eligible =
         !_host._userPaused &&
@@ -222,6 +226,7 @@ class _AutoOriginalSource {
     if (descriptor.durationMs - startMs < AutoOriginalPolicy.upgradeReserveMs) {
       return;
     }
+
     _startPreparing(descriptor, startMs);
   }
 
@@ -253,6 +258,7 @@ class _AutoOriginalSource {
     _producedFrames = 0;
     _deliveryMicroseconds = 0;
     final progress = Stopwatch()..start();
+
     bool current() => !_closed && !_failed && _host._isActive && generation == _generation;
 
     try {
@@ -272,15 +278,18 @@ class _AutoOriginalSource {
       if (!current()) {
         return;
       }
+
       final identity = decoder.sourceMetadata;
       if (identity?['source_version'] != descriptor.sourceVersion ||
           identity?['total_length'] != descriptor.totalLength) {
         throw AudioSourceRejected('Auto Original does not match its compressed safety stream.');
       }
+
       final format = decoder.format;
       if (format.sampleRate < 8000 || format.channels < 1 || format.channels > 2) {
         throw StateError('The Original format cannot share the Auto output.');
       }
+
       var preparedStartMs = startMs;
       final futureMs = ((_cursorFrame * 1000 ~/ _host._sampleRate + 6999) ~/ 5000) * 5000;
       if (!_warmWaiting && futureMs > preparedStartMs) {
@@ -288,14 +297,19 @@ class _AutoOriginalSource {
         if (descriptor.durationMs - preparedStartMs < AutoOriginalPolicy.upgradeReserveMs) {
           throw StateError('The track is ending before Original can be prepared.');
         }
+
         final position = await decoder
             .seek(Duration(milliseconds: preparedStartMs))
             .timeout(const Duration(seconds: 18));
-        if (!current()) return;
+        if (!current()) {
+          return;
+        }
+
         if (position.inMilliseconds != preparedStartMs) {
           throw StateError('Original preparation could not align its presentation position.');
         }
       }
+
       final buffer = AlignedPcmBuffer(
         channels: _host._channels,
         capacityFrames: _host._sampleRate * AutoOriginalPolicy.targetReserveMs ~/ 1000,
@@ -309,6 +323,7 @@ class _AutoOriginalSource {
         if (!_renderingOriginal && _deliveryMicroseconds > 8000000 && reserveMs < 4000) {
           throw TimeoutException('Original preparation did not build a sustainable reserve.');
         }
+
         if (_host._userPaused || buffer.freeFrames < _host._sampleRate ~/ 4 + 512) {
           await Future<void>.delayed(const Duration(milliseconds: 10));
           continue;
@@ -322,6 +337,7 @@ class _AutoOriginalSource {
         if (!current()) {
           return;
         }
+
         _deliveryMicroseconds += math.max(1, progress.elapsedMicroseconds - started);
         _producedFrames += samples.length ~/ _host._channels;
         buffer.append(samples);
@@ -329,6 +345,7 @@ class _AutoOriginalSource {
           _complete = true;
           break;
         }
+
         // Let controls run between decoder-worker replies, even for cached files.
         await Future<void>.delayed(Duration.zero);
       }

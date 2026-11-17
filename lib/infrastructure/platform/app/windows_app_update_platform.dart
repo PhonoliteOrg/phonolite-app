@@ -57,6 +57,7 @@ class WindowsAppUpdatePlatform
     } on FileSystemException catch (error) {
       AppLogger.warning('Could not remove old update downloads: $error');
     }
+
     return _configuration!;
   }
 
@@ -73,7 +74,10 @@ class WindowsAppUpdatePlatform
     close();
     // A normal user quit waits for partial-file cleanup. Once installation is
     // handed off, the independent installer owns its download until restart.
-    if (!_handedOff) await _operation;
+    if (!_handedOff) {
+      await _operation;
+    }
+
     _onInstall = null;
     _prepare = null;
     await _channel.invokeMethod<void>('dispose');
@@ -81,21 +85,31 @@ class WindowsAppUpdatePlatform
 
   @override
   Future<AppUpdateRelease?> latest(AppUpdateConfiguration configuration) async {
-    if (_closed || _operation != null || _handedOff) return null;
+    if (_closed || _operation != null || _handedOff) {
+      return null;
+    }
+
     final generation = _generation;
     _release = null;
     _setProgress(AppUpdatePhase.idle);
     final release = await _feed.latest(configuration);
-    if (_closed || generation != _generation) return null;
+    if (_closed || generation != _generation) {
+      return null;
+    }
+
     return _release = release;
   }
 
   @override
   Future<void> showUpdate() async {
-    if (_operation != null) return;
+    if (_operation != null) {
+      return;
+    }
+
     if (_closed || _handedOff || _release?.windowsAsset == null || _configuration == null || _prepare == null) {
       throw StateError('Check for updates again before installing.');
     }
+
     final operation = Future<void>.microtask(_downloadAndInstall);
     _operation = operation;
     try {
@@ -107,7 +121,10 @@ class WindowsAppUpdatePlatform
 
   @override
   void cancelDownload() {
-    if (!_progress.value.cancellable) return;
+    if (!_progress.value.cancellable) {
+      return;
+    }
+
     ++_generation;
     _transport.cancel();
   }
@@ -131,7 +148,9 @@ class WindowsAppUpdatePlatform
         candidate,
         length: asset.length,
         onProgress: (fraction) {
-          if (!_closed && generation == _generation) _setProgress(AppUpdatePhase.downloading, fraction: fraction);
+          if (!_closed && generation == _generation) {
+            _setProgress(AppUpdatePhase.downloading, fraction: fraction);
+          }
         },
       );
       _checkActive(generation);
@@ -166,6 +185,7 @@ class WindowsAppUpdatePlatform
           AppLogger.warning('Could not unlock the update download: $error');
         }
       }
+
       if (!_handedOff && stage != null) {
         try {
           await stage.delete(recursive: true);
@@ -177,10 +197,14 @@ class WindowsAppUpdatePlatform
   }
 
   void _checkActive(int generation) {
-    if (_closed || generation != _generation) throw const UpdateDownloadCancelled();
+    if (_closed || generation != _generation) {
+      throw const UpdateDownloadCancelled();
+    }
   }
 
   void _setProgress(AppUpdatePhase phase, {double? fraction, String? message}) {
-    if (!_closed) _progress.value = AppUpdateProgress(phase: phase, fraction: fraction, message: message);
+    if (!_closed) {
+      _progress.value = AppUpdateProgress(phase: phase, fraction: fraction, message: message);
+    }
   }
 }

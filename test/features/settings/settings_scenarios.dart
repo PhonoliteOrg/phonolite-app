@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
+import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/pages/playback/custom_shuffle_settings_page.dart';
 import 'package:phonolite_app/pages/settings/download_quality_page.dart';
@@ -120,10 +119,10 @@ final settingsScenarios = [
 
       await app.chooseDownloadQuality(DownloadQuality.spaceSaver);
       expect(app.downloadQuality, DownloadQuality.spaceSaver);
-      expect(
-        File('${app.storage.path}/Phonolite/download_settings.json').readAsStringSync(),
-        contains(DownloadQuality.spaceSaver.wireValue),
-      );
+      // The production resolver knows each platform's settings layout.
+      final saved = await app.tester.runAsync(() => const SettingsFiles().resolve('download_settings.json'));
+
+      expect(saved!.readAsStringSync(), contains(DownloadQuality.spaceSaver.wireValue));
 
       await app.tapBackLink('Back to settings');
       app.expectPage<SettingsPage>();

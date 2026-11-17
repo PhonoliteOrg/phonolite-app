@@ -32,11 +32,14 @@ class AppUpdatesController extends ChangeNotifier {
 
   factory AppUpdatesController({AppUpdatePlatform? platform, AppUpdateFeed? feed, bool Function()? isSupported}) {
     final backend = platform == null || feed == null ? AppUpdateBackend.current() : null;
+
     return AppUpdatesController._(platform ?? backend!.platform, feed ?? backend!.feed, isSupported);
   }
 
   AppUpdatesController._(this._platform, this._feed, this._isSupported) {
-    if (_platform case final AppUpdateProgressSource source) source.progress.addListener(_notifyProgress);
+    if (_platform case final AppUpdateProgressSource source) {
+      source.progress.addListener(_notifyProgress);
+    }
   }
 
   bool get showInSettings =>
@@ -70,8 +73,11 @@ class AppUpdatesController extends ChangeNotifier {
 
   Future<void> initialize({required Future<void> Function() onInstall, Future<void> Function()? onPrepare}) {
     if (_platform case final AppUpdatePreparationPlatform platform) {
-      if (onPrepare != null) platform.setPreparationCallback(onPrepare);
+      if (onPrepare != null) {
+        platform.setPreparationCallback(onPrepare);
+      }
     }
+
     return _initialization ??= _initialize(onInstall);
   }
 
@@ -101,12 +107,17 @@ class AppUpdatesController extends ChangeNotifier {
 
   @override
   void dispose() {
-    if (_platform case final AppUpdateProgressSource source) source.progress.removeListener(_notifyProgress);
+    if (_platform case final AppUpdateProgressSource source) {
+      source.progress.removeListener(_notifyProgress);
+    }
+
     super.dispose();
   }
 
   void cancelDownload() {
-    if (_platform case final AppUpdateProgressSource source) source.cancelDownload();
+    if (_platform case final AppUpdateProgressSource source) {
+      source.cancelDownload();
+    }
   }
 
   Future<void> installLatestUpdate() async {
@@ -150,7 +161,10 @@ class AppUpdatesController extends ChangeNotifier {
     try {
       final configuration = await _platform.initialize(
         onInstall: () {
-          if (!_requests.isCurrent(generation)) throw StateError('The updater was closed before shutdown preparation.');
+          if (!_requests.isCurrent(generation)) {
+            throw StateError('The updater was closed before shutdown preparation.');
+          }
+
           return _installation ??= Future<void>.sync(onInstall);
         },
       );
@@ -165,7 +179,9 @@ class AppUpdatesController extends ChangeNotifier {
       if (_ready) {
         _configuration = configuration;
         _checkTimer = Timer.periodic(checkInterval, (_) {
-          if (progress?.phase != AppUpdatePhase.recoveryRequired) unawaited(checkForUpdates());
+          if (progress?.phase != AppUpdatePhase.recoveryRequired) {
+            unawaited(checkForUpdates());
+          }
         });
       } else {
         _error = 'Update checks are unavailable in this build.';

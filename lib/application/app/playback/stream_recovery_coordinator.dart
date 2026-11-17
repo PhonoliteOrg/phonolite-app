@@ -38,6 +38,7 @@ class _StreamRecoveryCoordinator {
     if (_host._audioEngine.hasActivePlayer) {
       _awaitingStreamReconnect = false;
       _host._audioEngine.notifyNetworkChange();
+
       return;
     }
 
@@ -75,6 +76,7 @@ class _StreamRecoveryCoordinator {
 
     if (_host._playbackState.isLocalPlayback) {
       _recoverInterruptedLocalPlayback();
+
       return;
     }
 
@@ -87,15 +89,19 @@ class _StreamRecoveryCoordinator {
     _retireInterruptedSeek(positionMs);
     if (track == null || !_host._wantsPlayback || _host._audioSessionSuspended || _host._isScrubbing) {
       _host._updatePlayback(isPlaying: false, isLoading: false);
+
       return;
     }
+
     if (_recentlyRetriedInterruptedStream(track, positionMs)) {
       _host._wantsPlayback = false;
       _host._audioOutputStarted = false;
       _host._updatePlayback(isPlaying: false, isLoading: false);
       _host._pushMessage('Audio output failed again; press Play to retry.', level: LogLevel.warning);
+
       return;
     }
+
     _lastInterruptedStreamRestartAt = _host._playbackClock();
     _lastInterruptedStreamRestartTrackId = track.id;
     _lastInterruptedStreamRestartPositionMs = positionMs;
@@ -143,7 +149,10 @@ class _StreamRecoveryCoordinator {
     }
 
     _awaitingStreamReconnect = true;
-    if (_lastInterruptedStreamRestartTrackId != track.id) _streamRetryAttempt = 0;
+    if (_lastInterruptedStreamRestartTrackId != track.id) {
+      _streamRetryAttempt = 0;
+    }
+
     final delay = _nextRetryDelay();
     _nextStreamRetryAt = _host._playbackClock().add(delay);
     _host._pushMessage('Stream interrupted; waiting for connection before retrying.', level: LogLevel.warning);
@@ -154,12 +163,14 @@ class _StreamRecoveryCoordinator {
   Duration _nextRetryDelay() {
     final delay = Duration(seconds: _retryBackoffSeconds[_streamRetryAttempt]);
     _streamRetryAttempt = min(_streamRetryAttempt + 1, _retryBackoffSeconds.length - 1);
+
     return delay;
   }
 
   void _scheduleStreamRetry(Duration delay) {
     _streamRecoveryTimer?.cancel();
     final occurrence = _host._playbackStarts.current;
+
     bool canRetry() =>
         !_host._disposed &&
         _host._wantsPlayback &&
@@ -188,7 +199,10 @@ class _StreamRecoveryCoordinator {
   }
 
   void _retireInterruptedSeek(int positionMs) {
-    if (!_host._seeking) return;
+    if (!_host._seeking) {
+      return;
+    }
+
     _host._seekRequests.advance();
     _host._pendingSeekGeneration = null;
     _host._seeking = false;
@@ -219,9 +233,13 @@ class _StreamRecoveryCoordinator {
 
     final due = _nextStreamRetryAt;
     if (due != null && _host._playbackClock().isBefore(due)) {
-      if (_streamRecoveryTimer == null) _scheduleStreamRetry(due.difference(_host._playbackClock()));
+      if (_streamRecoveryTimer == null) {
+        _scheduleStreamRetry(due.difference(_host._playbackClock()));
+      }
+
       return;
     }
+
     _nextStreamRetryAt = null;
 
     _streamRecoveryTimer?.cancel();

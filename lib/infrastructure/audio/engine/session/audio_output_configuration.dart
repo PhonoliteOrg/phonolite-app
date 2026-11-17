@@ -74,9 +74,13 @@ class _AudioOutputConfiguration {
             gapless.configure(sampleRate, channels, deviceId, 16, 16);
             await player.initialize();
           } else {
-            if (identical(_host._player, player)) _host._player = null;
+            if (identical(_host._player, player)) {
+              _host._player = null;
+            }
+
             await player.dispose();
             released = true;
+
             return await _configurePcmOutput();
           }
         }
@@ -85,7 +89,9 @@ class _AudioOutputConfiguration {
           _host._player = null;
         }
 
-        if (!released) await player.dispose();
+        if (!released) {
+          await player.dispose();
+        }
 
         rethrow;
       }

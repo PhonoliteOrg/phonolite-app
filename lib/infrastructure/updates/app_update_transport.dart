@@ -64,6 +64,7 @@ class AppUpdateTransport {
       if (await destination.exists()) {
         await destination.delete();
       }
+
       rethrow;
     }
   }
@@ -79,20 +80,26 @@ class AppUpdateTransport {
     _client = client;
     final interruption = Completer<void>();
     var interrupted = false;
+
     void stop(Object error) {
       interrupted = true;
-      if (!interruption.isCompleted) interruption.completeError(error);
+      if (!interruption.isCompleted) {
+        interruption.completeError(error);
+      }
+
       client.close();
     }
 
     _interrupt = () => stop(const UpdateDownloadCancelled());
     final timer = Timer(deadline, () => stop(TimeoutException('The update download exceeded its deadline.')));
+
     Future<void> readResponse() async {
       var uri = url;
       for (var redirect = 0; redirect <= 5; ++redirect) {
         if (uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.hasFragment) {
           throw const FormatException('Update requests and redirects must use HTTPS without credentials or fragments.');
         }
+
         final response = await client
             .send(http.Request('GET', uri)..followRedirects = false)
             .timeout(const Duration(seconds: 15));
@@ -102,39 +109,59 @@ class AppUpdateTransport {
           if (location == null) {
             throw const FormatException('An update redirect has no destination.');
           }
+
           uri = uri.resolve(location);
           continue;
         }
+
         if (response.statusCode != 200) {
           throw http.ClientException('Update request returned HTTP ${response.statusCode}.');
         }
+
         if ((response.contentLength ?? 0) > maximum) {
           throw const FormatException('Update response exceeds its size limit.');
         }
+
         var count = 0;
         await for (final chunk in response.stream.timeout(const Duration(seconds: 30))) {
-          if (interrupted || generation != _generation) throw const UpdateDownloadCancelled();
+          if (interrupted || generation != _generation) {
+            throw const UpdateDownloadCancelled();
+          }
+
           count += chunk.length;
-          if (count > maximum) throw const FormatException('Update response exceeds its size limit.');
+          if (count > maximum) {
+            throw const FormatException('Update response exceeds its size limit.');
+          }
+
           await onChunk(chunk);
         }
-        if (interrupted || generation != _generation) throw const UpdateDownloadCancelled();
+
+        if (interrupted || generation != _generation) {
+          throw const UpdateDownloadCancelled();
+        }
+
         return;
       }
+
       throw const FormatException('Too many update redirects.');
     }
 
     try {
       await Future.any([readResponse(), interruption.future]);
     } catch (_) {
-      if (generation != _generation) throw const UpdateDownloadCancelled();
+      if (generation != _generation) {
+        throw const UpdateDownloadCancelled();
+      }
+
       rethrow;
     } finally {
       interrupted = true;
       timer.cancel();
       _interrupt = null;
       client.close();
-      if (identical(_client, client)) _client = null;
+      if (identical(_client, client)) {
+        _client = null;
+      }
     }
   }
 }

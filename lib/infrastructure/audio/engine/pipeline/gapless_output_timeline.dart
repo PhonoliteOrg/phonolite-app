@@ -32,21 +32,37 @@ class _GaplessOutputTimeline {
     final source = _GaplessSourceOutput(this, onAudible, onAbort);
     _sources.add(source);
     _writing ??= source;
-    if (identical(_writing, source)) source._activate();
+    if (identical(_writing, source)) {
+      source._activate();
+    }
+
     final previous = _writing;
-    if (previous != null && previous._sealed) _advance(previous);
+    if (previous != null && previous._sealed) {
+      _advance(previous);
+    }
+
     return source;
   }
 
   void _advance(_GaplessSourceOutput source) {
-    if (_aborting || _closed) return;
-    if (!identical(_writing, source) || !source._sealed) return;
+    if (_aborting || _closed) {
+      return;
+    }
+
+    if (!identical(_writing, source) || !source._sealed) {
+      return;
+    }
+
     final index = _sources.indexOf(source);
     for (var i = index + 1; i < _sources.length; i++) {
       final next = _sources[i];
-      if (next._cancelled) continue;
+      if (next._cancelled) {
+        continue;
+      }
+
       _writing = next;
       next._activate();
+
       return;
     }
   }
@@ -58,13 +74,21 @@ class _GaplessOutputTimeline {
   }
 
   Future<void> _configureNow(_GaplessSourceOutput source) async {
-    if (_closed || source._cancelled) throw StateError('Audio occurrence was cancelled.');
+    if (_closed || source._cancelled) {
+      throw StateError('Audio occurrence was cancelled.');
+    }
+
     // A prepared source can describe its format without opening a device.
-    if (!source._activated.isCompleted) return;
-    if (normalize && _output != null && _device == source.device && _validBits >= source.validBits) {
-      _configureConverter(source);
+    if (!source._activated.isCompleted) {
       return;
     }
+
+    if (normalize && _output != null && _device == source.device && _validBits >= source.validBits) {
+      _configureConverter(source);
+
+      return;
+    }
+
     if (_output != null &&
         _rate == source.rate &&
         _channels == source.channels &&
@@ -73,13 +97,20 @@ class _GaplessOutputTimeline {
         _validBits >= source.validBits) {
       return;
     }
+
     // Preserving Original precision/rate can require renegotiation. Never
     // reinterpret PCM or silently discard source bits to disguise that change.
     while (_spans.isNotEmpty && !_closed && !source._cancelled) {
       await poll();
-      if (_spans.isNotEmpty) await Future<void>.delayed(const Duration(milliseconds: 5));
+      if (_spans.isNotEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
     }
-    if (_closed || source._cancelled) throw StateError('Audio occurrence was cancelled.');
+
+    if (_closed || source._cancelled) {
+      throw StateError('Audio occurrence was cancelled.');
+    }
+
     final previous = _output;
     _output = null;
     await previous?.dispose();
@@ -106,21 +137,34 @@ class _GaplessOutputTimeline {
         // Pre-Android-12 outputs can represent 24 integer bits through float.
         // Keep that existing precision policy while allowing a common PCM32
         // container for 16/24-bit sources; 32-bit sources never take this path.
-        if (!Platform.isAndroid || _bits != 32 || source.validBits > 24) rethrow;
+        if (!Platform.isAndroid || _bits != 32 || source.validBits > 24) {
+          rethrow;
+        }
+
         await output.dispose();
         _validBits = 24;
         output = makeOutput();
         _output = output;
         await output.initialize();
       }
-      if (_closed || source._cancelled) throw StateError('Audio occurrence was cancelled.');
+
+      if (_closed || source._cancelled) {
+        throw StateError('Audio occurrence was cancelled.');
+      }
+
       output.setVolume(_volume);
       _devicePaused = _userPaused;
       _progress.reset();
-      if (_userPaused) output.pause();
+      if (_userPaused) {
+        output.pause();
+      }
+
       _configureConverter(source);
     } catch (_) {
-      if (identical(_output, output)) _output = null;
+      if (identical(_output, output)) {
+        _output = null;
+      }
+
       await output.dispose();
       rethrow;
     }
@@ -147,6 +191,7 @@ class _GaplessOutputTimeline {
     if (source._sealed && source._deviceWritten > 0 && source._devicePlayed >= source._deviceWritten) {
       played = source._written;
     }
+
     final newlyPlayed = math.max(0, played - source._played);
     source._pendingDone += newlyPlayed;
     source._played += newlyPlayed;
@@ -156,18 +201,25 @@ class _GaplessOutputTimeline {
 
   Future<void> _poll() async {
     final output = _output;
-    if (output == null || _closed) return;
+    if (output == null || _closed) {
+      return;
+    }
 
     // Probe native completion only for a sealed tail. Doing this during an
     // active source can leave an end-of-stream request waiting throughout the
     // song, eventually timing out while audio is still flowing.
     if (_spans.isNotEmpty && _spans.last.source._sealed && !_userPaused && !_devicePaused && !_aborting) {
       await output.isIdle().timeout(_progress.timeout);
-      if (!identical(output, _output) || _closed) return;
+      if (!identical(output, _output) || _closed) {
+        return;
+      }
     }
 
     var done = await output.collectDoneSamples().timeout(_progress.timeout);
-    if (!identical(output, _output) || _closed) return;
+    if (!identical(output, _output) || _closed) {
+      return;
+    }
+
     _progress.check(
       waiting: _spans.isNotEmpty && !_userPaused && !_devicePaused && !_aborting,
       progressed: done > 0,
@@ -185,18 +237,27 @@ class _GaplessOutputTimeline {
           span.source.onAudible();
         }
       }
+
       span.remaining -= take;
       done -= take;
-      if (span.remaining == 0) _spans.removeFirst();
+      if (span.remaining == 0) {
+        _spans.removeFirst();
+      }
     }
   }
 
   Future<void> write(_GaplessSourceOutput source, List<int> samples) async {
     final generation = source._generation;
     await source._activated.future;
-    if (_closed || _aborting || source._cancelled || generation != source._generation) return;
+    if (_closed || _aborting || source._cancelled || generation != source._generation) {
+      return;
+    }
+
     await _configure(source);
-    if (_closed || _aborting || source._cancelled || generation != source._generation) return;
+    if (_closed || _aborting || source._cancelled || generation != source._generation) {
+      return;
+    }
+
     source._written += samples.length;
     final converted = source._converter?.process(samples) ?? samples;
     await writeConverted(source, converted, generation: generation);
@@ -204,7 +265,10 @@ class _GaplessOutputTimeline {
 
   Future<void> writeConverted(_GaplessSourceOutput source, List<int> samples, {int? generation}) async {
     generation ??= source._generation;
-    if (samples.isEmpty || _aborting) return;
+    if (samples.isEmpty || _aborting) {
+      return;
+    }
+
     // Native backpressure owns refill when available. Audible progress also
     // includes hardware latency; using it to cap those writes can starve the
     // native queue before enough audio reaches a higher-latency device.
@@ -218,11 +282,18 @@ class _GaplessOutputTimeline {
       await poll();
       await Future<void>.delayed(const Duration(milliseconds: 2));
     }
-    if (_closed || _aborting || source._cancelled || generation != source._generation) return;
+
+    if (_closed || _aborting || source._cancelled || generation != source._generation) {
+      return;
+    }
+
     final output = _output!;
     // Register before awaiting: a progress poll can race a native write's ack.
     final span = _GaplessOutputSpan(source, samples.length);
-    if (_spans.isEmpty) _progress.reset();
+    if (_spans.isEmpty) {
+      _progress.reset();
+    }
+
     _spans.add(span);
     source._deviceWritten += samples.length;
     try {
@@ -233,7 +304,10 @@ class _GaplessOutputTimeline {
         await writing;
       }
     } catch (_) {
-      if (_spans.remove(span)) source._deviceWritten -= span.remaining;
+      if (_spans.remove(span)) {
+        source._deviceWritten -= span.remaining;
+      }
+
       rethrow;
     }
   }
@@ -243,10 +317,14 @@ class _GaplessOutputTimeline {
     unawaited(
       writing.then<void>(
         (_) {
-          if (!completed.isCompleted) completed.complete();
+          if (!completed.isCompleted) {
+            completed.complete();
+          }
         },
         onError: (Object error, StackTrace stack) {
-          if (!completed.isCompleted) completed.completeError(error, stack);
+          if (!completed.isCompleted) {
+            completed.completeError(error, stack);
+          }
         },
       ),
     );
@@ -255,12 +333,17 @@ class _GaplessOutputTimeline {
     // reach its deadline. Statistics collection alone does not fail playback.
     var checking = false;
     final timer = Timer.periodic(const Duration(milliseconds: 5), (_) async {
-      if (checking || completed.isCompleted) return;
+      if (checking || completed.isCompleted) {
+        return;
+      }
+
       checking = true;
       try {
         await poll();
       } catch (error, stack) {
-        if (!completed.isCompleted) completed.completeError(error, stack);
+        if (!completed.isCompleted) {
+          completed.completeError(error, stack);
+        }
       } finally {
         checking = false;
       }
@@ -312,13 +395,17 @@ class _GaplessOutputTimeline {
   }
 
   Future<void> close() async {
-    if (_closed) return;
+    if (_closed) {
+      return;
+    }
+
     _closed = true;
     _progress.reset();
     for (final source in _sources) {
       source._cancelled = true;
       source._activate();
     }
+
     _spans.clear();
     final output = _output;
     _output = null;
@@ -335,6 +422,7 @@ class _GaplessOutputTimeline {
     } catch (_) {
       /* A failed output must still close. */
     }
+
     await close();
   }
 }
@@ -368,7 +456,9 @@ class _GaplessSourceOutput implements AudioPcmOutput, AudioPcm32Output {
   }
 
   void _activate() {
-    if (!_activated.isCompleted) _activated.complete();
+    if (!_activated.isCompleted) {
+      _activated.complete();
+    }
   }
 
   void configure(int rate, int channels, int device, int bits, int validBits) {
@@ -380,16 +470,25 @@ class _GaplessSourceOutput implements AudioPcmOutput, AudioPcm32Output {
   }
 
   Future<void> finish() async {
-    if (_sealed || _cancelled) return;
+    if (_sealed || _cancelled) {
+      return;
+    }
+
     final converter = _converter;
     final generation = _generation;
     if (converter != null) {
       await timeline.writeConverted(this, converter.process(const [], endOfInput: true), generation: generation);
     }
-    if (generation != _generation || _cancelled) return;
+
+    if (generation != _generation || _cancelled) {
+      return;
+    }
+
     _sealed = true;
     timeline._credit(this);
-    if (_deviceWritten > 0 || _announced || !_isPrepared) timeline._advance(this);
+    if (_deviceWritten > 0 || _announced || !_isPrepared) {
+      timeline._advance(this);
+    }
   }
 
   void cancel() {
@@ -403,7 +502,9 @@ class _GaplessSourceOutput implements AudioPcmOutput, AudioPcm32Output {
   Future<void> initialize() => timeline._configure(this);
   @override
   Future<void> dispose() async {
-    if (!_sealed) cancel();
+    if (!_sealed) {
+      cancel();
+    }
   }
 
   @override
@@ -425,7 +526,9 @@ class _GaplessSourceOutput implements AudioPcmOutput, AudioPcm32Output {
   void setVolume(double value) => timeline.setVolume(value);
   @override
   void pause() {
-    if (identical(timeline._audible, this)) timeline.pauseOutput();
+    if (identical(timeline._audible, this)) {
+      timeline.pauseOutput();
+    }
   }
 
   @override
@@ -440,12 +543,14 @@ class _GaplessSourceOutput implements AudioPcmOutput, AudioPcm32Output {
     await timeline.poll();
     final done = _pendingDone;
     _pendingDone = 0;
+
     return done;
   }
 
   @override
   Future<bool> isIdle() async {
     await timeline.poll();
+
     return _sealed && (_deviceWritten == 0 || _played >= _written);
   }
 }

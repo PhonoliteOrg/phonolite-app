@@ -13,7 +13,9 @@ class DownloadQualitySelection extends StatelessWidget {
   const DownloadQualitySelection({super.key, required this.quality, required this.onSelected, this.enabled = true});
 
   static String description(DownloadQuality quality) {
-    if (quality.isOriginal) return 'Download size depends on the source file.';
+    if (quality.isOriginal) {
+      return 'Download size depends on the source file.';
+    }
 
     return '${quality.bitrateKbps} kbps · About ${quality.megabytesPerHour!.round()} MB for 1 hour of audio';
   }
@@ -22,7 +24,9 @@ class DownloadQualitySelection extends StatelessWidget {
   Widget build(BuildContext context) => RadioGroup<DownloadQuality>(
     groupValue: quality,
     onChanged: (value) {
-      if (enabled && value != null) onSelected(value);
+      if (enabled && value != null) {
+        onSelected(value);
+      }
     },
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

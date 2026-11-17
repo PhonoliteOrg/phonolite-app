@@ -15,6 +15,7 @@ class AppUpdateTile extends StatelessWidget {
     if (controller.disabledReason case final reason?) {
       return reason;
     }
+
     if (controller.progress case final progress?) {
       switch (progress.phase) {
         case AppUpdatePhase.downloading:
@@ -34,15 +35,20 @@ class AppUpdateTile extends StatelessWidget {
         case AppUpdatePhase.failed:
           return '${progress.message} Select to check again.';
         case AppUpdatePhase.idle:
-          if (progress.message != null) return progress.message!;
+          if (progress.message != null) {
+            return progress.message!;
+          }
       }
     }
+
     if (controller.openingUpdater) {
       return 'Starting update…';
     }
+
     if (controller.busy) {
       return 'Checking for updates…';
     }
+
     if (controller.error != null) {
       return controller.latestRelease != null
           ? 'Could not update the app. Select to try again.'
@@ -50,9 +56,11 @@ class AppUpdateTile extends StatelessWidget {
           ? 'Could not check for updates. Select to try again.'
           : 'Update checks are unavailable in this build.';
     }
+
     if (controller.latestRelease case final release?) {
       return 'Version ${release.displayVersion} is available. Download and install.';
     }
+
     return controller.ready
         ? 'You’re up to date. Select to check again.'
         : 'Updates are checked on startup and every 2 hours.';

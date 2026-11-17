@@ -163,7 +163,10 @@ class ApiTransport {
 
   /// Public, credential-free detection only. This never replaces remembered trust.
   Future<bool> hasServerIdentityChanged() async {
-    if (trust == null || injectedClient) return false;
+    if (trust == null || injectedClient) {
+      return false;
+    }
+
     try {
       await verifyServerConnection(_baseUrl);
     } on ServerConnectionCheckException catch (error) {
@@ -265,6 +268,7 @@ class ApiTransport {
           hasTrustedTransport) {
         request.headers.addAll(authorizationHeaders);
       }
+
       final response = await (() async => http.Response.fromStream(await client.send(request)))().timeout(timeout);
 
       final success = response.statusCode >= 200 && response.statusCode < 300;
@@ -292,7 +296,10 @@ class ApiTransport {
     // The existing 12-second health monitor is also the idle app's heartbeat.
     if (_token?.isNotEmpty == true) {
       yield baseUrl;
-      if (rootUrl != baseUrl) yield rootUrl;
+      if (rootUrl != baseUrl) {
+        yield rootUrl;
+      }
+
       return;
     }
 
@@ -516,7 +523,9 @@ class ApiTransport {
 
     if (lastError != null && lastStackTrace != null) {
       try {
-        if (_sessionRevision == sessionRevision) onTransportFailure?.call(lastError);
+        if (_sessionRevision == sessionRevision) {
+          onTransportFailure?.call(lastError);
+        }
       } catch (_) {}
 
       developer.log(

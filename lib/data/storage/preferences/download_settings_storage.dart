@@ -17,9 +17,13 @@ class DownloadSettingsStorage {
     try {
       final value = await _file.read();
 
-      if (value != null) return DownloadSettings.fromJson(value);
+      if (value != null) {
+        return DownloadSettings.fromJson(value);
+      }
 
-      if (await (await files.resolve('download_settings.json')).exists()) return const DownloadSettings();
+      if (await (await files.resolve('download_settings.json')).exists()) {
+        return const DownloadSettings();
+      }
 
       final existing = await _hasExistingInstallation();
       final settings = DownloadSettings(quality: existing ? DownloadQuality.original : DownloadQuality.high);
@@ -44,7 +48,9 @@ class DownloadSettingsStorage {
       'offline_storage.json',
       'shuffle_settings.json',
     ]) {
-      if (await (await files.resolve(name)).exists()) return true;
+      if (await (await files.resolve(name)).exists()) {
+        return true;
+      }
     }
 
     final settingsFile = await files.resolve('download_settings.json');

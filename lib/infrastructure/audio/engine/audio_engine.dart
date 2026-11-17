@@ -145,7 +145,10 @@ class AudioEngine {
 
   /// Repairs remote delivery without replacing the current playback occurrence.
   void notifyNetworkChange() {
-    if (_disposed || _shutdown != null || _playbackId <= 0) return;
+    if (_disposed || _shutdown != null || _playbackId <= 0) {
+      return;
+    }
+
     _sendCmd({'cmd': 'network_changed', 'playback_id': _playbackId, 'route_generation': ++_routeGeneration});
   }
 
@@ -350,7 +353,10 @@ class AudioEngine {
     int? quicPort,
     Map<String, dynamic>? listeningContext,
   }) async {
-    if (!_active || _disposed || _initialization == null || _workerFailed) return;
+    if (!_active || _disposed || _initialization == null || _workerFailed) {
+      return;
+    }
+
     _sendCmd({
       'cmd': 'prepare_next',
       'playback_id': _playbackId,
@@ -382,12 +388,17 @@ class AudioEngine {
 
   void setGaplessResampling(bool enabled) {
     _gaplessResampling = enabled;
-    if (_initialization != null) _sendCmd({'cmd': 'gapless_resampling', 'enabled': enabled});
+    if (_initialization != null) {
+      _sendCmd({'cmd': 'gapless_resampling', 'enabled': enabled});
+    }
   }
 
   /// Acknowledges decoder/file release before a prepared download is deleted.
   Future<void> releasePreparedNext({int? preparationId}) async {
-    if (_initialization == null || _disposed) return;
+    if (_initialization == null || _disposed) {
+      return;
+    }
+
     final id = ++_preparedReleaseId;
     final completion = Completer<void>();
     _preparedReleases[id] = completion;
@@ -676,7 +687,10 @@ class AudioEngine {
 
     if (message['type'] == 'prepared_released') {
       final request = _preparedReleases.remove(message['release_request_id']);
-      if (request != null && !request.isCompleted) request.complete();
+      if (request != null && !request.isCompleted) {
+        request.complete();
+      }
+
       return;
     }
 
@@ -690,11 +704,17 @@ class AudioEngine {
       case 'gapless_transition':
         _streamQuality = null;
         final id = (message['preparation_id'] as num?)?.toInt();
-        if (id != null) onGaplessTransition?.call(id);
+        if (id != null) {
+          onGaplessTransition?.call(id);
+        }
+
         break;
       case 'gapless_preparation_failed':
         final id = (message['preparation_id'] as num?)?.toInt();
-        if (id != null) onGaplessPreparationFailed?.call(id);
+        if (id != null) {
+          onGaplessPreparationFailed?.call(id);
+        }
+
         break;
       case 'gapless_buffering':
         onGaplessBuffering?.call(message['waiting'] == true);
@@ -770,6 +790,7 @@ class AudioEngine {
         if (!active) {
           _streamQuality = null;
         }
+
         _onState?.call(active, paused);
 
         if (_sourceRejected) {
@@ -809,6 +830,7 @@ class AudioEngine {
         if (waitForRelease) {
           rethrow;
         }
+
         // A terminated worker cannot provide its uncheckpointed tail.
       } finally {
         if (identical(_listeningFlush, flush)) {

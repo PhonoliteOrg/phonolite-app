@@ -68,6 +68,7 @@ class _SessionCoordinator {
     _passwordLoginOrigin = origin;
     int? authenticatedRevision;
     String? authenticatedToken;
+
     bool isCurrent() =>
         !_host._disposed &&
         _passwordLogins.isCurrent(generation) &&
@@ -85,7 +86,9 @@ class _SessionCoordinator {
 
       if (_host._listeningStats.storageError == null) {
         await _host._listeningStats.setAccount();
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
       }
 
       _host._listeningSessionContext = null;
@@ -100,18 +103,29 @@ class _SessionCoordinator {
       _host.connection.setBaseUrl(baseUrl);
 
       final token = await _host.connection.login(username: username, password: password);
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       authenticatedRevision = _host.connection.sessionRevision;
       authenticatedToken = token;
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
 
       await _host._refreshServerPorts();
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _host._serverHealthFailureCount = 0;
       _setAuthorized(true, error: null);
 
       await _host._loadPlaybackSettings();
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
       unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
 
@@ -142,13 +156,19 @@ class _SessionCoordinator {
         }
       }
     } on ApiException catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       final message = '${_host._formatApiError(err)} (OPAQUE sign-in)';
 
       _setSessionStatus(SessionStatus.serverReachable, error: message);
       _host._pushMessage('Login failed: $message', level: LogLevel.error);
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
+
       _setSessionStatus(SessionStatus.offline, error: serverFailureMessage(err));
       _host._pushMessage('Login failed: $err', level: LogLevel.error);
     } finally {
@@ -160,7 +180,10 @@ class _SessionCoordinator {
 
   void loginWithToken({required String baseUrl, required String token}) {
     _host._gaplessCoordinator.invalidate();
-    if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(baseUrl)))) return;
+    if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(baseUrl)))) {
+      return;
+    }
+
     _passwordLogins.advance();
     _sessionRestores.advance();
     _restoringSession = false;
@@ -181,7 +204,9 @@ class _SessionCoordinator {
 
     Future<void> initializeTokenSession() async {
       await resetStatsAccount;
-      if (!_isServerSessionCurrent(sessionRevision)) return;
+      if (!_isServerSessionCurrent(sessionRevision)) {
+        return;
+      }
 
       final playingTrack = _host._playbackState.track;
 
@@ -190,13 +215,25 @@ class _SessionCoordinator {
       }
 
       await _host._refreshLocalStats();
-      if (!_isServerSessionCurrent(sessionRevision)) return;
+      if (!_isServerSessionCurrent(sessionRevision)) {
+        return;
+      }
+
       await _host._refreshServerPorts();
-      if (!_isServerSessionCurrent(sessionRevision)) return;
+      if (!_isServerSessionCurrent(sessionRevision)) {
+        return;
+      }
+
       await _host._loadPlaybackSettings();
-      if (!_isServerSessionCurrent(sessionRevision)) return;
+      if (!_isServerSessionCurrent(sessionRevision)) {
+        return;
+      }
+
       await _host._offlineDownloadManager.resumePausedForCurrentServer();
-      if (!_isServerSessionCurrent(sessionRevision)) return;
+      if (!_isServerSessionCurrent(sessionRevision)) {
+        return;
+      }
+
       unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
     }
 
@@ -205,14 +242,20 @@ class _SessionCoordinator {
 
   Future<bool> probeServer(String input) async {
     final generation = _serverProbes.advance();
+
     bool isCurrent() => !_host._disposed && _serverProbes.isCurrent(generation);
+
     _setSessionStatus(SessionStatus.checking, error: null);
 
     try {
       final resolved = await _host.connection.resolveBaseUrl(input);
-      if (!isCurrent()) return false;
+      if (!isCurrent()) {
+        return false;
+      }
+
       if (_disconnectingServerOrigins.contains(ServerTrust.origin(Uri.parse(resolved)))) {
         _setSessionStatus(SessionStatus.offline, error: 'Disconnecting from this server. Try again.');
+
         return false;
       }
 
@@ -220,7 +263,10 @@ class _SessionCoordinator {
       try {
         await _host.connection.verifyServerConnection(resolved);
       } on ServerConnectionCheckException catch (error) {
-        if (error.reason != ServerConnectionFailure.identityChanged) rethrow;
+        if (error.reason != ServerConnectionFailure.identityChanged) {
+          rethrow;
+        }
+
         // Reachability cannot trust this key. Only password sign-in can verify
         // it against the saved OPAQUE identity and commit a replacement pin.
         identityChanged = true;
@@ -241,7 +287,10 @@ class _SessionCoordinator {
 
       return true;
     } catch (err) {
-      if (!isCurrent()) return false;
+      if (!isCurrent()) {
+        return false;
+      }
+
       final message = serverFailureMessage(err);
 
       _setSessionStatus(SessionStatus.offline, error: message);
@@ -254,7 +303,9 @@ class _SessionCoordinator {
   Future<void> logout() async {
     final serverBaseUrl = _host.connection.baseUrl;
     final origin = ServerTrust.origin(Uri.parse(serverBaseUrl));
-    if (!_disconnectingServerOrigins.add(origin)) return;
+    if (!_disconnectingServerOrigins.add(origin)) {
+      return;
+    }
 
     _passwordLogins.advance();
     _passwordLoginOrigin = null;
@@ -267,6 +318,7 @@ class _SessionCoordinator {
       _savedCredentialsInvalidated = true;
       _savedCredentials = null;
     }
+
     final preserveLocalPlayback = _host._playbackState.isLocalPlayback && _host._playbackState.track != null;
 
     _host._stopMetadataEventListener();
@@ -616,9 +668,13 @@ class _SessionCoordinator {
       }
 
       final identityChanged = await _host.connection.hasServerIdentityChanged();
-      if (!_isRestoreSessionCurrent(revision)) return;
+      if (!_isRestoreSessionCurrent(revision)) {
+        return;
+      }
+
       if (identityChanged) {
         await requireSignIn();
+
         return;
       }
 

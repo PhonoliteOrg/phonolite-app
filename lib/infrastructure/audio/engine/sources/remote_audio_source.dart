@@ -46,6 +46,7 @@ class _RemoteAudioSource {
 
   int get _missingPositionMs {
     final explicit = _explicitTargetMs;
+
     return explicit ?? (_host._positionMs + _playableMs);
   }
 
@@ -55,7 +56,10 @@ class _RemoteAudioSource {
   }
 
   bool _terminalFailure(QuicClient quic, Object error) {
-    if (error is AudioSourceRejected || error is ServerIdentityChangedException) return true;
+    if (error is AudioSourceRejected || error is ServerIdentityChangedException) {
+      return true;
+    }
+
     final explicit = error is QuicException ? error.kind : QuicFailureKind.none;
     final native = quic.lastFailureKind;
     return explicit == QuicFailureKind.identity ||
@@ -67,22 +71,34 @@ class _RemoteAudioSource {
   }
 
   void notifyNetworkChange(int generation) {
-    if (generation <= _routeGeneration || !_host._isActive || _host._remotePlaybackComplete) return;
+    if (generation <= _routeGeneration || !_host._isActive || _host._remotePlaybackComplete) {
+      return;
+    }
+
     _routeGeneration = generation;
-    if (_hasCompleteReserve) return;
+    if (_hasCompleteReserve) {
+      return;
+    }
+
     _recovery.interrupted();
     try {
-      if (_host._quic?.notifyNetworkChange(generation) == true) return;
+      if (_host._quic?.notifyNetworkChange(generation) == true) {
+        return;
+      }
     } catch (_) {
       // Unsupported migration adapters retain delivery-based recovery.
     }
+
     // A path observation does not establish that this socket stopped working.
     // Retain accepted audio and let delivery failure/progress trigger repair.
   }
 
   QuicClient connect() {
     final factory = _host._connectionFactory;
-    if (factory != null) return factory();
+    if (factory != null) {
+      return factory();
+    }
+
     final uri = Uri.parse(_host.baseUrl);
     final host = uri.host.isEmpty ? '127.0.0.1' : uri.host;
     final httpPort = uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80);
@@ -94,6 +110,7 @@ class _RemoteAudioSource {
     );
     client.setAdaptiveRangesEnabled(_host.settings.mode == 'auto');
     client.setMigrationEnabled(const bool.fromEnvironment('PHONOLITE_QUIC_MIGRATION'));
+
     return client;
   }
 
@@ -101,15 +118,21 @@ class _RemoteAudioSource {
     if (_terminalFailure(quic, error)) {
       throw AudioSourceRejected(error.toString());
     }
+
     throw _RemoteTransportFailure(error.toString());
   }
 
   Future<void> _repairTransport() async {
-    if (_repairing || !_host._isActive) return;
-    if (_hasCompleteReserve) {
-      _repairRequested = false;
+    if (_repairing || !_host._isActive) {
       return;
     }
+
+    if (_hasCompleteReserve) {
+      _repairRequested = false;
+
+      return;
+    }
+
     _repairing = true;
     final seekGeneration = _host._seekRequestGeneration;
     _recovery.begin(_missingPositionMs);
@@ -118,18 +141,28 @@ class _RemoteAudioSource {
       if (_recovery.remaining == Duration.zero || _recovery.attempts >= AudioRecoveryPolicy.maximumAttempts) {
         throw TimeoutException('Audio connection recovery exhausted.', AudioRecoveryPolicy.budget);
       }
+
       final delay = _policy.retryDelay(_recovery.attempts);
       if (delay > Duration.zero) {
         await Future<void>.delayed(delay < _recovery.remaining ? delay : _recovery.remaining);
       }
-      if (!_host._isActive) return;
-      if (seekGeneration != _host._seekRequestGeneration) return;
+
+      if (!_host._isActive) {
+        return;
+      }
+
+      if (seekGeneration != _host._seekRequestGeneration) {
+        return;
+      }
+
       if (!_recovery.reserveAttempt()) {
         throw TimeoutException('Audio connection recovery exhausted.', AudioRecoveryPolicy.budget);
       }
+
       if (_host._encodedCache.bytes > 0 && _sourceVersion.isEmpty) {
         throw AudioSourceRejected('The server did not identify the retained audio source.');
       }
+
       final previous = _host._quic;
       _transportGeneration++;
       previous?.close();
@@ -147,8 +180,10 @@ class _RemoteAudioSource {
       final replacement = connect();
       if (!_host._isActive) {
         replacement.close();
+
         return;
       }
+
       _host._quic = replacement;
       _transportRequestId = replacement.openTrack(
         trackId: _host.trackId,
@@ -171,6 +206,7 @@ class _RemoteAudioSource {
       if (error.kind != QuicFailureKind.transport && error.kind != QuicFailureKind.none) {
         throw AudioSourceRejected(error.toString());
       }
+
       _repairRequested = true;
     } catch (error) {
       _repairRequested = true;
@@ -191,10 +227,12 @@ class _RemoteAudioSource {
       _explicitTargetMs = ms;
       _recovery.reset();
     }
+
     if (quic == null || _repairing || _repairRequested) {
       _waitingForHeader = true;
       _remoteContinuation = continuation;
       _repairRequested = true;
+
       return;
     }
 
@@ -212,7 +250,10 @@ class _RemoteAudioSource {
       _transportRequestId = quic.seek(trackId: _host.trackId, positionMs: ms, seekId: _host._pendingSeekId!);
       _host._reportBuffer(force: true);
     } catch (error) {
-      if (_terminalFailure(quic, error)) throw AudioSourceRejected(error.toString());
+      if (_terminalFailure(quic, error)) {
+        throw AudioSourceRejected(error.toString());
+      }
+
       _repairRequested = true;
     }
   }
@@ -221,11 +262,15 @@ class _RemoteAudioSource {
     Map<String, Object?>? event;
 
     while ((event = quic.pollEvent()) != null) {
-      if (!identical(quic, _host._quic)) return;
+      if (!identical(quic, _host._quic)) {
+        return;
+      }
+
       if (event!['type'] == 'transport_recovery') {
         _repairRequested = true;
         continue;
       }
+
       final requestId = (event['request_id'] as num?)?.toInt();
 
       if (requestId != null && requestId != _transportRequestId) {
@@ -253,7 +298,10 @@ class _RemoteAudioSource {
       }
 
       _adaptiveRanges = _host.settings.mode == 'auto' && event['adaptive_ranges'] == true;
-      if (_adaptiveRanges) _host._ownerOriginal.describe(event['original']);
+      if (_adaptiveRanges) {
+        _host._ownerOriginal.describe(event['original']);
+      }
+
       _sourceVersion = version;
       _incomingStartMs = (event['position_ms'] as num?)?.toInt() ?? _incomingStartMs;
       _incomingRangeEndMs = (event['range_end_ms'] as num?)?.toInt();
@@ -283,9 +331,15 @@ class _RemoteAudioSource {
       try {
         if (_repairRequested) {
           await _repairTransport();
-          if (!_host._isActive) return;
-          if (_repairRequested) continue;
+          if (!_host._isActive) {
+            return;
+          }
+
+          if (_repairRequested) {
+            continue;
+          }
         }
+
         quic = _host._quic ?? quic;
         if (transportGeneration != _transportGeneration) {
           transportGeneration = _transportGeneration;
@@ -293,14 +347,19 @@ class _RemoteAudioSource {
           progress.reset();
           lastProgress = _clock.elapsed;
         }
+
         _pollTransportEvents(quic);
-        if (_repairRequested) continue;
+        if (_repairRequested) {
+          continue;
+        }
+
         if (_hasCompleteReserve) {
           progress.reset();
           _recovery.reset();
           await Future<void>.delayed(const Duration(milliseconds: 5));
           continue;
         }
+
         final coverage = _playableMs;
         if (_host._userPaused ||
             coverage >= _host._encodedReadAheadTargetMs ||
@@ -316,6 +375,7 @@ class _RemoteAudioSource {
             endOfTrack: _host._incomingSegment?.hasAllFrames == true && _host._incomingSegment?.endOfTrack == true,
           );
         }
+
         if (_recovery.active && _recovery.remaining == Duration.zero) {
           throw TimeoutException('Audio connection recovery exhausted.', AudioRecoveryPolicy.budget);
         }
@@ -378,7 +438,10 @@ class _RemoteAudioSource {
 
         if (read == -5) {
           final waiting = !_host._userPaused && (_waitingForHeader || ahead < horizon);
-          if (!waiting) lastProgress = _clock.elapsed;
+          if (!waiting) {
+            lastProgress = _clock.elapsed;
+          }
+
           if (waiting &&
               _acceptedAudio &&
               _clock.elapsed - lastProgress >=
@@ -389,6 +452,7 @@ class _RemoteAudioSource {
             _repairRequested = true;
             continue;
           }
+
           progress.check(waiting: waiting, operation: 'QUIC audio delivery');
           await Future<void>.delayed(const Duration(milliseconds: 10));
           continue;
@@ -421,6 +485,7 @@ class _RemoteAudioSource {
             if (_adaptiveRanges && !const {48000, 96000, 160000}.contains(header.bitrateBps)) {
               throw AudioSourceRejected('Auto range did not use a supported fixed quality.');
             }
+
             final oldHeader = _host._decodeCursor?.segment.header;
             if (oldHeader != null &&
                 (oldHeader.sampleRate != header.sampleRate ||
@@ -429,6 +494,7 @@ class _RemoteAudioSource {
                     oldHeader.frameMs != header.frameMs)) {
               throw AudioSourceRejected('The audio rendition changed during recovery.');
             }
+
             final incoming = EncodedAudioSegment(
               header: header,
               startMs: _incomingStartMs,
@@ -459,6 +525,7 @@ class _RemoteAudioSource {
             if (!_host._encodedCache.append(incoming, event.bytes, pinned: _host._decodeCursor?.segment)) {
               throw Exception('Encoded audio cache exceeded its memory budget.');
             }
+
             if (incoming.availableEndMs > incoming.startMs) {
               _acceptedAudio = true;
               _acceptedThroughMs = math.max(_acceptedThroughMs, incoming.availableEndMs);
@@ -484,7 +551,10 @@ class _RemoteAudioSource {
         _repairRequested = true;
         _recovery.interrupted();
       } on TimeoutException {
-        if (_recovery.active) rethrow;
+        if (_recovery.active) {
+          rethrow;
+        }
+
         _repairRequested = true;
       }
     }
@@ -514,6 +584,7 @@ class _RemoteAudioSource {
       _host._pcmBitsPerSample = 32;
       _host._sourceBitDepth = 32;
     }
+
     _host._channels = header.channels;
     _host._frameSamples = _host._sampleRate * header.frameMs ~/ 1000;
     _host._pumpChunkSamples = _host._sampleRate * _host._channels * _PlaybackSession._pumpChunkMs ~/ 1000;
@@ -522,6 +593,7 @@ class _RemoteAudioSource {
     } catch (_) {
       // A missing latency observation cannot reject an accepted source header.
     }
+
     _host._refreshBufferTargets();
 
     _host._buffer ??= PcmRingBuffer(

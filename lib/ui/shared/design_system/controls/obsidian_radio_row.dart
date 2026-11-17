@@ -40,7 +40,9 @@ class ObsidianRadioRow<T> extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         fillColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.disabled)) return ObsidianPalette.textMuted.withValues(alpha: 0.55);
+          if (states.contains(WidgetState.disabled)) {
+            return ObsidianPalette.textMuted.withValues(alpha: 0.55);
+          }
 
           return states.contains(WidgetState.selected) ? ObsidianPalette.gold : ObsidianPalette.textMuted;
         }),

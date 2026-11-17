@@ -194,9 +194,15 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
 
         try {
           entry.timeout = Timer(preparationTimeout, () {
-            if (!_isCurrent(entry)) return;
+            if (!_isCurrent(entry)) {
+              return;
+            }
+
             _skipped.add(entry.provider);
-            if (!entry.ready.isCompleted) entry.ready.complete(ArtworkPreparation.unavailable);
+            if (!entry.ready.isCompleted) {
+              entry.ready.complete(ArtworkPreparation.unavailable);
+            }
+
             _release(entry);
             _drain();
           });
@@ -275,6 +281,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
     if (!entry.ready.isCompleted) {
       entry.ready.complete(ArtworkPreparation.unavailable);
     }
+
     _release(entry);
     ArtworkErrors.instance.report(entry.request.source, error);
     _drain();
