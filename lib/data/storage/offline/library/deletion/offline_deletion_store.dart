@@ -172,10 +172,12 @@ class _OfflineDeletionStore {
         pendingFileDeleteCount: pendingDeletes.length,
         pendingArtworkDeleteCount: artworkDeletes.length,
       );
-    } catch (err) {
+    } on Object catch (err) {
+      // A failed delete is not an empty result: callers drop the downloads
+      // from memory on success, so they must see the failure.
       AppLogger.warning('Failed to remove offline downloads: $err');
 
-      return OfflineDeletionResult(scope: request.scope);
+      rethrow;
     } finally {
       _host._releaseDatabase(db);
     }

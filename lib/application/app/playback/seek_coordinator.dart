@@ -96,7 +96,9 @@ class _SeekCoordinator {
 
     try {
       inlineSeek = await _host._audioEngine.seekTo(target);
-    } catch (_) {
+    } on Object catch (error) {
+      // Recoverable: a failed inline seek falls back to restarting playback at the target below.
+      _host._pushMessage('Inline seek failed: $error', level: LogLevel.debug);
       inlineSeek = false;
     }
 
@@ -212,7 +214,8 @@ class _SeekCoordinator {
 
     if (reached) {
       _clearSeekHold(position);
-      _host._pushNowPlayingUpdate(force: true);
+      // The push logs its own platform failures, so the stats callback does not wait on it.
+      unawaited(_host._pushNowPlayingUpdate(force: true));
     }
   }
 

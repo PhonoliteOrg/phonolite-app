@@ -69,7 +69,7 @@ class _ServerDownloadJobAdapter {
       );
 
       return _host._localDataCurrent(dataRevision) ? queued : 0;
-    } catch (err, stackTrace) {
+    } on Object catch (err, stackTrace) {
       if (!requestCurrent()) {
         return 0;
       }

@@ -123,7 +123,7 @@ class AuthApi {
         timeout: timeout,
         configure: configure,
       );
-    } catch (_) {
+    } on Object catch (_) {
       if (!sessionIsCurrent()) {
         throw PasswordChangeException.forReason(PasswordChangeFailure.sessionChanged);
       }

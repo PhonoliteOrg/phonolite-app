@@ -55,7 +55,7 @@ abstract class PersistedSettingsController<T extends Object> extends ChangeNotif
   Future<void> flush() async {
     try {
       await _initialization;
-    } catch (_) {
+    } on Object catch (_) {
       // Reported by the initialization owner; accepted saves still need to finish.
     }
 
@@ -99,7 +99,7 @@ abstract class PersistedSettingsController<T extends Object> extends ChangeNotif
 
     try {
       loaded = await read();
-    } catch (error) {
+    } on Object catch (error) {
       reportError('Could not load $settingsLabel', error);
       notifyIfActive();
 
@@ -161,7 +161,7 @@ abstract class PersistedSettingsController<T extends Object> extends ChangeNotif
       await persist(next, _savedSettings);
 
       _savedSettings = next;
-    } catch (error) {
+    } on Object catch (error) {
       if (mutation == _mutation) {
         _settings = _savedSettings;
         reportError('Could not save $settingsLabel', error);

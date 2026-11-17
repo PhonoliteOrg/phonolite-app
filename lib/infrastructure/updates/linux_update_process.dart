@@ -23,7 +23,7 @@ class LinuxUpdateProcess {
       }
 
       return jsonDecode(text);
-    } catch (_) {
+    } on Object catch (_) {
       process.kill();
       rethrow;
     }
@@ -49,7 +49,7 @@ class LinuxUpdateProcess {
       await _setMode('700', stage.path);
 
       return stage;
-    } catch (_) {
+    } on Object catch (_) {
       await stage.delete(recursive: true);
       rethrow;
     }

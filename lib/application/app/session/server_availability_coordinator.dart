@@ -49,7 +49,7 @@ class _ServerAvailabilityCoordinator {
       if (!_host._disposed && _connectivityReads.isCurrent(request)) {
         _queueConnectivityChange(state);
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (!_host._disposed && _connectivityReads.isCurrent(request)) {
         AppLogger.debug('Network state check deferred (${error.runtimeType}).');
       }
@@ -221,7 +221,7 @@ class _ServerAvailabilityCoordinator {
     _serverHealthFailureCount = max(_serverHealthFailureCount, AppController._serverUnavailableHealthFailureThreshold);
     _serverReconnectAttempt = 0;
     _quicPort = null;
-    unawaited(_host._offlineDownloadManager.pauseDownloadsForServer(_host.connection.baseUrl));
+    _host._pauseServerDownloadsInBackground(_host.connection.baseUrl);
     _host._setSessionStatus(SessionStatus.serverUnavailable, error: error);
     _host._pushMessage(error, level: LogLevel.warning);
   }
@@ -253,8 +253,7 @@ class _ServerAvailabilityCoordinator {
     _host._pushMessage('Server connection restored.');
     unawaited(_refreshServerPorts(timeout: const Duration(seconds: 4)));
     unawaited(_host._loadPlaybackSettings());
-    unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
-    unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+    _host._resumeOfflineWorkInBackground();
     _host._retryPlaybackAfterServerReconnect();
   }
 
@@ -267,7 +266,7 @@ class _ServerAvailabilityCoordinator {
       } else {
         _quicPort = null;
       }
-    } catch (err) {
+    } on Object catch (err) {
       _quicPort = null;
       _host._pushMessage('Failed to load server ports: $err', level: LogLevel.warning);
     }
@@ -275,8 +274,9 @@ class _ServerAvailabilityCoordinator {
 
   void _startHealthMonitor() {
     _healthTimer?.cancel();
-    _healthTimer = Timer.periodic(const Duration(seconds: 12), (_) => _pollHealth());
-    _pollHealth();
+    // Detached like the timer ticks: an availability refresh records its own failures.
+    _healthTimer = Timer.periodic(const Duration(seconds: 12), (_) => unawaited(_pollHealth()));
+    unawaited(_pollHealth());
   }
 
   Future<void> _refreshServerAvailability({bool reconnectAttempt = false}) async {
@@ -393,7 +393,7 @@ class _ServerAvailabilityCoordinator {
           reconnectAttempt: reconnectAttempt,
         );
       }
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }

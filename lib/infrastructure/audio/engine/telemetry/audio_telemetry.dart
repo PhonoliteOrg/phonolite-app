@@ -66,7 +66,7 @@ class _AudioTelemetry {
     _lastReportedTargetMs = targetMs;
     try {
       quic.sendBufferStats(bufferMs: bufferedMs, targetMs: targetMs, force: true);
-    } catch (_) {
+    } on Object catch (_) {
       // Telemetry cannot invalidate a cached seek or stop accepted playback.
       _host._ownerRemote._repairRequested = true;
     }
@@ -124,7 +124,8 @@ class _AudioTelemetry {
           }
 
           _playedSamples += done;
-        } catch (_) {
+        } on Object catch (_) {
+          // A failed output ends this stats loop; the output pump reports the failure.
           return;
         }
       }
@@ -154,7 +155,7 @@ class _AudioTelemetry {
               _logAutoPlayback(bufferedMs: bufferedMs);
             }
           }
-        } catch (_) {
+        } on Object catch (_) {
           // Ignore stats poll failures.
         }
       }
@@ -183,7 +184,7 @@ class _AudioTelemetry {
       if (quic != null) {
         try {
           rttMs = quic.pollRttMs();
-        } catch (_) {
+        } on Object catch (_) {
           // Ignore RTT poll failures.
         }
       }
@@ -193,7 +194,9 @@ class _AudioTelemetry {
       if (quic != null) {
         try {
           _reportBuffer();
-        } catch (_) {}
+        } on Object catch (_) {
+          // Buffer telemetry cannot stop accepted playback; the next tick reports again.
+        }
       }
 
       final playedMs = samplesPerSecond == 0 ? 0 : (_playedSamples * 1000 ~/ samplesPerSecond);

@@ -229,7 +229,7 @@ void main() {
         'Future<void> resumeOfflineDownloadJob(OfflineDownloadJob job) async',
         'Future<void> clearFailedOfflineDownloads() async',
         'Future<void> resetOfflineData() async',
-        'pauseDownloadsForServer(_host.connection.baseUrl)',
+        '_pauseServerDownloadsInBackground(_host.connection.baseUrl)',
         'resumePausedForCurrentServer()',
         'repairOfflineMetadataFragments()',
         'Future<void> playOfflineTrack(',

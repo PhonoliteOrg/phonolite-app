@@ -1382,6 +1382,8 @@ class _Connection extends ServerConnection {
 
     return updated;
   }
+
+  Future<void> closeMetadataEvents() => metadataEvents.close();
 }
 
 class _Harness {
@@ -1437,7 +1439,7 @@ class _Harness {
 
   Future<void> close() async {
     await app.close();
-    await connection.metadataEvents.close();
+    await connection.closeMetadataEvents();
     connection.close();
   }
 }

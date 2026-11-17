@@ -68,8 +68,8 @@ class _DiagnosticsCoordinator {
       if (decoded is Map && decoded['error'] != null) {
         return decoded['error'].toString();
       }
-    } catch (_) {
-      // Ignore parse errors and fall back to raw body.
+    } on FormatException {
+      // Not JSON: fall back to the raw body.
     }
 
     return body;

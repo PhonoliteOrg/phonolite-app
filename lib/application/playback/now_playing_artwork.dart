@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:phonolite_app/application/workflows/request_generation.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
 
 /// Owns the current artwork request and suppresses stale completions.
@@ -71,7 +72,11 @@ class NowPlayingArtwork {
       _bytes = loaded;
 
       return true;
-    } catch (_) {
+    } on Object catch (error) {
+      // Best-effort: the player shows its placeholder and a later load retries.
+      // Only the type is logged because a remote failure may carry the request.
+      AppLogger.warning('Now playing artwork could not be loaded (${error.runtimeType}).');
+
       return false;
     } finally {
       if (_requests.isCurrent(generation)) {

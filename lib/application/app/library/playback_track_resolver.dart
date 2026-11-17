@@ -18,7 +18,7 @@ class _PlaybackTrackResolver {
       _host._pushMessage(
         'Track details response: id=${full.id} artist="${full.artist}" album="${full.album}" albumId="${full.albumId ?? ''}"',
       );
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Track details lookup failed: $err');
     }
 
@@ -67,7 +67,7 @@ class _PlaybackTrackResolver {
 
           full = _mergeTrackWithArtist(full, artist);
         }
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Album/artist lookup failed: $err');
       }
     }
@@ -184,7 +184,7 @@ class _PlaybackTrackResolver {
       if (matches.length == 1) {
         return matches.single;
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Album search fallback failed: $err');
     }
 

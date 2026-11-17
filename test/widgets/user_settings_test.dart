@@ -274,7 +274,7 @@ Future<void> _pumpSettings(
   tester.view.devicePixelRatio = 1;
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox.shrink());
-    await controller.authUpdates.close();
+    await controller.closeAuthUpdates();
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
@@ -358,6 +358,8 @@ class _Controller extends Fake implements AppController {
   AuthState get authState => AuthState(baseUrl: connection.baseUrl, status: status);
   @override
   Stream<AuthState> get authStream => authUpdates.stream;
+
+  Future<void> closeAuthUpdates() => authUpdates.close();
   @override
   bool get localNetworkPermissionSupported => false;
   @override

@@ -34,7 +34,7 @@ class SettingsFiles {
         final cache = await getApplicationCacheDirectory();
 
         return Directory(_join(cache.path, 'Phonolite'));
-      } catch (_) {
+      } on Object catch (_) {
         // Preserve the legacy shuffle-settings fallback policy.
       }
     }

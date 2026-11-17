@@ -286,7 +286,8 @@ class _LocalPlaylistIntentStore {
           return Track.fromJson(Map<String, dynamic>.from(json))
               .copyWith(serverBaseUrl: source.serverBaseUrl, serverTrackId: source.serverTrackId);
         }
-      } catch (err) {
+      } on Object catch (err) {
+        // The pending entry stays visible as an unavailable placeholder instead of vanishing.
         AppLogger.warning('Failed to restore pending playlist metadata: $err');
       }
     }

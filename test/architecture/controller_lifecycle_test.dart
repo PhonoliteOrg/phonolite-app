@@ -295,6 +295,25 @@ void main() {
     expect(harness.audio.starts.every((start) => start.offset == Duration.zero), isTrue);
   });
 
+  test('a repeat-one restart failure is reported and the next completion still repeats', () async {
+    final connection = _ProjectionFailureConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    addTearDown(harness.controller.close);
+    await harness.startRemote();
+    harness.controller.toggleRepeatMode();
+    await Future<void>.delayed(Duration.zero);
+    connection.failProjections = 1;
+
+    harness.onComplete!();
+    await _resumeUntil(
+      () => harness.controller.messages.any((entry) => entry.message.startsWith('Failed to repeat track:')),
+    );
+    harness.onComplete!();
+    await _resumeUntil(() => harness.audio.starts.length == 2);
+
+    expect(harness.audio.starts.last.trackId, harness.controller.playbackState.track?.id);
+  });
+
   test('statistics opt-out cancels prepared listening context before another occurrence is armed', () async {
     final connection = _Connection()..trackResponse = [offlineTestTrack(id: 'a'), offlineTestTrack(id: 'b')];
     final harness = _Harness(authenticated: true, connection: connection);
@@ -2361,6 +2380,23 @@ void main() {
     expect(harness.auth.clears, 0);
   });
 
+  test('a failed token-session preparation is reported instead of escaping', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.downloads.failResumePaused = true;
+
+    harness.controller.loginWithToken(baseUrl: harness.connection.baseUrl, token: 'new-token');
+
+    await _resumeUntil(
+      () => harness.controller.messages.any(
+        (entry) => entry.message.startsWith('Could not finish preparing the session:'),
+      ),
+    );
+    expect(harness.controller.authState.isAuthorized, isTrue);
+  });
+
   test('saved session with a rotated key requires sign-in on startup', () async {
     final connection = _Connection()
       ..identityChanged = true
@@ -3349,6 +3385,24 @@ void main() {
     expect(connection.creates, 1);
   });
 
+  test('CarPlay reports liked songs as unavailable instead of empty when the liked read fails', () async {
+    final connection = _LikedReadFailureConnection();
+    final harness = _Harness(authenticated: true, connection: connection);
+    harness.vehicle.supported = true;
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+
+    final status = await harness.vehicle.handler!('getLibraryStatus', {'scope': 'server'}) as Map;
+    final home = await harness.vehicle.handler!('getHomeActions', {}) as Map;
+    final liked = (home['items'] as List).cast<Map>().singleWhere((item) => item['title'] == 'Start Liked Shuffle');
+
+    expect(status['likedAvailable'], isFalse);
+    expect(status['error'], 'server_unavailable');
+    expect(liked['subtitle'], 'Liked songs unavailable');
+    expect(liked['enabled'], isFalse);
+  });
+
   test('CarPlay server artists include authenticated pinned logo artwork', () async {
     final connection = _Connection()
       ..artistsPageResponse = [
@@ -3727,7 +3781,7 @@ void main() {
 
   test('startup failure releases partially created resources', () async {
     final harness = _Harness();
-    harness.downloads.failLoad = true;
+    harness.preferences.failCollectionListModeRead = true;
     await expectLater(harness.controller.initialize(), throwsStateError);
     expect(harness.controller.isInitialized, isFalse);
     expect(harness.audio.disposals, 1);
@@ -3735,6 +3789,21 @@ void main() {
     expect(harness.connection.onTransportFailure, isNull);
     await harness.controller.close();
     expect(harness.audio.disposals, 1);
+  });
+
+  test('an unreadable offline library is reported and startup continues', () async {
+    final harness = _Harness();
+    addTearDown(harness.controller.close);
+    harness.downloads.failLoad = true;
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.isInitialized, isTrue);
+    expect(harness.downloads.disposals, 0);
+    expect(
+      harness.controller.messages.map((entry) => entry.message),
+      contains(startsWith('Failed to load the offline library:')),
+    );
   });
 
   test('audio factory failure releases subscriptions and the connection callback', () async {
@@ -3768,7 +3837,7 @@ void main() {
     ]) {
       expect(list.clear, throwsUnsupportedError);
     }
-    controller.clearMessages();
+    await controller.clearMessages();
     final message = controller.messageStream.first;
     AppLogger.info('snapshot one');
     final emitted = await message;
@@ -5594,7 +5663,8 @@ class _Audio implements AudioEngine {
   Future<void> resetOutput() async {
     try {
       await stop(waitForRelease: true);
-    } catch (_) {
+    } on Object catch (_) {
+      // Mirrors the engine: a failed stop still leaves the output reset.
       active = false;
       paused = false;
     }
@@ -5624,6 +5694,7 @@ class _Downloads implements OfflineDownloadManager {
   bool failLoad = false;
   bool failReset = false;
   bool failCommands = false;
+  bool failResumePaused = false;
   final refreshedAlbums = <String>[];
   final refreshedArtists = <String>[];
   final pausedServers = <String>[];
@@ -5667,7 +5738,10 @@ class _Downloads implements OfflineDownloadManager {
   @override
   OfflineTrackDownload? findLocal(String trackId) => null;
   @override
-  Future<void> resumePausedForCurrentServer() async {}
+  Future<void> resumePausedForCurrentServer() async {
+    if (failResumePaused) throw StateError('resume paused downloads failed');
+  }
+
   @override
   Future<void> repairOfflineMetadataFragments() async {}
   @override
@@ -6171,6 +6245,7 @@ class _Preferences extends PlaybackPreferencesStorage {
   bool? gaplessResampling;
   int gaplessReads = 0;
   Future<bool?>? pendingGapless;
+  bool failCollectionListModeRead = false;
   final gaplessWrites = <bool>[];
   @override
   Future<bool?> readGaplessResampling() {
@@ -6210,9 +6285,10 @@ class _Preferences extends PlaybackPreferencesStorage {
   }
 
   @override
-  Future<bool?> readCollectionListMode() {
+  Future<bool?> readCollectionListMode() async {
     reads++;
-    return pending ?? Future.value(true);
+    if (failCollectionListModeRead) throw StateError('preferences unavailable');
+    return pending ?? true;
   }
 
   @override
@@ -6528,4 +6604,23 @@ class _WindowShuffleConnection extends _Connection {
   @override
   Future<ServerLikeState?> setLikeState(String trackId, bool liked) async =>
       ServerLikeState(trackId: trackId, liked: liked, updatedAt: 1);
+}
+
+class _ProjectionFailureConnection extends _Connection {
+  int failProjections = 0;
+
+  @override
+  Track projectServerTrack(Track track) {
+    if (failProjections > 0) {
+      failProjections--;
+      throw StateError('track projection failed');
+    }
+
+    return super.projectServerTrack(track);
+  }
+}
+
+class _LikedReadFailureConnection extends _Connection {
+  @override
+  Future<List<Track>> fetchLikedTracks() async => throw ApiException(503, 'Liked tracks unavailable');
 }

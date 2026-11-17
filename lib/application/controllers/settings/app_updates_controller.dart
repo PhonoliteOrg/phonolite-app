@@ -91,7 +91,7 @@ class AppUpdatesController extends ChangeNotifier {
       try {
         await _initialization;
         await _platform.dispose();
-      } catch (error) {
+      } on Object catch (error) {
         AppLogger.warning('App updater cleanup failed: $error');
       }
     }
@@ -134,7 +134,7 @@ class AppUpdatesController extends ChangeNotifier {
 
     try {
       await _platform.showUpdate();
-    } catch (error) {
+    } on Object catch (error) {
       if (_requests.isCurrent(generation)) {
         _report('Could not update the app', error);
       }
@@ -186,7 +186,7 @@ class AppUpdatesController extends ChangeNotifier {
       } else {
         _error = 'Update checks are unavailable in this build.';
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (!_requests.isCurrent(generation)) {
         return;
       }
@@ -223,7 +223,7 @@ class AppUpdatesController extends ChangeNotifier {
       if (_requests.isCurrent(generation)) {
         _latestRelease = release;
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (_requests.isCurrent(generation)) {
         _latestRelease = null;
         _report('Could not check for app updates', error);

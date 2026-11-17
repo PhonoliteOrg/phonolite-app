@@ -196,7 +196,7 @@ class _AudioWorkerEngine {
       }
 
       await current.session.seekTo(position, requestId: requestId);
-    } catch (error) {
+    } on Object catch (error) {
       if (isCurrent()) {
         _send({'type': 'message', 'text': 'Unable to prepare audio seek: $error', 'playback_id': sessionId});
       }
@@ -702,11 +702,7 @@ class _AudioWorkerEngine {
     }
 
     return future.whenComplete(() {
-      for (final id in keys) {
-        if (identical(_cancellations[id], future)) {
-          _cancellations.remove(id);
-        }
-      }
+      _cancellations.removeWhere((id, pending) => keys.contains(id) && identical(pending, future));
     });
   }
 
@@ -887,7 +883,7 @@ class _AudioWorkerEngine {
       // continue, or the timeline is never released and every later play or stop fails here.
       _timeline?.pause();
       await _timeline?.poll();
-    } catch (_) {
+    } on Object catch (_) {
       /* Output failure still releases every source. */
     }
 

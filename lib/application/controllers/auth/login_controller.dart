@@ -45,7 +45,8 @@ class LoginController extends FeatureController {
         _rememberMe = false;
       });
       return true;
-    } catch (_) {
+    } on Object catch (error) {
+      AppLogger.warning('Could not disconnect from the server: $error');
       update(() => _error = 'Could not disconnect from this server. Try again.');
       return false;
     } finally {
@@ -61,7 +62,8 @@ class LoginController extends FeatureController {
 
     try {
       saved = await app.loadSavedCredentials();
-    } catch (err) {
+    } on Object catch (err) {
+      // Best-effort prefill: the user can still type the sign-in by hand.
       AppLogger.warning('Could not read the saved sign-in: $err');
 
       return null;

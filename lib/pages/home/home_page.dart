@@ -86,8 +86,9 @@ class _HomePageState extends BasePageState<HomePage> {
       return;
     }
 
-    _statsCollectionSubscription?.cancel();
-    _authSubscription?.cancel();
+    // Cancelling a stream subscription only releases listeners; nothing waits on it here.
+    unawaited(_statsCollectionSubscription?.cancel());
+    unawaited(_authSubscription?.cancel());
     _controller = controller;
 
     _navigation?.dispose();
@@ -117,8 +118,9 @@ class _HomePageState extends BasePageState<HomePage> {
 
   @override
   void dispose() {
-    _statsCollectionSubscription?.cancel();
-    _authSubscription?.cancel();
+    // Cancelling a stream subscription only releases listeners; nothing waits on it here.
+    unawaited(_statsCollectionSubscription?.cancel());
+    unawaited(_authSubscription?.cancel());
 
     _navigation?.dispose();
     _tabBackChanges.dispose();
@@ -419,8 +421,12 @@ class _HomePageState extends BasePageState<HomePage> {
         isLocal: playback.isLocalPlayback || playback.queueSource == PlaybackQueueSource.offline,
         sourceTabIndex: sourceTabIndex,
       );
-    } catch (_) {
-      // Metadata may be unavailable if the server disconnects.
+    } on Object {
+      // Album metadata may be unavailable if the server disconnects. The
+      // message names the effect; the underlying error is not user-facing.
+      if (mounted && _selectedIndex == sourceTabIndex) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open this album.')));
+      }
     } finally {
       _openingPlaybackDetails = false;
     }

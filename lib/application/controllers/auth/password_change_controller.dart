@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/auth/server_failure_messages.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 class PasswordChangeController extends FeatureController {
@@ -87,7 +88,10 @@ class PasswordChangeController extends FeatureController {
 
       _clearPasswordsRevision++;
       update(() => _completed = true);
-    } catch (error) {
+    } on Object catch (error) {
+      // Only the type is logged: the failure may echo request content.
+      AppLogger.warning('Password change failed: ${error.runtimeType}');
+
       if (isDisposed) {
         return;
       }

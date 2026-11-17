@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -54,7 +56,8 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
     _usernameController = TextEditingController();
     _passwordController = TextEditingController();
 
-    _loadSavedCredentials();
+    // The controller treats an unreadable saved sign-in as a best-effort prefill and logs it.
+    unawaited(_loadSavedCredentials());
   }
 
   @override

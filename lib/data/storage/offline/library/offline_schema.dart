@@ -20,7 +20,10 @@ class _OfflineSchema {
               AND name = 'metadata'
             LIMIT 1
           ''').isNotEmpty;
-    } catch (_) {
+    } on SqliteException catch (error) {
+      // An unreadable catalog is opened as a new library; schema setup only creates missing tables.
+      AppLogger.warning('Could not inspect offline library tables: $error');
+
       return false;
     }
   }
@@ -34,7 +37,10 @@ class _OfflineSchema {
       }
 
       return int.tryParse(OfflineLibraryStorage._readString(rows.first, 'value')) ?? 0;
-    } catch (_) {
+    } on SqliteException catch (error) {
+      // An unknown version re-runs the schema setup and upgrade steps.
+      AppLogger.warning('Could not read offline library schema version: $error');
+
       return 0;
     }
   }
@@ -48,7 +54,10 @@ class _OfflineSchema {
       }
 
       return OfflineLibraryStorage._readString(rows.first, 'value') == '1';
-    } catch (_) {
+    } on SqliteException catch (error) {
+      // An unset flag re-runs its one-time step.
+      AppLogger.warning('Could not read offline library flag $key: $error');
+
       return false;
     }
   }
@@ -525,7 +534,8 @@ class _OfflineSchema {
           db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', ['json_migrated', '1']);
         });
       }
-    } catch (err) {
+    } on Object catch (err) {
+      // The legacy index import is best-effort; marking it done avoids retrying a damaged file on every open.
       AppLogger.warning('Failed to migrate offline JSON index: $err');
       db.execute('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', ['json_migrated', '1']);
     }

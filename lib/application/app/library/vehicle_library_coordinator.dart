@@ -84,8 +84,17 @@ class _VehicleLibraryCoordinator {
 
     final payload = _carPlayStatePayload();
 
-    _host._vehicleSurface.notifySourceState(payload).catchError((_) {});
-    _host._vehicleSurface.notifyAuthorization(payload.serverAvailable).catchError((_) {});
+    // State pushes are fire-and-forget; the next state change pushes a fresh snapshot.
+    unawaited(
+      _host._vehicleSurface.notifySourceState(payload).catchError((Object error) {
+        AppLogger.debug('Could not push vehicle source state: $error');
+      }),
+    );
+    unawaited(
+      _host._vehicleSurface.notifyAuthorization(payload.serverAvailable).catchError((Object error) {
+        AppLogger.debug('Could not push vehicle authorization state: $error');
+      }),
+    );
   }
 
   VehicleCommandResult _carPlayOk() => const VehicleCommandResult.ok();
@@ -217,22 +226,18 @@ class _VehicleLibraryCoordinator {
       ),
     ];
 
-    var liked = _host._liked;
-
-    if (liked.isEmpty) {
-      try {
-        liked = await _host.connection.fetchLikedTracks();
-      } catch (_) {
-        liked = const <Track>[];
-      }
-    }
+    final liked = await _carPlayServerLikedTracks();
 
     actions.add(
       VehicleItem.action(
         action: VehicleHomeAction.likedShuffle,
         title: 'Start Liked Shuffle',
-        subtitle: liked.isNotEmpty ? 'Shuffle liked songs' : 'No liked songs yet',
-        enabled: liked.isNotEmpty,
+        subtitle: switch (liked) {
+          null => 'Liked songs unavailable',
+          [] => 'No liked songs yet',
+          _ => 'Shuffle liked songs',
+        },
+        enabled: liked != null && liked.isNotEmpty,
       ),
     );
 
@@ -354,6 +359,10 @@ class _VehicleLibraryCoordinator {
     }
 
     final liked = await _carPlayServerLikedTracks();
+
+    if (liked == null) {
+      return const VehicleLibraryStatus(likedAvailable: false, failure: VehicleFailure.serverUnavailable);
+    }
 
     return VehicleLibraryStatus(likedAvailable: liked.isNotEmpty);
   }
@@ -511,7 +520,8 @@ class _VehicleLibraryCoordinator {
     return _carPlayOk();
   }
 
-  Future<List<Track>> _carPlayServerLikedTracks() async {
+  /// Returns the server liked tracks, or `null` when they could not be read.
+  Future<List<Track>?> _carPlayServerLikedTracks() async {
     if (!_host._authState.isAuthorized) {
       return const <Track>[];
     }
@@ -522,8 +532,10 @@ class _VehicleLibraryCoordinator {
 
     try {
       return await _host.connection.fetchLikedTracks();
-    } catch (_) {
-      return const <Track>[];
+    } on Object catch (error) {
+      AppLogger.debug('Could not load liked tracks for the vehicle surface: $error');
+
+      return null;
     }
   }
 

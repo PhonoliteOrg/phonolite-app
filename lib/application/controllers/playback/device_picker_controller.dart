@@ -1,5 +1,6 @@
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class DevicePickerController extends FeatureController {
   final Future<List<OutputDevice>> Function(bool refresh) fetchDevices;
@@ -42,7 +43,9 @@ class DevicePickerController extends FeatureController {
       }
 
       update(publishDevices);
-    } catch (err) {
+    } on Object catch (err) {
+      AppLogger.warning('Could not load output devices: $err');
+
       if (!_requests.isCurrent(request)) {
         return;
       }

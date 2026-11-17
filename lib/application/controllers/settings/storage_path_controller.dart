@@ -1,4 +1,5 @@
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/platform/files/macos_directory_access.dart';
 
 class StoragePathController extends FeatureController {
@@ -36,7 +37,9 @@ class StoragePathController extends FeatureController {
       await onSave(path.isEmpty ? null : path);
 
       return !isDisposed;
-    } catch (error) {
+    } on Object catch (error) {
+      AppLogger.warning('Could not change the storage folder: $error');
+
       void publishFailure() {
         _saving = false;
         _error = error.toString();
@@ -60,7 +63,8 @@ class StoragePathController extends FeatureController {
 
     try {
       return await _directoryAccess.selectDirectory(initialPath);
-    } catch (error) {
+    } on Object catch (error) {
+      AppLogger.warning('Storage folder picker failed: $error');
       update(() => _error = error.toString());
 
       return null;

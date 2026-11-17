@@ -24,7 +24,7 @@ class _LocalDataCoordinator {
       await _host.clearMessages();
 
       _host._pushMessage('Reset all local downloads, metadata, and logs.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to reset local data: $err', level: LogLevel.warning);
     }
   }
@@ -38,7 +38,7 @@ class _LocalDataCoordinator {
     } on TimeoutException {
       offlineRefreshCompleted = false;
       _host._pushMessage('Offline library refresh timed out; continuing with server refresh.', level: LogLevel.warning);
-    } catch (err) {
+    } on Object catch (err) {
       offlineRefreshCompleted = false;
       _host._pushMessage('Failed to refresh offline library: $err', level: LogLevel.warning);
     }
@@ -59,6 +59,16 @@ class _LocalDataCoordinator {
     }
   }
 
+  /// Loads the offline library during startup. An unreadable library is reported instead of failing startup,
+  /// so streaming keeps working; the library stays unloaded and each offline command retries the load.
+  Future<void> _loadOfflineLibraryAtStartup() async {
+    try {
+      await _host._offlineDownloadManager.load();
+    } on Object catch (err) {
+      _host._pushMessage('Failed to load the offline library: $err', level: LogLevel.warning);
+    }
+  }
+
   Future<void> loadOfflineStorageLocations() async {
     try {
       final locations = await _host._offlineStorage.resolveStorageLocations();
@@ -68,7 +78,7 @@ class _LocalDataCoordinator {
       if (!_offlineStorageLocationsController.isClosed) {
         _offlineStorageLocationsController.add(locations);
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to load offline storage settings: $err');
     }
   }
@@ -110,7 +120,7 @@ class _LocalDataCoordinator {
       await _host._offlineDownloadManager.load();
 
       _host._pushMessage(message);
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to update offline storage: $err');
     }
   }
@@ -133,6 +143,8 @@ mixin _LocalDataFacade {
   Future<void> refreshLibrary() => _localDataCoordinator.refreshLibrary();
 
   Future<void> loadOfflineStorageLocations() => _localDataCoordinator.loadOfflineStorageLocations();
+
+  Future<void> _loadOfflineLibraryAtStartup() => _localDataCoordinator._loadOfflineLibraryAtStartup();
 
   Future<void> updateOfflineMetadataDirectory(String? path) =>
       _localDataCoordinator.updateOfflineMetadataDirectory(path);

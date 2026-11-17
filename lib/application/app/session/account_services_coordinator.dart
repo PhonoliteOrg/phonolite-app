@@ -295,7 +295,7 @@ class _AccountServicesCoordinator {
     final session = _host.connection.sessionRevision;
     try {
       await _host.connection.revokeAllSessions();
-    } catch (_) {
+    } on Object catch (_) {
       // The revocation stream can sign this session out before its HTTP reply.
       if (_host.connection.sessionRevision != session && !_host._authState.isAuthorized) {
         return;
@@ -362,7 +362,7 @@ class _AccountServicesCoordinator {
           sequence: sequence,
           requestId: '$playbackSession-$sequence',
         );
-      } catch (error) {
+      } on Object catch (error) {
         AppLogger.debug('Could not remember the started track: $error');
         final transient =
             error is! ApiException || error.statusCode == 408 || error.statusCode == 429 || error.statusCode >= 500;
@@ -512,7 +512,7 @@ class _AccountServicesCoordinator {
         localPlaybackSource: LocalPlaybackSource.none,
         isLocalPlayback: false,
       );
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Remembered starting track is unavailable: $error');
     }
   }

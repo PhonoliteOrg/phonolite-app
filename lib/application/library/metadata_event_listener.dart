@@ -90,7 +90,8 @@ class MetadataEventListener {
         onDone: handleStreamDone,
         cancelOnError: true,
       );
-    } catch (error) {
+    } on Object catch (error) {
+      // Opening the stream can fail synchronously; retry like a disconnect.
       _onDiagnostic('Metadata event stream disconnected: $error');
       _scheduleReconnect(generation);
     }
@@ -110,21 +111,21 @@ class MetadataEventListener {
     _resyncPending = false;
     _flushReady = false;
 
-    final subscription = _subscription;
+    final cancellation = _subscription?.cancel();
 
     _subscription = null;
 
-    if (subscription != null) {
-      _cancellations = Future.wait<void>([_cancellations, _cancelSubscription(subscription)]).then((_) {});
+    if (cancellation != null) {
+      _cancellations = Future.wait<void>([_cancellations, _awaitCancellation(cancellation)]).then((_) {});
     }
 
     return _cancellations;
   }
 
-  Future<void> _cancelSubscription(StreamSubscription<MetadataUpdateEvent> subscription) async {
+  Future<void> _awaitCancellation(Future<void> cancellation) async {
     try {
-      await subscription.cancel();
-    } catch (error) {
+      await cancellation;
+    } on Object catch (error) {
       _onDiagnostic('Metadata event stream cancellation failed: $error');
     }
   }
@@ -209,7 +210,7 @@ class MetadataEventListener {
 
       try {
         await _applyEvent(event);
-      } catch (error) {
+      } on Object catch (error) {
         // One failed refresh must not poison the serial processing chain.
         _onDiagnostic('Metadata update failed: $error');
       }

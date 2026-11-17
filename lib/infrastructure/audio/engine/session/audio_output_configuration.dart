@@ -56,7 +56,7 @@ class _AudioOutputConfiguration {
       try {
         try {
           await player.initialize();
-        } catch (_) {
+        } on Object catch (_) {
           if (!_host._isActive ||
               epoch != _host._outputEpoch ||
               _host.settings.mode != 'auto' ||
@@ -84,7 +84,7 @@ class _AudioOutputConfiguration {
             return await _configurePcmOutput();
           }
         }
-      } catch (_) {
+      } on Object catch (_) {
         if (identical(_host._player, player)) {
           _host._player = null;
         }

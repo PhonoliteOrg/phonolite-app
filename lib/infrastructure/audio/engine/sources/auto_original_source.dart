@@ -349,7 +349,7 @@ class _AutoOriginalSource {
         // Let controls run between decoder-worker replies, even for cached files.
         await Future<void>.delayed(Duration.zero);
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (generation == _generation && !_closed) {
         _failed = true;
         _policy.retire(_now);
@@ -366,7 +366,7 @@ class _AutoOriginalSource {
         if (identical(_decoder, decoder)) {
           _decoder = null;
         }
-      } catch (error) {
+      } on Object catch (error) {
         if (generation == _generation && !_closed) {
           _failed = true;
           _policy.retire(_now);

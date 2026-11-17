@@ -79,18 +79,11 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
     }
 
     if (_host._playbackState.shuffleMode == ShuffleMode.album) {
-      var albumId = _host._playbackState.track?.albumId ?? _host._lastAlbumId;
+      final current = _host._playbackState.track;
+      var albumId = current?.albumId ?? _host._lastAlbumId;
 
-      if (albumId == null || albumId.isEmpty) {
-        final current = _host._playbackState.track;
-
-        if (current != null) {
-          try {
-            final full = await _host.connection.fetchTrackById(current.id);
-
-            albumId = full.albumId;
-          } catch (_) {}
-        }
+      if ((albumId == null || albumId.isEmpty) && current != null) {
+        albumId = await _fetchShuffleAlbumId(current);
       }
 
       if (albumId == null || albumId.isEmpty) {
@@ -110,11 +103,7 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
         var albumId = current.albumId;
 
         if (albumId == null || albumId.isEmpty) {
-          try {
-            final full = await _host.connection.fetchTrackById(current.id);
-
-            albumId = full.albumId;
-          } catch (_) {}
+          albumId = await _fetchShuffleAlbumId(current);
         }
 
         if (albumId != null && albumId.isNotEmpty) {
@@ -122,7 +111,7 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
             final album = await _host.connection.fetchAlbumById(albumId);
 
             artistId = album.artistId;
-          } catch (err) {
+          } on Object catch (err) {
             _host._pushMessage('Failed to resolve artist for shuffle: $err');
           }
         }
@@ -156,6 +145,17 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
     return const ShuffleContext(scope: 'library');
   }
 
+  /// The server's album id for [track]; null on failure, which callers handle with a fallback.
+  Future<String?> _fetchShuffleAlbumId(Track track) async {
+    try {
+      return (await _host.connection.fetchTrackById(track.id)).albumId;
+    } on Object catch (error) {
+      _host._pushMessage('Shuffle track lookup failed: $error', level: LogLevel.debug);
+
+      return null;
+    }
+  }
+
   Future<({String? artistId, String? albumId})> _resolveAlbumArtistForTrack(String trackId) async {
     String? albumId;
     String? artistId;
@@ -170,7 +170,7 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
 
         artistId = album.artistId;
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to resolve shuffle context: $err');
     }
 
@@ -211,7 +211,7 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
         final full = await _host.connection.fetchTrackById(trackId);
 
         return !full.liked;
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Failed to confirm liked status: $err');
 
         return true;
@@ -279,14 +279,15 @@ extension _ShuffleContextResolution on _ShuffleCoordinator {
               if (artist.id == artistId && matchesGenre(artist.genres)) {
                 return false;
               }
-            } catch (_) {
+            } on Object catch (error) {
               // A missing profile must not hide another contributor's genres.
+              _host._pushMessage('Shuffle artist genre lookup failed for $artistId: $error', level: LogLevel.debug);
             }
           }
         }
 
         return true;
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Failed to resolve custom shuffle match: $err');
 
         return true;

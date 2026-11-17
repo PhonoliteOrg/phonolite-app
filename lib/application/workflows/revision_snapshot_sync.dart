@@ -104,12 +104,7 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
     _idleTimer?.cancel();
     _idleTimer = null;
 
-    final subscription = _subscription;
-    _subscription = null;
-
-    if (subscription != null) {
-      _cancellations = Future.wait<void>([_cancellations, _cancel(subscription)]).then((_) {});
-    }
+    _cancelSubscription();
 
     return _cancellations;
   }
@@ -145,10 +140,20 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
     return _requests.isCurrent(generation) && session != null && _isSessionCurrent(session.baseUrl, session.token);
   }
 
-  Future<void> _cancel(StreamSubscription<RevisionEvent<TRevision>> subscription) async {
+  /// Detaches the current stream; [stop] callers wait for it through [_cancellations].
+  void _cancelSubscription() {
+    final cancellation = _subscription?.cancel();
+    _subscription = null;
+
+    if (cancellation != null) {
+      _cancellations = Future.wait<void>([_cancellations, _awaitCancellation(cancellation)]).then((_) {});
+    }
+  }
+
+  Future<void> _awaitCancellation(Future<void> cancellation) async {
     try {
-      await subscription.cancel();
-    } catch (error) {
+      await cancellation;
+    } on Object catch (error) {
       _onDiagnostic('Account event cancellation failed: $error');
     }
   }
@@ -183,13 +188,7 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
         return;
       }
 
-      final subscription = _subscription;
-      _subscription = null;
-
-      if (subscription != null) {
-        _cancellations = Future.wait<void>([_cancellations, _cancel(subscription)]).then((_) {});
-      }
-
+      _cancelSubscription();
       _disconnected(generation, connectionEpoch);
     });
   }
@@ -230,7 +229,8 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
         onDone: () => _disconnected(generation, connectionEpoch),
         cancelOnError: true,
       );
-    } catch (error, stackTrace) {
+    } on Object catch (error, stackTrace) {
+      // Opening the stream can fail synchronously; handle it like a stream error.
       fail(error, stackTrace);
     }
   }
@@ -363,8 +363,9 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
       _allowLowerRevision = false;
       final observed = _observedRevision;
       _dirty = observed != null && _isAhead(observed, _revisionOf(snapshot));
-    } catch (error) {
+    } on Object catch (error) {
       if (!isCurrent()) {
+        // A superseded refresh has no owner left to report to.
         return;
       }
 

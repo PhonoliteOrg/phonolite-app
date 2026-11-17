@@ -26,23 +26,34 @@ class OfflineStorageSettingsStorage {
       return const OfflineStorageSettings();
     }
 
+    final OfflineStorageSettings settings;
+
     try {
-      final settings = await _readFromDisk();
-
-      if (usesManagedStoragePaths) {
-        if (settings.metadataDirectory != null || settings.downloadsDirectory != null) {
-          await write(const OfflineStorageSettings());
-        }
-
-        return const OfflineStorageSettings();
-      }
-
-      return settings;
-    } catch (err) {
-      AppLogger.warning('Failed to read offline storage settings: $err');
+      settings = await _readFromDisk();
+    } on FormatException catch (err) {
+      // Content that does not decode is permanently unreadable, so it reads as the default locations and the
+      // next location update replaces the file. A file that cannot be read right now (a FileSystemException)
+      // propagates instead: treating it as the defaults would open another library and let a later update
+      // overwrite the configured paths.
+      AppLogger.warning('Offline storage settings are corrupt; using the default locations: $err');
 
       return const OfflineStorageSettings();
     }
+
+    if (!usesManagedStoragePaths) {
+      return settings;
+    }
+
+    if (settings.metadataDirectory != null || settings.downloadsDirectory != null) {
+      try {
+        await write(const OfflineStorageSettings());
+      } on Object catch (_) {
+        // Managed platforms always use the default locations, so stale paths left in the file change nothing;
+        // write() has logged the failure and the next read retries clearing them.
+      }
+    }
+
+    return const OfflineStorageSettings();
   }
 
   Future<OfflineStorageSettings> readRaw() async {
@@ -52,7 +63,8 @@ class OfflineStorageSettingsStorage {
 
     try {
       return await _readFromDisk();
-    } catch (err) {
+    } on Object catch (err) {
+      // Only used to find legacy paths to migrate; without them there is nothing to migrate.
       AppLogger.warning('Failed to read raw offline storage settings: $err');
 
       return const OfflineStorageSettings();

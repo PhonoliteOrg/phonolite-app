@@ -141,7 +141,7 @@ class _LocalCollectionCommands {
       await _loadLocalUserData();
 
       return localPlaylist;
-    } catch (_) {
+    } on Object catch (_) {
       if (!_host._localDataCurrent(dataRevision)) {
         rethrow;
       }
@@ -292,7 +292,7 @@ class _LocalCollectionCommands {
 
         try {
           await _loadLocalUserData();
-        } catch (err) {
+        } on Object catch (err) {
           AppLogger.warning('Failed to refresh local offline data: $err');
         }
       }

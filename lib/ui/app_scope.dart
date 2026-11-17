@@ -16,6 +16,10 @@ class AppScope extends InheritedWidget {
     return scope.controller;
   }
 
+  /// The nearest controller, or null when this context has no [AppScope].
+  static AppController? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppScope>()?.controller;
+
   @override
   bool updateShouldNotify(AppScope oldWidget) => controller != oldWidget.controller;
 }

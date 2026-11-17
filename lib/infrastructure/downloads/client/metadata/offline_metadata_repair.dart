@@ -217,7 +217,7 @@ class _OfflineMetadataRepair {
         );
 
         repairedKeys.addAll(persisted.map((trackId) => _host._lookupKey(serverBaseUrl, trackId)));
-      } catch (err) {
+      } on Object catch (err) {
         AppLogger.debug('Failed to persist offline metadata repair chunk: $err');
       }
     }
@@ -258,7 +258,7 @@ class _OfflineMetadataRepair {
   ) async {
     try {
       return await _host.connection.fetchOfflineMetadata(request.serverTrackId);
-    } catch (err) {
+    } on Object catch (err) {
       if (!_host._localDataCurrent(dataRevision)) {
         return null;
       }

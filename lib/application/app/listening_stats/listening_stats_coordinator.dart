@@ -4,6 +4,7 @@ class _ListeningStatsCoordinator {
   final AppController _host;
   AudioEngine? _audio;
   ListeningStatsSync? _listeningSync;
+  // ignore: cancel_subscriptions (AppController shutdown cancels it through _ListeningStatsFacade)
   StreamSubscription<ListeningStatsSnapshot>? _listeningSubscription;
   final _statsRefreshDebounce = DebouncedAction();
   Future<void>? _statsGenreRepair;
@@ -78,7 +79,7 @@ class _ListeningStatsCoordinator {
 
       await _refreshLocalStats();
       _host._gaplessCoordinator.prepare();
-    } catch (error) {
+    } on Object catch (error) {
       _audio?.configureListening(null);
       _host._pushMessage('Could not save the listening statistics setting: $error', level: LogLevel.warning);
       _statsCollectionController.add(_host.statsCollectionEnabled);
@@ -185,7 +186,7 @@ class _ListeningStatsCoordinator {
       _listeningSync = sync;
 
       await _refreshLocalStats();
-    } catch (error) {
+    } on Object catch (error) {
       _host._pushMessage('Listening history storage is unavailable: $error', level: LogLevel.warning);
     }
   }
@@ -213,7 +214,7 @@ class _ListeningStatsCoordinator {
             trust: saved.trust,
           ),
         );
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Could not save the listening account on this device: $err', level: LogLevel.warning);
       }
     }
@@ -238,7 +239,7 @@ class _ListeningStatsCoordinator {
     if (_host._listeningStats.storageError == null) {
       try {
         await _host._listeningStats.setAccount();
-      } catch (error) {
+      } on Object catch (error) {
         _host._pushMessage('Could not switch listening history: $error', level: LogLevel.warning);
 
         return;
@@ -290,7 +291,10 @@ class _ListeningStatsCoordinator {
 
       _stats = result;
       _statsController.add(result);
-    } catch (_) {
+    } on Object catch (error) {
+      AppLogger.debug('Could not read listening statistics: $error');
+
+      // Re-emit the last snapshot so listeners stop waiting; it is not replaced by an empty result.
       if (!_host._disposed) {
         _statsController.add(_stats);
       }
@@ -354,7 +358,7 @@ class _ListeningStatsCoordinator {
           _host._pushMessage('Listening history could not be saved: $error', level: LogLevel.warning);
         }),
       );
-    } catch (error) {
+    } on Object catch (error) {
       _host._pushMessage('Listening history could not be recorded: $error', level: LogLevel.warning);
     }
   }
@@ -585,7 +589,8 @@ class _ListeningStatsCoordinator {
     Future<MapEntry<String, List<String>>?> resolveSafely(ListeningEvent saved) async {
       try {
         return await resolve(saved);
-      } catch (error) {
+      } on Object catch (error) {
+        // Counted and reported once after the batch; the cursor retries it on a later pass.
         failed++;
         lastError = error;
 

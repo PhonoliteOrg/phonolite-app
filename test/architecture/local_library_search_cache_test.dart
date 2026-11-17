@@ -24,6 +24,8 @@ class _App extends Fake implements AppController {
   final authState = AuthState(isAuthorized: false, baseUrl: 'https://music.test:3000');
   @override
   Stream<AuthState> get authStream => authEvents.stream;
+
+  Future<void> closeAuthEvents() => authEvents.close();
 }
 
 /// Counts actual catalogue reads, rather than timing a small test fixture.
@@ -66,7 +68,7 @@ void main() {
 
   tearDown(() async {
     controller.dispose();
-    await app.authEvents.close();
+    await app.closeAuthEvents();
   });
 
   test('repeated snapshot searches reuse results without reading the catalogue', () {

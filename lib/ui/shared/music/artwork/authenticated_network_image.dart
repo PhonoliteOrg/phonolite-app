@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
 
 /// Flutter stream integration for a borrowed artwork capability. Networking,
 /// files, authentication and disk caching remain with the injected owner.
@@ -56,12 +57,16 @@ class AuthenticatedNetworkImage extends ImageProvider<AuthenticatedNetworkImage>
             return;
           }
           if (suppliedBytes && loader.cacheScope == _scope) {
-            final invalidation = loader.invalidate(request).catchError((Object _) {});
+            // A failed invalidation is reported; the retry may then revalidate the same cached bytes.
+            final invalidation = loader
+                .invalidate(request)
+                .catchError((Object error) => ArtworkErrors.instance.report(url, error));
             invalidations[key] = invalidation;
             unawaited(
               invalidation.whenComplete(() {
                 if (identical(invalidations[key], invalidation)) {
-                  invalidations.remove(key);
+                  // The removed future is this invalidation, which has already completed.
+                  unawaited(invalidations.remove(key));
                 }
               }),
             );

@@ -133,7 +133,7 @@ class _GaplessOutputTimeline {
     try {
       try {
         await output.initialize();
-      } catch (_) {
+      } on Object catch (_) {
         // Pre-Android-12 outputs can represent 24 integer bits through float.
         // Keep that existing precision policy while allowing a common PCM32
         // container for 16/24-bit sources; 32-bit sources never take this path.
@@ -160,7 +160,7 @@ class _GaplessOutputTimeline {
       }
 
       _configureConverter(source);
-    } catch (_) {
+    } on Object catch (_) {
       if (identical(_output, output)) {
         _output = null;
       }
@@ -303,7 +303,7 @@ class _GaplessOutputTimeline {
       } else {
         await writing;
       }
-    } catch (_) {
+    } on Object catch (_) {
       if (_spans.remove(span)) {
         source._deviceWritten -= span.remaining;
       }
@@ -340,7 +340,7 @@ class _GaplessOutputTimeline {
       checking = true;
       try {
         await poll();
-      } catch (error, stack) {
+      } on Object catch (error, stack) {
         if (!completed.isCompleted) {
           completed.completeError(error, stack);
         }
@@ -419,7 +419,7 @@ class _GaplessOutputTimeline {
       // A failed device may reject pause; the timeline must still close.
       _output?.pause();
       await poll();
-    } catch (_) {
+    } on Object catch (_) {
       /* A failed output must still close. */
     }
 

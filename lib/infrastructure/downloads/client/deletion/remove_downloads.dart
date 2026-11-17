@@ -136,9 +136,32 @@ class _DownloadRemoval {
     _host._rebuildDownloadIndexes();
     _host._emit();
 
-    await _host._storage.removeDownloadsScoped(
-      OfflineDeletionRequest(scope: scope, downloads: removals, downloadJobIds: removedJobIds.toList(growable: false)),
-    );
+    try {
+      await _host._storage.removeDownloadsScoped(
+        OfflineDeletionRequest(
+          scope: scope,
+          downloads: removals,
+          downloadJobIds: removedJobIds.toList(growable: false),
+        ),
+      );
+    } on Object {
+      // Nothing was deleted, so show the stored downloads again instead of
+      // the in-memory "removing" state, then report the failure to the caller.
+      // Stopped transfers have finished, so their stop markers can go: a kept
+      // marker would make later writes for these downloads delete their files.
+      await Future.wait(activeRemovals);
+
+      for (final key in removeKeys) {
+        _host._removedDownloadKeys.remove(key);
+        _host._cancelRequested.remove(key);
+      }
+
+      _host._downloads = await _host._storage.readDownloads();
+      _host._rebuildDownloadIndexes();
+      _host._emit();
+
+      rethrow;
+    }
 
     // Release old workers and file handles before finishing deletion, so an
     // immediate new download cannot inherit their partial files or stop flags.

@@ -169,7 +169,8 @@ class AudioEngine {
     final initialization = Completer<void>();
 
     _initialization = initialization.future;
-    _initialize().then(initialization.complete, onError: initialization.completeError);
+    // The completer receives both outcomes; callers observe it through the returned future.
+    unawaited(_initialize().then(initialization.complete, onError: initialization.completeError));
 
     return initialization.future;
   }
@@ -223,7 +224,7 @@ class AudioEngine {
       }
 
       await stop(waitForRelease: true);
-    } catch (error) {
+    } on Object catch (error) {
       if (generation == _workerGeneration) {
         _failWorker('Audio output reset forced worker retirement: $error');
       }
@@ -541,7 +542,7 @@ class AudioEngine {
 
     try {
       isolate = await _workerSpawner(receivePort.sendPort, _rootIsolateToken);
-    } catch (error) {
+    } on Object catch (error) {
       if (!_disposed && generation == _workerGeneration) {
         _failWorker('Audio worker failed to start: $error');
       }
@@ -872,7 +873,8 @@ class AudioEngine {
         _workerPort?.send(message);
       }
 
-      _ready.future.then(sendWhenReady);
+      // `_ready` only ever completes normally and `sendWhenReady` is synchronous.
+      unawaited(_ready.future.then(sendWhenReady));
 
       return;
     }

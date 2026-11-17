@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -23,7 +24,9 @@ class JsonSettingsFile {
       return null;
     }
 
-    final decoded = jsonDecode(await file.readAsString());
+    // File.readAsString reports malformed UTF-8 as a FileSystemException. Decoding the bytes here makes every
+    // kind of corrupt content a FormatException, so stores can tell it apart from a file they cannot read now.
+    final decoded = jsonDecode(utf8.decode(await file.readAsBytes()));
 
     return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
   }
@@ -53,7 +56,8 @@ class JsonSettingsFile {
 
       try {
         value = await read(source: file);
-      } catch (error) {
+      } on Object catch (error) {
+        // Recovery is documented above: the unreadable value is replaced and the store may report it.
         onReadError?.call(error);
       }
 
@@ -83,7 +87,8 @@ class JsonSettingsFile {
       await next;
     } finally {
       if (identical(_updates[key], tail)) {
-        _updates.remove(key);
+        // The removed entry is [tail], which never completes with an error.
+        unawaited(_updates.remove(key));
       }
     }
   }

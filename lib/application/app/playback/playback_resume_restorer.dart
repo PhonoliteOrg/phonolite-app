@@ -215,7 +215,7 @@ class _PlaybackResumeRestorer {
       }
 
       _owner.changed();
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Local playback reconciliation deferred: $error');
     } finally {
       _reconciling = false;

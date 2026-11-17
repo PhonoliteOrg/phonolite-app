@@ -213,7 +213,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
           );
           // The callback can run synchronously for an already decoded cover.
           entry.stream!.addListener(entry.listener!);
-        } catch (error) {
+        } on Object catch (error) {
           _failed(entry, error);
         }
       }

@@ -124,7 +124,7 @@ class _SseRequest<T> {
           _controller.add(event);
         }
       }
-    } catch (error, stackTrace) {
+    } on Object catch (error, stackTrace) {
       developer.log('Ignoring malformed SSE event', name: 'ServerConnection', error: error, stackTrace: stackTrace);
     }
   }
@@ -204,7 +204,7 @@ class _SseRequest<T> {
       }
 
       _watchIdle();
-    } catch (error, stackTrace) {
+    } on Object catch (error, stackTrace) {
       _fail(error, stackTrace);
     }
   }

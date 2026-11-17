@@ -237,8 +237,9 @@ class _OpusDecodePipeline {
       if (pump != null) {
         await pump;
       }
-    } catch (_) {
-      _host.requestStop(outcome: 'decode_error');
+    } on Object catch (_) {
+      // Stop is memoized; `run()` awaits its completion in its `finally`.
+      unawaited(_host.requestStop(outcome: 'decode_error'));
 
       rethrow;
     }

@@ -171,7 +171,8 @@ class LibraryController extends FeatureController {
   void clearSearch() {
     _searchDebounce.cancel();
     setQuery('');
-    app.search('', filter: 'all');
+    // The search command reports its own failures to the app message owner.
+    unawaited(app.search('', filter: 'all'));
   }
 
   /// Published offline snapshots contain immutable lists. Supplying their
@@ -244,7 +245,7 @@ class LibraryController extends FeatureController {
           label: label,
         ),
       );
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Failed to remove $label: $error');
     }
   }
@@ -278,7 +279,8 @@ class LibraryController extends FeatureController {
   }
 
   void runSearch(AppController controller) {
-    controller.search(_query.trim(), filter: 'all');
+    // The search command reports its own failures to the app message owner.
+    unawaited(controller.search(_query.trim(), filter: 'all'));
   }
 
   void queueSearch(AppController controller) {
@@ -286,14 +288,15 @@ class LibraryController extends FeatureController {
 
     _searchDebounce.cancel();
 
+    // The search command reports its own failures to the app message owner.
     if (query.length < 2) {
-      controller.search('', filter: 'all');
+      unawaited(controller.search('', filter: 'all'));
 
       return;
     }
 
     _searchDebounce.schedule(const Duration(milliseconds: 450), () {
-      controller.search(query, filter: 'all');
+      unawaited(controller.search(query, filter: 'all'));
     });
   }
 

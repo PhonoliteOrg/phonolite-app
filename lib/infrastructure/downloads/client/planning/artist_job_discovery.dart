@@ -129,7 +129,7 @@ class _ArtistJobDiscovery {
         }
 
         sources[i] = source.copyWith(status: OfflineDownloadStatus.downloaded, updatedAt: now, error: null);
-      } catch (err) {
+      } on Object catch (err) {
         AppLogger.warning(
           'Could not discover album ${source.label ?? source.sourceId} for '
           '${job.label ?? job.jobId}; download request retained: $err',

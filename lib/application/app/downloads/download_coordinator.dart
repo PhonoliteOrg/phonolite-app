@@ -64,7 +64,7 @@ class _DownloadCoordinator {
       } else {
         _host._pushMessage('${track.title} is already downloaded or queued.');
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue ${track.title}: $err', level: LogLevel.warning);
     }
   }
@@ -100,7 +100,7 @@ class _DownloadCoordinator {
       );
 
       _host._pushMessage('Saved local copy of $name.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to download playlist $name: $err', level: LogLevel.warning);
 
       rethrow;
@@ -130,7 +130,7 @@ class _DownloadCoordinator {
       final queuedTrackLabel = queuedCount == 1 ? 'track' : 'tracks';
 
       _host._pushMessage('Queued $queuedCount $queuedTrackLabel for ${artist.name}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue downloads for ${artist.name}: $err', level: LogLevel.warning);
     }
   }
@@ -158,7 +158,7 @@ class _DownloadCoordinator {
       await _host._offlineDownloadManager.pauseDownloadJob(job);
 
       _host._pushMessage('Paused downloads for ${_jobLabel(job)}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to pause downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
     }
   }
@@ -168,7 +168,7 @@ class _DownloadCoordinator {
       await _host._offlineDownloadManager.resumeDownloadJob(job);
 
       _host._pushMessage('Resumed downloads for ${_jobLabel(job)}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to resume downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
     }
   }
@@ -200,7 +200,7 @@ class _DownloadCoordinator {
   Future<void> retryOfflineDownload(OfflineTrackDownload download) async {
     try {
       await _host._offlineDownloadManager.retryDownload(download);
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to retry download of ${download.track.title}: $err', level: LogLevel.warning);
     }
   }
@@ -215,7 +215,7 @@ class _DownloadCoordinator {
       await _host._offlineDownloadManager.cancelDownloadJob(job);
 
       _host._pushMessage('Canceled downloads for ${_jobLabel(job)}.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to cancel downloads for ${_jobLabel(job)}: $err', level: LogLevel.warning);
     }
   }
@@ -273,6 +273,36 @@ class _DownloadCoordinator {
     await _removeOfflineDownloads(downloads, label: label ?? fallbackLabel, scope: scope);
   }
 
+  /// Pauses [serverBaseUrl]'s offline downloads without waiting, for a server that just became unreachable.
+  /// The connection change does not depend on it, so a failure is logged rather than thrown.
+  void _pauseServerDownloadsInBackground(String serverBaseUrl) {
+    unawaited(
+      _host._offlineDownloadManager.pauseDownloadsForServer(serverBaseUrl).catchError(
+        (Object error) => AppLogger.warning('Failed to pause offline downloads for $serverBaseUrl: $error'),
+      ),
+    );
+  }
+
+  /// Resumes paused offline downloads and repairs offline metadata without waiting, for a server that just
+  /// became reachable. The session does not depend on either, so each failure is logged rather than thrown.
+  void _resumeOfflineWorkInBackground() {
+    unawaited(
+      _host._offlineDownloadManager.resumePausedForCurrentServer().catchError(
+        (Object error) => AppLogger.warning('Failed to resume paused offline downloads: $error'),
+      ),
+    );
+    _repairOfflineMetadataInBackground();
+  }
+
+  /// Repairs offline metadata without waiting; a failure is logged, and the next reconnect retries it.
+  void _repairOfflineMetadataInBackground() {
+    unawaited(
+      _host._offlineDownloadManager.repairOfflineMetadataFragments().catchError(
+        (Object error) => AppLogger.warning('Failed to repair offline metadata: $error'),
+      ),
+    );
+  }
+
   Future<void> clearFailedOfflineDownloads() async {
     await _host._offlineDownloadManager.clearFailedAndCorrupt();
   }
@@ -311,7 +341,7 @@ class _DownloadCoordinator {
       await _host.loadOfflineStorageLocations();
 
       _host._pushMessage('Cleared unfinished download jobs and partial cache.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to clear download jobs and cache: $err', level: LogLevel.warning);
     }
   }
@@ -551,7 +581,7 @@ class _DownloadCoordinator {
       final queuedTrackLabel = queuedCount == 1 ? 'track' : 'tracks';
 
       _host._pushMessage('Queued $queuedCount $queuedTrackLabel for $label.');
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue downloads for $label: $err', level: LogLevel.warning);
     }
   }
@@ -658,6 +688,13 @@ mixin _DownloadFacade {
   Future<void> clearFailedOfflineDownloads() => _downloadsCoordinator.clearFailedOfflineDownloads();
 
   Future<void> resumePausedOfflineDownloads() => _downloadsCoordinator.resumePausedOfflineDownloads();
+
+  void _pauseServerDownloadsInBackground(String serverBaseUrl) =>
+      _downloadsCoordinator._pauseServerDownloadsInBackground(serverBaseUrl);
+
+  void _resumeOfflineWorkInBackground() => _downloadsCoordinator._resumeOfflineWorkInBackground();
+
+  void _repairOfflineMetadataInBackground() => _downloadsCoordinator._repairOfflineMetadataInBackground();
 
   Future<void> clearUnfinishedOfflineDownloads() => _downloadsCoordinator.clearUnfinishedOfflineDownloads();
 

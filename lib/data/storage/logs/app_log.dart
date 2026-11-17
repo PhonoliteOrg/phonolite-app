@@ -151,7 +151,7 @@ class AppLogger {
       }
 
       await flush();
-    } catch (error) {
+    } on Object catch (error) {
       _reportPersistenceError(error);
     }
   }
@@ -224,7 +224,7 @@ class AppLogger {
           }
 
           _persistenceError = null;
-        } catch (error) {
+        } on Object catch (error) {
           _reportPersistenceError(error);
         }
       }

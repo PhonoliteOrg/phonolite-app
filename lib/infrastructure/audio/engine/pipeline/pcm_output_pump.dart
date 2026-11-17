@@ -69,7 +69,7 @@ class _PcmOutputPump {
 
         try {
           await _writeSamples(player, chunk);
-        } catch (error) {
+        } on Object catch (_) {
           if (!_host._isActive) {
             return;
           }
@@ -81,10 +81,11 @@ class _PcmOutputPump {
           rethrow;
         }
       }
-    } catch (error) {
+    } on Object catch (error) {
       if (_host._isActive) {
         _host._log('Audio output failed: $error');
-        _host.requestStop(outcome: 'output_error');
+        // Stop is memoized; `run()` awaits its completion in its `finally`.
+        unawaited(_host.requestStop(outcome: 'output_error'));
         _host._sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
       }
     } finally {
@@ -169,7 +170,9 @@ class _PcmOutputPump {
         if (epoch != _host._outputEpoch || !identical(player, _host._player)) {
           return;
         }
-      } catch (_) {
+      } on Object catch (error) {
+        if (_host._isActive) _host._log('Audio output drain stopped: $error');
+
         return;
       }
 
@@ -180,7 +183,9 @@ class _PcmOutputPump {
           if (epoch == _host._outputEpoch && identical(player, _host._player)) {
             _host._playedSamples += tail;
           }
-        } catch (_) {}
+        } on Object catch (_) {
+          // Tail samples only refine listening statistics; the drain is already complete.
+        }
 
         return;
       }

@@ -5,6 +5,7 @@ import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/collections/playlist_track_actions.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 export 'package:phonolite_app/data/models/collections/playlist_track_actions.dart';
 
@@ -44,11 +45,11 @@ class AddToPlaylistController extends FeatureController {
 
     _sourceRevision++;
     _mutating.clear();
-    final subscription = _playlistSubscription;
+    final cancellation = _playlistSubscription?.cancel();
     _playlistSubscription = null;
 
-    if (subscription != null) {
-      unawaited(subscription.cancel().catchError(reportInitializationFailure));
+    if (cancellation != null) {
+      unawaited(cancellation.catchError(_reportCancelFailure));
     }
 
     _playlistChanges = playlistChanges;
@@ -110,13 +111,18 @@ class AddToPlaylistController extends FeatureController {
         (added ? _added : _removed).add(playlist.id);
         (added ? _removed : _added).remove(playlist.id);
       });
-    } catch (error, stackTrace) {
-      reportInitializationFailure(error, stackTrace);
+    } on Object catch (error) {
+      // The membership stays as last confirmed, so the row shows the real state.
+      AppLogger.warning('Could not update playlist ${playlist.id}: $error');
     } finally {
       if (revision == _sourceRevision) {
         update(() => _mutating.remove(playlist.id));
       }
     }
+  }
+
+  void _reportCancelFailure(Object error) {
+    AppLogger.warning('Could not stop the previous playlist source: $error');
   }
 
   void _listenToPlaylistChanges() {
@@ -241,6 +247,10 @@ class AddToPlaylistController extends FeatureController {
         if (playlistsSubscription != null) playlistsSubscription!.cancel(),
         if (authSubscription != null) authSubscription!.cancel(),
       ]);
+
+      // Not awaited: the done future completes only after this onCancel
+      // callback returns, so awaiting it here would never finish.
+      unawaited(controller.close());
     }
 
     controller = StreamController<List<Playlist>>(onListen: subscribe, onCancel: cancel);

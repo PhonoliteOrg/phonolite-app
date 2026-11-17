@@ -116,7 +116,7 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context, {VoidCallback? on
 void _openAlbumFromSheet(BuildContext sheetContext, VoidCallback openAlbum) {
   Navigator.of(sheetContext).pop();
 
-  Future<void>.microtask(openAlbum);
+  scheduleMicrotask(openAlbum);
 }
 
 class NowPlayingExpandedSheet extends StatelessWidget {

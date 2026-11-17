@@ -2,6 +2,7 @@ import 'package:phonolite_app/application/controllers/playback/custom_shuffle_co
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
 import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 /// An isolated editor draft. Remote changes require an explicit reload or copy.
 class ShufflePresetEditorController extends CustomShuffleController {
@@ -83,7 +84,9 @@ class ShufflePresetEditorController extends CustomShuffleController {
       }
 
       return !isDisposed && sessionValid;
-    } catch (error) {
+    } on Object catch (error) {
+      AppLogger.warning('Could not save the shuffle preset: $error');
+
       if (error is ApiException && error.statusCode == 409) {
         update(() {
           _conflict = true;
@@ -133,7 +136,8 @@ class ShufflePresetEditorController extends CustomShuffleController {
       });
 
       return latest;
-    } catch (_) {
+    } on Object catch (error) {
+      AppLogger.warning('Could not reload shuffle presets: $error');
       update(() => _error = 'Could not reload. Your draft is preserved.');
 
       return null;

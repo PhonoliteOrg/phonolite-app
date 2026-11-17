@@ -119,7 +119,7 @@ class _FileAudioSource {
           try {
             decoder = await _replaceDecoder(decoder, pendingSeekMs * _host._sampleRate ~/ 1000, resetBudget: true);
             failedDecoder = false;
-          } catch (_) {
+          } on Object catch (_) {
             if (!_host._isActive || generation != _host._seekRequestGeneration) {
               continue;
             }
@@ -199,7 +199,7 @@ class _FileAudioSource {
         _healthySince = null;
         try {
           decoder = await _replaceDecoder(decoder, _nextPresentationFrame);
-        } catch (_) {
+        } on Object catch (_) {
           if (!_host._isActive || generation != _host._seekRequestGeneration) {
             failedDecoder = true;
             continue;
@@ -207,7 +207,7 @@ class _FileAudioSource {
           rethrow;
         }
         continue;
-      } catch (_) {
+      } on Object catch (_) {
         if (!_host._isActive || generation != _host._seekRequestGeneration) {
           continue;
         }
@@ -333,7 +333,7 @@ class _FileAudioSource {
     final Duration actual;
     try {
       actual = await decoder.seek(Duration(milliseconds: targetMs));
-    } catch (_) {
+    } on Object catch (_) {
       if (!_host._isActive || requestGeneration != _host._seekRequestGeneration) {
         return;
       }
@@ -407,7 +407,7 @@ class _FileAudioSource {
 
     try {
       await _host._configurePcmOutput();
-    } catch (error) {
+    } on Object catch (error) {
       if (!_host._isLocalFile) {
         throw AudioSourceRejected(
           'The selected output could not open Original audio at ${_host._sampleRate} Hz '

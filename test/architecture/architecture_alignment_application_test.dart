@@ -202,7 +202,8 @@ void main() {
       var completed = false;
 
       final initialization = controller.initialize();
-      initialization.then((_) => completed = true);
+      // Left running: the test observes completion through the flag.
+      unawaited(initialization.then((_) => completed = true));
       expect(controller.initialize(), same(initialization));
       expect(app.calls, liked ? ['local liked', 'liked'] : ['local playlists', 'playlists']);
 

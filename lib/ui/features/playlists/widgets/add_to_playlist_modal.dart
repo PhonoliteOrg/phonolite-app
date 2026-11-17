@@ -154,7 +154,8 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
 
       setState(() => _actions = actions);
       _feature.setPlaylistSource(playlists: actions.playlists, playlistChanges: actions.playlistChanges);
-    } catch (error, stackTrace) {
+    } on Object catch (error, stackTrace) {
+      // The controller records the failure; the modal keeps its empty, disabled scope.
       _feature.reportInitializationFailure(error, stackTrace);
     }
   }

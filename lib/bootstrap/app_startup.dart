@@ -38,7 +38,7 @@ Future<void> runPhonolite() async {
 Future<void> _startApp() async {
   try {
     await _prepareStorage();
-  } catch (error, stackTrace) {
+  } on Object catch (error, stackTrace) {
     AppLogger.debug('Startup storage preparation failed: $error\n$stackTrace');
     // Show the failure instead of never reaching runApp, which leaves an empty window.
     runApp(

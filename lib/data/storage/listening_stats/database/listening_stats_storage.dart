@@ -93,7 +93,8 @@ void _listeningWorker(Map<String, dynamic> configuration) {
   try {
     database = _ListeningDatabase(configuration['path'] as String, configuration['device_id'] as String);
     reply.send({'ready': commands.sendPort, 'state': database.state('local')});
-  } catch (error) {
+  } on Object catch (error) {
+    // The isolate has no logger; its owner receives the failure and fails the open.
     reply.send({'startup_error': error.toString()});
     commands.close();
 
@@ -112,7 +113,8 @@ void _listeningWorker(Map<String, dynamic> configuration) {
       if (command == 'close') {
         commands.close();
       }
-    } catch (error) {
+    } on Object catch (error) {
+      // Each command reports its failure to the awaiting caller instead of killing the worker.
       reply.send({'id': request['id'], 'error': error.toString()});
     }
   });

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/playback/device_picker_controller.dart';
@@ -29,7 +31,8 @@ class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
 
     _listController = ScrollController();
 
-    _feature.loadDevices(refresh: true);
+    // The controller turns a failed load into its visible error state.
+    unawaited(_feature.loadDevices(refresh: true));
   }
 
   @override

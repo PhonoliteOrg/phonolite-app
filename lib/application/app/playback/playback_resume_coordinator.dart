@@ -53,7 +53,7 @@ class _PlaybackResumeCoordinator {
       if (snapshot != null && _activeScope == 'local' && selection == _selection && canRestore) {
         await _restorer.restoreLocal(snapshot, isCurrent: () => selection == _selection && canRestore);
       }
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Local playback restore deferred: $error');
     }
   }
@@ -251,7 +251,7 @@ class _PlaybackResumeCoordinator {
       if (_host._resumeDeviceStorageEnabled) {
         await _host._playbackResumeStorage.writeAccount(scope, snapshot, activate: false);
       }
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Account playback refresh deferred: $error');
     }
   }
@@ -289,7 +289,7 @@ class _PlaybackResumeCoordinator {
 
       _activeScope = active;
       await _restorer.restoreCachedAccount(cached, isCurrent: isCurrent);
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Saved account playback restore deferred: $error');
     }
   }
@@ -361,7 +361,7 @@ class _PlaybackResumeCoordinator {
         }
         _scheduleAccountWrite(start: false);
       }
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Playback state commit deferred: $error');
     }
   }
@@ -479,7 +479,7 @@ class _PlaybackResumeCoordinator {
           isCurrent: () => _isAccountCurrent(session, scope) && selection == _selection && canRestore,
         );
       }
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.debug('Account playback restore deferred: $error');
       // Network failures retain the durable account cache; they are not deletions.
       final scope = _scope;
@@ -539,7 +539,7 @@ class _PlaybackResumeCoordinator {
         AccountPlaybackSnapshot? snapshot;
         try {
           snapshot = await send();
-        } catch (error) {
+        } on Object catch (error) {
           final transient =
               error is! ApiException || error.statusCode == 408 || error.statusCode == 429 || error.statusCode >= 500;
           if (!transient || !_isAccountCurrent(session, scope) || selection != _selection) {
@@ -587,7 +587,7 @@ class _PlaybackResumeCoordinator {
         } else {
           AppLogger.debug('Playback checkpoint write deferred: $error');
         }
-      } catch (error) {
+      } on Object catch (error) {
         AppLogger.debug('Playback checkpoint write deferred: $error');
       }
     });

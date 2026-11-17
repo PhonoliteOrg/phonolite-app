@@ -89,7 +89,7 @@ class _PlaylistCoordinator {
       }
 
       _host._handleApiError(err, context: 'playlists');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -141,7 +141,7 @@ class _PlaylistCoordinator {
       }
 
       _host._handleApiError(err, context: 'playlist tracks');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent() || !_playlistTrackRequests.isCurrent(requestId) || _currentPlaylistId != playlistId) {
         return;
       }
@@ -208,7 +208,7 @@ class _PlaylistCoordinator {
       _host._handleApiError(err, context: 'create playlist');
 
       rethrow;
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -239,7 +239,7 @@ class _PlaylistCoordinator {
       if (imageEdit.kind != PlaylistImageEditKind.keep) {
         await _host._offlineDownloadManager.updateLocalPlaylistImage(playlist.id, imageEdit);
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to create local playlist: $err');
 
       rethrow;
@@ -284,7 +284,7 @@ class _PlaylistCoordinator {
       _host._handleApiError(err, context: 'rename playlist');
 
       rethrow;
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -309,7 +309,7 @@ class _PlaylistCoordinator {
       if (imageEdit.kind != PlaylistImageEditKind.keep) {
         await _host._offlineDownloadManager.updateLocalPlaylistImage(playlistId, imageEdit);
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to rename local playlist: $err');
 
       rethrow;
@@ -350,7 +350,7 @@ class _PlaylistCoordinator {
       }
 
       _host._handleApiError(err, context: 'delete playlist');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -364,7 +364,7 @@ class _PlaylistCoordinator {
   Future<void> deleteLocalPlaylist(String playlistId) async {
     try {
       await _host._offlineDownloadManager.deleteLocalPlaylist(playlistId);
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to delete local playlist: $err');
     }
   }
@@ -403,7 +403,7 @@ class _PlaylistCoordinator {
       }
 
       _host._handleApiError(err, context: 'update playlist');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -459,7 +459,7 @@ class _PlaylistCoordinator {
       }
 
       _host._handleApiError(err, context: 'update playlist');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -477,7 +477,7 @@ class _PlaylistCoordinator {
       if (updated != null) {
         _host._pushMessage('Added to local playlist: ${updated.name}');
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to update local playlist: $err');
 
       rethrow;
@@ -528,7 +528,7 @@ class _PlaylistCoordinator {
       }
 
       _host._handleApiError(err, context: 'update playlist');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -550,7 +550,7 @@ class _PlaylistCoordinator {
       if (updated != null) {
         _host._pushMessage('Removed from local playlist: ${updated.name}');
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to update local playlist: $err');
 
       rethrow;

@@ -59,7 +59,7 @@ class AndroidChannelPlayer implements BoundedAudioPcmOutput, AudioPcm32Output {
     try {
       // Wait for startup to hand over any late native handle before closing it.
       await _openFuture;
-    } catch (_) {
+    } on Object catch (_) {
       // The initialization caller owns the startup failure.
     }
 

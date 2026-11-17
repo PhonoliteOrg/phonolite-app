@@ -28,7 +28,7 @@ Future<void> precacheImages(
         context,
         onError: (error, _) => ArtworkErrors.instance.report(url, error),
       );
-    } catch (error) {
+    } on Object catch (error) {
       ArtworkErrors.instance.report(url, error);
     }
   }

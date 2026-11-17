@@ -92,7 +92,7 @@ class _DownloadPlanner {
         if (playlistOwned && !await _host._storage.hasDownloadDemand(source)) {
           return 0;
         }
-      } catch (err) {
+      } on Object catch (err) {
         if (!current()) {
           return 0;
         }
@@ -128,7 +128,7 @@ class _DownloadPlanner {
 
       try {
         metadata = await _host.connection.fetchOfflineMetadata(serverTrackId);
-      } catch (err) {
+      } on Object catch (err) {
         if (!_host._localDataCurrent(dataRevision)) {
           return 0;
         }

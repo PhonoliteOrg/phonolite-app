@@ -179,7 +179,7 @@ class _ShuffleCoordinator {
 
       _clearServerShuffleSession();
       _host._handleApiError(err, context: 'queue shuffle');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -249,7 +249,7 @@ class _ShuffleCoordinator {
         if (_host._sessionCoordinator._isServerSessionCurrent(revision) && identical(_serverDeck, deck)) {
           _applyServerShuffleWindow(deck);
         }
-      } catch (error) {
+      } on Object catch (error) {
         if (identical(_serverDeck, deck) && error is ApiException && error.statusCode == 404) {
           _serverDeckExpired = true;
         }
@@ -489,7 +489,7 @@ class _ShuffleCoordinator {
       if (play) {
         await _host._playCurrent();
       }
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to queue local shuffle: $err');
     } finally {
       playback._finishShuffleSelection(selection);
@@ -638,7 +638,7 @@ class _ShuffleCoordinator {
         final full = await _host.connection.fetchTrackById(current.id);
 
         albumId = full.albumId;
-      } catch (err) {
+      } on Object catch (err) {
         _host._pushMessage('Failed to resolve album for track: $err');
       }
     }

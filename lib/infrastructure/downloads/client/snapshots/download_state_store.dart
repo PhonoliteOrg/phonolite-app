@@ -135,7 +135,7 @@ class _DownloadStateStore {
 
     try {
       await _host.connection.applyDownloadJobAction(jobId: jobId, action: 'delete');
-    } catch (err, stackTrace) {
+    } on Object catch (err, stackTrace) {
       developer.log(
         'Failed to retire v2 download job after local removal',
         name: 'OfflineDownloadManager',

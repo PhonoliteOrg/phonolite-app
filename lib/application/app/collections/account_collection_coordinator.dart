@@ -67,7 +67,7 @@ class _AccountCollectionCoordinator {
       _enabled = true;
       _negotiationAttempts = 0;
       _sync.start(baseUrl: _host.connection.baseUrl, token: token);
-    } catch (error) {
+    } on Object catch (error) {
       if (_canStart(request, revision)) {
         _sessionRevision = null;
         AppLogger.debug('Could not negotiate account collection sync: $error');

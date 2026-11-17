@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
+
 /// Coalesces downloaded-artist events without launching parallel repair sweeps.
 /// Overflow uses a cursor over current local state instead of retaining more IDs.
 class OfflineArtistMetadataRepairQueue {
@@ -99,8 +101,15 @@ class OfflineArtistMetadataRepairQueue {
 
       try {
         await repair(id);
-      } catch (error) {
-        onError?.call(error);
+      } on Object catch (error) {
+        // One failed artist must not stop the queue; the owner reports it.
+        final report = onError;
+
+        if (report != null) {
+          report(error);
+        } else {
+          AppLogger.warning('Offline artist metadata repair failed for $id: $error');
+        }
       }
     }
   }

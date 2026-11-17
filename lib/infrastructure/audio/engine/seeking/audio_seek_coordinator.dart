@@ -26,7 +26,9 @@ class _AudioSeekCoordinator {
         final done = await _host._collectListeningSamples(output);
 
         _host._playedSamples += done;
-      } catch (_) {}
+      } on Object catch (_) {
+        // Listening statistics are best effort; a seek must not fail on them.
+      }
     }
 
     _host._listening.flush();
@@ -62,7 +64,8 @@ class _AudioSeekCoordinator {
       }
 
       _failSeek('timeout');
-      _host.requestStop(outcome: 'seek_timeout');
+      // Stop is memoized; `run()` awaits its completion in its `finally`.
+      unawaited(_host.requestStop(outcome: 'seek_timeout'));
       _host._sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
     }
 
@@ -98,7 +101,8 @@ class _AudioSeekCoordinator {
 
       _host._log('Unable to flush audio output: $error');
       _failSeek('output_error');
-      _host.requestStop(outcome: 'output_error');
+      // Stop is memoized; `run()` awaits its completion in its `finally`.
+      unawaited(_host.requestStop(outcome: 'output_error'));
       _host._sendPlaybackMessage({'type': 'state', 'active': false, 'paused': false});
     }
 
@@ -108,7 +112,8 @@ class _AudioSeekCoordinator {
       // A cached seek requires neither server transcoding nor retransmission.
       try {
         quic.suspendAudio();
-      } catch (_) {
+      } on Object catch (_) {
+        // A transport that cannot suspend is repaired before the next remote read.
         _host._ownerRemote._repairRequested = true;
       }
 
@@ -172,7 +177,9 @@ class _AudioSeekCoordinator {
       try {
         await _host._collectListeningSamples(player);
         _host._listening.flush();
-      } catch (_) {}
+      } on Object catch (_) {
+        // Listening statistics are best effort; the output is still flushed below.
+      }
 
       await player.flush();
 

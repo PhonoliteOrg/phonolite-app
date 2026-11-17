@@ -34,6 +34,13 @@ linter:
   # producing the lint.
   rules:
     always_use_package_imports: true
+    avoid_catches_without_on_clauses: true
+    cancel_subscriptions: true
+    close_sinks: true
+    discarded_futures: true
+    empty_catches: true
+    unawaited_futures: true
+    use_build_context_synchronously: true
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 

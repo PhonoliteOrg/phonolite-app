@@ -65,7 +65,7 @@ class _FavoritesCoordinator {
       }
 
       _host._handleApiError(err, context: 'liked tracks');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -110,7 +110,7 @@ class _FavoritesCoordinator {
       }
 
       _host._handleApiError(err, context: 'like');
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -137,7 +137,7 @@ class _FavoritesCoordinator {
 
       _updateLocalLike(localId, !currentlyLiked);
       await _host._pushNowPlayingUpdate(force: true);
-    } catch (err) {
+    } on Object catch (err) {
       _host._pushMessage('Failed to update local like: $err');
     }
   }

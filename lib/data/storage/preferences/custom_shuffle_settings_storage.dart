@@ -42,7 +42,8 @@ class CustomShuffleSettingsStorage {
 
     try {
       await _file.write(settings.toJson());
-    } catch (err) {
+    } on Object catch (err) {
+      // Legacy whole-file write; shuffle filters are a convenience and the next save retries.
       AppLogger.warning('Failed to persist shuffle settings: $err');
     }
   }
@@ -69,7 +70,8 @@ class CustomShuffleSettingsStorage {
       }
 
       return CustomShuffleSettings.fromJson(value);
-    } catch (err) {
+    } on Object catch (err) {
+      // An unreadable file means no saved filters; the next update replaces it.
       AppLogger.warning('Failed to read shuffle settings: $err');
 
       return const CustomShuffleSettings();

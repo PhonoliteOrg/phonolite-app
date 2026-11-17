@@ -28,7 +28,7 @@ void main() {
     expect(states.every((state) => state.transports.single == NetworkTransport.wifi), isTrue);
     expect(await source.currentState(), states.last);
     await subscription.cancel();
-    await connectivity.changes.close();
+    await connectivity.closeChanges();
     await routes.close();
   });
 
@@ -49,7 +49,7 @@ void main() {
     expect(routeCancelled, isTrue);
     await subscription.cancel();
     expect(connectivity.cancelled, isTrue);
-    await connectivity.changes.close();
+    await connectivity.closeChanges();
     await routes.close();
   });
 
@@ -63,7 +63,7 @@ void main() {
 
     expect(routeCancelled, isTrue);
     expect(connectivity.cancelled, isTrue);
-    await connectivity.changes.close();
+    await connectivity.closeChanges();
     await routes.close();
   });
 
@@ -86,6 +86,8 @@ class _Connectivity implements Connectivity {
 
   @override
   Stream<List<ConnectivityResult>> get onConnectivityChanged => changes.stream;
+
+  Future<void> closeChanges() => changes.close();
 
   @override
   Future<List<ConnectivityResult>> checkConnectivity() async => [ConnectivityResult.wifi];

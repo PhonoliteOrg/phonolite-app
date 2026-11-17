@@ -126,8 +126,7 @@ class _SessionCoordinator {
         return;
       }
 
-      unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
-      unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+      _host._resumeOfflineWorkInBackground();
 
       if (rememberMe) {
         final credentials = AuthCredentials(
@@ -141,7 +140,7 @@ class _SessionCoordinator {
 
         try {
           await _storeSavedCredentials(credentials);
-        } catch (err) {
+        } on Object catch (err) {
           if (isCurrent()) {
             _reportSavedCredentialsFailure('remember this sign-in on this device', err);
           }
@@ -149,7 +148,7 @@ class _SessionCoordinator {
       } else {
         try {
           await _clearSavedCredentials();
-        } catch (err) {
+        } on Object catch (err) {
           if (isCurrent()) {
             _reportSavedCredentialsFailure('remove the previously saved sign-in', err);
           }
@@ -164,7 +163,7 @@ class _SessionCoordinator {
 
       _setSessionStatus(SessionStatus.serverReachable, error: message);
       _host._pushMessage('Login failed: $message', level: LogLevel.error);
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return;
       }
@@ -234,10 +233,21 @@ class _SessionCoordinator {
         return;
       }
 
-      unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+      _host._repairOfflineMetadataInBackground();
     }
 
-    initializeTokenSession();
+    Future<void> initializeTokenSessionSafely() async {
+      try {
+        await initializeTokenSession();
+      } on Object catch (error) {
+        if (_isServerSessionCurrent(sessionRevision)) {
+          _host._pushMessage('Could not finish preparing the session: $error', level: LogLevel.warning);
+        }
+      }
+    }
+
+    // Token sign-in is synchronous for callers; follow-up preparation reports its own failure.
+    unawaited(initializeTokenSessionSafely());
   }
 
   Future<bool> probeServer(String input) async {
@@ -286,7 +296,7 @@ class _SessionCoordinator {
       );
 
       return true;
-    } catch (err) {
+    } on Object catch (err) {
       if (!isCurrent()) {
         return false;
       }
@@ -321,7 +331,8 @@ class _SessionCoordinator {
 
     final preserveLocalPlayback = _host._playbackState.isLocalPlayback && _host._playbackState.track != null;
 
-    _host._stopMetadataEventListener();
+    // The listener reports its own cancellation failures.
+    unawaited(_host._stopMetadataEventListener());
     _host._accountServices.stopPlaybackPresence();
     _beginBestEffortServerLogout();
     _pauseDownloadsForDisconnectedServer(serverBaseUrl);
@@ -482,7 +493,8 @@ class _SessionCoordinator {
 
     final preserveLocalPlayback = _host._playbackState.isLocalPlayback && _host._playbackState.track != null;
 
-    _host._stopMetadataEventListener();
+    // The listener reports its own cancellation failures.
+    unawaited(_host._stopMetadataEventListener());
     _pauseDownloadsForDisconnectedServer(serverBaseUrl);
     _host._serverHealthFailureCount = 0;
     _host._serverReconnectAttempt = 0;
@@ -507,7 +519,7 @@ class _SessionCoordinator {
     Future<void> requestServerLogout() async {
       try {
         await _host.connection.logout(timeout: AppController._serverLogoutBestEffortTimeout);
-      } catch (err) {
+      } on Object catch (err) {
         AppLogger.debug('Server logout skipped after local disconnect: $err');
       }
     }
@@ -519,7 +531,7 @@ class _SessionCoordinator {
     Future<void> pauseServerDownloads() async {
       try {
         await _host._offlineDownloadManager.pauseDownloadsForServer(serverBaseUrl);
-      } catch (err) {
+      } on Object catch (err) {
         if (_host._disposed) {
           return;
         }
@@ -535,7 +547,12 @@ class _SessionCoordinator {
     _host._gaplessCoordinator.invalidate();
     _host._shuffleCoordinator._clearServerShuffleSession();
     _host._resetTrackTransitionState();
-    _host._audioEngine.stop();
+    // Disconnect cannot wait for the worker; report a failed stop here.
+    unawaited(
+      _host._audioEngine.stop().catchError((Object error) {
+        AppLogger.warning('Stopping audio after server disconnect failed: $error');
+      }),
+    );
 
     _host._playQueue = <Track>[];
     _host._playIndex = 0;
@@ -565,7 +582,8 @@ class _SessionCoordinator {
       localPlaybackSource: LocalPlaybackSource.none,
     );
 
-    _host._clearNowPlaying();
+    // Best effort; clearing Now Playing logs its own failure.
+    unawaited(_host._clearNowPlaying());
   }
 
   bool _isRestoreSessionCurrent(int revision) {
@@ -577,7 +595,7 @@ class _SessionCoordinator {
 
     try {
       credentials = await _host.loadSavedCredentials();
-    } catch (err) {
+    } on Object catch (err) {
       if (_isRestoreSessionCurrent(revision)) {
         _reportSavedCredentialsFailure('read the saved sign-in', err);
         _setSessionStatus(SessionStatus.offline, error: null);
@@ -601,7 +619,7 @@ class _SessionCoordinator {
     if (credentials.token.trim().isEmpty) {
       try {
         await _clearSavedCredentials();
-      } catch (err) {
+      } on Object catch (err) {
         _reportSavedCredentialsFailure('remove the empty saved sign-in', err);
       }
 
@@ -647,8 +665,7 @@ class _SessionCoordinator {
         return;
       }
 
-      unawaited(_host._offlineDownloadManager.resumePausedForCurrentServer());
-      unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
+      _host._resumeOfflineWorkInBackground();
       unawaited(_host._refreshServerPorts(timeout: AppController._storedSessionRequestTimeout, retryable: false));
     } on ApiException catch (err) {
       if (!_isRestoreSessionCurrent(revision)) {
@@ -662,7 +679,7 @@ class _SessionCoordinator {
       } else {
         _setSessionStatus(SessionStatus.serverUnavailable, error: 'Saved server unavailable');
       }
-    } catch (err) {
+    } on Object catch (err) {
       if (!_isRestoreSessionCurrent(revision)) {
         return;
       }
@@ -823,7 +840,8 @@ class _SessionCoordinator {
       unawaited(_host._collectionCoordinator.start());
       unawaited(_host._listeningSync?.sync(immediate: true) ?? Future<void>.value());
     } else {
-      _host._stopMetadataEventListener();
+      // The listener reports its own cancellation failures.
+      unawaited(_host._stopMetadataEventListener());
       unawaited(_host._collectionCoordinator.stop());
       unawaited(_host._accountServices.stop());
     }

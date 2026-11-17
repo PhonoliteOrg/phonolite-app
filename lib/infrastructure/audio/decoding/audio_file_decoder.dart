@@ -166,7 +166,7 @@ class AudioFileDecoder {
       await replacement.initialize();
 
       return replacement;
-    } catch (_) {
+    } on Object catch (_) {
       await replacement.close();
       rethrow;
     }
@@ -242,7 +242,7 @@ class AudioFileDecoder {
         'start_frame': _startFrame,
       };
       _isolate = await (_workerSpawner ?? _spawnWorker)(configuration, _errors!.sendPort, _exit!.sendPort);
-    } catch (error, stack) {
+    } on Object catch (error, stack) {
       _fail(error, stack);
       _exited.complete();
     }
@@ -263,7 +263,9 @@ class AudioFileDecoder {
 
       try {
         await initialization;
-      } catch (_) {
+      } on Object catch (_) {
+        // The initialization failure was already reported through `_fail`;
+        // closing only has to wait for a spawned worker to exit.
         if (_isolate != null) {
           await _exited.future;
         }
@@ -571,7 +573,7 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
           default:
             throw StateError('Unknown file decoder command.');
         }
-      } catch (error) {
+      } on Object catch (error) {
         reply.send({
           'id': requestId,
           'error': error.toString(),
@@ -580,7 +582,7 @@ Future<void> _decodeFileWorker(Map<String, dynamic> configuration) async {
         });
       }
     }
-  } catch (error) {
+  } on Object catch (error) {
     reply.send({
       'error': error.toString(),
       'source_rejected': error is LocalAudioException && error.isSourceRejected,

@@ -131,7 +131,7 @@ class NativeDesktopLifecyclePlatform with WindowListener implements DesktopLifec
         _tray.show(onShow: () => _dispatch(show), onQuit: () => _dispatch(_onQuit));
 
         _trayReady = true;
-      } catch (_) {
+      } on Object catch (_) {
         _tray.dispose();
         rethrow;
       }

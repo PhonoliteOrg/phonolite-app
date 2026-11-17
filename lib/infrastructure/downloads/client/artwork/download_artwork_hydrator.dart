@@ -127,7 +127,7 @@ class _DownloadArtworkHydrator {
 
       _applyArtworkPaths(localTrackId, paths, download.track);
       _host._scheduleLocalUserDataReload();
-    } catch (err) {
+    } on Object catch (err) {
       if (!_host._localDataCurrent(dataRevision)) {
         return;
       }

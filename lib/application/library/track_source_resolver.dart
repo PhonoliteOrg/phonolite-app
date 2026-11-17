@@ -4,6 +4,7 @@ import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/library/track_match.dart';
 import 'package:phonolite_app/data/models/library/track_source_match.dart';
 import 'package:phonolite_app/data/rules/library/track_matching.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 typedef ReadTrackSourceMatches = Future<List<TrackSourceMatch>> Function(String serverBaseUrl, String localTrackId);
@@ -142,8 +143,11 @@ class TrackSourceResolver {
       );
 
       return isCurrent() ? _withSource(resolved, origin, localId) : null;
-    } catch (_) {
-      // Transport or cache unavailability must not erase an accepted association.
+    } on Object catch (error) {
+      // Best-effort: the track stays playable locally without a server source, and
+      // transport or cache unavailability must not erase an accepted association.
+      AppLogger.warning('Could not resolve a server source for local track $localId: $error');
+
       return null;
     }
   }

@@ -115,7 +115,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
       }
 
       await _storage.write(next);
-    } catch (_) {
+    } on Object catch (_) {
       if (backgroundAttempted) {
         await _restoreBackground(backgroundWasActive);
       }
@@ -145,7 +145,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
 
       await _platform.initialize(onClose: closeWindow, onQuit: quit);
       _platformInitialized = true;
-    } catch (error) {
+    } on Object catch (error) {
       _starting = false;
       await _disposePlatformAfterFailedStart();
       reportError('Desktop integration could not start', error);
@@ -166,13 +166,13 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
     try {
       await _platform.setBackgroundEnabled(settings.runInBackground);
       _backgroundActive = settings.runInBackground;
-    } catch (error) {
+    } on Object catch (error) {
       reportError('Background mode could not start', error);
     }
 
     try {
       await _platform.setLaunchAtStartup(settings.launchAtStartup);
-    } catch (error) {
+    } on Object catch (error) {
       reportError('Launch at startup could not be applied', error);
     }
   }
@@ -180,7 +180,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
   Future<void> _disposePlatformAfterFailedStart() async {
     try {
       await _platform.dispose();
-    } catch (cleanupError) {
+    } on Object catch (cleanupError) {
       AppLogger.warning('Desktop initialization cleanup failed: $cleanupError');
     }
   }
@@ -189,7 +189,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
     try {
       await _platform.setBackgroundEnabled(active);
       _backgroundActive = active;
-    } catch (rollbackError) {
+    } on Object catch (rollbackError) {
       _backgroundActive = false;
       AppLogger.warning('Desktop background rollback failed: $rollbackError');
     }
@@ -198,7 +198,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
   Future<void> _restoreLaunchAtStartup(bool enabled) async {
     try {
       await _platform.setLaunchAtStartup(enabled);
-    } catch (rollbackError) {
+    } on Object catch (rollbackError) {
       AppLogger.warning('Desktop startup rollback failed: $rollbackError');
     }
   }
@@ -216,7 +216,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
 
     try {
       await _beforeQuit?.call();
-    } catch (error) {
+    } on Object catch (error) {
       AppLogger.warning('Desktop shutdown cleanup failed: $error');
     }
 

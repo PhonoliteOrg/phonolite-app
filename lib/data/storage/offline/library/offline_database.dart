@@ -48,8 +48,9 @@ class _OfflineDatabase {
 
     try {
       return await opening;
-    } catch (_) {
-      OfflineLibraryStorage._openDatabases.remove(key);
+    } on Object catch (_) {
+      // The removed entry is [opening], whose failure is rethrown here.
+      unawaited(OfflineLibraryStorage._openDatabases.remove(key));
 
       rethrow;
     }

@@ -7,6 +7,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
 import 'package:phonolite_app/data/models/collections/playlist_editor_values.dart';
+import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/platform/files/playlist_image_file_picker.dart';
 
 export 'package:phonolite_app/data/models/collections/playlist_editor_values.dart';
@@ -77,7 +78,9 @@ class PlaylistEditorController extends FeatureController {
       await Future<void>.sync(() => onSubmit(trimmed, description, imageEdit, _target));
 
       return !isDisposed;
-    } catch (err) {
+    } on Object catch (err) {
+      AppLogger.warning('Failed to save playlist: $err');
+
       if (!isDisposed) {
         void showSaveFailure() {
           _saving = false;
@@ -106,7 +109,9 @@ class PlaylistEditorController extends FeatureController {
           ),
         ],
       );
-    } catch (_) {
+    } on Object catch (error) {
+      AppLogger.warning('Playlist image picker failed: $error');
+
       if (isDisposed) {
         return;
       }
@@ -124,7 +129,9 @@ class PlaylistEditorController extends FeatureController {
 
     try {
       bytes = await file.readAsBytes();
-    } catch (_) {
+    } on Object catch (error) {
+      AppLogger.warning('Could not read the selected playlist image: $error');
+
       if (isDisposed) {
         return;
       }

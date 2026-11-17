@@ -66,20 +66,23 @@ class _OfflineActorClient {
 
     // Errors (a [error, stack] list) and exit (null) arrive on the same port, so a crashed actor
     // fails its pending commands instead of leaving them waiting forever.
-    Isolate.spawn(
-      _offlineDownloadActorMain,
-      OfflineActorInit(
-        replyPort: _receivePort!.sendPort,
-        baseUrl: _host.connection.baseUrl,
-        token: _host.connection.token,
-        trust: _host.connection.trust,
-        storageConfig: _host._storageConfig,
-        rootIsolateToken: _rootIsolateToken,
-      ),
-      onError: _receivePort!.sendPort,
-      onExit: _receivePort!.sendPort,
-      debugName: 'OfflineDownloadActor',
-    ).then(retainActor).catchError(failStartup);
+    // Startup failures are delivered to `ready` by `failStartup`.
+    unawaited(
+      Isolate.spawn(
+        _offlineDownloadActorMain,
+        OfflineActorInit(
+          replyPort: _receivePort!.sendPort,
+          baseUrl: _host.connection.baseUrl,
+          token: _host.connection.token,
+          trust: _host.connection.trust,
+          storageConfig: _host._storageConfig,
+          rootIsolateToken: _rootIsolateToken,
+        ),
+        onError: _receivePort!.sendPort,
+        onExit: _receivePort!.sendPort,
+        debugName: 'OfflineDownloadActor',
+      ).then(retainActor).catchError(failStartup),
+    );
 
     void completeStartup(Object? _) {
       if (!ready.isCompleted) {
@@ -89,7 +92,7 @@ class _OfflineActorClient {
 
     final handshake = Completer<Object?>();
 
-    handshake.future.then(completeStartup).catchError(failStartup);
+    unawaited(handshake.future.then(completeStartup).catchError(failStartup));
     _pending[0] = handshake;
 
     return _actorStartFuture!;

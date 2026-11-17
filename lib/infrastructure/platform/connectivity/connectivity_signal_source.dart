@@ -37,7 +37,8 @@ class ConnectivityPlusSignalSource extends ConnectivitySignalSource {
 
     void closeWhenDone() {
       if (interfacesDone && routesDone && !cancelled) {
-        events.close();
+        // Closing only completes once the listener is done; there is no failure to observe here.
+        unawaited(events.close());
       }
     }
 

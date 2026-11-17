@@ -14,33 +14,14 @@ void main() {
   const requested = String.fromEnvironment('UI_FEATURES', defaultValue: 'all');
   final features = requested.split(',').map((s) => s.trim()).toSet();
   final selected = allJourneys
-      .where(
-        (j) =>
-            features.contains('all') ||
-            features.contains(j.feature) ||
-            features.contains(j.id),
-      )
+      .where((j) => features.contains('all') || features.contains(j.feature) || features.contains(j.id))
       .toList();
 
-  testWidgets('Phonolite on-screen journeys and frame profiles', (
-    tester,
-  ) async {
-    expect(
-      kProfileMode,
-      isTrue,
-      reason: 'Run with flutter drive --profile; debug timings are misleading.',
-    );
+  testWidgets('Phonolite on-screen journeys and frame profiles', (tester) async {
+    expect(kProfileMode, isTrue, reason: 'Run with flutter drive --profile; debug timings are misleading.');
     expect(UiHarness.repeats, inInclusiveRange(1, 20));
-    final known = {
-      'all',
-      ...allJourneys.map((j) => j.feature),
-      ...allJourneys.map((j) => j.id),
-    };
-    expect(
-      features.difference(known),
-      isEmpty,
-      reason: 'Unknown UI_FEATURES selector',
-    );
+    final known = {'all', ...allJourneys.map((j) => j.feature), ...allJourneys.map((j) => j.id)};
+    expect(features.difference(known), isEmpty, reason: 'Unknown UI_FEATURES selector');
     expect(selected, isNotEmpty);
     // Profile mode verifies text-input client IDs. The default integration
     // binding leaves the test keyboard unregistered, so injected '-1' client
@@ -78,17 +59,15 @@ void main() {
           await ui.resetNavigation();
           await reports.publish({'type': 'journey_start', 'id': journey.id});
           await ui.measure(journey);
-        } catch (error, stack) {
+        } on Object catch (error, stack) {
+          // Recorded per journey; the run reports all failures together.
           failures.add(journey.id);
           debugPrint('[ui] ${journey.id} failed: $error');
           debugPrintStack(stackTrace: stack);
         } finally {
           final results = (output['journeys'] as List? ?? []).cast<Map>();
           if (results.isNotEmpty && results.last['id'] == journey.id) {
-            await reports.publish({
-              'type': 'journey_result',
-              'journey': results.last,
-            });
+            await reports.publish({'type': 'journey_result', 'journey': results.last});
             // The host already saved raw timings. Keep only the small summary
             // in the SDK's final response instead of accumulating device data.
             results.last.remove('frames');
