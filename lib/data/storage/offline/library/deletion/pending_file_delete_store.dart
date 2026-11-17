@@ -43,6 +43,24 @@ class _PendingFileDeleteStore {
     return OfflineLibraryStorage._managedPendingDeletePath(path, deleteRoots) != null;
   }
 
+  /// Whether library data references [path] again. File names are
+  /// deterministic, so a re-download or new artwork can reuse a path whose
+  /// earlier delete failed; cleanup must then keep the file and drop the row.
+  Future<bool> isPendingFileDeleteReferenced(String path) async {
+    if (kIsWeb) {
+      return false;
+    }
+
+    final normalized = OfflineLibraryStorage._pendingDeletePath(path);
+
+    if (normalized == null) {
+      return false;
+    }
+
+    // An unreadable library cannot prove the path is unused; keep the file.
+    return await _host._withDatabase((db) => _pathIsReferenced(db, normalized), onError: (err, stackTrace) => true);
+  }
+
   Future<List<String>> readPendingFileDeletes() async {
     if (kIsWeb) {
       return const [];
@@ -153,6 +171,43 @@ class _PendingFileDeleteStore {
     return false;
   }
 
+  bool _pathIsReferenced(Database db, String path) {
+    final collation = Platform.isWindows ? ' COLLATE NOCASE' : '';
+
+    return db
+        .select(
+          '''
+      SELECT 1 FROM source_tracks
+      WHERE file_path = ?1$collation OR partial_path = ?1$collation
+      UNION ALL
+      SELECT 1 FROM tracks t
+      JOIN source_tracks s ON s.local_track_id = t.id
+      WHERE t.album_art_path = ?1$collation
+         OR t.artist_art_path = ?1$collation
+         OR t.artist_banner_path = ?1$collation
+      UNION ALL
+      SELECT 1 FROM local_playlists
+      WHERE image_path = ?1$collation
+      LIMIT 1
+    ''',
+          [path],
+        )
+        .isNotEmpty;
+  }
+
+  /// Writes that reference a path cancel any delete still pending for it.
+  void _forgetPendingFileDeletes(Database db, Iterable<String?> paths) {
+    final collation = Platform.isWindows ? ' COLLATE NOCASE' : '';
+
+    for (final path in paths) {
+      final normalized = OfflineLibraryStorage._pendingDeletePath(path);
+
+      if (normalized != null) {
+        db.execute('DELETE FROM pending_file_deletes WHERE path = ?$collation', [normalized]);
+      }
+    }
+  }
+
   void _recordPendingFileDeletes(Database db, Iterable<String> paths, int createdAt, {List<String>? deleteRoots}) {
     final roots = deleteRoots;
 
@@ -184,6 +239,8 @@ mixin _PendingFileDeleteStoreFacade {
 
   Future<bool> isManagedDeletePath(String path) => _ownerCleanup.isManagedDeletePath(path);
 
+  Future<bool> isPendingFileDeleteReferenced(String path) => _ownerCleanup.isPendingFileDeleteReferenced(path);
+
   Future<List<String>> readPendingFileDeletes() => _ownerCleanup.readPendingFileDeletes();
 
   Future<void> clearPendingFileDeletes(Iterable<String> paths) => _ownerCleanup.clearPendingFileDeletes(paths);
@@ -192,4 +249,7 @@ mixin _PendingFileDeleteStoreFacade {
 
   void _recordPendingFileDeletes(Database db, Iterable<String> paths, int createdAt, {List<String>? deleteRoots}) =>
       _ownerCleanup._recordPendingFileDeletes(db, paths, createdAt, deleteRoots: deleteRoots);
+
+  void _forgetPendingFileDeletes(Database db, Iterable<String?> paths) =>
+      _ownerCleanup._forgetPendingFileDeletes(db, paths);
 }

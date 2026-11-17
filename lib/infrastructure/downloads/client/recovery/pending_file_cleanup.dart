@@ -87,6 +87,15 @@ class _PendingFileCleanup {
         return true;
       }
 
+      // Paths are deterministic, so a stale row may name a re-downloaded file.
+      if (_pathAwaitsActiveTransfer(trimmed)) {
+        return false;
+      }
+
+      if (_pathHeldInMemory(trimmed) || await _host._storage.isPendingFileDeleteReferenced(trimmed)) {
+        return true;
+      }
+
       final file = File(trimmed);
 
       if (await file.exists()) {
@@ -99,6 +108,53 @@ class _PendingFileCleanup {
 
       return false;
     }
+  }
+
+  /// Whether a current (not removing) download still names [path].
+  bool _pathHeldInMemory(String path) {
+    final target = _comparablePath(path);
+
+    return _host._downloads.any(
+      (download) =>
+          download.status != OfflineDownloadStatus.removing &&
+          (_comparablePath(download.filePath) == target || _comparablePath(download.partialPath) == target),
+    );
+  }
+
+  /// Whether an in-flight transfer may promote its partial file to [path]
+  /// before its completed record is persisted; the delete is retried later.
+  bool _pathAwaitsActiveTransfer(String path) {
+    final stem = _pathStem(_comparablePath(path));
+
+    return _host._downloads.any(
+      (download) =>
+          _host._activeDownloadStatus(download.status) &&
+          download.partialPath != null &&
+          _pathStem(_comparablePath(download.partialPath)) == stem,
+    );
+  }
+
+  String? _comparablePath(String? path) {
+    final trimmed = path?.trim();
+
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+
+    final absolute = File(trimmed).absolute.path;
+
+    return Platform.isWindows ? absolute.toLowerCase() : absolute;
+  }
+
+  String? _pathStem(String? path) {
+    if (path == null) {
+      return null;
+    }
+
+    final separator = path.lastIndexOf(RegExp(r'[/\\]'));
+    final dot = path.lastIndexOf('.');
+
+    return dot > separator ? path.substring(0, dot) : path;
   }
 
   Future<void> _deleteIfExists(String? path) async {

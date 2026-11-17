@@ -54,39 +54,39 @@ class _OfflineMetadataStore {
 
     return await _host._withDatabase(
       (db) {
-        final artistIdentity = artworkSource?.artistArtworkIdentity;
+        _host._transaction(db, () {
+          final rows = db.select('SELECT artist, artist_id FROM tracks WHERE id = ?', [localTrackId]);
 
-        db.execute(
-          '''
-        UPDATE tracks
-        SET album_art_path = COALESCE(?, album_art_path),
-            artist_art_path = CASE
-              WHEN ? IS NULL OR COALESCE(
-                'id:' || NULLIF(TRIM(artist_id), ''),
-                'name:' || LOWER(TRIM(artist))
-              ) = ? THEN COALESCE(?, artist_art_path)
-              ELSE artist_art_path END,
-            artist_banner_path = CASE
-              WHEN ? IS NULL OR COALESCE(
-                'id:' || NULLIF(TRIM(artist_id), ''),
-                'name:' || LOWER(TRIM(artist))
-              ) = ? THEN COALESCE(?, artist_banner_path)
-              ELSE artist_banner_path END,
-            updated_at = ?
-        WHERE id = ?
-      ''',
-          [
+          if (rows.isEmpty) {
+            return;
+          }
+
+          final sameArtist = artworkSource == null || _storedArtistMatches(rows.first, artworkSource);
+
+          db.execute(
+            '''
+          UPDATE tracks
+          SET album_art_path = COALESCE(?, album_art_path),
+              artist_art_path = CASE WHEN ? THEN COALESCE(?, artist_art_path) ELSE artist_art_path END,
+              artist_banner_path = CASE WHEN ? THEN COALESCE(?, artist_banner_path) ELSE artist_banner_path END,
+              updated_at = ?
+          WHERE id = ?
+        ''',
+            [
+              albumArtPath,
+              sameArtist ? 1 : 0,
+              artistArtPath,
+              sameArtist ? 1 : 0,
+              artistBannerPath,
+              DateTime.now().millisecondsSinceEpoch,
+              localTrackId,
+            ],
+          );
+          _host._forgetPendingFileDeletes(db, [
             albumArtPath,
-            artistIdentity,
-            artistIdentity,
-            artistArtPath,
-            artistIdentity,
-            artistIdentity,
-            artistBannerPath,
-            DateTime.now().millisecondsSinceEpoch,
-            localTrackId,
-          ],
-        );
+            if (sameArtist) ...[artistArtPath, artistBannerPath],
+          ]);
+        });
       },
       onError: (err, stackTrace) {
         AppLogger.warning('Failed to update offline artwork metadata: $err');
@@ -414,6 +414,10 @@ class _OfflineMetadataStore {
   void _upsertTrack(Database db, String localTrackId, Track track) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final matchKey = OfflineLibraryStorage._metadataMatchKey(track);
+    final stored = db.select('SELECT artist, artist_id FROM tracks WHERE id = ?', [localTrackId]);
+    // Artist identity is compared in Dart: SQLite LOWER and TRIM are ASCII-only
+    // and would treat accented names as a different artist.
+    final sameArtist = stored.isEmpty || _storedArtistMatches(stored.first, track);
 
     db.execute(
       '''
@@ -443,23 +447,11 @@ class _OfflineMetadataStore {
         album = excluded.album,
         album_id = excluded.album_id,
         album_art_path = COALESCE(excluded.album_art_path, album_art_path),
-        artist_art_path = CASE
-          WHEN COALESCE(
-            'id:' || NULLIF(TRIM(artist_id), ''),
-            'name:' || LOWER(TRIM(artist))
-          ) = COALESCE(
-            'id:' || NULLIF(TRIM(excluded.artist_id), ''),
-            'name:' || LOWER(TRIM(excluded.artist))
-          ) THEN COALESCE(excluded.artist_art_path, artist_art_path)
+        artist_art_path = CASE WHEN ?17
+          THEN COALESCE(excluded.artist_art_path, artist_art_path)
           ELSE excluded.artist_art_path END,
-        artist_banner_path = CASE
-          WHEN COALESCE(
-            'id:' || NULLIF(TRIM(artist_id), ''),
-            'name:' || LOWER(TRIM(artist))
-          ) = COALESCE(
-            'id:' || NULLIF(TRIM(excluded.artist_id), ''),
-            'name:' || LOWER(TRIM(excluded.artist))
-          ) THEN COALESCE(excluded.artist_banner_path, artist_banner_path)
+        artist_banner_path = CASE WHEN ?17
+          THEN COALESCE(excluded.artist_banner_path, artist_banner_path)
           ELSE excluded.artist_banner_path END,
         genres_json = excluded.genres_json,
         duration_ms = excluded.duration_ms,
@@ -484,8 +476,21 @@ class _OfflineMetadataStore {
         track.discNo,
         now,
         now,
+        sameArtist ? 1 : 0,
       ],
     );
+    _host._forgetPendingFileDeletes(db, [track.albumArtPath, track.artistArtPath, track.artistBannerPath]);
+  }
+
+  /// Whether the stored row and [track] scope artist artwork to the same artist,
+  /// using [Track.artistArtworkIdentity] for both sides.
+  bool _storedArtistMatches(Row row, Track track) {
+    final stored = track.copyWith(
+      artist: OfflineLibraryStorage._readNullableString(row, 'artist') ?? '',
+      artistId: OfflineLibraryStorage._readNullableString(row, 'artist_id'),
+    );
+
+    return stored.artistArtworkIdentity == track.artistArtworkIdentity;
   }
 
   String _resolveLocalTrackId(Database db, Track track) {

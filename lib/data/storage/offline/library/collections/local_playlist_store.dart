@@ -194,6 +194,7 @@ class _LocalPlaylistStore {
           DateTime.now().millisecondsSinceEpoch,
           playlistId,
         ]);
+        _host._forgetPendingFileDeletes(db, [nextPath]);
       });
 
       if (!playlistExists) {

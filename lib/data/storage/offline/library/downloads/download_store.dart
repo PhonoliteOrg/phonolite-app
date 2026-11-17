@@ -82,7 +82,7 @@ class _OfflineDownloadStore {
             _upsertDownload(db, download);
           }
 
-          _host._pruneUnavailableLocalUserData(db);
+          _host._pruneRemovedLocalUserData(db);
         });
       },
       onError: (err, stackTrace) {
@@ -154,7 +154,7 @@ class _OfflineDownloadStore {
       (db) {
         _host._transaction(db, () {
           _upsertDownload(db, download);
-          _host._pruneUnavailableLocalUserData(db);
+          _host._pruneRemovedLocalUserData(db);
         });
       },
       onError: (err, stackTrace) {
@@ -175,7 +175,7 @@ class _OfflineDownloadStore {
             _upsertDownload(db, download);
           }
 
-          _host._pruneUnavailableLocalUserData(db);
+          _host._pruneRemovedLocalUserData(db);
         });
       },
       onError: (err, stackTrace) {
@@ -368,6 +368,7 @@ class _OfflineDownloadStore {
       WHERE server_base_url = ? AND server_track_id = ?''',
       [localTrackId, normalized.serverBaseUrl, normalized.track.serverTrackId ?? normalized.track.id],
     );
+    _host._forgetPendingFileDeletes(db, [normalized.filePath, normalized.partialPath]);
 
     if (normalized.status == OfflineDownloadStatus.downloaded && normalized.filePath != null) {
       _host._resolvePendingPlaylistTracks(
