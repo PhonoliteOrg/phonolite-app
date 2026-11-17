@@ -104,16 +104,13 @@ class PlaybackIntelZone extends StatelessWidget {
       return paddedContent;
     }
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          mouseCursor: WidgetStateMouseCursor.clickable,
-          onTap: withButtonHaptic(onTap),
-          borderRadius: BorderRadius.circular(s(12)),
-          child: paddedContent,
-        ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        mouseCursor: WidgetStateMouseCursor.clickable,
+        onTap: withButtonHaptic(onTap),
+        borderRadius: BorderRadius.circular(s(12)),
+        child: paddedContent,
       ),
     );
   }
