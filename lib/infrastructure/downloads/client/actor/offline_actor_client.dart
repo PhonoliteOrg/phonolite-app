@@ -46,6 +46,14 @@ class _OfflineActorClient {
       if (!ready.isCompleted) {
         ready.completeError(err, stack);
       }
+
+      // Release this attempt's handshake and port so a retry does not leak them.
+      _pending.remove(0);
+
+      if (_actorPort == null) {
+        _receivePort?.close();
+        _receivePort = null;
+      }
     }
 
     void retainActor(Isolate isolate) {
