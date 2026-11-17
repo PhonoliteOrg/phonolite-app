@@ -723,25 +723,28 @@ class AppController
     _searchLoadingController.close();
     _closeStreamControl();
 
-    await Future.wait([
-      clearNowPlaying,
-      libraryResourcesClosed,
-      metadataEventsStopped,
-      collectionEventsStopped,
-      accountEventsStopped,
-      _preferencesCoordinator.close(),
-      ...cancellations,
-      if (_audio != null) _audio!.dispose(),
-      _offlineDownloadManager.dispose(),
-      _volumeSaves.drain(),
-    ]);
+    try {
+      await Future.wait([
+        clearNowPlaying,
+        libraryResourcesClosed,
+        metadataEventsStopped,
+        collectionEventsStopped,
+        accountEventsStopped,
+        _preferencesCoordinator.close(),
+        ...cancellations,
+        if (_audio != null) _audio!.dispose(),
+        _offlineDownloadManager.dispose(),
+        _volumeSaves.drain(),
+      ]);
+    } finally {
+      // Listening history is flushed even when another owner failed to shut down.
+      _listeningClosed = true;
 
-    _listeningClosed = true;
+      if (_audio != null) {
+        _audio!.onListeningSegment = null;
+      }
 
-    if (_audio != null) {
-      _audio!.onListeningSegment = null;
+      await _listeningStats.close();
     }
-
-    await _listeningStats.close();
   }
 }

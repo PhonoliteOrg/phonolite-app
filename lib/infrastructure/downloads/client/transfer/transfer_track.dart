@@ -181,6 +181,12 @@ class _TrackDownloadTransfer {
 
       AppLogger.status('Downloaded ${download.track.title}');
     } on DownloadPaused catch (err) {
+      // Shutdown cancels in-flight workers; keep their active status so startup recovery
+      // requeues them, instead of recording a pause the user never asked for.
+      if (_host._disposed) {
+        return;
+      }
+
       if (partialFile != null && await partialFile.exists()) {
         bytesDownloaded = await partialFile.length();
       }

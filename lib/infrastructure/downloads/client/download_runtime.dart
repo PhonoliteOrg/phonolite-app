@@ -145,6 +145,12 @@ class _OfflineDownloadActorCore
     _jobsEmitTimer?.cancel();
     _jobsEmitTimer = null;
 
+    // Cancel in-flight transfers first; waiting for them to finish could block shutdown for
+    // as long as each download takes (or its stall timeout, on a dead connection).
+    for (final cancelPort in _activeCancelPorts.values) {
+      cancelPort.send(null);
+    }
+
     await Future.wait(_active.values.toList(), eagerError: false);
     await _topUpFuture;
     await _localUserDataReloadChain;

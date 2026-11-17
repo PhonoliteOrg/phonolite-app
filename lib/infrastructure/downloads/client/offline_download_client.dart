@@ -214,7 +214,8 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
       await core.dispose();
     } else if (_actorPort != null) {
       try {
-        await _send<void>('dispose');
+        // Bounded so a wedged actor cannot hold app shutdown; the actor is killed below.
+        await _send<void>('dispose').timeout(const Duration(seconds: 10));
       } catch (_) {}
     }
 
