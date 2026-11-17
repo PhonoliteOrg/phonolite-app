@@ -200,7 +200,18 @@ class _SessionCoordinator {
       unawaited(_host._offlineDownloadManager.repairOfflineMetadataFragments());
     }
 
-    initializeTokenSession();
+    Future<void> initializeTokenSessionSafely() async {
+      try {
+        await initializeTokenSession();
+      } on Object catch (error) {
+        if (_isServerSessionCurrent(sessionRevision)) {
+          _host._pushMessage('Could not finish preparing the session: $error', level: LogLevel.warning);
+        }
+      }
+    }
+
+    // Token sign-in is synchronous for callers; follow-up preparation reports its own failure.
+    unawaited(initializeTokenSessionSafely());
   }
 
   Future<bool> probeServer(String input) async {

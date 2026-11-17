@@ -2380,6 +2380,23 @@ void main() {
     expect(harness.auth.clears, 0);
   });
 
+  test('a failed token-session preparation is reported instead of escaping', () async {
+    final harness = _Harness(authenticated: true);
+    addTearDown(harness.controller.close);
+    await harness.controller.initialize();
+    await harness.controller.restoreSession();
+    harness.downloads.failResumePaused = true;
+
+    harness.controller.loginWithToken(baseUrl: harness.connection.baseUrl, token: 'new-token');
+
+    await _resumeUntil(
+      () => harness.controller.messages.any(
+        (entry) => entry.message.startsWith('Could not finish preparing the session:'),
+      ),
+    );
+    expect(harness.controller.authState.isAuthorized, isTrue);
+  });
+
   test('saved session with a rotated key requires sign-in on startup', () async {
     final connection = _Connection()
       ..identityChanged = true
@@ -5644,6 +5661,7 @@ class _Downloads implements OfflineDownloadManager {
   bool failLoad = false;
   bool failReset = false;
   bool failCommands = false;
+  bool failResumePaused = false;
   final refreshedAlbums = <String>[];
   final refreshedArtists = <String>[];
   final pausedServers = <String>[];
@@ -5687,7 +5705,10 @@ class _Downloads implements OfflineDownloadManager {
   @override
   OfflineTrackDownload? findLocal(String trackId) => null;
   @override
-  Future<void> resumePausedForCurrentServer() async {}
+  Future<void> resumePausedForCurrentServer() async {
+    if (failResumePaused) throw StateError('resume paused downloads failed');
+  }
+
   @override
   Future<void> repairOfflineMetadataFragments() async {}
   @override
