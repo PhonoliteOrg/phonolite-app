@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::ErrorKind;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::ptr;
 use std::slice;
@@ -67,6 +68,8 @@ pub struct LocalAudioHandle {
     strict_packets: bool,
     last_error: Option<String>,
     last_error_code: i32,
+    /// Set after a panic; the decoder state may be inconsistent.
+    poisoned: bool,
 }
 
 impl LocalAudioHandle {
@@ -503,6 +506,7 @@ fn open_source(
         strict_packets: codec_params.codec == CODEC_TYPE_OPUS,
         last_error: None,
         last_error_code: 0,
+        poisoned: false,
     });
 
     if start_ms > 0 {
@@ -589,8 +593,51 @@ fn set_last_error(message: String) {
     });
 }
 
+/// Failure code reported after a native panic. The decoder that panicked is
+/// unusable afterwards; callers must close it and open a new one.
+const PANIC_FAILURE_CODE: i32 = -103;
+const PANIC_MESSAGE: &str = "native audio decoder failed unexpectedly";
+
+/// Runs an export body without letting a panic (for example inside symphonia)
+/// unwind across the C ABI, which would abort the process.
+fn guard<T>(fallback: T, body: impl FnOnce() -> T) -> T {
+    panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or_else(|_| {
+        set_failure_code(PANIC_FAILURE_CODE);
+        set_last_error(PANIC_MESSAGE.to_string());
+        fallback
+    })
+}
+
+/// Like `guard`, and also poisons `handle` so later calls fail rather than
+/// touch decoder state the panic may have left inconsistent.
+///
+/// # Safety
+/// `handle` must be null or a live decoder, and `body` must not keep a borrow
+/// of it alive after returning or unwinding.
+unsafe fn guard_handle<T>(
+    handle: *mut LocalAudioHandle,
+    fallback: T,
+    body: impl FnOnce() -> T,
+) -> T {
+    panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or_else(|_| {
+        set_failure_code(PANIC_FAILURE_CODE);
+        set_last_error(PANIC_MESSAGE.to_string());
+        if let Some(decoder) = handle.as_mut() {
+            decoder.poisoned = true;
+            decoder.last_error = Some(PANIC_MESSAGE.to_string());
+            decoder.last_error_code = PANIC_FAILURE_CODE;
+        }
+        fallback
+    })
+}
+
 unsafe fn handle_mut<'a>(handle: *mut LocalAudioHandle) -> Result<&'a mut LocalAudioHandle, i64> {
-    handle.as_mut().ok_or(-1)
+    match handle.as_mut() {
+        None => Err(-1),
+        // The panic's message and code stay on the handle for the caller.
+        Some(decoder) if decoder.poisoned => Err(-2),
+        Some(decoder) => Ok(decoder),
+    }
 }
 
 /// # Safety
@@ -601,26 +648,28 @@ pub unsafe extern "C" fn phonolite_local_audio_open(
     path_len: u64,
     start_ms: i64,
 ) -> *mut LocalAudioHandle {
-    set_failure_code(0);
-    if path.is_null() || path_len == 0 {
-        set_last_error("invalid path".to_string());
-        return ptr::null_mut();
-    }
-    let bytes = slice::from_raw_parts(path, path_len as usize);
-    let path = match str::from_utf8(bytes) {
-        Ok(path) => path,
-        Err(err) => {
-            set_last_error(format!("path is not valid UTF-8: {err}"));
+    guard(ptr::null_mut(), || {
+        set_failure_code(0);
+        if path.is_null() || path_len == 0 {
+            set_last_error("invalid path".to_string());
             return ptr::null_mut();
         }
-    };
-    match open_inner(path, start_ms) {
-        Ok(handle) => Box::into_raw(handle),
-        Err(err) => {
-            set_last_error(err);
-            ptr::null_mut()
+        let bytes = slice::from_raw_parts(path, path_len as usize);
+        let path = match str::from_utf8(bytes) {
+            Ok(path) => path,
+            Err(err) => {
+                set_last_error(format!("path is not valid UTF-8: {err}"));
+                return ptr::null_mut();
+            }
+        };
+        match open_inner(path, start_ms) {
+            Ok(handle) => Box::into_raw(handle),
+            Err(err) => {
+                set_last_error(err);
+                ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 /// # Safety
@@ -636,32 +685,34 @@ pub unsafe extern "C" fn phonolite_local_audio_open_remote(
     server_pin_len: u64,
     start_ms: i64,
 ) -> *mut LocalAudioHandle {
-    set_failure_code(0);
-    let input = |pointer: *const u8, length: u64| -> Result<&str, String> {
-        if pointer.is_null() || length == 0 || length > 16_384 {
-            set_failure_code(-100);
-            return Err("invalid Original audio request".into());
-        }
+    guard(ptr::null_mut(), || {
+        set_failure_code(0);
+        let input = |pointer: *const u8, length: u64| -> Result<&str, String> {
+            if pointer.is_null() || length == 0 || length > 16_384 {
+                set_failure_code(-100);
+                return Err("invalid Original audio request".into());
+            }
 
-        str::from_utf8(slice::from_raw_parts(pointer, length as usize))
-            .map_err(|_| "invalid Original audio request encoding".into())
-    };
-    let result = (|| {
-        open_remote_inner(
-            input(url, url_len)?,
-            input(token, token_len)?,
-            input(server_pin, server_pin_len)?,
-            start_ms,
-        )
-    })();
+            str::from_utf8(slice::from_raw_parts(pointer, length as usize))
+                .map_err(|_| "invalid Original audio request encoding".into())
+        };
+        let result = (|| {
+            open_remote_inner(
+                input(url, url_len)?,
+                input(token, token_len)?,
+                input(server_pin, server_pin_len)?,
+                start_ms,
+            )
+        })();
 
-    match result {
-        Ok(handle) => Box::into_raw(handle),
-        Err(error) => {
-            set_last_error(error);
-            ptr::null_mut()
+        match result {
+            Ok(handle) => Box::into_raw(handle),
+            Err(error) => {
+                set_last_error(error);
+                ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 /// # Safety
@@ -676,27 +727,29 @@ pub unsafe extern "C" fn phonolite_local_audio_open_quic(
     close: Option<quic_source::Close>,
     start_ms: i64,
 ) -> *mut LocalAudioHandle {
-    set_failure_code(0);
-    let opening = Arc::new(AtomicBool::new(true));
-    let result = (|| {
-        let source = quic_source::QuicSource::open(
-            source_handle,
-            read_range,
-            error_code,
-            copy_error,
-            close,
-            opening.clone(),
-        )?;
-        open_source(Box::new(source), Hint::new(), start_ms)
-    })();
-    opening.store(false, Ordering::Release);
-    match result {
-        Ok(handle) => Box::into_raw(handle),
-        Err(error) => {
-            set_last_error(error);
-            ptr::null_mut()
+    guard(ptr::null_mut(), || {
+        set_failure_code(0);
+        let opening = Arc::new(AtomicBool::new(true));
+        let result = (|| {
+            let source = quic_source::QuicSource::open(
+                source_handle,
+                read_range,
+                error_code,
+                copy_error,
+                close,
+                opening.clone(),
+            )?;
+            open_source(Box::new(source), Hint::new(), start_ms)
+        })();
+        opening.store(false, Ordering::Release);
+        match result {
+            Ok(handle) => Box::into_raw(handle),
+            Err(error) => {
+                set_last_error(error);
+                ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 /// # Safety
@@ -708,23 +761,25 @@ pub unsafe extern "C" fn phonolite_local_audio_read(
     out: *mut i16,
     max_samples: u64,
 ) -> i64 {
-    set_failure_code(0);
-    if out.is_null() || max_samples == 0 {
-        return 0;
-    }
-    let decoder = match handle_mut(handle) {
-        Ok(decoder) => decoder,
-        Err(code) => return code,
-    };
-    let out = slice::from_raw_parts_mut(out, max_samples as usize);
-    match decoder.read(out) {
-        Ok(read) => read as i64,
-        Err(err) => {
-            decoder.last_error = Some(err);
-            decoder.last_error_code = failure_code();
-            -2
+    guard_handle(handle, -2, || {
+        set_failure_code(0);
+        if out.is_null() || max_samples == 0 {
+            return 0;
         }
-    }
+        let decoder = match handle_mut(handle) {
+            Ok(decoder) => decoder,
+            Err(code) => return code,
+        };
+        let out = slice::from_raw_parts_mut(out, max_samples as usize);
+        match decoder.read(out) {
+            Ok(read) => read as i64,
+            Err(err) => {
+                decoder.last_error = Some(err);
+                decoder.last_error_code = failure_code();
+                -2
+            }
+        }
+    })
 }
 
 /// # Safety
@@ -736,25 +791,27 @@ pub unsafe extern "C" fn phonolite_local_audio_read32(
     out: *mut i32,
     max_samples: u64,
 ) -> i64 {
-    set_failure_code(0);
-    if out.is_null() || max_samples == 0 {
-        return 0;
-    }
-
-    let decoder = match handle_mut(handle) {
-        Ok(decoder) => decoder,
-        Err(code) => return code,
-    };
-    let out = slice::from_raw_parts_mut(out, max_samples as usize);
-
-    match decoder.read32(out) {
-        Ok(read) => read as i64,
-        Err(error) => {
-            decoder.last_error = Some(error);
-            decoder.last_error_code = failure_code();
-            -2
+    guard_handle(handle, -2, || {
+        set_failure_code(0);
+        if out.is_null() || max_samples == 0 {
+            return 0;
         }
-    }
+
+        let decoder = match handle_mut(handle) {
+            Ok(decoder) => decoder,
+            Err(code) => return code,
+        };
+        let out = slice::from_raw_parts_mut(out, max_samples as usize);
+
+        match decoder.read32(out) {
+            Ok(read) => read as i64,
+            Err(error) => {
+                decoder.last_error = Some(error);
+                decoder.last_error_code = failure_code();
+                -2
+            }
+        }
+    })
 }
 
 /// # Safety
@@ -764,19 +821,21 @@ pub unsafe extern "C" fn phonolite_local_audio_seek(
     handle: *mut LocalAudioHandle,
     position_ms: i64,
 ) -> i64 {
-    set_failure_code(0);
-    let decoder = match handle_mut(handle) {
-        Ok(decoder) => decoder,
-        Err(code) => return code,
-    };
-    match decoder.seek(position_ms) {
-        Ok(actual_ms) => actual_ms,
-        Err(err) => {
-            decoder.last_error = Some(err);
-            decoder.last_error_code = failure_code();
-            -2
+    guard_handle(handle, -2, || {
+        set_failure_code(0);
+        let decoder = match handle_mut(handle) {
+            Ok(decoder) => decoder,
+            Err(code) => return code,
+        };
+        match decoder.seek(position_ms) {
+            Ok(actual_ms) => actual_ms,
+            Err(err) => {
+                decoder.last_error = Some(err);
+                decoder.last_error_code = failure_code();
+                -2
+            }
         }
-    }
+    })
 }
 
 /// # Safety
@@ -786,56 +845,66 @@ pub unsafe extern "C" fn phonolite_local_audio_seek_frame(
     handle: *mut LocalAudioHandle,
     presentation_frame: u64,
 ) -> i64 {
-    set_failure_code(0);
-    let decoder = match handle_mut(handle) { Ok(decoder) => decoder, Err(code) => return code };
-    match decoder.seek_frame(presentation_frame, true) {
-        Ok(frame) => i64::try_from(frame).unwrap_or(-2),
-        Err(error) => {
-            decoder.last_error = Some(error);
-            decoder.last_error_code = failure_code();
-            -2
+    guard_handle(handle, -2, || {
+        set_failure_code(0);
+        let decoder = match handle_mut(handle) { Ok(decoder) => decoder, Err(code) => return code };
+        match decoder.seek_frame(presentation_frame, true) {
+            Ok(frame) => i64::try_from(frame).unwrap_or(-2),
+            Err(error) => {
+                decoder.last_error = Some(error);
+                decoder.last_error_code = failure_code();
+                -2
+            }
         }
-    }
+    })
 }
 
 /// # Safety
 /// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_sample_rate(handle: *mut LocalAudioHandle) -> i32 {
-    handle
-        .as_ref()
-        .map(|handle| handle.sample_rate as i32)
-        .unwrap_or(0)
+    guard(0, || {
+        handle
+            .as_ref()
+            .map(|handle| handle.sample_rate as i32)
+            .unwrap_or(0)
+    })
 }
 
 /// # Safety
 /// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_bit_depth(handle: *mut LocalAudioHandle) -> i32 {
-    handle
-        .as_ref()
-        .map(|handle| handle.bit_depth as i32)
-        .unwrap_or(0)
+    guard(0, || {
+        handle
+            .as_ref()
+            .map(|handle| handle.bit_depth as i32)
+            .unwrap_or(0)
+    })
 }
 
 /// # Safety
 /// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_channels(handle: *mut LocalAudioHandle) -> i32 {
-    handle
-        .as_ref()
-        .map(|handle| handle.output_channels as i32)
-        .unwrap_or(0)
+    guard(0, || {
+        handle
+            .as_ref()
+            .map(|handle| handle.output_channels as i32)
+            .unwrap_or(0)
+    })
 }
 
 /// # Safety
 /// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_duration_ms(handle: *mut LocalAudioHandle) -> i64 {
-    handle
-        .as_ref()
-        .map(|handle| handle.duration_ms)
-        .unwrap_or(0)
+    guard(0, || {
+        handle
+            .as_ref()
+            .map(|handle| handle.duration_ms)
+            .unwrap_or(0)
+    })
 }
 
 /// Exact playable PCM frames per channel, or -1 when unavailable.
@@ -846,41 +915,47 @@ pub unsafe extern "C" fn phonolite_local_audio_duration_ms(handle: *mut LocalAud
 pub unsafe extern "C" fn phonolite_local_audio_playable_frames(
     handle: *mut LocalAudioHandle,
 ) -> i64 {
-    handle
-        .as_ref()
-        .and_then(|handle| handle.playable_frames)
-        .and_then(|frames| i64::try_from(frames).ok())
-        .unwrap_or(-1)
+    guard(-1, || {
+        handle
+            .as_ref()
+            .and_then(|handle| handle.playable_frames)
+            .and_then(|frames| i64::try_from(frames).ok())
+            .unwrap_or(-1)
+    })
 }
 
 /// # Safety
 /// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_position_ms(handle: *mut LocalAudioHandle) -> i64 {
-    handle
-        .as_ref()
-        .map(|handle| {
-            (handle.position_frames.saturating_mul(1000) / handle.sample_rate as u64) as i64
-        })
-        .unwrap_or(0)
+    guard(0, || {
+        handle
+            .as_ref()
+            .map(|handle| {
+                (handle.position_frames.saturating_mul(1000) / handle.sample_rate as u64) as i64
+            })
+            .unwrap_or(0)
+    })
 }
 
 /// # Safety
 /// `handle` must be null or a live decoder that is not concurrently mutated.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_error_code(handle: *mut LocalAudioHandle) -> i32 {
-    let code = handle
-        .as_ref()
-        .map(|handle| handle.last_error_code)
-        .unwrap_or_else(failure_code);
+    guard(PANIC_FAILURE_CODE, || {
+        let code = handle
+            .as_ref()
+            .map(|handle| handle.last_error_code)
+            .unwrap_or_else(failure_code);
 
-    // The internal marker keeps a probe's network error distinct from an
-    // unsupported file. Public transport failures retain the zero code.
-    if code == -200 {
-        0
-    } else {
-        code
-    }
+        // The internal marker keeps a probe's network error distinct from an
+        // unsupported file. Public transport failures retain the zero code.
+        if code == -200 {
+            0
+        } else {
+            code
+        }
+    })
 }
 
 /// # Safety
@@ -892,25 +967,27 @@ pub unsafe extern "C" fn phonolite_local_audio_last_error(
     out: *mut u8,
     out_len: u64,
 ) -> u64 {
-    if out.is_null() || out_len == 0 {
-        return 0;
-    }
-    let message = if let Some(handle) = handle.as_ref() {
-        handle.last_error.clone()
-    } else {
-        LAST_ERROR.with(|slot| slot.borrow().clone())
-    };
-    let Some(message) = message else {
-        return 0;
-    };
-    let bytes = message.as_bytes();
-    let writable = (out_len as usize).saturating_sub(1);
-    let copied = bytes.len().min(writable);
-    if copied > 0 {
-        ptr::copy_nonoverlapping(bytes.as_ptr(), out, copied);
-    }
-    *out.add(copied) = 0;
-    copied as u64
+    guard(0, || {
+        if out.is_null() || out_len == 0 {
+            return 0;
+        }
+        let message = if let Some(handle) = handle.as_ref() {
+            handle.last_error.clone()
+        } else {
+            LAST_ERROR.with(|slot| slot.borrow().clone())
+        };
+        let Some(message) = message else {
+            return 0;
+        };
+        let bytes = message.as_bytes();
+        let writable = (out_len as usize).saturating_sub(1);
+        let copied = bytes.len().min(writable);
+        if copied > 0 {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), out, copied);
+        }
+        *out.add(copied) = 0;
+        copied as u64
+    })
 }
 
 /// # Safety
@@ -918,9 +995,12 @@ pub unsafe extern "C" fn phonolite_local_audio_last_error(
 /// uniquely owned by this call. It must never be used or closed again.
 #[no_mangle]
 pub unsafe extern "C" fn phonolite_local_audio_close(handle: *mut LocalAudioHandle) {
-    if !handle.is_null() {
-        drop(Box::from_raw(handle));
-    }
+    // A panic while dropping leaks whatever the drop had not yet released.
+    guard((), || {
+        if !handle.is_null() {
+            drop(Box::from_raw(handle));
+        }
+    })
 }
 
 #[cfg(test)]

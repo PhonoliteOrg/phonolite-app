@@ -6,6 +6,10 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 class LocalAudioException implements Exception {
+  /// Reported after the native decoder panicked; that decoder is unusable and
+  /// must be closed.
+  static const int nativePanicCode = -103;
+
   final String message;
   final int? code;
 
