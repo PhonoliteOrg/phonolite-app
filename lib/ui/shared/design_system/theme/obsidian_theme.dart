@@ -67,6 +67,32 @@ class ObsidianTheme {
     );
   }
 
+  /// Material 3 roles come from a gold seed, as [ColorScheme]'s documentation recommends
+  /// over the role-by-role constructor, so every role a stock widget reads is defined.
+  /// The Obsidian palette then overrides the roles the design specifies, including the flat
+  /// surface containers and the established error color.
+  static ColorScheme _colorScheme() =>
+      ColorScheme.fromSeed(seedColor: ObsidianPalette.gold, brightness: Brightness.dark).copyWith(
+        primary: ObsidianPalette.gold,
+        onPrimary: Colors.black,
+        secondary: ObsidianPalette.goldSoft,
+        onSecondary: ObsidianPalette.textPrimary,
+        surface: ObsidianPalette.obsidianElevated,
+        onSurface: ObsidianPalette.textPrimary,
+        surfaceDim: ObsidianPalette.obsidianElevated,
+        surfaceBright: ObsidianPalette.obsidianElevated,
+        surfaceContainerLowest: ObsidianPalette.obsidianElevated,
+        surfaceContainerLow: ObsidianPalette.obsidianElevated,
+        surfaceContainer: ObsidianPalette.obsidianElevated,
+        surfaceContainerHigh: ObsidianPalette.obsidianElevated,
+        surfaceContainerHighest: ObsidianPalette.obsidianElevated,
+        // Snack bars and tooltips keep their light-on-dark inversion of the surface pair.
+        inverseSurface: ObsidianPalette.textPrimary,
+        onInverseSurface: ObsidianPalette.obsidianElevated,
+        error: const Color(0xFFCF6679),
+        onError: Colors.black,
+      );
+
   static ({ThemeData theme, TextTheme body, TextTheme display}) _buildBase() {
     final base = ThemeData(
       useMaterial3: true,
@@ -76,13 +102,7 @@ class ObsidianTheme {
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       focusColor: Colors.transparent,
-      colorScheme: const ColorScheme.dark(
-        primary: ObsidianPalette.gold,
-        onPrimary: Colors.black,
-        secondary: ObsidianPalette.goldSoft,
-        surface: ObsidianPalette.obsidianElevated,
-        onSurface: ObsidianPalette.textPrimary,
-      ),
+      colorScheme: _colorScheme(),
       scaffoldBackgroundColor: Colors.transparent,
       canvasColor: ObsidianPalette.obsidian,
       // Fade outgoing content early so transparent pages do not overlap.
