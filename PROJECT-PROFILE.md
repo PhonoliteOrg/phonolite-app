@@ -63,7 +63,7 @@ Checklists for [2.12](FLUTTER-STANDARDS.md#212-host-release-readiness). Check ev
 | Android | Release builds sign with the key from `android/key.properties` and fail without it. `allowBackup` and `fullBackupContent` are off and `data_extraction_rules.xml` excludes every domain from cloud backup and device transfer. Only the components that must be exported are, and the media browse service limits callers. The media service returns `START_NOT_STICKY` and every foreground start reaches `startForeground`. Audio focus leaves ducking to the system and resumes after transient losses |
 | iOS | `ios/Runner/PrivacyInfo.xcprivacy` declares every required-reason API in use and is in the Runner target's resources. Launch sets the audio session category without activating it. Permission usage strings cover every requested permission |
 | macOS | `macos/Runner/PrivacyInfo.xcprivacy` declares every required-reason API in use. Release builds are signed and notarized for distribution |
-| Windows | The installer and updater point at the published release artifacts, and release binaries are signed when a signing identity is available |
+| Windows | The installer and updater point at the published release artifacts, and release binaries are signed when a signing identity is available. Check the full-height sidebar and caption controls with a dialog open and at different display scales. Verify dragging, resizing, maximize/restore, minimize and both close-to-tray and quit behavior |
 | Linux | Packages contain only the files listed for distribution, and secure storage errors are reported rather than crashing |
 
 ## Commit vocabulary

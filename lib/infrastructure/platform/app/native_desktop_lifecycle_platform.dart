@@ -29,6 +29,25 @@ class NativeDesktopLifecyclePlatform with WindowListener implements DesktopLifec
     : _window = window ?? windowManager,
       _tray = tray ?? NativeDesktopTray();
 
+  /// Configure the frame before the first Flutter frame and minimum-size measurement.
+  static Future<bool> prepareWindowsCaption() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) {
+      return false;
+    }
+
+    try {
+      await windowManager.ensureInitialized();
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+      return true;
+    } on PlatformException catch (error) {
+      AppLogger.warning('Using the system title bar: $error');
+      return false;
+    } on MissingPluginException catch (error) {
+      AppLogger.warning('Window controls are unavailable; using the system title bar: $error');
+      return false;
+    }
+  }
+
   @override
   Future<void> initialize({required Future<void> Function() onClose, required Future<void> Function() onQuit}) async {
     await _window.ensureInitialized();

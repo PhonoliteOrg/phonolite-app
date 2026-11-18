@@ -11,6 +11,7 @@ import 'package:phonolite_app/bootstrap/phonolite_app.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/diagnostics/accessibility_trace_binding.dart';
+import 'package:phonolite_app/infrastructure/platform/app/native_desktop_lifecycle_platform.dart';
 import 'package:phonolite_app/infrastructure/security/server_trust.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/bundled_font_licenses.dart';
@@ -53,7 +54,8 @@ Future<void> _startApp() async {
     return;
   }
 
-  runApp(const PhonoliteApp());
+  final customCaption = await NativeDesktopLifecyclePlatform.prepareWindowsCaption();
+  runApp(PhonoliteApp(customWindowsCaption: customCaption));
 }
 
 Future<void> _prepareStorage() async {

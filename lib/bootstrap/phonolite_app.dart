@@ -25,8 +25,14 @@ class PhonoliteApp extends StatefulWidget {
 
   /// Creates the controller the app owns; defaults to [AppController.new].
   final AppControllerFactory createController;
+  final bool customWindowsCaption;
 
-  const PhonoliteApp({super.key, this.settings, this.createController = AppController.new});
+  const PhonoliteApp({
+    super.key,
+    this.settings,
+    this.createController = AppController.new,
+    this.customWindowsCaption = false,
+  });
 
   @override
   State<PhonoliteApp> createState() => _PhonoliteAppState();
@@ -127,7 +133,11 @@ class _PhonoliteAppState extends State<PhonoliteApp> {
   Widget build(BuildContext context) {
     return ArtworkScope(
       loader: _artworkLoader,
-      child: PhonoliteAppShell(controller: _controller, settings: _settings),
+      child: PhonoliteAppShell(
+        controller: _controller,
+        settings: _settings,
+        customWindowsCaption: widget.customWindowsCaption,
+      ),
     );
   }
 }

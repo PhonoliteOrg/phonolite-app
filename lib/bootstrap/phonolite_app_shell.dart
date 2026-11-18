@@ -11,6 +11,7 @@ import 'package:phonolite_app/ui/navigation/desktop_playback_shortcuts.dart';
 import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shell/windows_window_frame.dart';
 
 /// The application's widget composition around controllers it borrows.
 /// [PhonoliteApp] owns the controllers and their resources; feature tests pump
@@ -20,8 +21,9 @@ class PhonoliteAppShell extends StatelessWidget {
 
   /// Device-preference controllers; defaults to the process-wide ones.
   final AppSettingsControllers? settings;
+  final bool customWindowsCaption;
 
-  const PhonoliteAppShell({super.key, required this.controller, this.settings});
+  const PhonoliteAppShell({super.key, required this.controller, this.settings, this.customWindowsCaption = false});
 
   /// The app's own copy is English, so only English locales are offered: Material's built-in
   /// strings stay in the same language while dates and times follow the user's region.
@@ -54,7 +56,10 @@ class PhonoliteAppShell extends StatelessWidget {
           themeAnimationStyle: AnimationStyle.noAnimation,
           builder: (context, child) => DesktopPlaybackShortcuts(
             onTogglePlayPause: _togglePlayback,
-            child: TooltipVisibility(visible: false, child: ObsidianViewport(child: child ?? const SizedBox.shrink())),
+            child: TooltipVisibility(
+              visible: false,
+              child: ObsidianViewport(child: customWindowsCaption ? WindowsWindowFrame(child: child!) : child!),
+            ),
           ),
           home: const HomePage(),
         ),
