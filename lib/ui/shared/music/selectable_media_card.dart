@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hover_card.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/media_selection.dart';
 
 /// Owns selection, deletion feedback and hover behavior for catalog cards.

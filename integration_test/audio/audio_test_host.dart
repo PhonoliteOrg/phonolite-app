@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/data/storage/logs/log_files.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/security/server_trust.dart';
@@ -12,7 +14,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_error_handler.dart';
 
 import 'audio_probe.dart';
 
@@ -21,15 +23,12 @@ import 'audio_probe.dart';
 Future<AppController> startAudioTestHost(AudioProbe probe) async {
   installServerTrustOverrides();
   installArtworkErrorHandler();
-  await AppLogger.instance.initialize();
+  await AppLogger.instance.initialize(files: LogFiles(preferences: PreferencesCoordinator.shared));
   PhonoliteIcons.registerLicense();
   GoogleFonts.config.allowRuntimeFetching = false;
   final controller = AppController(
     connection: ServerConnection(
-      baseUrl: const String.fromEnvironment(
-        'PHONOLITE_URL',
-        defaultValue: 'https://127.0.0.1:3000/api',
-      ),
+      baseUrl: const String.fromEnvironment('PHONOLITE_URL', defaultValue: 'https://127.0.0.1:3000/api'),
     ),
     audioEngineFactory: probe.createEngine,
   );
@@ -39,10 +38,8 @@ Future<AppController> startAudioTestHost(AudioProbe probe) async {
       child: MaterialApp(
         theme: ObsidianTheme.build(),
         themeAnimationStyle: AnimationStyle.noAnimation,
-        builder: (context, child) => TooltipVisibility(
-          visible: false,
-          child: ObsidianViewport(child: child ?? const SizedBox.shrink()),
-        ),
+        builder: (context, child) =>
+            TooltipVisibility(visible: false, child: ObsidianViewport(child: child ?? const SizedBox.shrink())),
         home: const HomePage(),
       ),
     ),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/data/models/downloads/offline_download_snapshot.dart';
 import 'package:phonolite_app/data/models/library/album.dart';

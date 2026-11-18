@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
+import 'package:phonolite_app/ui/shared/music/formatting/artist_labels.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/genre_text.dart';
 
 void main() {

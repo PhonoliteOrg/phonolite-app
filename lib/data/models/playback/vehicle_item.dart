@@ -8,8 +8,7 @@ class VehicleItem {
   final bool? enabled;
   final String? artworkUrl;
   final String? artworkPath;
-  final String? token;
-  final String? serverPin;
+  final int? sessionRevision;
 
   const VehicleItem({
     required String this.id,
@@ -18,8 +17,7 @@ class VehicleItem {
     this.enabled,
     this.artworkUrl,
     this.artworkPath,
-    this.token,
-    this.serverPin,
+    this.sessionRevision,
   }) : action = null;
 
   const VehicleItem.action({
@@ -30,6 +28,5 @@ class VehicleItem {
   }) : id = null,
        artworkUrl = null,
        artworkPath = null,
-       token = null,
-       serverPin = null;
+       sessionRevision = null;
 }

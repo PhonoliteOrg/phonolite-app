@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
@@ -47,7 +48,7 @@ void main() {
   ]) {
     testWidgets('${entry.name} updates source order and retains it across disconnection', (tester) async {
       final app = _Controller();
-      final display = DisplaySettingsController(storage: _MemoryStorage());
+      final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: _MemoryStorage()));
       await display.initialize();
       await _pumpPage(tester, app, entry.page(display));
 
@@ -74,7 +75,7 @@ void main() {
 
   testWidgets('Library search follows the same source order as browsing', (tester) async {
     final app = _Controller();
-    final display = DisplaySettingsController(storage: _MemoryStorage());
+    final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: _MemoryStorage()));
     await display.initialize();
     await display.setLibraryLocalFirst(false);
     await _pumpPage(tester, app, LibraryPage(displaySettings: display));
@@ -95,7 +96,7 @@ void main() {
 
   testWidgets('Server-first legacy library pages before reaching the end of local music', (tester) async {
     final app = _Controller(legacyPaging: true);
-    final display = DisplaySettingsController(storage: _MemoryStorage());
+    final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: _MemoryStorage()));
     await display.initialize();
     await display.setLibraryLocalFirst(false);
     await _pumpPage(tester, app, LibraryPage(displaySettings: display));

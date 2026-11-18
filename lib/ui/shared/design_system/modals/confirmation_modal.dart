@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_dismiss_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ConfirmationModal extends StatelessWidget {
   final String title;
@@ -58,7 +59,7 @@ class ConfirmationModal extends StatelessWidget {
         ),
       ),
       actions: [
-        ModalActionButton(label: cancelLabel, onPressed: () => Navigator.of(context).pop(false)),
+        ModalDismissButton(label: cancelLabel, result: false),
         ModalActionButton(
           label: confirmLabel,
           variant: confirmVariant,

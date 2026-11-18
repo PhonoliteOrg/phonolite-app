@@ -4,12 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:phonolite_app/data/models/auth/account_state.dart';
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/device_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/playback_resume_checkpoint.dart';
 import 'package:phonolite_app/data/models/playback/playback_source_context.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 

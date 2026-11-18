@@ -3,12 +3,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/chamfer_geometry.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// The octagonal play/pause control. [semanticLabel] names the action it currently performs.
 class PlaybackHudPlayButton extends StatefulWidget {
@@ -37,7 +37,7 @@ class PlaybackHudPlayButtonState extends State<PlaybackHudPlayButton> with Point
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final scaleFactor = widget.size / 54;
     final baseSize = s(widget.size);

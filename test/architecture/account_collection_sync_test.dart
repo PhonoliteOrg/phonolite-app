@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/collections/account_collection_sync.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_event.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_snapshot.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 void main() {
   _syncTest('waits for subscription ready and reconciles duplicate or reversed notifications once', (tester) async {
@@ -131,7 +131,7 @@ void main() {
     harness.input.add(_ready(8));
     await tester.pump();
 
-    harness.token = 'other-account';
+    harness.session++;
     harness.fetch = null;
     harness.revision = 1;
     harness.start();
@@ -263,7 +263,7 @@ class _Harness {
   final diagnostics = <String>[];
   late final AccountCollectionSync sync;
   Future<AccountCollectionSnapshot> Function()? fetch;
-  String token = 'account';
+  int session = 1;
   int revision = 0;
   int reads = 0;
   int unauthorized = 0;
@@ -276,7 +276,7 @@ class _Harness {
       openStream: _open,
       fetchSnapshot: _fetch,
       applySnapshot: _apply,
-      isSessionCurrent: (_, expectedToken) => token == expectedToken,
+      isSessionCurrent: (revision) => session == revision,
       onDiagnostic: diagnostics.add,
       onUnauthorized: () => unauthorized++,
       onUnsupported: () => unsupported++,
@@ -290,7 +290,7 @@ class _Harness {
 
   StreamController<AccountCollectionEvent> get input => inputs.last;
 
-  void start() => sync.start(baseUrl: 'https://music.test/api', token: token);
+  void start() => sync.start(session);
 
   Future<void> dispose() async {
     await sync.stop();

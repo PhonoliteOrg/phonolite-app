@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/download_job_v2.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/models/server/track_download_stream.dart';
 import 'package:phonolite_app/infrastructure/server/api/json_api_endpoint.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';

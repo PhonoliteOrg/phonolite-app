@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,6 +9,40 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_fie
 import '../support/widget_test_helpers.dart';
 
 void main() {
+  testWidgets('editor stays open while saving and dismisses after completion', (tester) async {
+    final save = Completer<void>();
+    await tester.pumpWidget(
+      wrapInTestApp(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => PlaylistEditorModal(
+                title: 'Edit playlist',
+                initialValue: 'Focus',
+                onSubmit: (_, _, _, _) => save.future,
+              ),
+            ),
+            child: const Text('Open editor'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SAVE'));
+    await tester.pump();
+    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'SAVING')).enabled, isFalse);
+    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'CLOSE')).enabled, isFalse);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Edit playlist'), findsOneWidget);
+    save.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Edit playlist'), findsNothing);
+    expect(find.text('Open editor'), findsOneWidget);
+  });
+
   testWidgets('playlist fields limit length by user-perceived characters', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 1000);

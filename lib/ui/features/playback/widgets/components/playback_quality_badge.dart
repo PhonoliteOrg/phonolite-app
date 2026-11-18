@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class PlaybackQualityBadge extends StatefulWidget {
   final String label;
@@ -31,7 +31,7 @@ class PlaybackQualityBadgeState extends State<PlaybackQualityBadge> {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final enabled = widget.onTap != null;

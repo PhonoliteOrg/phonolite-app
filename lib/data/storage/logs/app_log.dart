@@ -3,7 +3,9 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_listener.dart';
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
 import 'package:phonolite_app/data/storage/logs/log_files.dart';
 
@@ -41,7 +43,7 @@ class AppLogger {
   String? get persistenceError => _persistenceError;
 
   /// Opt in at app startup; construction and ordinary unit tests do no I/O.
-  Future<void> initialize({LogFiles? files}) => _initialization ??= _initialize(files ?? LogFiles());
+  Future<void> initialize({required LogFiles files}) => _initialization ??= _initialize(files);
 
   void attach(LogListener listener, {bool includeHistory = true}) {
     _listeners.add(listener);
@@ -84,7 +86,7 @@ class AppLogger {
   }
 
   Future<void> updateStorageDirectory(String? path) async {
-    await initialize();
+    await _initialization;
 
     if (_files == null) {
       throw StateError('Local log files are unavailable.');

@@ -47,11 +47,7 @@ final class CarPlayArtworkLoader {
       return
     }
 
-    var request = URLRequest(url: url)
-
-    if let token, !token.isEmpty {
-      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
+    let request = PinnedArtworkSession.request(url: url, token: token)
 
     session.dataTask(with: request) { data, response, error in
       session.finishTasksAndInvalidate()

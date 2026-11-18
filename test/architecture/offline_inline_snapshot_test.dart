@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
@@ -19,9 +20,11 @@ void main() {
     storage = OfflineLibraryStorage(
       baseDirectory: Directory('${root.path}/offline'),
       keepDatabaseOpen: true,
-      settingsStorage: OfflineStorageSettingsStorage(
-        files: SettingsFiles(
-          directoryProvider: () async => Directory('${root.path}/settings'),
+      preferences: PreferencesCoordinator(
+        offline: OfflineStorageSettingsStorage(
+          files: SettingsFiles(
+            directoryProvider: () async => Directory('${root.path}/settings'),
+          ),
         ),
       ),
     );

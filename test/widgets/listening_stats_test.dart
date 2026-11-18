@@ -10,9 +10,12 @@ import 'package:phonolite_app/application/controllers/library/catalog_controller
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_listener.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
@@ -24,7 +27,7 @@ import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards_co
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
@@ -86,8 +89,6 @@ class _StatsController extends Fake implements AppController {
   @override
   Stream<OfflineLibrarySnapshot> get offlineLibrarySnapshotStream =>
       offlineUpdates.stream;
-  @override
-  Map<String, String> get artworkHeaders => server.authorizationHeaders;
 
   @override
   bool get gaplessResampling => false;
@@ -568,7 +569,6 @@ void main() {
       tile.coverUrl,
       'https://music.example/api/library/artists/artist/cover?kind=logo',
     );
-    expect(tile.headers, {'Authorization': 'Bearer test-artwork-token'});
     expect(controller.loads, 1);
 
     controller.artistMetadata = [
@@ -627,14 +627,12 @@ void main() {
     await tester.pumpAndSettle();
     var tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
     expect(tile.coverUrl, isNull);
-    expect(tile.headers, isEmpty);
 
     controller.library = artworkLibrary(controller.server.baseUrl, 2);
     controller.offlineUpdates.add(controller.library);
     await tester.pumpAndSettle();
     tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
     expect(tile.coverUrl, 'C:/test-art/artist.png');
-    expect(tile.headers, isEmpty);
     expect(controller.loads, 1);
     expect(tester.takeException(), isNull);
   });
@@ -679,7 +677,6 @@ void main() {
       await tester.pumpAndSettle();
       final tile = tester.widget<ArtistRowTile>(find.byType(ArtistRowTile));
       expect(tile.coverUrl, 'C:/test-art/artist.png');
-      expect(tile.headers, isEmpty);
       final cards = tester.widget<StatsCardsContent>(
         find.byType(StatsCardsContent),
       );

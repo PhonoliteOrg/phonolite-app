@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/dismissible_selection_area.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/backdrop_blur_resize_suspension.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_background.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 

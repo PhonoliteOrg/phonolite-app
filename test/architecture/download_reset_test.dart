@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
-import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
 import 'package:phonolite_app/data/models/server/download_job_v2.dart';

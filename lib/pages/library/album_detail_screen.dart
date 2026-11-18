@@ -17,11 +17,11 @@ import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/loading_widgets.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/banner_playback_button.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_sliver_list.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_padding.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
@@ -75,7 +75,6 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
     required List<Track> tracks,
     required PlaybackState playback,
     required String? playingId,
-    required Map<String, String> authHeadersMap,
     required String coverUrl,
     required bool compactHeaderActions,
   }) {
@@ -125,7 +124,6 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
             child: AlbumHero(
               album: _feature.album,
               coverUrl: coverUrl,
-              headers: authHeadersMap,
               actions: BannerPlaybackButton(
                 message: 'Play album',
                 visible: !_feature.selectionMode,
@@ -170,7 +168,6 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
   @override
   Widget pageContent(BuildContext context, PageAssembler assemble) {
     final controller = AppScope.of(context);
-    final authHeadersMap = authHeaders(controller);
     final coverUrl = controller.catalog.buildAlbumCoverUrl(_feature.album.id);
     final compactHeaderActions = isCompactListWidth(context);
 
@@ -204,7 +201,6 @@ class AlbumDetailScreenState extends BasePageState<AlbumDetailScreen> {
                     tracks: tracks,
                     playback: playback,
                     playingId: playingId,
-                    authHeadersMap: authHeadersMap,
                     coverUrl: coverUrl,
                     compactHeaderActions: compactHeaderActions,
                   ),

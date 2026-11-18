@@ -1,0 +1,1 @@
+enum ActionScope { local, server }

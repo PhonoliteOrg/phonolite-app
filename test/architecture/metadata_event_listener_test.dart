@@ -104,7 +104,7 @@ void main() {
     final harness = _Harness(onCancel: () => cancellations[nextCancellation++].future);
     addTearDown(harness.dispose);
     harness.start();
-    harness.token = 'new-token';
+    harness.session++;
     harness.start();
 
     var stopped = false;
@@ -152,7 +152,7 @@ void main() {
     harness.input.add(event('old-second', 2));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    harness.token = 'new-token';
+    harness.session++;
     harness.start();
     harness.input.add(event('new', 3));
     await tester.pump();
@@ -192,7 +192,7 @@ class _Harness {
         streams.add(controller);
         return controller.stream;
       },
-      isSessionCurrent: (url, credential) => authorized && url == 'server' && credential == token,
+      isSessionCurrent: (revision) => authorized && revision == session,
       applyEvent:
           apply ??
           (event) async {
@@ -206,11 +206,11 @@ class _Harness {
   final applied = <MetadataUpdateEvent>[];
   final diagnostics = <String>[];
   late final MetadataEventListener listener;
-  String token = 'token';
+  int session = 1;
   bool authorized = true;
   int invalidations = 0;
   StreamController<MetadataUpdateEvent> get input => streams.last;
-  void start() => listener.start(baseUrl: 'server', token: token);
+  void start() => listener.start(session);
   Future<void> dispose() async {
     unawaited(listener.stop());
     for (final stream in streams) {

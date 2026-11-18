@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_analysis_section.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_kpi_grid.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_empty_text.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_top_tracks_section.dart';
 
 /// Listening summaries and analysis. The surrounding page owns its toolbar and
@@ -11,22 +14,14 @@ import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_top_trac
 class StatsCardsContent extends StatelessWidget {
   final StatsResponse stats;
   final String? Function(StatsItem)? artistCoverUrl;
-  final Map<String, String> artistImageHeaders;
   final ValueChanged<StatsItem>? onArtistTap;
   final ValueChanged<StatsTrack>? onTrackTap;
 
-  const StatsCardsContent({
-    super.key,
-    required this.stats,
-    this.artistImageHeaders = const {},
-    this.artistCoverUrl,
-    this.onArtistTap,
-    this.onTrackTap,
-  });
+  const StatsCardsContent({super.key, required this.stats, this.artistCoverUrl, this.onArtistTap, this.onTrackTap});
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,12 +32,7 @@ class StatsCardsContent extends StatelessWidget {
           StatsEmptyText('No listening in this period yet.'),
         ],
         SizedBox(height: s(28)),
-        StatsAnalysisSection(
-          stats: stats,
-          artistCoverUrl: artistCoverUrl,
-          artistImageHeaders: artistImageHeaders,
-          onArtistTap: onArtistTap,
-        ),
+        StatsAnalysisSection(stats: stats, artistCoverUrl: artistCoverUrl, onArtistTap: onArtistTap),
         SizedBox(height: s(28)),
         StatsTopTracksSection(tracks: stats.topTracks, onTrackTap: onTrackTap),
       ],

@@ -3,8 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_error_handler.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/precache_images.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
@@ -16,6 +17,7 @@ import 'package:phonolite_app/ui/shared/music/artwork/backdrop_color.dart';
 
 import '../support/widget_test_helpers.dart';
 import '../support/artwork_test_loader.dart';
+
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 
 class _ImageClient extends Fake implements HttpClient {
@@ -73,7 +75,7 @@ void main() {
         _artworkApp(
           Align(
             alignment: Alignment.topLeft,
-            child: AlbumHero(album: album, coverUrl: url, headers: const {}),
+            child: AlbumHero(album: album, coverUrl: url),
           ),
         ),
       );

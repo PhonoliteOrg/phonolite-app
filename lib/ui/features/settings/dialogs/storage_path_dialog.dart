@@ -6,6 +6,20 @@ import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/structures/modals/base_alert_modal.dart';
 
+Future<void> settingsOpenStoragePathDialog(
+  BuildContext context, {
+  required String title,
+  required String initialPath,
+  required bool isDefault,
+  required Future<void> Function(String? path) onSave,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) =>
+        StoragePathDialog(title: title, initialPath: initialPath, isDefault: isDefault, onSave: onSave),
+  );
+}
+
 class StoragePathDialog extends BaseAlertModal {
   final String title;
   final String initialPath;
@@ -78,18 +92,15 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
           if (_feature.requiresDirectoryPicker)
             Align(
               alignment: Alignment.centerLeft,
-              child: SelectableText(_controller.text.isEmpty ? 'Default — ${widget.initialPath}' : _controller.text),
+              child: SelectableText(_controller.text.isEmpty ? 'Default â€” ${widget.initialPath}' : _controller.text),
             )
           else
-            ObsidianTextField(
+            ObsidianTextField.editor(
               controller: _controller,
               label: 'Folder path',
               hintText: widget.initialPath,
               height: ObsidianModalScope.usesTouchTargets(context) ? 56 : 48,
-              startPadding: 24,
-              isDense: true,
               enabled: !_feature.busy,
-              textInputAction: TextInputAction.done,
               onSubmitted: (_) => settingsSave(),
             ),
           if (_feature.error != null) ...[
@@ -106,9 +117,9 @@ class SettingsStoragePathDialogState extends BaseAlertModalState<StoragePathDial
 
   @override
   List<Widget> modalActions(BuildContext context) => [
-    ModalActionButton(label: 'Close', onPressed: _feature.busy ? null : () => Navigator.of(context).pop()),
+    ...super.modalActions(context),
     if (_feature.requiresDirectoryPicker)
       ModalActionButton(label: 'Choose folder', onPressed: _feature.busy ? null : settingsChooseFolder),
-    ModalActionButton(label: _feature.saving ? 'Saving' : 'Save', onPressed: _feature.busy ? null : settingsSave),
+    ModalActionButton.save(saving: _feature.saving, onPressed: _feature.busy ? null : settingsSave),
   ];
 }

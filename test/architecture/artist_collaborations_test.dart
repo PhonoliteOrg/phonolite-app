@@ -15,7 +15,7 @@ import 'package:phonolite_app/data/models/library/local_library_selection.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
-import 'package:phonolite_app/ui/features/library/widgets/artist_release_sections.dart';
+import 'package:phonolite_app/ui/features/library/widgets/artist_contribution_sliver.dart';
 
 import '../support/offline_library_test_helpers.dart';
 

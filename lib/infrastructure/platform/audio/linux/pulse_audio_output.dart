@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:phonolite_app/infrastructure/audio/output/audio_pcm32_output.dart';
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
+import 'package:phonolite_app/infrastructure/audio/output/bounded_audio_pcm_output.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/linux/native_pulse_audio_stream.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/linux/pulse_audio_stream.dart';
 

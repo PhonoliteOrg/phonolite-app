@@ -6,10 +6,13 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/data/rules/artwork/encoded_artwork.dart';
 import 'package:phonolite_app/data/storage/artwork/artwork_disk_cache.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/infrastructure/server/transport/bounded_retry_after.dart';
 import 'package:phonolite_app/infrastructure/server/transport/streamed_response_body.dart';
 
 /// Shared trusted artwork execution. At most four loads run and 32 wait;
@@ -25,7 +28,7 @@ class ManagedArtworkLoader implements ArtworkLoader {
   final ArtworkDiskCache disk;
   final DateTime Function() now;
   final Queue<_ArtworkLoad> _queue = Queue<_ArtworkLoad>();
-  final Map<String, _ArtworkLoad> _pending = {};
+  final Map<(int, String), _ArtworkLoad> _pending = {};
   final Set<Future<void>> _running = {};
   final Queue<_ArtworkDecode> _decodeQueue = Queue<_ArtworkDecode>();
   final Set<Future<void>> _decodes = {};
@@ -39,11 +42,16 @@ class ManagedArtworkLoader implements ArtworkLoader {
       now = now ?? DateTime.now;
 
   @override
-  String get cacheScope => _digest([
+  int get sessionRevision => connection.sessionRevision;
+
+  @override
+  String get cacheScope => '${connection.sessionRevision}:$_diskScope';
+
+  String get _diskScope => _digest([
     connection.baseUrl,
     connection.trust?.opaqueKey ?? '',
     connection.trust?.spki ?? '',
-    accountScope?.call() ?? _digest([connection.token ?? 'anonymous']),
+    accountScope?.call() ?? connection.credentialCacheScope,
   ]);
 
   @override
@@ -56,7 +64,7 @@ class ManagedArtworkLoader implements ArtworkLoader {
 
     for (final load in _queue) {
       load.result.completeError(const ArtworkLoadException());
-      _pending.remove(load.key);
+      _pending.remove((load.session, load.key));
     }
 
     _queue.clear();
@@ -77,10 +85,13 @@ class ManagedArtworkLoader implements ArtworkLoader {
       return Future.error(const ArtworkLoadException());
     }
 
+    if (request.sessionRevision != null && request.sessionRevision != connection.sessionRevision) {
+      return Future.error(const ArtworkLoadException());
+    }
     final source = _rendition(request.source, request.decodeSize);
     final scope = cacheScope;
-    final key = _digest([scope, source]);
-    final existing = _pending[key];
+    final key = _digest([_diskScope, source]);
+    final existing = _pending[(connection.sessionRevision, key)];
 
     if (existing != null) {
       if (existing.consumers >= 32) {
@@ -95,14 +106,8 @@ class ManagedArtworkLoader implements ArtworkLoader {
       return Future.error(const ArtworkLoadException(statusCode: 503, retryAfter: Duration(seconds: 2)));
     }
 
-    final load = _ArtworkLoad(
-      key: key,
-      source: source,
-      scope: scope,
-      session: connection.sessionRevision,
-      request: request,
-    );
-    _pending[key] = load;
+    final load = _ArtworkLoad(key: key, source: source, scope: scope, session: connection.sessionRevision);
+    _pending[(connection.sessionRevision, key)] = load;
     _queue.add(load);
     _drain();
 
@@ -206,19 +211,13 @@ class ManagedArtworkLoader implements ArtworkLoader {
     } on Object catch (error, stack) {
       load.result.completeError(error, stack);
     } finally {
-      _pending.remove(load.key);
+      _pending.remove((load.session, load.key));
       _active--;
       _drain();
     }
   }
 
   Future<Uint8List> _remote(_ArtworkLoad load) async {
-    final authorization = load.request.headers['Authorization'];
-
-    if (authorization != null && authorization != 'Bearer ${connection.token}') {
-      throw const ArtworkLoadException(statusCode: 401);
-    }
-
     StoredArtwork? stored;
 
     try {
@@ -235,10 +234,7 @@ class ManagedArtworkLoader implements ArtworkLoader {
       return stored.bytes;
     }
 
-    final response = await connection.openArtwork(
-      load.source,
-      headers: {if (stored?.etag != null) HttpHeaders.ifNoneMatchHeader: stored!.etag!},
-    );
+    final response = await connection.openArtwork(load.source, etag: stored?.etag);
 
     if (response.statusCode == 304 && stored != null) {
       await discardResponseBody(response);
@@ -350,18 +346,11 @@ class _ArtworkLoad {
   final String source;
   final String scope;
   final int session;
-  final ArtworkRequest request;
   String? contentDigest;
   final Completer<Uint8List> result = Completer<Uint8List>();
   int consumers = 1;
 
-  _ArtworkLoad({
-    required this.key,
-    required this.source,
-    required this.scope,
-    required this.session,
-    required this.request,
-  });
+  _ArtworkLoad({required this.key, required this.source, required this.scope, required this.session});
 }
 
 class _DeliveredArtwork {

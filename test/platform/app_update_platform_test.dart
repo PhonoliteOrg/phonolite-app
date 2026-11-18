@@ -14,7 +14,7 @@ import 'package:phonolite_app/data/models/updates/windows_update_asset.dart';
 import 'package:phonolite_app/data/storage/updates/windows_update_staging.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_backend.dart';
 import 'package:phonolite_app/infrastructure/platform/app/windows_app_update_platform.dart';
-import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
+import 'package:phonolite_app/infrastructure/updates/http_app_update_feed.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_transport.dart';
 import 'package:phonolite_app/infrastructure/updates/windows_update_verifier.dart';
 

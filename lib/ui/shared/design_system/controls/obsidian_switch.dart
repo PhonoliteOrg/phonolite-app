@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// A controlled, pill-shaped switch with a full touch target and keyboard access.
 class ObsidianSwitch extends StatefulWidget {

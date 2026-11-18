@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/track.dart';

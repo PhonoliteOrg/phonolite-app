@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/models/artwork/artwork_preloader.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_image.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/decoded_artwork_preloader.dart';
@@ -15,6 +17,9 @@ final _png = base64Decode(
 );
 
 class _Loader implements ArtworkLoader {
+  @override
+  int get sessionRevision => 0;
+
   @override
   String cacheScope = 'account-a';
   final List<String> calls = [];
@@ -42,7 +47,7 @@ class _Loader implements ArtworkLoader {
 }
 
 AuthenticatedNetworkImage _provider(_Loader loader, ArtworkRequest request) =>
-    AuthenticatedNetworkImage(request.source, loader: loader, headers: request.headers, decodeSize: request.decodeSize);
+    AuthenticatedNetworkImage(request.source, loader: loader, decodeSize: request.decodeSize);
 
 Future<void> _firstFrame(ImageProvider provider) async {
   final result = Completer<void>();
@@ -207,10 +212,7 @@ void main() {
       final loader = _Loader();
       final preloader = DecodedArtworkPreloader(loader: loader);
       addTearDown(preloader.dispose);
-      final request = ArtworkRequest(
-        source: 'https://music.test/cover',
-        headers: const {'Authorization': 'Bearer token'},
-      );
+      final request = ArtworkRequest(source: 'https://music.test/cover');
       await tester.runAsync(() async {
         preloader.update([request]);
         await _firstFrame(_provider(loader, request));

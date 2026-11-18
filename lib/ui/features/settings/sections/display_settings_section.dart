@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
-import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_toggle.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_icon.dart';

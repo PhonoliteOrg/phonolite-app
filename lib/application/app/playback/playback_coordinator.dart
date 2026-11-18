@@ -323,13 +323,8 @@ class _PlaybackCoordinator {
     }
   }
 
-  void setVolume(double value) {
-    _host._volumeTouched = true;
-    _applyVolume(value, persist: true);
-  }
-
   void toggleMute() {
-    setVolume(_playbackState.volume == 0.0 ? _lastAudibleVolume : 0.0);
+    _host.setVolume(_playbackState.volume == 0.0 ? _lastAudibleVolume : 0.0);
   }
 
   Future<List<OutputDevice>> listOutputDevices({bool refresh = false}) async {
@@ -431,37 +426,10 @@ class _PlaybackCoordinator {
     }
   }
 
-  void _applyVolume(double value, {required bool persist}) {
-    final clamped = value.clamp(0.0, 1.0);
-
-    if (clamped > 0.0) {
-      _lastAudibleVolume = clamped;
-    }
-
-    _host._audioEngine.setVolume(clamped);
-    _updatePlayback(volume: clamped);
-
-    if (persist) {
-      _scheduleVolumeSave(clamped);
-    }
-  }
-
-  void _scheduleVolumeSave(double value) {
-    _host._pendingVolumeSave = value;
-    _host._volumeSaveQueued = true;
-    _host._volumeSaveDebounce.cancel();
-    _host._volumeSaveDebounce.schedule(const Duration(milliseconds: 350), _flushVolumeSave);
-  }
-
-  void _flushVolumeSave() {
-    if (!_host._volumeSaveQueued) {
-      return;
-    }
-
-    _host._volumeSaveQueued = false;
-    final value = _host._pendingVolumeSave;
-
-    _host._persistPreference(_host._volumeSaves, 'Volume', () => _host._playbackPreferencesStorage.writeVolume(value));
+  void _applyVolume(double volume) {
+    if (volume > 0.0) _lastAudibleVolume = volume;
+    _host._audioEngine.setVolume(volume);
+    _updatePlayback(volume: volume);
   }
 
   Future<void> _playCurrent() async {
@@ -495,8 +463,7 @@ class _PlaybackCoordinator {
     _host._shuffleCoordinator._prefetchServerShuffle();
 
     if (_playbackState.queueSource != PlaybackQueueSource.offline) {
-      final server = _host.connection.baseUrl;
-      final token = _host.connection.token;
+      final session = _host.connection.sessionRevision;
       final metadataRevision = _host._metadataReadRevision;
 
       // Upcoming metadata can hydrate independently of the selected cover.
@@ -514,8 +481,7 @@ class _PlaybackCoordinator {
             final full = await _host._hydrateTrackForPlayback(queued);
 
             if (_host._disposed ||
-                server != _host.connection.baseUrl ||
-                token != _host.connection.token ||
+                session != _host.connection.sessionRevision ||
                 metadataRevision != _host._metadataReadRevision) {
               return;
             }
@@ -918,8 +884,6 @@ mixin _PlaybackFacade {
 
   void updateStreamMode(StreamMode mode) => _playbackCoordinator.updateStreamMode(mode);
 
-  void setVolume(double value) => _playbackCoordinator.setVolume(value);
-
   void toggleMute() => _playbackCoordinator.toggleMute();
 
   Future<List<OutputDevice>> listOutputDevices({bool refresh = false}) =>
@@ -929,11 +893,6 @@ mixin _PlaybackFacade {
 
   Future<void> _stop({bool requireFileRelease = false}) =>
       _playbackCoordinator._stop(requireFileRelease: requireFileRelease);
-
-  void _applyVolume(double value, {required bool persist}) =>
-      _playbackCoordinator._applyVolume(value, persist: persist);
-
-  void _flushVolumeSave() => _playbackCoordinator._flushVolumeSave();
 
   Future<void> _playCurrent() => _playbackCoordinator._playCurrent();
 

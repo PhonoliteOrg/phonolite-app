@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/playback/shuffle_presets_controller.dart';
-import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_target.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
@@ -18,11 +18,12 @@ import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart
 import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/local_server_toggle.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
+import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_action_layout.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class CustomShuffleSettingsPage extends BasePage {

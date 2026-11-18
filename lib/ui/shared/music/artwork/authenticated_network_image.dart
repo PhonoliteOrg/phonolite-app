@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
 
@@ -15,20 +17,20 @@ class AuthenticatedNetworkImage extends ImageProvider<AuthenticatedNetworkImage>
 
   final String url;
   final ArtworkLoader loader;
-  final Map<String, String> headers;
   final int? decodeSize;
   final String _scope;
+  final int _revision;
 
-  AuthenticatedNetworkImage(this.url, {required this.loader, Map<String, String>? headers, this.decodeSize})
-    : headers = Map.unmodifiable(headers ?? const {}),
-      _scope = loader.cacheScope;
+  AuthenticatedNetworkImage(this.url, {required this.loader, this.decodeSize})
+    : _scope = loader.cacheScope,
+      _revision = loader.sessionRevision;
 
   @override
   Future<AuthenticatedNetworkImage> obtainKey(ImageConfiguration configuration) => SynchronousFuture(this);
 
   @override
   ImageStreamCompleter loadImage(AuthenticatedNetworkImage key, ImageDecoderCallback decode) {
-    final request = ArtworkRequest(source: url, headers: headers, decodeSize: decodeSize);
+    final request = ArtworkRequest(source: url, decodeSize: decodeSize, sessionRevision: _revision);
     final active = _activeLoads[loader] ??= <AuthenticatedNetworkImage, Object>{};
     final invalidations = _invalidations[loader] ??= <AuthenticatedNetworkImage, Future<void>>{};
     final ticket = Object();
@@ -42,6 +44,7 @@ class AuthenticatedNetworkImage extends ImageProvider<AuthenticatedNetworkImage>
         // A retry must not revalidate bytes whose failed frame is still being
         // removed from the persistent cache.
         await previousInvalidation;
+        if (_scope != loader.cacheScope) throw const ArtworkLoadException();
         final bytes = await loader.load(request);
         suppliedBytes = true;
         return _decode(bytes, decode);
@@ -102,11 +105,10 @@ class AuthenticatedNetworkImage extends ImageProvider<AuthenticatedNetworkImage>
       other is AuthenticatedNetworkImage &&
       other.url == url &&
       other._scope == _scope &&
-      other.decodeSize == decodeSize &&
-      other.headers['Authorization'] == headers['Authorization'];
+      other.decodeSize == decodeSize;
 
   @override
-  int get hashCode => Object.hash(url, _scope, decodeSize, headers['Authorization']);
+  int get hashCode => Object.hash(url, _scope, decodeSize);
 }
 
 /// Frame decoding happens after the codec future completes. Observe the whole

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:phonolite_app/application/workflows/revision_snapshot_sync.dart';
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/auth/account_state.dart';
 import 'package:phonolite_app/data/models/server/revision_event.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
@@ -15,7 +16,7 @@ void main() {
   test('vector changes merge independent clocks without treating old notifications as new snapshots', () async {
     final harness = _Harness();
     addTearDown(harness.close);
-    harness.sync.start(baseUrl: 'https://test', token: 'alice');
+    harness.sync.start(1);
     harness.send(RevisionEventKind.ready, _clock(10, 2, 1));
     await _settle();
 
@@ -35,7 +36,7 @@ void main() {
   test('account changes reconcile unchanged clocks while identical heartbeats remain idle', () async {
     final harness = _Harness();
     addTearDown(harness.close);
-    harness.sync.start(baseUrl: 'https://test', token: 'alice');
+    harness.sync.start(1);
     harness.send(RevisionEventKind.ready, harness.state.revisions);
     await _settle();
     harness.send(RevisionEventKind.revision, harness.state.revisions);
@@ -55,7 +56,7 @@ void main() {
   test('a restored domain clock is accepted and failed application retries', () async {
     final harness = _Harness();
     addTearDown(harness.close);
-    harness.sync.start(baseUrl: 'https://test', token: 'alice');
+    harness.sync.start(1);
     harness.send(RevisionEventKind.ready, harness.state.revisions);
     await _settle();
     harness.state = _state(_clock(10, 0, 2));
@@ -160,7 +161,7 @@ class _Harness {
       }
       applied.add(snapshot);
     },
-    isSessionCurrent: (_, __) => true,
+    isSessionCurrent: (_) => true,
     onDiagnostic: (_) {},
     revisionOf: (snapshot) => snapshot.revisions,
     merge: (first, second) => first.merge(second),

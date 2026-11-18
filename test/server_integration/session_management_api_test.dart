@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/infrastructure/server/api/session_management_api.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
 

@@ -167,6 +167,7 @@ class _VehicleLibraryCoordinator {
       return serverError;
     }
 
+    final revision = _host.connection.sessionRevision;
     if (_host._artists.isEmpty && !_host._artistsLoading) {
       await _host.loadArtists();
     }
@@ -182,8 +183,7 @@ class _VehicleLibraryCoordinator {
             artworkUrl: (artist.logoRef?.trim().isNotEmpty ?? false)
                 ? _host.connection.buildArtistCoverUrl(artist.id, kind: 'logo', ref: artist.logoRef)
                 : null,
-            token: _host.connection.token ?? '',
-            serverPin: _host.connection.trust?.spki,
+            sessionRevision: revision,
           ),
         )
         .toList();
@@ -292,9 +292,8 @@ class _VehicleLibraryCoordinator {
       return _carPlayError(VehicleFailure.missingArtist);
     }
 
+    final revision = _host.connection.sessionRevision;
     await _host.loadAlbums(artistId);
-
-    final token = _host.connection.token ?? '';
     final items = _host._albums
         .map(
           (album) => VehicleItem(
@@ -302,8 +301,7 @@ class _VehicleLibraryCoordinator {
             title: album.title,
             subtitle: album.year != null ? album.year.toString() : '${album.trackCount} tracks',
             artworkUrl: _host.connection.buildAlbumCoverUrl(album.id),
-            token: token,
-            serverPin: _host.connection.trust?.spki,
+            sessionRevision: revision,
           ),
         )
         .toList();

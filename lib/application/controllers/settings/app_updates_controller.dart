@@ -9,6 +9,8 @@ import 'package:phonolite_app/data/models/updates/app_update_release.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_backend.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/app_update_preparation_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/app_update_progress_source.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
 
 class AppUpdatesController extends ChangeNotifier {

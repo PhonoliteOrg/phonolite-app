@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
+import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_action_layout.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class StatsHeader extends StatelessWidget {
@@ -49,7 +50,7 @@ class StatsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     final isCompact = MediaQuery.sizeOf(context).width < 520;
     final actions = PageToolbarActionLayout.of(context);
@@ -149,7 +150,7 @@ class _TemporalSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value * scale);
+    double s(double value) => context.s(value * scale);
 
     final iconSize = s(20);
 

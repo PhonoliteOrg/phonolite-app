@@ -4,6 +4,7 @@ import 'package:phonolite_app/data/models/library/artist_credit.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 
 void main() {

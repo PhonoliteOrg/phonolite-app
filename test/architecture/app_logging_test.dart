@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
@@ -335,7 +337,7 @@ void main() {
       );
       LogFiles files() => LogFiles(
         directoryProvider: () async => defaultFolder,
-        settingsStorage: preferences,
+        preferences: PreferencesCoordinator(logs: preferences),
         maxLines: 3,
       );
       final logger = await open(files: files());
@@ -432,11 +434,13 @@ void main() {
     final logger = await open(
       files: LogFiles(
         directoryProvider: () async => original,
-        settingsStorage: LogStorageSettingsStorage(
-          files: SettingsFiles(
-            directoryProvider: () async => Directory(blocker.path),
+        preferences: PreferencesCoordinator(
+          logs: LogStorageSettingsStorage(
+            files: SettingsFiles(
+              directoryProvider: () async => Directory(blocker.path),
+            ),
+            usesManagedStoragePaths: () => false,
           ),
-          usesManagedStoragePaths: () => false,
         ),
       ),
     );

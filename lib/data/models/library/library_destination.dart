@@ -1,5 +1,6 @@
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 
 /// Metadata needed to open a destination. Routing is owned by the UI.

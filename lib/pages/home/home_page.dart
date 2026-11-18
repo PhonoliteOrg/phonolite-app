@@ -8,7 +8,8 @@ import 'package:phonolite_app/application/controllers/library/library_navigation
 import 'package:phonolite_app/application/controllers/playback/playback_controls_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';
 import 'package:phonolite_app/pages/favorites/liked_page.dart';

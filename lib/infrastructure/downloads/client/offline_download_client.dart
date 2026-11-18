@@ -9,9 +9,12 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/data/configuration/downloads/offline_storage_config.dart';
+import 'package:phonolite_app/data/files/delete_download_worker_file.dart';
 import 'package:phonolite_app/data/files/download_integrity.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
+import 'package:phonolite_app/data/models/downloads/download_artwork_paths.dart';
 import 'package:phonolite_app/data/models/downloads/download_outcomes.dart';
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/data/models/downloads/download_worker_protocol.dart';
@@ -29,10 +32,11 @@ import 'package:phonolite_app/data/models/server/download_job_v2.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart' as offline_views;
 import 'package:phonolite_app/data/rules/downloads/download_progress_throttle.dart';
 import 'package:phonolite_app/data/rules/downloads/download_queue_rules.dart';
+import 'package:phonolite_app/data/rules/downloads/local_playlist_entry_comparison.dart';
+import 'package:phonolite_app/data/rules/downloads/offline_playlist_snapshot_comparison.dart';
 import 'package:phonolite_app/data/rules/downloads/offline_snapshot_comparison.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
-import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
 import 'package:phonolite_app/data/structures/downloads/offline_download_index.dart';
 import 'package:phonolite_app/infrastructure/downloads/http/download_range.dart';
 import 'package:phonolite_app/infrastructure/security/server_trust.dart';
@@ -492,7 +496,7 @@ class OfflineDownloadClient with _OfflineSnapshotPublisherFacade, _OfflineActorC
 
   static bool _canUseActor(OfflineLibraryStorage storage) {
     return storage.runtimeType == OfflineLibraryStorage &&
-        storage.settingsStorage.runtimeType == OfflineStorageSettingsStorage &&
+        storage.preferences.usesDefaultOfflineStore &&
         storage.baseDirectory == null &&
         storage.defaultDirectoryProvider == null &&
         storage.metadataDirectory == null &&

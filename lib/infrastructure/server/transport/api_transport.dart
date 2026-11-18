@@ -8,7 +8,9 @@ import 'package:http/http.dart' as http;
 import 'package:phonolite_quic/phonolite_quic.dart';
 
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/request_timeout_exception.dart';
+import 'package:phonolite_app/data/models/server/server_connection_check_exception.dart';
+import 'package:phonolite_app/data/models/server/server_reachability_probe.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/infrastructure/security/server_trust.dart' show ServerTrustRegistry, pinnedApiClient;
 import 'package:phonolite_app/infrastructure/server/transport/api_response_decoder.dart';

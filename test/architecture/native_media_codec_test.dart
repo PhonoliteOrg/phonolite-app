@@ -1,3 +1,7 @@
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/data/models/auth/server_trust.dart';
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/playback/native_now_playing_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_item.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_request.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_response.dart';
@@ -13,6 +17,19 @@ import 'package:phonolite_app/infrastructure/platform/media/now_playing_codec.da
 import 'package:phonolite_app/infrastructure/platform/media/vehicle_surface_codec.dart';
 
 void main() {
+  late ServerConnection connection;
+  late NativeArtworkAccess access;
+  setUp(() {
+    connection = ServerConnection(baseUrl: 'https://server.test/api');
+    connection.setTrust(ServerTrust(spki: 'ab' * 32, opaqueKey: 'test-key'));
+    connection.setToken('session-token');
+    access = NativeArtworkAccess(connection);
+  });
+  tearDown(() {
+    connection.forgetTrust(connection.baseUrl);
+    connection.close();
+  });
+
   test('vehicle method names retain their operations and default server scope', () {
     final methods = <String, VehicleOperation>{
       'getCarPlayState': VehicleOperation.getState,
@@ -122,16 +139,15 @@ void main() {
   test('vehicle items encode local file URLs and preserve conditional authentication fields', () {
     final response = VehicleItems([
       const VehicleItem(id: 'local', title: 'Local', subtitle: '', artworkPath: ' /music/Cover Art.png '),
-      const VehicleItem(
+      VehicleItem(
         id: 'remote',
         title: 'Remote',
         subtitle: 'Album',
         artworkUrl: 'https://server.test/cover',
         artworkPath: '/unused/local.png',
-        token: 'session-token',
-        serverPin: 'server-pin',
+        sessionRevision: connection.sessionRevision,
       ),
-      const VehicleItem(id: 'plain', title: 'Plain', subtitle: '', serverPin: 'unused-pin'),
+      const VehicleItem(id: 'plain', title: 'Plain', subtitle: '', sessionRevision: 0),
       const VehicleItem.action(
         action: VehicleHomeAction.likedShuffle,
         title: 'Liked',
@@ -140,7 +156,7 @@ void main() {
       ),
     ]);
 
-    expect(VehicleSurfaceCodec.encodeResponse(response), {
+    expect(VehicleSurfaceCodec.encodeResponse(response, access), {
       'items': [
         {'id': 'local', 'title': 'Local', 'subtitle': '', 'artworkUrl': 'file:///music/Cover%20Art.png'},
         {
@@ -149,7 +165,7 @@ void main() {
           'subtitle': 'Album',
           'artworkUrl': 'https://server.test/cover',
           'token': 'session-token',
-          'serverPin': 'server-pin',
+          'serverPin': 'ab' * 32,
         },
         {'id': 'plain', 'title': 'Plain', 'subtitle': ''},
         {'id': 'startLikedShuffle', 'title': 'Liked', 'subtitle': 'Shuffle', 'enabled': false},
@@ -209,13 +225,12 @@ void main() {
       liked: false,
       artworkKey: 'artwork',
       artworkUrl: 'https://server.test/cover',
-      token: 'session-token',
-      serverPin: 'server-pin',
+      sessionRevision: connection.sessionRevision,
       artworkPath: '/local/cover.png',
       artworkBytes: bytes,
     );
 
-    expect(NowPlayingCodec.encodeSnapshot(snapshot), {
+    expect(NowPlayingCodec.encodeSnapshot(snapshot, access), {
       'epoch': 4,
       'trackId': 'track',
       'title': 'Title',
@@ -228,13 +243,13 @@ void main() {
       'artworkKey': 'artwork',
       'artworkUrl': 'https://server.test/cover',
       'token': 'session-token',
-      'serverPin': 'server-pin',
+      'serverPin': 'ab' * 32,
       'artworkPath': '/local/cover.png',
       'artworkBytes': bytes,
     });
 
     final local = NowPlayingCodec.encodeSnapshot(
-      const NativeNowPlayingSnapshot(
+      NativeNowPlayingSnapshot(
         epoch: 0,
         trackId: '',
         title: '',
@@ -245,8 +260,7 @@ void main() {
         isPlaying: false,
         liked: false,
         artworkKey: '',
-        token: 'unused-token',
-        serverPin: 'unused-pin',
+        sessionRevision: connection.sessionRevision,
       ),
     );
 

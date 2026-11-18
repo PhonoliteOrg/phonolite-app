@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/controllers/shared/controller_selectio
 import 'package:phonolite_app/application/downloads/downloaded_track_selection.dart';
 import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/rules/library/track_identity.dart' as identity;
 

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/playback/playback_state.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 import 'package:phonolite_app/ui/structures/sections/base_sliver_section.dart';
 

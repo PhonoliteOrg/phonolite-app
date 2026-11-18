@@ -216,7 +216,7 @@ class _ShuffleCoordinator {
   }
 
   void _releaseServerShuffleSession(String sessionId, int revision) {
-    if (_host.connection.sessionRevision != revision || _host.connection.token == null) {
+    if (_host.connection.sessionRevision != revision || !_host.connection.hasCredential) {
       return;
     }
 

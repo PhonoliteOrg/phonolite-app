@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ModalActionButton extends StatelessWidget {
   final String label;
@@ -18,6 +18,9 @@ class ModalActionButton extends StatelessWidget {
     this.variant = TechButtonVariant.standard,
     this.onPressed,
   });
+
+  const ModalActionButton.save({Key? key, required bool saving, required VoidCallback? onPressed})
+    : this(key: key, label: saving ? 'Saving' : 'Save', onPressed: saving ? null : onPressed);
 
   @override
   Widget build(BuildContext context) {

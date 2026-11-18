@@ -1,6 +1,5 @@
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
-import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/host_port_parts.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
@@ -57,11 +56,11 @@ class LoginController extends FeatureController {
   void setRememberMe(bool value) => update(() => _rememberMe = value);
 
   /// Prefills the form when possible; an unreadable vault leaves it empty.
-  Future<AuthCredentials?> loadSavedCredentials() async {
-    final AuthCredentials? saved;
+  Future<String?> loadSavedUsername() async {
+    final String? saved;
 
     try {
-      saved = await app.loadSavedCredentials();
+      saved = await app.loadSavedUsername();
     } on Object catch (err) {
       // Best-effort prefill: the user can still type the sign-in by hand.
       AppLogger.warning('Could not read the saved sign-in: $err');

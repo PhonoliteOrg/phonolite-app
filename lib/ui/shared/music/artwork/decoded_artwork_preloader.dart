@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import 'package:phonolite_app/data/models/artwork/artwork_preloader.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_image.dart';
@@ -57,7 +58,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
     final desired = <ImageProvider, ArtworkRequest>{};
 
     for (final request in [if (_selected case final selected?) selected, ...requests]) {
-      if (request.source.trim().isEmpty) {
+      if (!_accepts(request)) {
         continue;
       }
 
@@ -102,7 +103,7 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
 
   @override
   Future<ArtworkPreparation> prepare(ArtworkRequest request) {
-    if (_disposed || request.source.trim().isEmpty) {
+    if (_disposed || !_accepts(request)) {
       return SynchronousFuture(ArtworkPreparation.unavailable);
     }
 
@@ -145,13 +146,12 @@ class DecodedArtworkPreloader implements ArtworkPreloader {
     _capacitySkipped.clear();
   }
 
+  bool _accepts(ArtworkRequest request) =>
+      request.source.trim().isNotEmpty &&
+      (request.sessionRevision == null || request.sessionRevision == loader.sessionRevision);
+
   ImageProvider _provider(ArtworkRequest request) {
-    final provider = AuthenticatedNetworkImage(
-      request.source,
-      loader: loader,
-      headers: request.headers,
-      decodeSize: request.decodeSize,
-    );
+    final provider = AuthenticatedNetworkImage(request.source, loader: loader, decodeSize: request.decodeSize);
     final size = request.decodeSize;
 
     return size == null ? provider : ResizeImage(provider, width: size, height: size, policy: ResizeImagePolicy.fit);

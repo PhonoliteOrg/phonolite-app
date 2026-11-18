@@ -5,10 +5,11 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
@@ -406,9 +407,11 @@ void main() {
 
         final storage = OfflineLibraryStorage(
           defaultDirectoryProvider: settingsFiles.directoryProvider,
-          settingsStorage: OfflineStorageSettingsStorage(
-            files: settingsFiles,
-            usesManagedStoragePaths: () => true,
+          preferences: PreferencesCoordinator(
+            offline: OfflineStorageSettingsStorage(
+              files: settingsFiles,
+              usesManagedStoragePaths: () => true,
+            ),
           ),
         );
 
@@ -442,9 +445,11 @@ void main() {
 
         final storage = OfflineLibraryStorage(
           defaultDirectoryProvider: settingsFiles.directoryProvider,
-          settingsStorage: OfflineStorageSettingsStorage(
-            files: settingsFiles,
-            usesManagedStoragePaths: () => true,
+          preferences: PreferencesCoordinator(
+            offline: OfflineStorageSettingsStorage(
+              files: settingsFiles,
+              usesManagedStoragePaths: () => true,
+            ),
           ),
         );
 
@@ -1667,9 +1672,11 @@ void main() {
 
         final managedStorage = ManagedTestStorage(
           defaultDirectoryProvider: settingsFiles.directoryProvider,
-          settingsStorage: OfflineStorageSettingsStorage(
-            files: settingsFiles,
-            usesManagedStoragePaths: () => true,
+          preferences: PreferencesCoordinator(
+            offline: OfflineStorageSettingsStorage(
+              files: settingsFiles,
+              usesManagedStoragePaths: () => true,
+            ),
           ),
         );
         final manager = OfflineDownloadManager(
@@ -2653,9 +2660,11 @@ void main() {
       );
       final storage = OfflineLibraryStorage(
         defaultDirectoryProvider: settingsFiles.directoryProvider,
-        settingsStorage: OfflineStorageSettingsStorage(
-          files: settingsFiles,
-          usesManagedStoragePaths: () => false,
+        preferences: PreferencesCoordinator(
+          offline: OfflineStorageSettingsStorage(
+            files: settingsFiles,
+            usesManagedStoragePaths: () => false,
+          ),
         ),
       );
       final original = Directory(

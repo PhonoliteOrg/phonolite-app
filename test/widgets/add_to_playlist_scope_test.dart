@@ -70,9 +70,8 @@ void main() {
   }
 
   test('offline queue keeps local playlist actions while local playback is starting', () {
-    final state = _playback(
-      local: false,
-    ).copyWith(queueSource: PlaybackQueueSource.offline, shuffleScope: ActionScope.server);
+    final state = _playback(local: false)
+        .copyWith(queueSource: PlaybackQueueSource.offline, shuffleScope: ActionScope.server);
     expect(PlaybackControlsController.actionScopeForPlayback(state), ActionScope.local);
   });
 }
@@ -165,8 +164,6 @@ class _App extends Fake implements AppController {
   final List<Playlist> playlists;
   @override
   final List<Playlist> localPlaylists;
-  @override
-  Map<String, String> get artworkHeaders => const {};
 
   @override
   Stream<List<Playlist>> get playlistsStream => const Stream.empty();

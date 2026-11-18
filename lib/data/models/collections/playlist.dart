@@ -1,24 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/structures/serialization/json_values.dart';
 
 const Object _playlistUnset = Object();
-
-enum PlaylistImageEditKind { keep, clear, replace }
-
-class PlaylistImageEdit {
-  final PlaylistImageEditKind kind;
-  final Uint8List? bytes;
-  final String? contentType;
-
-  const PlaylistImageEdit.keep() : kind = PlaylistImageEditKind.keep, bytes = null, contentType = null;
-
-  const PlaylistImageEdit.clear() : kind = PlaylistImageEditKind.clear, bytes = null, contentType = null;
-
-  const PlaylistImageEdit.replace({required this.bytes, required this.contentType})
-    : kind = PlaylistImageEditKind.replace;
-}
 
 class Playlist {
   final String id;

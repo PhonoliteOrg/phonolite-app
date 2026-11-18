@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart' show nonVirtual;
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_nav_icon.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// App destinations and selection presentation, independent of page toolbars.
 abstract class BaseAppNavigation extends StatelessWidget {

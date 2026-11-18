@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_image.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
@@ -13,7 +13,6 @@ import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
 class ArtworkImage extends StatefulWidget {
   final String? imageUrl;
   final Widget placeholder;
-  final Map<String, String>? headers;
   final double? width;
   final double? height;
   final BoxFit fit;
@@ -27,7 +26,6 @@ class ArtworkImage extends StatefulWidget {
     super.key,
     required this.imageUrl,
     required this.placeholder,
-    this.headers,
     this.width,
     this.height,
     this.fit = BoxFit.cover,
@@ -46,7 +44,6 @@ class _ArtworkImageState extends State<ArtworkImage> {
   ImageProvider? _provider;
   ArtworkLoader? _loader;
   String? _providerScope;
-  Map<String, String>? _headers;
   Timer? _retry;
   int _attempts = 0;
   int _generation = 0;
@@ -70,8 +67,7 @@ class _ArtworkImageState extends State<ArtworkImage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.imageUrl != widget.imageUrl ||
         oldWidget.decodeSize != widget.decodeSize ||
-        _loader?.cacheScope != _providerScope ||
-        !mapEquals(_headers, widget.headers)) {
+        _loader?.cacheScope != _providerScope) {
       _retry?.cancel();
       _attempts = 0;
       _generation++;
@@ -86,7 +82,6 @@ class _ArtworkImageState extends State<ArtworkImage> {
   }
 
   void _configure() {
-    _headers = widget.headers == null ? null : Map.of(widget.headers!);
     final path = widget.imageUrl?.trim();
     final loader = _loader;
     _providerScope = loader?.cacheScope;
@@ -96,7 +91,7 @@ class _ArtworkImageState extends State<ArtworkImage> {
     }
 
     final size = widget.decodeSize;
-    final provider = AuthenticatedNetworkImage(path, loader: loader, headers: _headers, decodeSize: size);
+    final provider = AuthenticatedNetworkImage(path, loader: loader, decodeSize: size);
     _provider = size == null
         ? provider
         : ResizeImage(provider, width: size, height: size, policy: ResizeImagePolicy.fit);

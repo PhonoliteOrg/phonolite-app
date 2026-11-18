@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/server_connection_setting.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/server_icon.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/app_update_tile.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/structures/sections/base_section.dart';

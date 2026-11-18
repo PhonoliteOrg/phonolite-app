@@ -5,7 +5,7 @@ import 'package:characters/characters.dart';
 import 'package:file_selector/file_selector.dart';
 
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
-import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/collections/playlist_editor_values.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/platform/files/playlist_image_file_picker.dart';

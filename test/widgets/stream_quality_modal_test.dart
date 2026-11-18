@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
+import 'package:phonolite_app/data/models/playback/stream_mode.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_stream_labels.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_list_row.dart';
 
 import '../support/widget_test_helpers.dart';
 
@@ -39,6 +41,18 @@ void main() {
     expect(find.text('Medium quality (96 kbps)'), findsOneWidget);
     expect(find.text('Low quality (48 kbps)'), findsOneWidget);
 
+    final selectedRow = find.ancestor(
+      of: find.byIcon(PhonoliteIcons.check),
+      matching: find.byType(ObsidianModalListRow),
+    );
+    expect(find.descendant(of: selectedRow, matching: find.text('High quality (160 kbps)')), findsOneWidget);
+    await tester.tap(find.text('CLOSE'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stream Quality'), findsNothing);
+    expect(selections, 0);
+
+    await tester.tap(find.text('HQ'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Original (source-preserving · QUIC)'));
     await tester.pumpAndSettle();
 

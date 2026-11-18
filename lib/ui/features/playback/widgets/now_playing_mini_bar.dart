@@ -8,7 +8,9 @@ import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_play_button.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_source_tags.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_inline_tags.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tech_tag.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tech_tag_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
@@ -17,9 +19,8 @@ import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 
 class NowPlayingMiniBar extends StatelessWidget {
   static const double _minHeight = 72;
@@ -72,7 +73,7 @@ class NowPlayingMiniBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final scale = ObsidianScale.of(context);
     final track = state.track;
@@ -94,8 +95,6 @@ class NowPlayingMiniBar extends StatelessWidget {
           ? null
           : AppScope.of(context).catalog.buildAlbumCoverUrl(albumId);
     }
-
-    final headers = hasLocalImage ? const <String, String>{} : authHeaders(AppScope.of(context));
 
     final artSize = s(54);
     final playPadding = s(6);
@@ -130,13 +129,7 @@ class NowPlayingMiniBar extends StatelessWidget {
                           children: [
                             track == null
                                 ? Icon(PhonoliteIcons.music, color: ObsidianPalette.textMuted, size: artSize * 0.5)
-                                : AlbumArt(
-                                    title: track.album,
-                                    size: artSize,
-                                    imageUrl: imageUrl,
-                                    headers: headers,
-                                    thumbnail: false,
-                                  ),
+                                : AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, thumbnail: false),
                             if (state.isLoading)
                               ColoredBox(
                                 color: Colors.black.withByteOpacity(0.34),

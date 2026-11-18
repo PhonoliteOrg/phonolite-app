@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 
@@ -14,7 +14,7 @@ class StatsModuleShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     return ObsidianGlassSurface(
       grouped: true,

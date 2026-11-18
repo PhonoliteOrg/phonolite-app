@@ -1,4 +1,5 @@
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/rules/library/track_identity.dart';
 

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/listening_duration_label.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class StatsKpiGrid extends StatelessWidget {
   final StatsResponse stats;
@@ -35,7 +36,7 @@ class StatsKpiGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     final values = <({String label, String value})>[
       (label: 'TOTAL PLAYTIME', value: _listeningTime()),
@@ -82,7 +83,7 @@ class _KpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     final padding = compact ? EdgeInsets.all(s(12)) : EdgeInsets.all(s(18));
     final labelSize = compact ? s(10) : s(12);

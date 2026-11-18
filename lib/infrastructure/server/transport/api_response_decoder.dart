@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 /// Shared HTTP success and JSON-shape rules for buffered API responses.
 /// Endpoint clients supply model factories; streaming and binary endpoints

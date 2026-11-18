@@ -79,7 +79,7 @@ class _OfflineDatabase {
     _host.baseDirectory?.absolute.path,
     _host.metadataDirectory?.absolute.path,
     _host.downloadsDirectory?.absolute.path,
-    identityHashCode(_host.settingsStorage),
+    identityHashCode(_host.preferences),
   ].join('|');
 
   void _releaseDatabase(Database? db) {

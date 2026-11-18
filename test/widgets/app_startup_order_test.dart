@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/app_settings_controllers.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
@@ -22,8 +23,10 @@ void main() {
     final displayRead = Completer<DisplaySettings>();
     final controllerStarted = Completer<void>();
     final settings = AppSettingsControllers(
-      display: DisplaySettingsController(storage: _GatedDisplayStorage(displayRead.future)),
-      download: DownloadSettingsController(storage: _MemoryDownloadStorage()),
+      display: DisplaySettingsController(
+        preferences: PreferencesCoordinator(display: _GatedDisplayStorage(displayRead.future)),
+      ),
+      download: DownloadSettingsController(preferences: PreferencesCoordinator(downloads: _MemoryDownloadStorage())),
       desktop: DesktopSettingsController(isSupported: () => false),
       updates: AppUpdatesController(isSupported: () => false),
     );

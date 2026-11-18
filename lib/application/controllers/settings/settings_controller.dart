@@ -1,3 +1,5 @@
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/data/storage/logs/log_files.dart';
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_info_service.dart';
@@ -17,7 +19,11 @@ class SettingsController {
 
   Future<String> loadAppVersion() => _appVersion ??= const AppInfoService().readVersion();
 
-  Future<void> updateStorageDirectory(String? path) => AppLogger.instance.updateStorageDirectory(path);
+  Future<void> updateStorageDirectory(String? path) async {
+    final logger = AppLogger.instance;
+    await logger.initialize(files: LogFiles(preferences: PreferencesCoordinator.shared));
+    await logger.updateStorageDirectory(path);
+  }
 
   Future<bool> openStorageDirectory(String path) async {
     try {

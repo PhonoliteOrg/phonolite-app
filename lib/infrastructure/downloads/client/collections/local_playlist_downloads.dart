@@ -149,9 +149,7 @@ class _LocalPlaylistDownloads {
           return;
         }
 
-        if (source.serverBaseUrl != _host.connection.baseUrl ||
-            _host.connection.token == null ||
-            _host.connection.token!.isEmpty) {
+        if (source.serverBaseUrl != _host.connection.baseUrl || !_host.connection.hasCredential) {
           await _host._storage.updatePendingPlaylistRequest(source, OfflineDownloadStatus.paused);
 
           return;

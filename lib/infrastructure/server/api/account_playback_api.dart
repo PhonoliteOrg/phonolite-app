@@ -6,7 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/playback_resume_checkpoint.dart';
 import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
+import 'package:phonolite_app/data/models/server/request_timeout_exception.dart';
 import 'package:phonolite_app/infrastructure/server/api/json_api_endpoint.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
 

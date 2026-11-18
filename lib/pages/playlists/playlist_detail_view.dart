@@ -23,11 +23,11 @@ import 'package:phonolite_app/ui/shared/design_system/icons/playlist_edit_icon.d
 import 'package:phonolite_app/ui/shared/design_system/layout/loading_widgets.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/banner_playback_button.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_sliver_list.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_padding.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
@@ -87,7 +87,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
         initialValue: playlist.name,
         initialDescription: playlist.description ?? '',
         initialImageUrl: _feature.coverUrl(playlist),
-        imageHeaders: _imageHeaders(controller),
         onSubmit: (value, description, imageEdit, _) =>
             _feature.rename(value, description: description, imageEdit: imageEdit),
       ),
@@ -102,16 +101,11 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
         initialValue: playlist.name,
         initialDescription: playlist.description ?? '',
         initialImageUrl: _feature.serverPlaylistCoverUrl(controller, playlist),
-        imageHeaders: authHeaders(controller),
         onSubmit: (value, description, imageEdit, _) =>
             controller.downloadPlaylist(playlist, tracks, name: value, description: description, imageEdit: imageEdit),
       ),
     );
   }
-
-  /// Local covers are files; server covers need the session's authentication headers.
-  Map<String, String> _imageHeaders(AppController controller) =>
-      widget.isLocal ? const <String, String>{} : authHeaders(controller);
 
   Future<void> _removeDownloads(List<Track> tracks, String label) async {
     if (tracks.isEmpty) {
@@ -138,7 +132,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
     required Playlist playlist,
     required String playlistCoverUrl,
     required Album playlistAlbum,
-    required Map<String, String> playlistHeaders,
     required List<Track> displayedTracks,
   }) {
     final removableTracks = _feature.removableTracks(controller, displayedTracks);
@@ -201,7 +194,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
             child: AlbumHero(
               album: playlistAlbum,
               coverUrl: playlistCoverUrl,
-              headers: playlistHeaders,
               actions: _playlistPlaybackButton(displayedTracks),
             ),
           ),
@@ -271,7 +263,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
         final playlist = _feature.playlistFrom(snapshot.data ?? const <Playlist>[]);
         final playlistCoverUrl = _feature.coverUrl(playlist) ?? '';
         final playlistAlbum = _feature.playlistAlbum(playlist);
-        final playlistHeaders = _imageHeaders(controller);
 
         if (widget.isLocal) {
           return StreamBuilder<List<LocalPlaylistEntry>>(
@@ -291,7 +282,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                   playlist: playlist,
                   playlistCoverUrl: playlistCoverUrl,
                   playlistAlbum: playlistAlbum,
-                  playlistHeaders: playlistHeaders,
                   displayedTracks: _feature.displayedTracks(tracks),
                 ),
               );
@@ -315,7 +305,6 @@ class _PlaylistDetailViewState extends BasePageState<PlaylistDetailView> {
                 playlist: playlist,
                 playlistCoverUrl: playlistCoverUrl,
                 playlistAlbum: playlistAlbum,
-                playlistHeaders: playlistHeaders,
                 displayedTracks: displayedTracks,
               ),
             );

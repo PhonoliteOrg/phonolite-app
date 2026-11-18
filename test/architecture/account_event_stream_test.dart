@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:phonolite_app/data/models/collections/account_collection_event.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_snapshot.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/infrastructure/server/api/account_events_api.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
 

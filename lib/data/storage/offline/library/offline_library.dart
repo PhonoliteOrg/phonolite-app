@@ -11,8 +11,11 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:phonolite_app/data/models/collections/local_like_state.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/download_batch.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_source.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 import 'package:phonolite_app/data/models/downloads/offline_deletion_draft.dart';
@@ -27,13 +30,16 @@ import 'package:phonolite_app/data/models/library/track_source_match.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/rules/library/track_matching.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
-import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/data/models/preferences/offline_storage_settings.dart';
 import 'package:phonolite_app/data/storage/windows_app_storage.dart';
 import 'package:phonolite_app/data/structures/serialization/json_values.dart';
 
 export 'package:phonolite_app/data/models/collections/local_like_state.dart';
 export 'package:phonolite_app/data/models/downloads/download_batch.dart';
 export 'package:phonolite_app/data/models/downloads/download_job.dart';
+export 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
+export 'package:phonolite_app/data/models/downloads/offline_download_job_source.dart';
 export 'package:phonolite_app/data/models/downloads/download_status.dart';
 export 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 export 'package:phonolite_app/data/models/downloads/offline_metadata_repair_request.dart';
@@ -91,14 +97,15 @@ class OfflineLibraryStorage
   final Future<Directory> Function()? defaultDirectoryProvider;
   final Directory? metadataDirectory;
   final Directory? downloadsDirectory;
-  final OfflineStorageSettingsStorage settingsStorage;
+  final PreferencesCoordinator? _preferences;
+  PreferencesCoordinator get preferences => _preferences ?? PreferencesCoordinator.shared;
 
   const OfflineLibraryStorage({
     this.baseDirectory,
     this.keepDatabaseOpen = false,
     this.metadataDirectory,
     this.downloadsDirectory,
-    this.settingsStorage = const OfflineStorageSettingsStorage(),
+    this._preferences,
     this.defaultDirectoryProvider,
   });
 

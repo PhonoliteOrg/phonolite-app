@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/ui/controller_binding.dart';
-import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_trailing.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_switch.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/stats_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ListeningStatisticsSetting extends StatefulWidget {
   final bool enabled;

@@ -1,3 +1,4 @@
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/auth/account_state.dart';
 import 'package:phonolite_app/data/models/playback/account_last_track.dart';
 import 'package:phonolite_app/data/models/server/revision_event.dart';

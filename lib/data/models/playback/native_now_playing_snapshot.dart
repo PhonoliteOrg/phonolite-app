@@ -12,8 +12,7 @@ class NativeNowPlayingSnapshot {
   final bool liked;
   final String artworkKey;
   final String? artworkUrl;
-  final String? token;
-  final String? serverPin;
+  final int? sessionRevision;
   final String? artworkPath;
   final Uint8List? artworkBytes;
 
@@ -29,8 +28,7 @@ class NativeNowPlayingSnapshot {
     required this.liked,
     required this.artworkKey,
     this.artworkUrl,
-    this.token,
-    this.serverPin,
+    this.sessionRevision,
     this.artworkPath,
     this.artworkBytes,
   });

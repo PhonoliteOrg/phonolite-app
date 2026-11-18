@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:phonolite_app/data/models/library/artist.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 /// Short-lived metadata for the artists currently on screen. Detail reads also

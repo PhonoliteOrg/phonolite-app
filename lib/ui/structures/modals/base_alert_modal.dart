@@ -2,7 +2,8 @@ import 'package:flutter/foundation.dart' show nonVirtual;
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/controller_binding.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_dismiss_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 
 abstract class BaseAlertModal extends StatefulWidget {
@@ -25,7 +26,7 @@ abstract class BaseAlertModalState<T extends BaseAlertModal> extends State<T> wi
   Widget modalContent(BuildContext context);
 
   @protected
-  List<Widget> modalActions(BuildContext context);
+  List<Widget> modalActions(BuildContext context) => [ModalDismissButton(enabled: modalCanPop)];
 
   @override
   @nonVirtual

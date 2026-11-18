@@ -5,14 +5,17 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_preloader.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/auth/account_state.dart';
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
 import 'package:phonolite_app/data/storage/auth/auth_storage.dart';
@@ -37,6 +40,7 @@ import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/network/network_connectivity.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_metadata.dart';
@@ -1315,7 +1319,7 @@ void main() {
         if (hasCover) {
           await _resumeUntil(() => artwork.preparations.isNotEmpty);
           expect(artwork.preparations.first.source, track.albumArtPath);
-          expect(artwork.preparations.first.headers, isEmpty);
+          expect(artwork.preparations.first.sessionRevision, isNull);
           expect(harness.controller.playbackState.isLoading, isTrue);
           await _resumeUntil(() => harness.audio.localStarts.isNotEmpty);
           ready.complete();
@@ -1404,10 +1408,7 @@ void main() {
     expect(artwork.current.map((request) => request.source), [
       for (var i = 0; i < 3; i++) connection.buildAlbumCoverUrl('album-$i'),
     ]);
-    expect(
-      artwork.current.every((request) => request.headers['Authorization'] == 'Bearer ${connection.token}'),
-      isTrue,
-    );
+    expect(artwork.current.every((request) => request.sessionRevision == connection.sessionRevision), isTrue);
     expect(connection.pageOffsets, isEmpty);
 
     await harness.controller.nextTrack();
@@ -1435,8 +1436,7 @@ void main() {
     expect(initial.map((source) => source.url), [
       for (var i = 0; i < 3; i++) connection.buildAlbumCoverUrl('album-$i'),
     ]);
-    expect(initial.every((source) => source.token == connection.token), isTrue);
-    expect(initial.every((source) => source.serverPin == connection.trust?.spki), isTrue);
+    expect(initial.every((source) => source.sessionRevision == connection.sessionRevision), isTrue);
     expect(initial.first.key, harness.nowPlaying.updates.last['artworkKey']);
     expect(harness.audio.starts.single.trackId, 'deck-track-0');
 
@@ -1510,8 +1510,8 @@ void main() {
       'C:/covers/album.png',
       connection.buildAlbumCoverUrl('remote-album'),
     ]);
-    expect(artwork.current.first.headers, isEmpty);
-    expect(artwork.current.last.headers, harness.controller.artworkHeaders);
+    expect(artwork.current.first.sessionRevision, isNull);
+    expect(artwork.current.last.sessionRevision, connection.sessionRevision);
     expect(harness.nowPlaying.preloads.last.map((source) => source.url), [
       connection.buildAlbumCoverUrl('album-1'),
       connection.buildAlbumCoverUrl('remote-album'),
@@ -2231,7 +2231,7 @@ void main() {
     expect(harness.controller.authState.baseUrl, isEmpty);
     expect(ServerTrustRegistry.lookup(target), isNull);
     expect(await ServerTrustStore.read(target), isNull);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
     expect(harness.auth.clears, 1);
     expect(harness.controller.authState.isAuthorized, isFalse);
     expect(harness.controller.playbackState.track, isNull);
@@ -2270,7 +2270,7 @@ void main() {
     expect(harness.connection.trust, isNull);
     expect(ServerTrustRegistry.lookup('https://unused.test'), isNull);
     expect(harness.connection.baseUrl, isEmpty);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
     expect(connection.logoutRequests, 1);
   });
 
@@ -2298,7 +2298,7 @@ void main() {
     expect(harness.connection.baseUrl, isEmpty);
     expect(harness.controller.authState.isAuthorized, isFalse);
     expect(harness.controller.hasSavedCredentials, isFalse);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
     expect(await ServerTrustStore.read('https://unused.test'), isNull);
     expect(connection.logoutRequests, 1);
   });
@@ -2343,7 +2343,7 @@ void main() {
     expect(harness.controller.playbackState.isPlaying, isFalse);
     expect(harness.controller.playbackState.track, isNull);
     expect(harness.auth.clears, 1);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
     expect(connection.trust, testServerTrust);
     connection.pendingHealth = Future.value(25);
     await harness.controller.refreshServerAvailability();
@@ -2499,7 +2499,7 @@ void main() {
     expect(harness.controller.authState.isAuthorized, isFalse);
     expect(harness.controller.playbackState.track, isNull);
     expect(harness.auth.clears, 1);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
   });
 
   test('an expired session during reconnect requires sign-in and removes the saved sign-in', () async {
@@ -3194,8 +3194,8 @@ void main() {
       final updates = harness.nowPlaying.updates;
       expect(updates, isNotEmpty);
       expect(updates.last['artworkKey'], 'url:${updates.last['artworkUrl']}');
-      expect(updates.last['token'], harness.connection.token);
-      expect(updates.last['serverPin'], harness.connection.trust!.spki);
+      expect(updates.last['token'], nativeArtwork ? harness.connection.token : isNull);
+      expect(updates.last['serverPin'], nativeArtwork ? harness.connection.trust!.spki : isNull);
       if (nativeArtwork) {
         expect(loader.loads, 0);
         expect(updates.any((update) => update.containsKey('artworkBytes')), isFalse);
@@ -3844,6 +3844,7 @@ void main() {
     harness.preferences.pending = pendingPreferences.future;
     harness.connection.pendingHealth = pendingHealth.future;
     final startup = harness.controller.initialize();
+    await _resumeUntil(() => harness.preferences.reads == 1);
     await harness.controller.close();
     pendingSettings.complete(const CustomShuffleSettings(artistIds: ['late']));
     pendingPreferences.complete(false);
@@ -4035,7 +4036,7 @@ void main() {
     expect(connection.token, isNull);
     expect(ServerTrustRegistry.lookup('https://unused.test'), isNull);
     expect(await ServerTrustStore.read('https://unused.test'), isNull);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
     expect(harness.audio.stops, previousStops);
     expect(harness.audio.active, isTrue);
     expect(harness.controller.playbackState.isLocalPlayback, isTrue);
@@ -5484,7 +5485,9 @@ void main() {
       harness.onStarted!();
       expect(harness.controller.playbackState.track?.id, queue[0].id);
 
-      await harness.controller.toggleLike(harness.controller.localLiked.singleWhere((track) => track.id == queue[1].id));
+      await harness.controller.toggleLike(
+        harness.controller.localLiked.singleWhere((track) => track.id == queue[1].id),
+      );
       await harness.controller.nextTrack();
 
       expect(harness.controller.playbackState.track?.id, likedQueue ? queue[2].id : queue[1].id);
@@ -5498,7 +5501,12 @@ void main() {
     await harness.controller.initialize();
     await harness.controller.restoreSession();
     expect(harness.controller.liked, isEmpty);
-    final track = offlineTestTrack(id: 'server-only', title: 'Known title', artist: 'Known artist', album: 'Known album');
+    final track = offlineTestTrack(
+      id: 'server-only',
+      title: 'Known title',
+      artist: 'Known artist',
+      album: 'Known album',
+    );
 
     await harness.controller.toggleLike(track);
 
@@ -5730,9 +5738,8 @@ class _Harness {
       offlineDownloadManager: offlineDownloadManager ?? downloads,
       offlineStorage: offlineStorage ?? _Storage(),
       authStorage: authStorage ?? auth,
-      playbackPreferencesStorage: preferences,
+      preferences: PreferencesCoordinator(playback: preferences, shuffle: shuffle),
       playbackResumeStorage: playbackResumeStorage,
-      customShuffleStorage: shuffle,
       connectivitySignalSource: connectivity,
       nowPlayingPlatformService: nowPlaying,
       nowPlayingArtworkLoader: artworkLoader,
@@ -6716,7 +6723,7 @@ class _RecordingArtworkPreloader implements ArtworkPreloader {
 class _ArtworkLoader extends NowPlayingArtworkLoader {
   int loads = 0;
   @override
-  Future<Uint8List?> loadRemote(String url, {required String token}) async {
+  Future<Uint8List?> loadRemote(String url, {required int sessionRevision}) async {
     loads++;
     return Uint8List.fromList([1, 2, 3]);
   }

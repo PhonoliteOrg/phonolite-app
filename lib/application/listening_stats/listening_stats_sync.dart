@@ -11,7 +11,7 @@ class ListeningStatsSync {
   final ServerConnection connection;
   final bool Function() isAuthorized;
   final void Function() onChanged;
-  final Future<void> Function(String serverId, String userId) onIdentity;
+  final Future<void> Function(int revision, String serverId, String userId) onIdentity;
   Future<void>? _running;
   Future<void>? _pulling;
   Future<void>? _resetting;
@@ -223,7 +223,8 @@ class ListeningStatsSync {
 
     await history.setAccount(serverId: serverId, userId: userId, historyGeneration: nextGeneration);
     checkSession();
-    await onIdentity(serverId, userId);
+    await onIdentity(revision, serverId, userId);
+    checkSession();
     message = null;
     _failures = 0;
     onChanged();
@@ -268,7 +269,7 @@ class ListeningStatsSync {
         return;
       }
 
-      await onIdentity(serverId, userId);
+      await onIdentity(revision, serverId, userId);
 
       if (!_current(revision)) {
         return;

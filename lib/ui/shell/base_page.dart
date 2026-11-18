@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/controller_binding.dart';
 import 'package:phonolite_app/ui/shell/page_body.dart';
+import 'package:phonolite_app/ui/shell/page_layout.dart';
 
 export 'package:phonolite_app/ui/shell/page_body.dart';
+export 'package:phonolite_app/ui/shell/page_layout.dart';
 
 typedef PageAssembler = Widget Function(BuildContext context, {Widget? navbar, required PageBody body});
 

@@ -4,7 +4,7 @@ import 'package:phonolite_app/application/controllers/settings/app_updates_contr
 import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class AppUpdateTile extends StatelessWidget {
   final AppUpdatesController controller;

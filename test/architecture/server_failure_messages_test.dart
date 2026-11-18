@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/controllers/auth/server_failure_messages.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/password_change_exception.dart';
+import 'package:phonolite_app/data/models/server/server_connection_check_exception.dart';
 
 void main() {
   test('typed connection failures retain application messages and safe probe details', () {

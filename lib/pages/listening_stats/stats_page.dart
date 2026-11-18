@@ -6,12 +6,14 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/listening_stats/stats_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_cards_content.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_header.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_history_status.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 
@@ -29,7 +31,7 @@ class _StatsPageState extends BasePageState<StatsPage> {
   late final StatsController _feature = bindController(StatsController(AppScope.of(context)));
 
   @override
-  EdgeInsetsGeometry get navbarPadding => EdgeInsets.only(bottom: statsScaled(context, 20));
+  EdgeInsetsGeometry get navbarPadding => EdgeInsets.only(bottom: context.s(20));
 
   Future<void> _importLocalHistory(AppController controller) async {
     final confirmed = await ConfirmationModal.show(
@@ -81,13 +83,12 @@ class _StatsPageState extends BasePageState<StatsPage> {
           ),
         ),
         body: PageBody.scroll(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, statsScaled(context, 20)),
+          padding: EdgeInsets.fromLTRB(20, 16, 20, context.s(20)),
           child: StatsCardsContent(
             stats: stats,
             onArtistTap: widget.onArtistTap,
             onTrackTap: widget.onTrackTap,
             artistCoverUrl: (artist) => _feature.artistCoverUrl(controller, auth, artist),
-            artistImageHeaders: auth.isAuthorized ? controller.artworkHeaders : const {},
           ),
         ),
       ),

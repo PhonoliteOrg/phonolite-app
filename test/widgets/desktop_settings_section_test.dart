@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/data/models/preferences/desktop_settings.dart';
 import 'package:phonolite_app/data/storage/preferences/desktop_settings_storage.dart';
@@ -15,7 +16,11 @@ import '../support/widget_test_helpers.dart';
 void main() {
   testWidgets('both desktop switches remain enabled while changes are saved', (tester) async {
     final storage = _DelayedStorage();
-    final controller = DesktopSettingsController(storage: storage, platform: _Platform(), isSupported: () => true);
+    final controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: storage),
+      platform: _Platform(),
+      isSupported: () => true,
+    );
     await controller.initialize(beforeQuit: () async {});
     addTearDown(() async {
       storage.finishWrites();

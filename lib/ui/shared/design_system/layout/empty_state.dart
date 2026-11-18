@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class EmptyStateText extends StatelessWidget {
   final String title;

@@ -41,12 +41,10 @@ void main() {
           artist: artist,
           coverUrl: null,
           bannerUrl: null,
-          headers: const {},
         )
       : AlbumHero(
           album: album,
           coverUrl: '',
-          headers: const {},
           actions: IconButton(
             tooltip: 'Edit album',
             onPressed: () {},

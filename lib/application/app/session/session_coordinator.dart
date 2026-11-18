@@ -14,10 +14,10 @@ class _SessionCoordinator {
   String? _passwordLoginOrigin;
   final _disconnectingServerOrigins = <String>{};
   final _authController = StreamController<AuthState>.broadcast();
-  late AuthState _authState;
+  AuthState _authState;
   int _artistListSessionRevision = -1;
 
-  _SessionCoordinator(this._host);
+  _SessionCoordinator(this._host) : _authState = AuthState(isAuthorized: false, baseUrl: _host.connection.baseUrl);
 
   Stream<AuthState> get authStream => _authController.stream;
 
@@ -38,17 +38,10 @@ class _SessionCoordinator {
       _authState.baseUrl == _host.connection.baseUrl &&
       _host.connection.canChangeOwnPassword;
 
-  bool get _canAttemptRemotePlayback {
-    final token = _host.connection.token;
+  bool get _canAttemptRemotePlayback => _host.connection.hasCredential && _authState.hasSession;
 
-    return token != null && token.isNotEmpty && _authState.hasSession;
-  }
-
-  bool get _shouldAutoReconnectServer {
-    final token = _host.connection.token;
-
-    return _authState.status == SessionStatus.serverUnavailable && token != null && token.isNotEmpty;
-  }
+  bool get _shouldAutoReconnectServer =>
+      _authState.status == SessionStatus.serverUnavailable && _host.connection.hasCredential;
 
   Future<void> loginWithPassword({
     required String baseUrl,
@@ -82,8 +75,6 @@ class _SessionCoordinator {
     _setSessionStatus(SessionStatus.checking, error: null);
 
     try {
-      _host._statsServerId = _host._statsUserId = null;
-
       if (_host._listeningStats.storageError == null) {
         await _host._listeningStats.setAccount();
         if (!isCurrent()) {
@@ -133,8 +124,8 @@ class _SessionCoordinator {
           baseUrl: _host.connection.baseUrl,
           token: token,
           username: username,
-          serverId: _host._statsServerId,
-          userId: _host._statsUserId,
+          serverId: _authState.account?.serverId,
+          userId: _authState.account?.userId,
           trust: _host.connection.trust!,
         );
 
@@ -187,7 +178,7 @@ class _SessionCoordinator {
     _sessionRestores.advance();
     _restoringSession = false;
     _passwordLoginOrigin = null;
-    _host._statsServerId = _host._statsUserId = null;
+    _authState = _authState.copyWith(account: null);
     _host._listeningSessionContext = null;
     _host._audio?.configureListening(null, discardPending: false);
 
@@ -401,7 +392,7 @@ class _SessionCoordinator {
     }
   }
 
-  Future<AuthCredentials?> loadSavedCredentials() async {
+  Future<AuthCredentials?> _loadSavedCredentials() async {
     if (_savedCredentialsInvalidated) {
       return null;
     }
@@ -512,7 +503,7 @@ class _SessionCoordinator {
   }
 
   void _beginBestEffortServerLogout() {
-    if (_host.connection.token?.isNotEmpty != true) {
+    if (!_host.connection.hasCredential) {
       return;
     }
 
@@ -594,7 +585,7 @@ class _SessionCoordinator {
     final AuthCredentials? credentials;
 
     try {
-      credentials = await _host.loadSavedCredentials();
+      credentials = await _loadSavedCredentials();
     } on Object catch (err) {
       if (_isRestoreSessionCurrent(revision)) {
         _reportSavedCredentialsFailure('read the saved sign-in', err);
@@ -632,9 +623,18 @@ class _SessionCoordinator {
     _host.connection.setTrust(credentials.trust);
     _host.connection.setToken(credentials.token);
 
+    final restoredUser = credentials.userId;
+    if (restoredUser != null && restoredUser.isNotEmpty) {
+      _authState = _authState.copyWith(
+        account: SessionAccount(
+          userId: restoredUser,
+          serverId: credentials.serverId,
+          baseUrl: credentials.baseUrl,
+          trust: credentials.trust,
+        ),
+      );
+    }
     if (_host._listeningStats.storageError == null && credentials.serverId != null && credentials.userId != null) {
-      _host._statsServerId = credentials.serverId;
-      _host._statsUserId = credentials.userId;
       await _host._listeningStats.setAccount(serverId: credentials.serverId, userId: credentials.userId);
 
       if (!_isRestoreSessionCurrent(revision)) {
@@ -656,7 +656,7 @@ class _SessionCoordinator {
 
       _host._serverHealthFailureCount = 0;
       _setAuthorized(true, error: null);
-      await _host._preferencesCoordinator._adoptLegacyRepeatMode(
+      await _host._playbackPreferences._adoptLegacyRepeatMode(
         settings.repeatMode,
         sessionRevision: _host.connection.sessionRevision,
       );
@@ -702,7 +702,7 @@ class _SessionCoordinator {
 
   Future<void> _storeSavedCredentials(AuthCredentials credentials) async {
     final current = _host.connection.token == credentials.token && _host.connection.baseUrl == credentials.baseUrl;
-    final userId = credentials.userId ?? (current ? _host._accountServices.state?.userId : null);
+    final userId = credentials.userId ?? (current ? _authState.account?.userId : null);
     final saved = AuthCredentials(
       baseUrl: credentials.baseUrl,
       token: credentials.token,
@@ -716,33 +716,6 @@ class _SessionCoordinator {
     _savedCredentialsInvalidated = false;
     _savedCredentials = saved;
     await _queueSavedCredentialsWrite(() => _host._authStorage.write(saved));
-  }
-
-  /// Account resume caches use a verified UUID even when statistics are disabled.
-  void _rememberAccountIdentity(String userId) {
-    final saved = _savedCredentials;
-
-    if (saved == null ||
-        userId.isEmpty ||
-        saved.userId == userId ||
-        saved.token != _host.connection.token ||
-        saved.baseUrl != _host.connection.baseUrl ||
-        !_authState.isAuthorized) {
-      return;
-    }
-
-    unawaited(
-      _storeSavedCredentials(
-        AuthCredentials(
-          baseUrl: saved.baseUrl,
-          token: saved.token,
-          username: saved.username,
-          trust: saved.trust,
-          serverId: saved.serverId,
-          userId: userId,
-        ),
-      ).catchError((Object error) => AppLogger.debug('Could not remember the playback account: $error')),
-    );
   }
 
   void _updateAccountUsername(String username) {
@@ -827,6 +800,9 @@ class _SessionCoordinator {
 
     _authState = _authState.copyWith(
       status: status,
+      account: status == SessionStatus.authenticated || status == SessionStatus.serverUnavailable
+          ? _authState.account
+          : null,
       baseUrl: _host.connection.baseUrl,
       error: error,
       isReconnecting: isReconnecting,
@@ -851,7 +827,7 @@ class _SessionCoordinator {
     final saved = _savedCredentials;
 
     if (status == SessionStatus.serverUnavailable && saved != null) {
-      unawaited(_host._resumeCoordinator.restoreSavedAccount(saved));
+      _restoreSavedPlayback(saved);
     }
   }
 
@@ -880,15 +856,11 @@ class _SessionCoordinator {
 mixin _SessionFacade {
   _SessionCoordinator get _sessionCoordinator;
 
-  AuthCredentials? get _savedCredentials => _sessionCoordinator._savedCredentials;
-
   RequestGeneration get _sessionRestores => _sessionCoordinator._sessionRestores;
 
   StreamController<AuthState> get _authController => _sessionCoordinator._authController;
 
   AuthState get _authState => _sessionCoordinator._authState;
-
-  set _authState(AuthState value) => _sessionCoordinator._authState = value;
 
   Stream<AuthState> get authStream => _sessionCoordinator.authStream;
 
@@ -930,17 +902,11 @@ mixin _SessionFacade {
   Future<void> resetUserPassword({required String currentPassword, required String newPassword}) =>
       _sessionCoordinator.resetUserPassword(currentPassword: currentPassword, newPassword: newPassword);
 
-  Future<AuthCredentials?> loadSavedCredentials() => _sessionCoordinator.loadSavedCredentials();
+  Future<String?> loadSavedUsername() async => (await _sessionCoordinator._loadSavedCredentials())?.username;
 
   Future<void> restoreSession() => _sessionCoordinator.restoreSession();
 
   Future<void> startFreshLoginFlow() => _sessionCoordinator.startFreshLoginFlow();
-
-  Future<void> _storeSavedCredentials(AuthCredentials credentials) =>
-      _sessionCoordinator._storeSavedCredentials(credentials);
-
-  void _setSessionStatus(SessionStatus status, {String? error, bool? isReconnecting}) =>
-      _sessionCoordinator._setSessionStatus(status, error: error, isReconnecting: isReconnecting);
 
   bool _requireServer(String action) => _sessionCoordinator._requireServer(action);
 }

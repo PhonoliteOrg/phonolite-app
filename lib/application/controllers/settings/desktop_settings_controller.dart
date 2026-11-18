@@ -1,8 +1,10 @@
+import 'package:phonolite_app/data/repositories/device_preference.dart';
 import 'package:phonolite_app/application/controllers/settings/persisted_settings_controller.dart';
 import 'package:phonolite_app/data/models/preferences/desktop_settings.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
-import 'package:phonolite_app/data/storage/preferences/desktop_settings_storage.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/infrastructure/platform/app/desktop_lifecycle_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/native_desktop_lifecycle_platform.dart';
 
 /// One application-owned lifecycle, independent of sign-in and local-data resets.
 ///
@@ -11,7 +13,6 @@ import 'package:phonolite_app/infrastructure/platform/app/desktop_lifecycle_plat
 class DesktopSettingsController extends PersistedSettingsController<DesktopSettings> {
   static final instance = DesktopSettingsController();
 
-  final DesktopSettingsStorage _storage;
   final DesktopLifecyclePlatform _platform;
   final bool Function() _isSupported;
   Future<void>? _quitting;
@@ -24,12 +25,12 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
   bool _backgroundActive = false;
 
   DesktopSettingsController({
-    this._storage = const DesktopSettingsStorage(),
+    PreferencesCoordinator? preferences,
     DesktopLifecyclePlatform? platform,
     bool Function()? isSupported,
   }) : _platform = platform ?? NativeDesktopLifecyclePlatform(),
        _isSupported = isSupported ?? (() => desktopLifecycleSupported),
-       super(const DesktopSettings());
+       super((preferences ?? PreferencesCoordinator.shared).desktop);
 
   bool get supported => _isSupported();
 
@@ -40,9 +41,6 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
   /// Startup counts as saving so a close request waits for the initial native state.
   @override
   bool get saving => _starting || super.saving;
-
-  @override
-  String get settingsLabel => 'desktop settings';
 
   @override
   bool get acceptsChanges =>
@@ -59,9 +57,9 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
   /// The application owner calls this before releasing its notifier.
   Future<void> shutdown() => _shutdown ??= _shutdownPlatform();
 
-  Future<void> setLaunchAtStartup(bool enabled) => change(settings.copyWith(launchAtStartup: enabled));
+  Future<void> setLaunchAtStartup(bool enabled) => change(settings.copyWith(launchAtStartup: enabled), apply: _apply);
 
-  Future<void> setRunInBackground(bool enabled) => change(settings.copyWith(runInBackground: enabled));
+  Future<void> setRunInBackground(bool enabled) => change(settings.copyWith(runInBackground: enabled), apply: _apply);
 
   Future<void> closeWindow() async {
     if (!ready || isDisposed || _quitting != null || _updatePreparation != null || _shutdown != null) {
@@ -92,15 +90,20 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
 
   Future<void> quit() => _quitting ??= _quit();
 
-  @override
-  bool sameSettings(DesktopSettings first, DesktopSettings second) =>
-      first.launchAtStartup == second.launchAtStartup && first.runInBackground == second.runInBackground;
-
-  @override
-  Future<void> persist(DesktopSettings next, DesktopSettings previous) async {
+  Future<UndoPreferenceChange> _apply(DesktopSettings next, DesktopSettings previous) async {
     final backgroundWasActive = _backgroundActive;
     var startupAttempted = false;
     var backgroundAttempted = false;
+
+    Future<void> undo() async {
+      if (backgroundAttempted) {
+        await _restoreBackground(backgroundWasActive);
+      }
+
+      if (startupAttempted) {
+        await _restoreLaunchAtStartup(previous.launchAtStartup);
+      }
+    }
 
     try {
       if (next.launchAtStartup != previous.launchAtStartup) {
@@ -113,19 +116,11 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
         await _platform.setBackgroundEnabled(next.runInBackground);
         _backgroundActive = next.runInBackground;
       }
-
-      await _storage.write(next);
     } on Object catch (_) {
-      if (backgroundAttempted) {
-        await _restoreBackground(backgroundWasActive);
-      }
-
-      if (startupAttempted) {
-        await _restoreLaunchAtStartup(previous.launchAtStartup);
-      }
-
+      await undo();
       rethrow;
     }
+    return undo;
   }
 
   Future<void> _initialize(Future<void> Function() beforeQuit) async {
@@ -137,7 +132,7 @@ class DesktopSettingsController extends PersistedSettingsController<DesktopSetti
     _starting = true;
 
     try {
-      acceptLoadedSettings(await _storage.read());
+      await preference.load();
 
       if (isDisposed) {
         return;

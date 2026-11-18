@@ -30,9 +30,7 @@ class _CompressedDownloadJobs {
   }
 
   Future<void> applyAction(OfflineDownloadJob job, String action) async {
-    if (job.serverJobId == null ||
-        _host.connection.baseUrl != job.serverBaseUrl ||
-        _host.connection.token?.isNotEmpty != true) {
+    if (job.serverJobId == null || _host.connection.baseUrl != job.serverBaseUrl || !_host.connection.hasCredential) {
       return;
     }
     try {
@@ -51,7 +49,7 @@ class _CompressedDownloadJobs {
         _host._localDataCurrent(revision) &&
         _host.connection.sessionRevision == session &&
         _host.connection.baseUrl == job.serverBaseUrl &&
-        _host.connection.token?.isNotEmpty == true &&
+        _host.connection.hasCredential &&
         !_host._pausedServerUrls.contains(job.serverBaseUrl) &&
         _host._jobById(job.jobId)?.status != OfflineDownloadStatus.paused &&
         _host._jobById(job.jobId)?.status != OfflineDownloadStatus.canceled;
@@ -101,7 +99,7 @@ class _CompressedDownloadJobs {
         if (!_host._disposed &&
             _host.connection.sessionRevision == session &&
             _host.connection.baseUrl == job.serverBaseUrl &&
-            _host.connection.token?.isNotEmpty == true &&
+            _host.connection.hasCredential &&
             remote.profile == job.profile &&
             remote.clientId == clientId) {
           try {

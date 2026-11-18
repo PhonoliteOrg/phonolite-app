@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/application/workflows/serial_action_queue.dart';
+import 'package:phonolite_app/data/structures/async/serial_action_queue.dart';
 
 void main() {
   test('failed actions report their error without blocking later actions', () async {

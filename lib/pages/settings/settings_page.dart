@@ -21,7 +21,7 @@ import 'package:phonolite_app/ui/features/settings/sections/playback_settings_se
 import 'package:phonolite_app/ui/features/settings/sections/user_settings_section.dart';
 import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 
 export 'package:phonolite_app/ui/features/settings/widgets/listening_statistics_setting.dart'

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
+import 'package:phonolite_app/infrastructure/audio/output/audio_pcm32_output.dart';
 import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
 import 'package:phonolite_app/infrastructure/audio/output/pcm_queue_writer.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/native_pcm_buffer.dart';

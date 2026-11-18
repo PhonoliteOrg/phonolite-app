@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
-import 'package:phonolite_app/data/storage/preferences/log_storage_settings_storage.dart';
+import 'package:phonolite_app/data/models/preferences/log_directory_preferences.dart';
 import 'package:phonolite_app/data/storage/windows_app_storage.dart';
 
 /// File operations are serialized by AppLogger. No files remain open between
@@ -13,15 +13,13 @@ import 'package:phonolite_app/data/storage/windows_app_storage.dart';
 class LogFiles {
   final Future<Directory> Function()? directoryProvider;
   final int maxLines;
-  final LogStorageSettingsStorage? _settingsStorage;
+  final LogDirectoryPreferences? preferences;
   final Map<String, ListQueue<String>> _lines = {};
   final Set<String> _fileNames = {};
   Directory? _directory;
   bool _directoryIsDefault = true;
 
-  LogFiles({this.maxLines = 3000, LogStorageSettingsStorage? settingsStorage, this.directoryProvider})
-    : assert(maxLines > 0),
-      _settingsStorage = settingsStorage ?? (directoryProvider == null ? const LogStorageSettingsStorage() : null);
+  LogFiles({this.maxLines = 3000, this.preferences, this.directoryProvider}) : assert(maxLines > 0);
 
   String? get directoryPath => _directory?.path;
 
@@ -31,7 +29,7 @@ class LogFiles {
   Future<void> initialize(Iterable<String> fileNames) async {
     _fileNames.addAll(fileNames);
 
-    final configured = await _settingsStorage?.read();
+    final configured = await preferences?.loadLogDirectory();
 
     _directory = configured == null ? await (directoryProvider?.call() ?? defaultDirectory()) : Directory(configured);
     _directoryIsDefault = configured == null;
@@ -76,7 +74,7 @@ class LogFiles {
     final trimmed = path?.trim();
     final configured = trimmed == null || trimmed.isEmpty ? null : Directory(trimmed).absolute.path;
 
-    if (configured != null && (_settingsStorage?.usesManagedStoragePaths ?? Platform.isIOS)) {
+    if (configured != null && (preferences?.usesManagedLogDirectory ?? Platform.isIOS)) {
       throw UnsupportedError('Log storage is managed on this device.');
     }
 
@@ -107,7 +105,7 @@ class LogFiles {
 
       // Commit the new location before removing only our old category files.
       // A failed copy or preference save leaves the current logs intact.
-      await _settingsStorage?.write(configured);
+      await preferences?.saveLogDirectory(configured);
       _lines.clear();
       _lines.addAll(next._lines);
 
@@ -123,7 +121,7 @@ class LogFiles {
         }
       }
     } else {
-      await _settingsStorage?.write(configured);
+      await preferences?.saveLogDirectory(configured);
     }
 
     _directory = target;

@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/application/controllers/playback/device_picker_controller.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_list.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_list_row.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/structures/modals/base_alert_modal.dart';
 
 class DevicePickerModal extends BaseAlertModal {
@@ -23,23 +22,13 @@ class DevicePickerModal extends BaseAlertModal {
 
 class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
   late final DevicePickerController _feature = bindController(DevicePickerController(widget.fetchDevices));
-  late final ScrollController _listController;
 
   @override
   void initState() {
     super.initState();
 
-    _listController = ScrollController();
-
     // The controller turns a failed load into its visible error state.
     unawaited(_feature.loadDevices(refresh: true));
-  }
-
-  @override
-  void dispose() {
-    _listController.dispose();
-
-    super.dispose();
   }
 
   @override
@@ -74,32 +63,19 @@ class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
       );
     }
 
-    // The explicit scrollbar keeps its thumb visible; disable the one the
-    // desktop scroll behavior would add so only one is drawn.
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: Scrollbar(
-        controller: _listController,
-        thumbVisibility: true,
-        child: ListView.separated(
-          controller: _listController,
-          padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-          itemCount: _feature.devices.length,
-          separatorBuilder: (context, index) =>
-              Divider(height: 1, color: ObsidianPalette.textMuted.withByteOpacity(0.25)),
-          itemBuilder: (context, index) {
-            final device = _feature.devices[index];
-            final isSelected = device.id == widget.selectedId;
+    return ObsidianModalList(
+      itemCount: _feature.devices.length,
+      itemBuilder: (context, index) {
+        final device = _feature.devices[index];
+        final isSelected = device.id == widget.selectedId;
 
-            return ObsidianModalListRow(
-              title: device.name,
-              isSelected: isSelected,
-              enabled: !_feature.selecting,
-              onTap: () => _selectDevice(context, device),
-            );
-          },
-        ),
-      ),
+        return ObsidianModalListRow(
+          title: device.name,
+          isSelected: isSelected,
+          enabled: !_feature.selecting,
+          onTap: () => _selectDevice(context, device),
+        );
+      },
     );
   }
 
@@ -108,7 +84,7 @@ class _DevicePickerModalState extends BaseAlertModalState<DevicePickerModal> {
 
   @override
   List<Widget> modalActions(BuildContext context) => [
-    ModalActionButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
+    ...super.modalActions(context),
     ModalActionButton(label: 'Refresh', onPressed: _feature.loading ? null : () => _feature.loadDevices(refresh: true)),
   ];
 }

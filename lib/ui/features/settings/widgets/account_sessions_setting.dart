@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/settings/account_sessions_controller.dart';
 import 'package:phonolite_app/ui/controller_binding.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class AccountSessionsSetting extends StatefulWidget {
   final Future<int> Function() onSignOutOtherDevices;

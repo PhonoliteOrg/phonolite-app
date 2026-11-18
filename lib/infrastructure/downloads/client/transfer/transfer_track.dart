@@ -23,9 +23,7 @@ class _TrackDownloadTransfer {
     var bytesDownloaded = 0;
 
     try {
-      if (_host.connection.baseUrl != download.serverBaseUrl ||
-          _host.connection.token == null ||
-          _host.connection.token!.isEmpty) {
+      if (_host.connection.baseUrl != download.serverBaseUrl || !_host.connection.hasCredential) {
         throw const DownloadPaused('server disconnected');
       }
 
@@ -271,10 +269,7 @@ class _TrackDownloadTransfer {
         bytesDownloaded = await partialFile.length();
       }
 
-      final shouldPause =
-          _host.connection.baseUrl != download.serverBaseUrl ||
-          _host.connection.token == null ||
-          _host.connection.token!.isEmpty;
+      final shouldPause = _host.connection.baseUrl != download.serverBaseUrl || !_host.connection.hasCredential;
       final failed = download.copyWith(
         status: shouldPause ? OfflineDownloadStatus.paused : OfflineDownloadStatus.failed,
         updatedAt: DateTime.now(),

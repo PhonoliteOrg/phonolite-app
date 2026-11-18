@@ -3,6 +3,8 @@ import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/artist_credit.dart';
 import 'package:phonolite_app/data/models/library/artist_releases.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
+import 'package:phonolite_app/data/projections/library/offline_track_genres.dart';
 
 String offlineTrackSearchText(Track track) => [
   track.title,
@@ -155,7 +157,7 @@ class OfflineArtistGroup {
         appearanceCount: artistReleases.appearsOn.length,
         otherCreditCount: artistReleases.otherCredits.length,
         releaseCount: artistReleases.releaseCount,
-        genres: stored.genres.isEmpty ? _trackGenres(tracksForArtist) : stored.genres,
+        genres: stored.genres.isEmpty ? offlineTrackGenres(tracksForArtist) : stored.genres,
         summary: stored.summary,
         logoRef: stored.logoRef,
         bannerRef: stored.bannerRef,
@@ -174,7 +176,7 @@ class OfflineArtistGroup {
       appearanceCount: artistReleases.appearsOn.length,
       otherCreditCount: artistReleases.otherCredits.length,
       releaseCount: artistReleases.releaseCount,
-      genres: _trackGenres(tracksForArtist),
+      genres: offlineTrackGenres(tracksForArtist),
       summary:
           '${albums.length} downloaded $albumLabel / '
           '$downloadedTrackCount downloaded $trackLabel.',
@@ -196,48 +198,6 @@ class _PreparedArtistGroup {
       collaborations = List.unmodifiable(source.collabAlbums),
       tracks = List.unmodifiable(source.tracksForArtist),
       artist = source.toArtist();
-}
-
-class OfflineAlbumGroup {
-  final String id;
-  final String title;
-  final String artist;
-  final String artistId;
-  final List<Track> tracks;
-  final String? coverPath;
-  final Album? metadata;
-  final List<ArtistCredit> artistCredits;
-
-  const OfflineAlbumGroup({
-    required this.id,
-    required this.title,
-    required this.artist,
-    required this.artistId,
-    required this.tracks,
-    this.coverPath,
-    this.metadata,
-    this.artistCredits = const [],
-  });
-
-  Album toAlbum() {
-    final stored = metadata;
-    if (stored != null) {
-      return stored.copyWith(
-        trackCount: tracks.length,
-        genres: stored.genres.isEmpty ? _trackGenres(tracks) : stored.genres,
-      );
-    }
-
-    return Album(
-      id: id,
-      title: title,
-      artist: artist,
-      artistId: artistId,
-      artistCredits: artistCredits,
-      trackCount: tracks.length,
-      genres: _trackGenres(tracks),
-    );
-  }
 }
 
 List<OfflineArtistGroup> offlineArtistGroups(List<Track> tracks, {bool includeContributors = false}) {
@@ -419,27 +379,6 @@ String? _nonEmpty(String? value) {
   final trimmed = value?.trim();
 
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
-
-List<String> _trackGenres(Iterable<Track> tracks) {
-  final genres = <String>[];
-  final seen = <String>{};
-
-  for (final track in tracks) {
-    for (final raw in track.genres) {
-      final genre = raw.trim();
-
-      if (genre.isEmpty) {
-        continue;
-      }
-
-      if (seen.add(genre.toLowerCase())) {
-        genres.add(genre);
-      }
-    }
-  }
-
-  return List.unmodifiable(genres);
 }
 
 class _OfflineArtistBuilder {

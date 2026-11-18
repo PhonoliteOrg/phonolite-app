@@ -8,6 +8,7 @@ import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/backdrop_blur_resize_suspension.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 

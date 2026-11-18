@@ -1,9 +1,11 @@
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/queries/library/library_search_matcher.dart';
 
 export 'package:phonolite_app/data/queries/library/library_search_matcher.dart';
+export 'package:phonolite_app/data/queries/library/normalize_library_search.dart';
 
 /// Uses the server's fuzzy scores and ordering, limiting only after ranking.
 /// Artists and shared albums come from the complete downloaded catalog, so an

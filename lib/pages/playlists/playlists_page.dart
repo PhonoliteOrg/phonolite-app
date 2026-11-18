@@ -15,11 +15,11 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.
 import 'package:phonolite_app/ui/shared/design_system/icons/edit_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/collection_view_toggle_button.dart';
 import 'package:phonolite_app/ui/shared/music/source_section_slivers.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
+import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_action_layout.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class PlaylistsPage extends BasePage {
@@ -92,12 +92,10 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
     required bool isLocal,
     required String? title,
     required String emptyText,
-    required Map<String, String> headers,
   }) => PlaylistSection(
     title: title,
     playlists: playlists,
     showListView: showListView,
-    headers: headers,
     coverUrlFor: isLocal
         ? (playlist) => playlist.imagePath
         : (playlist) => _feature.serverPlaylistCoverUrl(controller, playlist),
@@ -122,7 +120,6 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
     required List<Playlist> serverPlaylists,
   }) {
     final showListView = viewModeSnapshot.data ?? controller.collectionListMode;
-    final authHeadersMap = authHeaders(controller);
     final totalPlaylistCount = localPlaylists.length + serverPlaylists.length;
     final selectedPlaylists = _feature.selectedPlaylists(
       localPlaylists: localPlaylists,
@@ -200,7 +197,6 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
                 isLocal: true,
                 title: authState.isAuthorized ? 'Local Playlists' : null,
                 emptyText: authState.isAuthorized ? 'No local playlists' : 'No playlists',
-                headers: const <String, String>{},
               ),
             ],
             serverSlivers: [
@@ -213,7 +209,6 @@ class _PlaylistsPageState extends BasePageState<PlaylistsPage> {
                   isLocal: false,
                   title: 'Server Playlists',
                   emptyText: 'No server playlists',
-                  headers: authHeadersMap,
                 ),
             ],
           ),

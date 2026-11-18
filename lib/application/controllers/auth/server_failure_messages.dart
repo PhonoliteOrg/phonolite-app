@@ -1,4 +1,5 @@
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/password_change_exception.dart';
+import 'package:phonolite_app/data/models/server/server_connection_check_exception.dart';
 
 /// Converts safe technical failures into the application's established text.
 /// Unknown failures retain their existing diagnostic representation.

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ObsidianToggleOption extends StatelessWidget {
   final String label;

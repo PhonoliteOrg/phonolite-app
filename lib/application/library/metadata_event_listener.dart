@@ -9,7 +9,7 @@ import 'package:phonolite_app/data/models/library/metadata_update_event.dart';
 /// [start] is called, and [stop] invalidates queued work as well as timers.
 class MetadataEventListener {
   final Stream<MetadataUpdateEvent> Function() _openStream;
-  final bool Function(String, String) _isSessionCurrent;
+  final bool Function(int) _isSessionCurrent;
   final Future<void> Function(MetadataUpdateEvent) _applyEvent;
   final void Function(String) _onDiagnostic;
   final void Function()? _onSessionInvalidated;
@@ -24,7 +24,7 @@ class MetadataEventListener {
   bool _resyncPending = false;
   Future<void>? _flushFuture;
   bool _flushReady = false;
-  ({String baseUrl, String token})? _session;
+  int? _session;
   final _requests = RequestGeneration();
 
   MetadataEventListener({
@@ -38,13 +38,7 @@ class MetadataEventListener {
     this.maxPending = 128,
   });
 
-  void start({required String baseUrl, required String token}) {
-    if (token.isEmpty) {
-      return;
-    }
-
-    final session = (baseUrl: baseUrl, token: token);
-
+  void start(int session) {
     if (_subscription != null && _session == session) {
       return;
     }
@@ -133,7 +127,7 @@ class MetadataEventListener {
   bool _isCurrent(int generation) {
     final session = _session;
 
-    return _requests.isCurrent(generation) && session != null && _isSessionCurrent(session.baseUrl, session.token);
+    return _requests.isCurrent(generation) && session != null && _isSessionCurrent(session);
   }
 
   void _scheduleReconnect(int generation) {
@@ -150,7 +144,7 @@ class MetadataEventListener {
 
       final session = _session!;
 
-      start(baseUrl: session.baseUrl, token: session.token);
+      start(session);
     }
 
     _reconnectTimer = Timer(reconnectDelay, reconnectSession);

@@ -51,6 +51,7 @@ void main() {
       final controller = readProjectModule('lib/application/app/app_controller.dart');
       final artwork = readProjectFiles(const [
         'ios/Runner/Infrastructure/Artwork/NativeArtworkLoader.swift',
+        'ios/Runner/Infrastructure/Security/PinnedArtworkSession.swift',
         'ios/Runner/Infrastructure/Artwork/NowPlayingArtworkController.swift',
         'native/apple/Infrastructure/Media/NowPlayingInfoPublisher.swift',
       ]);
@@ -58,14 +59,14 @@ void main() {
       expectContainsAll(controller, const [
         'NativeNowPlayingSnapshot(',
         'artworkUrl: artworkUrl',
-        'token: token',
+        'sessionRevision: sessionRevision',
         'artworkPath: localArtworkPath',
       ]);
       final codec = readProjectModule('lib/infrastructure/platform/media/now_playing_codec.dart');
       expectContainsAll(codec, const [
         "if (snapshot.artworkUrl != null)",
         "'artworkUrl': snapshot.artworkUrl",
-        "'token': snapshot.token",
+        "access?.fields(snapshot.artworkUrl, snapshot.sessionRevision)",
         "if (snapshot.artworkPath != null) 'artworkPath': snapshot.artworkPath",
       ]);
       expectContainsAll(artwork, const [

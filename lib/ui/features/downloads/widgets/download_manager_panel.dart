@@ -8,6 +8,7 @@ import 'package:phonolite_app/application/controllers/library/catalog_controller
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/downloads/download_batch.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
@@ -18,6 +19,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/presentation/download_manager_entries.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
@@ -25,11 +27,11 @@ import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_section_header.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_adaptive_modal.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 
 Future<void> showDownloadManagerPanel(BuildContext context) async {
@@ -107,38 +109,36 @@ class DownloadManagerPanel extends StatelessWidget {
   Widget _toolbar(BuildContext context, DownloadManagerViewState state) {
     final buttonSize = ObsidianModalScope.usesTouchTargets(context) ? 44.0 : 28.0;
 
+    Widget toolbarButton({required String label, required IconData icon, required VoidCallback? onTap}) => TechButton(
+      label: label,
+      tooltip: label,
+      icon: icon,
+      iconOnly: true,
+      iconOnlySize: buttonSize,
+      density: TechButtonDensity.compact,
+      onTap: onTap,
+    );
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        TechButton(
+        toolbarButton(
           label: 'Pause all',
-          tooltip: 'Pause all',
           icon: PhonoliteIcons.pause,
-          iconOnly: true,
-          iconOnlySize: buttonSize,
-          density: TechButtonDensity.compact,
           onTap: controller == null || !state.hasPausable
               ? null
               : () => unawaited(controller!.pauseAllOfflineDownloads()),
         ),
-        TechButton(
+        toolbarButton(
           label: 'Resume paused',
-          tooltip: 'Resume paused',
           icon: PhonoliteIcons.play,
-          iconOnly: true,
-          iconOnlySize: buttonSize,
-          density: TechButtonDensity.compact,
           onTap: controller == null || !state.hasPaused
               ? null
               : () => unawaited(controller!.resumePausedOfflineDownloads()),
         ),
-        TechButton(
+        toolbarButton(
           label: 'Clear all jobs and cache',
-          tooltip: 'Clear all jobs and cache',
           icon: PhonoliteIcons.listX,
-          iconOnly: true,
-          iconOnlySize: buttonSize,
-          density: TechButtonDensity.compact,
           onTap: controller == null || state.isEmpty ? null : () => unawaited(_confirmClearAll(context, controller!)),
         ),
       ],
@@ -200,7 +200,7 @@ class DownloadManagerPanel extends StatelessWidget {
           child: _DownloadItemRow(download: entry.download!, controller: controller),
         ),
         DownloadManagerEntryKind.pendingTrack => RepaintBoundary(
-          child: _PendingDownloadItemRow(pending: entry.pendingTrack!, controller: controller),
+          child: _PendingDownloadItemRow(pending: entry.pendingTrack!),
         ),
         DownloadManagerEntryKind.spacer => SizedBox(height: entry.height),
       },
@@ -247,20 +247,9 @@ class _DownloadJobRow extends StatelessWidget {
 
   String? get _coverUrl => CatalogController.downloadJobCoverUrl(job);
 
-  Map<String, String> get _headers {
-    final activeController = controller;
-
-    if (activeController == null || job.serverBaseUrl != activeController.catalog.baseUrl) {
-      return const {};
-    }
-
-    return authHeaders(activeController);
-  }
-
   Widget _buildRow(BuildContext context) {
     final title = _jobTitle;
     final coverUrl = _coverUrl;
-    final headers = _headers;
     final actions = _DownloadJobActions(job: job, controller: controller);
     final subtitle = _subtitle;
 
@@ -270,7 +259,6 @@ class _DownloadJobRow extends StatelessWidget {
         child: ArtistRowTile(
           artist: Artist(id: _sourceId ?? job.jobId, name: title, albumCount: 0),
           coverUrl: coverUrl,
-          headers: headers,
           subtitle: subtitle,
           trailing: actions,
         ),
@@ -289,7 +277,6 @@ class _DownloadJobRow extends StatelessWidget {
             trackCount: job.totalCount > 0 ? job.totalCount : job.discoveredCount,
           ),
           coverUrl: coverUrl ?? '',
-          headers: headers,
           subtitle: subtitle,
           trailing: actions,
         ),
@@ -301,7 +288,6 @@ class _DownloadJobRow extends StatelessWidget {
       child: ArtistRowTile(
         artist: Artist(id: job.jobId, name: title, albumCount: 0),
         coverUrl: null,
-        headers: const {},
         subtitle: subtitle,
         trailing: actions,
       ),
@@ -389,9 +375,7 @@ String _downloadTrackMetadataLine(Track track) {
 
 class _PendingDownloadItemRow extends StatelessWidget {
   final PendingDownloadTrack pending;
-  final AppController? controller;
-
-  const _PendingDownloadItemRow({required this.pending, required this.controller});
+  const _PendingDownloadItemRow({required this.pending});
 
   @override
   Widget build(BuildContext context) {
@@ -417,19 +401,12 @@ class _PendingDownloadItemRow extends StatelessWidget {
     final error = pending.error?.trim();
     final coverUrl =
         track.albumArtPath ?? (pending.job.kind == 'album' ? CatalogController.downloadJobCoverUrl(pending.job) : null);
-    final headers =
-        controller != null &&
-            pending.job.serverBaseUrl == controller!.catalog.baseUrl &&
-            (track.albumArtPath?.trim().isEmpty ?? true)
-        ? authHeaders(controller!)
-        : const <String, String>{};
 
     return _DownloadTrackRow(
       track: track,
       status: pending.status,
       subtitle: [metadata, if (error != null && error.isNotEmpty) error].where((part) => part.isNotEmpty).join(' - '),
       albumArtUrl: coverUrl,
-      albumArtHeaders: headers,
     );
   }
 }
@@ -448,18 +425,6 @@ class _DownloadItemRow extends StatelessWidget {
   }
 
   String? get _albumArtUrl => CatalogController.downloadArtworkUrl(download);
-
-  Map<String, String> get _headers {
-    final activeController = controller;
-
-    if (activeController == null ||
-        download.serverBaseUrl != activeController.catalog.baseUrl ||
-        (download.track.albumArtPath?.trim().isNotEmpty ?? false)) {
-      return const {};
-    }
-
-    return authHeaders(activeController);
-  }
 
   String _downloadSizeText(OfflineTrackDownload download) {
     final total = download.bytesTotal;
@@ -484,7 +449,6 @@ class _DownloadItemRow extends StatelessWidget {
       subtitle: _subtitle,
       progress: download.progress,
       albumArtUrl: _albumArtUrl,
-      albumArtHeaders: _headers,
       download: download,
       trailing: actions,
     );
@@ -497,7 +461,6 @@ class _DownloadTrackRow extends StatelessWidget {
   final String subtitle;
   final double? progress;
   final String? albumArtUrl;
-  final Map<String, String> albumArtHeaders;
   final OfflineTrackDownload? download;
   final Widget? trailing;
 
@@ -507,7 +470,6 @@ class _DownloadTrackRow extends StatelessWidget {
     required this.subtitle,
     this.progress,
     this.albumArtUrl,
-    this.albumArtHeaders = const {},
     this.download,
     this.trailing,
   });
@@ -521,7 +483,6 @@ class _DownloadTrackRow extends StatelessWidget {
       showAlbumArt: true,
       showDuration: false,
       albumArtUrl: albumArtUrl,
-      albumArtHeaders: albumArtHeaders,
       subtitle: subtitle,
       offlineDownload: download,
       downloadStatus: status,

@@ -7,7 +7,7 @@ import 'package:http/testing.dart';
 
 import 'package:phonolite_app/data/models/updates/app_update_configuration.dart';
 import 'package:phonolite_app/data/models/updates/app_update_release.dart';
-import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
+import 'package:phonolite_app/infrastructure/updates/http_app_update_feed.dart';
 
 const _configuration = AppUpdateConfiguration(
   available: true,

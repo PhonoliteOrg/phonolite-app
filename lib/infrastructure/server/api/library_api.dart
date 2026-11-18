@@ -10,7 +10,7 @@ import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/library/track_match.dart';
 import 'package:phonolite_app/infrastructure/server/api/json_api_endpoint.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 typedef ArtistPageFetcher = Future<List<Artist>> Function({
   required int limit,

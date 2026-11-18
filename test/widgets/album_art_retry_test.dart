@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
@@ -105,6 +107,9 @@ Future<void> _decode(WidgetTester tester) async {
 }
 
 class _Loader implements ArtworkLoader {
+  @override
+  int get sessionRevision => 0;
+
   final int firstFrameFailures;
   final int? statusCode;
   int loads = 0;

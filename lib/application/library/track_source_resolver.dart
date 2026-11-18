@@ -30,7 +30,7 @@ class TrackSourceResolver {
     final revision = connection.sessionRevision;
     bool isCurrent() => connection.baseUrl == origin && connection.sessionRevision == revision;
 
-    if (connection.token?.isNotEmpty != true) {
+    if (!connection.hasCredential) {
       return null;
     }
 

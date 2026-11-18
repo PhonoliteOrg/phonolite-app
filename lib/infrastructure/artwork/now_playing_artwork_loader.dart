@@ -2,32 +2,38 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:http/http.dart' as http;
-
-import 'package:phonolite_app/infrastructure/security/server_trust.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/infrastructure/server/transport/streamed_response_body.dart';
 
 /// Loads PNG artwork for the native now-playing surface.
 ///
 /// Failures are optional artwork misses; playback does not depend on images.
-/// The caller owns an injected HTTP client and decides whether a completed
-/// request still belongs to the current track/session.
+/// Remote requests borrow the session transport. The caller tracks the selected track.
 class NowPlayingArtworkLoader {
-  final Future<http.Response> Function(Uri, {Map<String, String>? headers}) _get;
+  final ServerConnection? connection;
   final Future<Uint8List?> Function(Uint8List) _decode;
 
-  NowPlayingArtworkLoader({http.Client? client, Future<Uint8List?> Function(Uint8List)? decode})
-    : _get = client?.get ?? _pinnedGet,
-      _decode = decode ?? _decodePng;
+  NowPlayingArtworkLoader({this.connection, Future<Uint8List?> Function(Uint8List)? decode})
+    : _decode = decode ?? _decodePng;
 
-  Future<Uint8List?> loadRemote(String url, {required String token}) async {
+  Future<Uint8List?> loadRemote(String url, {required int sessionRevision}) async {
+    final server = connection;
+    if (server == null || server.sessionRevision != sessionRevision) return null;
     try {
-      final response = await _get(Uri.parse(url), headers: {if (token.isNotEmpty) 'Authorization': 'Bearer $token'});
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
+      final response = await server.openArtwork(url);
+      if (server.sessionRevision != sessionRevision || response.statusCode < 200 || response.statusCode >= 300) {
+        await discardResponseBody(response);
         return null;
       }
-
-      return await _decode(response.bodyBytes);
+      final bytes = await readBoundedBody(
+        response.stream,
+        deadline: const Duration(seconds: 15),
+        maximumBytes: 16 * 1024 * 1024,
+        tooLarge: (_) => const HttpException('Artwork exceeds encoded byte limit'),
+      );
+      if (server.sessionRevision != sessionRevision) return null;
+      final decoded = await _decode(bytes);
+      return server.sessionRevision == sessionRevision ? decoded : null;
     } on Object catch (_) {
       // Artwork is optional (see class docs); a miss leaves the now-playing surface without an image.
       return null;
@@ -40,16 +46,6 @@ class NowPlayingArtworkLoader {
     } on Object catch (_) {
       // Artwork is optional (see class docs); a miss leaves the now-playing surface without an image.
       return null;
-    }
-  }
-
-  static Future<http.Response> _pinnedGet(Uri uri, {Map<String, String>? headers}) async {
-    final client = pinnedApiClient(() => uri.toString());
-
-    try {
-      return await client.get(uri, headers: headers);
-    } finally {
-      client.close();
     }
   }
 

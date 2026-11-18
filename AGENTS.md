@@ -16,9 +16,12 @@ This file follows [5.6](FLUTTER-STANDARDS.md#56-agent-instructions) of the Flutt
 
 | When you… | Apply | Leave as evidence |
 | --- | --- | --- |
+| add, extract, or move a component or helper | [2.8](FLUTTER-STANDARDS.md#28-independent-components-and-private-component-trees) | Check its call sites. Independently composed pieces have their own modules. Private implementation details stay with their owner. |
 | rely on how a framework, library or platform API behaves | [1.4](FLUTTER-STANDARDS.md#14-verify-dont-assume) | A comment stating the confirmed fact, where the decision depends on it |
 | are about to write an encoder, parser, retry, queue, limiter, buffer or generation counter | [3.6](FLUTTER-STANDARDS.md#36-readable-operations) | The existing owner used, or the reason none fits, in the commit body |
 | derive one state from another | [3.6](FLUTTER-STANDARDS.md#36-readable-operations) | Separate named values where the two can disagree |
+| add or change a preference remembered on the device | [2.9](FLUTTER-STANDARDS.md#29-runtime-and-resource-ownership) | Trace both the startup read and the update write through the preferences owner. Identify the feature that applies the value and what happens if applying or saving fails. |
+| handle account identity, credentials, or session changes | [2.9](FLUTTER-STANDARDS.md#29-runtime-and-resource-ownership) | Trace identity and credential writes to the session owner, stale results to a revision check, and authenticated requests to their transport. |
 | start a worker, isolate, request, stream, timer, subscription or native handle | [2.9](FLUTTER-STANDARDS.md#29-runtime-and-resource-ownership), [3.9](FLUTTER-STANDARDS.md#39-async-work-errors-and-resource-lifetime) | Code showing who stops it, its time bound, how waiters fail when it dies, and isolated cleanup |
 | add a timeout or wait on I/O | [3.9](FLUTTER-STANDARDS.md#39-async-work-errors-and-resource-lifetime) | The underlying work is aborted on timeout, not just the wait |
 | catch an error, or return an empty or default value after an operation | [3.9](FLUTTER-STANDARDS.md#39-async-work-errors-and-resource-lifetime) | A rethrow, a log through the logging owner, or a comment on why the failure does not matter |

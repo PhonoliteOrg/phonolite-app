@@ -5,11 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/application/controllers/playlists/playlist_detail_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_event.dart';
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/auth/account_state.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_snapshot.dart';
 import 'package:phonolite_app/data/models/collections/like_state.dart';
@@ -1407,8 +1409,7 @@ class _Harness {
       },
       offlineDownloadManager: downloads,
       offlineStorage: _Storage(),
-      customShuffleStorage: shuffleStorage ?? _ShuffleSettings(),
-      playbackPreferencesStorage: _Preferences(),
+      preferences: PreferencesCoordinator(playback: _Preferences(), shuffle: shuffleStorage ?? _ShuffleSettings()),
       connectivitySignalSource: _Connectivity(),
       nowPlayingPlatformService: nowPlaying,
       vehicleSurfaceService: _Vehicle(),

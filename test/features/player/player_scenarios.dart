@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
 
 import '../support/feature_scenario.dart';
 import '../support/feature_world.dart';

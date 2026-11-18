@@ -10,7 +10,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_row_tile.dart';
 
@@ -31,7 +31,6 @@ class SearchResultTile extends StatelessWidget {
   final SearchResult result;
   final VoidCallback onTap;
   final CatalogController? catalog;
-  final Map<String, String> headers;
   final bool useLocalArtwork;
 
   const SearchResultTile({
@@ -39,7 +38,6 @@ class SearchResultTile extends StatelessWidget {
     required this.result,
     required this.onTap,
     this.catalog,
-    this.headers = const {},
     this.useLocalArtwork = false,
   });
 
@@ -78,7 +76,6 @@ class SearchResultTile extends StatelessWidget {
         key: ValueKey('${result.kind}:${result.id}'),
         result: result,
         catalog: catalog,
-        headers: headers,
         useLocalArtwork: useLocalArtwork,
         size: isCompact ? 42 : 48,
         badgeSize: isCompact ? 20 : 22,
@@ -102,7 +99,6 @@ class SearchResultTile extends StatelessWidget {
 class _SearchResultArtwork extends StatefulWidget {
   final SearchResult result;
   final CatalogController? catalog;
-  final Map<String, String> headers;
   final bool useLocalArtwork;
   final double size;
   final double badgeSize;
@@ -111,7 +107,6 @@ class _SearchResultArtwork extends StatefulWidget {
     super.key,
     required this.result,
     required this.catalog,
-    required this.headers,
     required this.useLocalArtwork,
     required this.size,
     required this.badgeSize,
@@ -172,7 +167,6 @@ class _SearchResultArtworkState extends State<_SearchResultArtwork> {
                   title: widget.result.title,
                   size: size,
                   imageUrl: imageUrl,
-                  headers: widget.useLocalArtwork ? const {} : widget.headers,
                   fit: widget.result.kind == 'artist' ? BoxFit.contain : BoxFit.cover,
                 ),
               ),

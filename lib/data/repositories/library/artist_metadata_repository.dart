@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:phonolite_app/data/models/library/artist.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/structures/library/byte_lru_cache.dart';
 
 /// Session-owned detail reads with bounded retained metadata and pending work.

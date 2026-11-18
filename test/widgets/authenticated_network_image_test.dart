@@ -6,10 +6,13 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/authenticated_network_image.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_image.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_scope.dart';
+
 import '../support/artwork_test_loader.dart';
 
 final _png = base64Decode(
@@ -46,11 +49,7 @@ void main() {
       debugNetworkImageHttpClientProvider = () => client;
       addTearDown(() => debugNetworkImageHttpClientProvider = original);
       const url = 'https://music.test/api/library/artists/artist/cover?kind=logo';
-      AuthenticatedNetworkImage provider() => AuthenticatedNetworkImage(
-        url,
-        loader: ArtworkTestLoader(client: client),
-        headers: {'Authorization': 'Bearer first'},
-      );
+      AuthenticatedNetworkImage provider() => AuthenticatedNetworkImage(url, loader: ArtworkTestLoader(client: client));
 
       expect(await _load(provider()), isNotNull);
       await Future<void>.delayed(Duration.zero);
@@ -135,6 +134,9 @@ void main() {
 }
 
 class _LifecycleLoader implements ArtworkLoader {
+  @override
+  int get sessionRevision => 0;
+
   final bool failFirstFrame;
   final bool rejectFirstAdmission;
   final Completer<void>? invalidationGate;

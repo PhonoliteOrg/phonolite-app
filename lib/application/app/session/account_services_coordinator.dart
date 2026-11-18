@@ -24,7 +24,7 @@ class _AccountServicesCoordinator {
   );
   ServerCapabilities? _capabilities;
   AccountState? _state;
-  String? _accountIdentity;
+  bool _hasPresetAccount = false;
   AccountRevisions? _applied;
   List<ShufflePreset> _items = const [];
   int? _session;
@@ -53,9 +53,7 @@ class _AccountServicesCoordinator {
   Stream<AccountState?> get accountChanges => _accountStates.stream;
 
   bool get presetsAvailable =>
-      _session == _host.connection.sessionRevision &&
-      _accountIdentity != null &&
-      (_capabilities?.shufflePresets ?? false);
+      _session == _host.connection.sessionRevision && _hasPresetAccount && (_capabilities?.shufflePresets ?? false);
 
   bool get sessionsAvailable =>
       _session == _host.connection.sessionRevision && (_capabilities?.sessionManagement ?? false);
@@ -74,7 +72,7 @@ class _AccountServicesCoordinator {
     _requests.advance();
     _session = session;
     _capabilities = capabilities;
-    _host._authController.add(_host._authState);
+    _host._sessionCoordinator._publishSession();
     _playbackSession = '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
     _trackSequence = 0;
     _reportedSelection = null;
@@ -91,7 +89,7 @@ class _AccountServicesCoordinator {
     }
 
     if (_eventsEnabled) {
-      _sync.start(baseUrl: _host.connection.baseUrl, token: _host.connection.token!);
+      _sync.start(session);
       _uploadTimer = Timer.periodic(const Duration(seconds: 20), (_) {
         if (_host._authState.isAuthorized && _host._playbackState.isPlaying && _host.statsCollectionEnabled) {
           unawaited(_host._listeningSync?.sync() ?? Future<void>.value());
@@ -133,11 +131,11 @@ class _AccountServicesCoordinator {
     _requests.advance();
     _session = null;
     _capabilities = null;
-    _host._preferencesCoordinator._setShuffleAccount(null);
+    _host._playbackPreferences._setShuffleAccount(null);
     _eventsEnabled = false;
     _applied = null;
     _state = null;
-    _accountIdentity = null;
+    _hasPresetAccount = false;
     _accountStates.add(null);
     _items = const [];
     _uploadTimer?.cancel();
@@ -263,7 +261,7 @@ class _AccountServicesCoordinator {
 
   Future<void> importPreset() async {
     final session = _host.connection.sessionRevision;
-    final legacy = await _host._customShuffleStorage.read();
+    final legacy = await _host._preferences.loadLocalShuffle();
 
     if (!_host._sessionCoordinator._isServerSessionCurrent(session)) {
       return;
@@ -378,13 +376,8 @@ class _AccountServicesCoordinator {
     unawaited(send());
   }
 
-  bool _isCurrent(String baseUrl, String token) =>
-      !_host._disposed &&
-      _eventsEnabled &&
-      _host._authState.isAuthorized &&
-      _session == _host.connection.sessionRevision &&
-      _host.connection.baseUrl == baseUrl &&
-      _host.connection.token == token;
+  bool _isCurrent(int revision) =>
+      _eventsEnabled && _session == revision && _host._sessionCoordinator._isServerSessionCurrent(revision);
 
   void _requireSignIn() =>
       unawaited(_host._sessionCoordinator.requireSignIn(reason: 'Your server session ended. Sign in again.'));
@@ -420,14 +413,16 @@ class _AccountServicesCoordinator {
       throw StateError('Account session changed.');
     }
 
-    final origin = ServerTrust.origin(Uri.parse(_host.connection.baseUrl));
-    final trust = _host.connection.trust;
-    final identity = trust == null ? origin : '${trust.spki}/${trust.opaqueKey}';
-    _host._preferencesCoordinator._setShuffleAccount('$origin/$identity/${state.userId}');
-
-    if (_accountIdentity != state.userId) {
-      _accountIdentity = state.userId;
-      _host._authController.add(_host._authState);
+    await _host._sessionCoordinator._acceptAccount(session, state.userId);
+    if (!_isCurrent(session) || epoch != _eventEpoch || mutation != _presetMutation) {
+      throw StateError('Account snapshot superseded.');
+    }
+    final account = _host.authState.account;
+    if (account == null || account.userId != state.userId) throw StateError('Account identity changed.');
+    _host._playbackPreferences._setShuffleAccount(account.storageScope);
+    if (!_hasPresetAccount) {
+      _hasPresetAccount = true;
+      _host._sessionCoordinator._publishSession();
     }
 
     if ((_pendingPresetWrites[session] ?? 0) != 0) {

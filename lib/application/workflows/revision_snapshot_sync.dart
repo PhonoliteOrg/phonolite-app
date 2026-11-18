@@ -4,7 +4,7 @@ import 'dart:math';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/application/workflows/request_generation.dart';
 import 'package:phonolite_app/data/models/server/revision_event.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 /// Owns reconnects, bounded coalescing, retries and subscribe-before-snapshot recovery.
 /// Revision comparison belongs to the domain: scalar and vector clocks share
@@ -14,7 +14,7 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
   final Stream<RevisionEvent<TRevision>> Function() _openStream;
   final Future<TSnapshot> Function() _fetchSnapshot;
   final Future<void> Function(TSnapshot) _applySnapshot;
-  final bool Function(String, String) _isSessionCurrent;
+  final bool Function(int) _isSessionCurrent;
   final void Function(String) _onDiagnostic;
   final void Function()? _onUnauthorized;
   final void Function()? _onUnsupported;
@@ -33,7 +33,7 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
   final _requests = RequestGeneration();
   final _debounce = DebouncedAction();
 
-  ({String baseUrl, String token})? _session;
+  int? _session;
   StreamSubscription<RevisionEvent<TRevision>>? _subscription;
   Future<void> _cancellations = Future<void>.value();
   Future<void>? _refreshing;
@@ -73,10 +73,8 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
 
   TRevision? get appliedRevision => _appliedRevision;
 
-  void start({required String baseUrl, required String token}) {
-    final session = (baseUrl: baseUrl, token: token);
-
-    if (token.isEmpty || _session == session) {
+  void start(int session) {
+    if (_session == session) {
       return;
     }
 
@@ -137,7 +135,7 @@ class RevisionSnapshotSync<TSnapshot, TRevision> {
   bool _isCurrent(int generation) {
     final session = _session;
 
-    return _requests.isCurrent(generation) && session != null && _isSessionCurrent(session.baseUrl, session.token);
+    return _requests.isCurrent(generation) && session != null && _isSessionCurrent(session);
   }
 
   /// Detaches the current stream; [stop] callers wait for it through [_cancellations].

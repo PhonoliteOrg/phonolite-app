@@ -128,8 +128,7 @@ class _DownloadStateStore {
   Future<void> _retireServerDownloadJobIfUnused(String jobId) async {
     if (!_looksLikeV2DownloadJobId(jobId) ||
         _downloads.any((download) => download.batchId == jobId) ||
-        _host.connection.token == null ||
-        _host.connection.token!.isEmpty) {
+        !_host.connection.hasCredential) {
       return;
     }
 

@@ -1,22 +1,6 @@
-typedef LogListener = void Function(LogEntry entry);
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 
 enum LogLevel { info, status, warning, error, debug }
-
-enum LogCategory {
-  all('All'),
-  info('Info'),
-  activities('Activities'),
-  warnings('Warnings'),
-  errors('Errors'),
-  issues('Issues'),
-  debug('Debug');
-
-  final String label;
-
-  const LogCategory(this.label);
-
-  String get fileName => '$name.log';
-}
 
 class LogEntry {
   final String message;

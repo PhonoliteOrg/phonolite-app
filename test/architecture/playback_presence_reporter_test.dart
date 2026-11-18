@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/playback/playback_presence_reporter.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 void main() {
   testWidgets('presence is idle until playback, heartbeats, and stops immediately on pause and close', (tester) async {

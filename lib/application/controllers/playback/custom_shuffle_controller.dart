@@ -5,13 +5,15 @@ import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
 import 'package:phonolite_app/application/presentation/genre_labels.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
-import 'package:phonolite_app/application/workflows/serial_action_queue.dart';
+import 'package:phonolite_app/data/structures/async/serial_action_queue.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
-import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_target.dart';
+import 'package:phonolite_app/data/models/playback/genre_option.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
-export 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
+export 'package:phonolite_app/data/models/playback/custom_shuffle_target.dart';
+export 'package:phonolite_app/data/models/playback/genre_option.dart';
 
 class CustomShuffleController extends FeatureController {
   final AppController _controller;

@@ -2,8 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/backdrop_blur_resize_suspension.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ObsidianGlassSurface extends StatelessWidget {
   static final ui.ImageFilter _backdropBlur = ui.ImageFilter.blur(sigmaX: 36, sigmaY: 36);

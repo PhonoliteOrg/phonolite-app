@@ -9,6 +9,8 @@ import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart'
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
+import 'package:phonolite_app/ui/shell/sliver_page_top_inset.dart';
+import 'package:phonolite_app/ui/shell/sliver_playback_inset.dart';
 import 'package:phonolite_app/ui/navigation/retained_tab_view.dart';
 import 'package:phonolite_app/ui/shell/adaptive_scaffold.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';

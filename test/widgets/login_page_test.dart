@@ -569,7 +569,7 @@ class _LoginController extends Fake implements AppController {
   Future<void> openAppSettings() async => appSettingsOpened++;
 
   @override
-  Future<AuthCredentials?> loadSavedCredentials() async => saved;
+  Future<String?> loadSavedUsername() async => saved?.username;
 
   @override
   Future<void> logout() async {

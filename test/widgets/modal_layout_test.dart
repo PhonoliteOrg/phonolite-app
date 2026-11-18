@@ -9,7 +9,7 @@ import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
@@ -22,7 +22,8 @@ import 'package:phonolite_app/ui/features/playback/widgets/device_picker_modal.d
 import 'package:phonolite_app/ui/features/downloads/widgets/download_manager_panel.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_adaptive_modal.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_surface.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/playlist_editor_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
@@ -223,6 +224,14 @@ void main() {
 
           final title = find.text(_title(kind));
           expect(find.byType(ObsidianGlassSurface), findsOneWidget);
+          if (kind == _Kind.add || kind == _Kind.device) {
+            final list = find.byType(ListView);
+            final scrollbar = find.ancestor(of: list, matching: find.byType(Scrollbar));
+            expect(scrollbar, findsOneWidget);
+            final thumb = tester.widget<Scrollbar>(scrollbar);
+            expect(thumb.thumbVisibility, isTrue);
+            expect(thumb.controller, same(tester.widget<ListView>(list).controller));
+          }
           if (kind == _Kind.downloads) {
             expect(tester.widget<Text>(find.text('Jobs')).style, tester.widget<Text>(find.text('Queue')).style);
             expect(find.byType(Dialog), findsOneWidget);

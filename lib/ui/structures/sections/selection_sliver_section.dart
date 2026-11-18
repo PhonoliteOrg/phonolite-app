@@ -4,7 +4,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_section_header.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// Searchable selection frame; consumers supply choices and selection policy.
 class SelectionSliverSection extends StatelessWidget {

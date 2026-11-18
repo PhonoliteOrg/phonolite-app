@@ -1,19 +1,18 @@
 import 'package:phonolite_app/application/controllers/settings/persisted_settings_controller.dart';
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/data/models/preferences/download_settings.dart';
-import 'package:phonolite_app/data/storage/preferences/download_settings_storage.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 
 /// Owns the default for future downloads; queued jobs retain their own profile.
 class DownloadSettingsController extends PersistedSettingsController<DownloadSettings> {
   static final instance = DownloadSettingsController();
 
-  final DownloadSettingsStorage _storage;
+  final PreferencesCoordinator preferences;
   bool _loading = false;
 
-  DownloadSettingsController({this._storage = const DownloadSettingsStorage()}) : super(const DownloadSettings());
-
-  @override
-  String get settingsLabel => 'download settings';
+  DownloadSettingsController({PreferencesCoordinator? preferences})
+    : preferences = preferences ?? PreferencesCoordinator.shared,
+      super((preferences ?? PreferencesCoordinator.shared).downloads);
 
   /// Loads the stored profile once. A read failure is reported and rethrown, because a
   /// download queue must not guess a quality when the device preference is unreadable.
@@ -36,14 +35,11 @@ class DownloadSettingsController extends PersistedSettingsController<DownloadSet
 
   Future<void> setQuality(DownloadQuality quality) => change(DownloadSettings(quality: quality));
 
-  @override
-  Future<void> persist(DownloadSettings next, DownloadSettings previous) => _storage.write(next);
-
   Future<void> _initialize() async {
     _loading = true;
 
     try {
-      await loadSettings(_storage.read);
+      await preference.load();
     } finally {
       _loading = false;
     }

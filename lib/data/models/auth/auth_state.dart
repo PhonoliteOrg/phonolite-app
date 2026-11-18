@@ -1,8 +1,11 @@
+import 'package:phonolite_app/data/models/auth/session_account.dart';
+
 const Object _authUnset = Object();
 
 enum SessionStatus { offline, checking, serverReachable, serverUnavailable, authenticated }
 
 class AuthState {
+  final SessionAccount? account;
   final SessionStatus status;
   final String baseUrl;
   final String? error;
@@ -14,6 +17,7 @@ class AuthState {
     bool? isAuthorized,
     SessionStatus? status,
     this.error,
+    this.account,
     this.isReconnecting = false,
     this.requiresSignIn = false,
   }) : status = status ?? (isAuthorized == true ? SessionStatus.authenticated : SessionStatus.offline);
@@ -31,6 +35,7 @@ class AuthState {
     SessionStatus? status,
     String? baseUrl,
     Object? error = _authUnset,
+    Object? account = _authUnset,
     bool? isReconnecting,
     bool? requiresSignIn,
   }) {
@@ -46,6 +51,7 @@ class AuthState {
 
     return AuthState(
       status: nextStatus,
+      account: identical(account, _authUnset) ? this.account : account as SessionAccount?,
       baseUrl: baseUrl ?? this.baseUrl,
       error: identical(error, _authUnset) ? this.error : error as String?,
       isReconnecting: nextStatus == SessionStatus.serverUnavailable ? isReconnecting ?? this.isReconnecting : false,

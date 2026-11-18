@@ -14,7 +14,6 @@ extension _ShuffleArtworkPreloading on _ShuffleCoordinator {
     // Keep the selected cover and the next two tracks decoded. Derive the
     // window from the deck cursor: playback state may still name the old track.
     final sources = <String>{};
-    final headers = _host.artworkHeaders;
     final requests = <ArtworkRequest>[];
     final nativeSources = <NativeArtworkSource>[];
 
@@ -26,7 +25,7 @@ extension _ShuffleArtworkPreloading on _ShuffleCoordinator {
       final source = local ? localPath : url;
 
       if (source != null && sources.add(source)) {
-        requests.add(ArtworkRequest(source: source, headers: local ? const {} : headers));
+        requests.add(ArtworkRequest(source: source, sessionRevision: local ? null : _host.connection.sessionRevision));
       }
 
       // The native publisher uses the server cover for server playback, even
@@ -40,8 +39,7 @@ extension _ShuffleArtworkPreloading on _ShuffleCoordinator {
             key: key,
             url: useLocal ? null : url,
             path: useLocal ? localPath : null,
-            token: useLocal ? null : _host.connection.token,
-            serverPin: useLocal ? null : _host.connection.trust?.spki,
+            sessionRevision: useLocal ? null : _host.connection.sessionRevision,
           ),
         );
       }

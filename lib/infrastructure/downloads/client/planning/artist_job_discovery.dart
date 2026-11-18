@@ -6,7 +6,7 @@ class _ArtistJobDiscovery {
   _ArtistJobDiscovery(this._host);
 
   Future<void> _discoverArtistJobItems(OfflineDownloadJob job, {required int targetUnmaterialized}) async {
-    if (_host.connection.token == null || _host.connection.token!.isEmpty) {
+    if (!_host.connection.hasCredential) {
       return;
     }
 
@@ -33,8 +33,7 @@ class _ArtistJobDiscovery {
 
     for (var i = 0; i < sources.length; i += 1) {
       if (_host.connection.baseUrl != job.serverBaseUrl ||
-          _host.connection.token == null ||
-          _host.connection.token!.isEmpty ||
+          !_host.connection.hasCredential ||
           _host._pausedServerUrls.contains(job.serverBaseUrl)) {
         break;
       }

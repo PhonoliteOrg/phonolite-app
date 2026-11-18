@@ -67,9 +67,7 @@ class _OfflineMetadataRepair {
       return;
     }
 
-    final token = _host.connection.token;
-
-    if (token == null || token.trim().isEmpty) {
+    if (!_host.connection.hasCredential) {
       return;
     }
 
@@ -126,9 +124,7 @@ class _OfflineMetadataRepair {
       return;
     }
 
-    final token = _host.connection.token;
-
-    if (token == null || token.trim().isEmpty) {
+    if (!_host.connection.hasCredential) {
       return;
     }
 

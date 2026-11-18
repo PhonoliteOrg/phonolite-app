@@ -7,7 +7,7 @@ import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/rules/library/track_identity.dart' as identity;
+import 'package:phonolite_app/data/rules/library/track_selection_key.dart' as identity;
 
 export 'package:phonolite_app/data/models/downloads/collection_download_summary.dart';
 

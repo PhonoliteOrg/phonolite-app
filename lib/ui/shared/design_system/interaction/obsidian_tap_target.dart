@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
-import 'package:phonolite_app/ui/shared/design_system/interaction/focus_highlight.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_focus_ring.dart';
 
 /// A custom-painted tappable region that behaves as a real button.
 ///

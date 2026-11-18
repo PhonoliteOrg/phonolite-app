@@ -669,13 +669,6 @@ class _PlaybackResumeRestorer {
       return;
     }
 
-    final preferences = _host._preferencesCoordinator;
-    preferences._customShuffleSettings = preferences._customShuffleSettings.copyWith(
-      artistIds: local ? null : context.artistIds,
-      genres: local ? null : context.genres,
-      localArtistIds: local ? context.artistIds : null,
-      localGenres: local ? context.genres : null,
-    );
-    preferences._customShuffleSettingsController.add(preferences._customShuffleSettings);
+    _host._playbackPreferences._shuffle.restoreShuffleFilters(context, local: local);
   }
 }

@@ -16,27 +16,3 @@ class PlaybackContentInset extends InheritedWidget {
   @override
   bool updateShouldNotify(PlaybackContentInset oldWidget) => bottom != oldWidget.bottom || top != oldWidget.top;
 }
-
-/// Starts content below the status bar while letting it scroll behind it.
-class SliverPageTopInset extends StatelessWidget {
-  /// Keeps later pinned controls below system UI without clipping the viewport.
-  final bool pinned;
-
-  const SliverPageTopInset({super.key, this.pinned = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final spacer = SizedBox(height: PlaybackContentInset.topOf(context));
-
-    return pinned ? PinnedHeaderSliver(child: spacer) : SliverToBoxAdapter(child: spacer);
-  }
-}
-
-/// Keeps the last row scrollable above the playbar without shrinking the view.
-class SliverPlaybackInset extends StatelessWidget {
-  const SliverPlaybackInset({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      SliverToBoxAdapter(child: SizedBox(height: PlaybackContentInset.bottomOf(context)));
-}

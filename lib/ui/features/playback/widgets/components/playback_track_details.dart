@@ -3,14 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_source_tags.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tech_tag.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tech_tag_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 
 class PlaybackIntelZone extends StatelessWidget {
   final Track? track;
@@ -55,7 +56,7 @@ class PlaybackIntelZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final tags = techTags.isEmpty && track == null ? const [PlaybackTechTag(label: 'IDLE')] : techTags;
     final enabled = onTap != null && track != null;
@@ -129,7 +130,7 @@ class PlaybackAlbumArtThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final albumId = track?.albumId?.trim();
     final localImageUrl = track?.albumArtPath?.trim();
@@ -155,7 +156,6 @@ class PlaybackAlbumArtThumb extends StatelessWidget {
       title: track?.album ?? '',
       size: s(64),
       imageUrl: imageUrl,
-      headers: hasLocalImage || imageUrl == null ? const <String, String>{} : authHeaders(AppScope.of(context)),
       placeholder: placeholder,
       thumbnail: false,
     );

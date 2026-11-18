@@ -3,17 +3,22 @@ import 'dart:typed_data';
 
 import 'package:flutter/painting.dart';
 
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 
 /// Bridges the existing fake Flutter HTTP clients to the injected capability.
 /// A missing fake fails locally; this helper never creates a real HTTP client.
 class ArtworkTestLoader implements ArtworkLoader {
+  @override
+  int get sessionRevision => 0;
+
   final HttpClient? client;
 
-  const ArtworkTestLoader({this.client});
+  const ArtworkTestLoader({this.client, this.cacheScope = 'test-artwork'});
 
   @override
-  String get cacheScope => 'test-artwork';
+  final String cacheScope;
 
   @override
   Future<void> close() async {}
@@ -33,7 +38,6 @@ class ArtworkTestLoader implements ArtworkLoader {
     }
 
     final pending = await http.getUrl(Uri.parse(request.source));
-    request.headers.forEach(pending.headers.add);
     final response = await pending.close();
 
     if (response.statusCode != 200) {

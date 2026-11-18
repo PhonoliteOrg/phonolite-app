@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ObsidianMenuAction {
   final String label;
@@ -82,7 +81,6 @@ class ObsidianOverflowActionButton extends StatelessWidget {
                       },
                     ),
             ),
-            actions: [ModalActionButton(label: 'Close', onPressed: () => Navigator.of(dialogContext).pop())],
           );
         },
       ),

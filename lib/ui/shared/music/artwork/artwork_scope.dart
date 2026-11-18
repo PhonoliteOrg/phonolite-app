@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_loader.dart';
 
 /// Provides a borrowed application-owned image capability to presentation.
 class ArtworkScope extends InheritedWidget {

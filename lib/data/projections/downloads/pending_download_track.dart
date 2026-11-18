@@ -1,4 +1,5 @@
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 
 /// A durable job track whose file has not entered the transfer window yet.

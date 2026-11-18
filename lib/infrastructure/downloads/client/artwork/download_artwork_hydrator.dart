@@ -90,8 +90,7 @@ class _DownloadArtworkHydrator {
       if (_host._disposed ||
           _host._resettingLocalData ||
           _host.connection.baseUrl != download.serverBaseUrl ||
-          _host.connection.token == null ||
-          _host.connection.token!.isEmpty) {
+          !_host.connection.hasCredential) {
         return;
       }
 

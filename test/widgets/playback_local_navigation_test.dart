@@ -9,7 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
-import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
@@ -18,6 +17,8 @@ import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
@@ -1289,7 +1290,7 @@ class _SignInController extends _Controller {
   @override
   Stream<AuthState> get authStream => authUpdates.stream;
   @override
-  Future<AuthCredentials?> loadSavedCredentials() async => null;
+  Future<String?> loadSavedUsername() async => null;
   void invalidate() {
     invalidated = true;
     authUpdates.add(authState);

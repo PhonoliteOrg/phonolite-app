@@ -13,8 +13,6 @@ class _ListeningStatsCoordinator {
   final _statsCollectionController = StreamController<bool>.broadcast();
   Map<String, dynamic>? _listeningSessionContext;
   bool _listeningClosed = false;
-  String? _statsServerId;
-  String? _statsUserId;
   final _statsReads = RequestGeneration();
   bool _resettingListeningStats = false;
   bool _suspendedListeningForReset = false;
@@ -55,7 +53,7 @@ class _ListeningStatsCoordinator {
     _listeningSessionContext = null;
 
     try {
-      await _host._listeningStats.setEnabled(value);
+      await _host._preferences.setListeningConsent(_host._listeningStats, value);
 
       if (_host._disposed) {
         return;
@@ -168,7 +166,7 @@ class _ListeningStatsCoordinator {
     _listeningSubscription = _host._listeningStats.changes.listen(handleHistoryChanged);
 
     try {
-      await _host._listeningStats.initialize();
+      await _host._preferences.loadListeningConsent(_host._listeningStats);
 
       if (_host._disposed) {
         return;
@@ -179,7 +177,7 @@ class _ListeningStatsCoordinator {
         connection: _host.connection,
         isAuthorized: () => !_host._disposed && _host._authState.isAuthorized,
         onChanged: _scheduleStatsRefresh,
-        onIdentity: _saveListeningIdentity,
+        onIdentity: _onListeningIdentity,
       );
 
       sync.start();
@@ -191,33 +189,9 @@ class _ListeningStatsCoordinator {
     }
   }
 
-  Future<void> _saveListeningIdentity(String serverId, String userId) async {
-    _statsServerId = serverId;
-    _statsUserId = userId;
-
-    final saved = _host._savedCredentials;
-
-    if (saved != null &&
-        saved.baseUrl == _host.connection.baseUrl &&
-        saved.token == _host.connection.token &&
-        (saved.serverId != serverId || saved.userId != userId)) {
-      // The identity is already active for this session; a failed save must not
-      // turn into a statistics sync failure and its retry loop.
-      try {
-        await _host._storeSavedCredentials(
-          AuthCredentials(
-            baseUrl: saved.baseUrl,
-            token: saved.token,
-            username: saved.username,
-            serverId: serverId,
-            userId: userId,
-            trust: saved.trust,
-          ),
-        );
-      } on Object catch (err) {
-        _host._pushMessage('Could not save the listening account on this device: $err', level: LogLevel.warning);
-      }
-    }
+  Future<void> _onListeningIdentity(int revision, String serverId, String userId) async {
+    await _host._sessionCoordinator._acceptAccount(revision, userId, serverId: serverId);
+    if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) return;
 
     final track = _host._playbackState.track;
 
@@ -232,7 +206,6 @@ class _ListeningStatsCoordinator {
 
   Future<void> _detachListeningAccount({int? expectedSessionRevision}) async {
     _host._gaplessCoordinator.invalidate();
-    _statsServerId = _statsUserId = null;
     _listeningSessionContext = null;
     _audio?.configureListening(null, discardPending: false);
 
@@ -644,14 +617,6 @@ mixin _ListeningStatsFacade {
   set _listeningSessionContext(Map<String, dynamic>? value) => _statsCoordinator._listeningSessionContext = value;
 
   set _listeningClosed(bool value) => _statsCoordinator._listeningClosed = value;
-
-  String? get _statsServerId => _statsCoordinator._statsServerId;
-
-  set _statsServerId(String? value) => _statsCoordinator._statsServerId = value;
-
-  String? get _statsUserId => _statsCoordinator._statsUserId;
-
-  set _statsUserId(String? value) => _statsCoordinator._statsUserId = value;
 
   Stream<bool> get statsCollectionEnabledStream => _statsCoordinator.statsCollectionEnabledStream;
 

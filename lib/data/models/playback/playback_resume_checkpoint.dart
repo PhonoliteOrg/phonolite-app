@@ -1,5 +1,5 @@
 import 'package:phonolite_app/data/models/playback/playback_source_context.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
 import 'package:phonolite_app/data/rules/playback/playback_resume_values.dart';
 
 const Object _resumeUnset = Object();

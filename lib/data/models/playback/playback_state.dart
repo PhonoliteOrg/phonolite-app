@@ -1,20 +1,13 @@
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/playback/local_playback_source.dart';
+import 'package:phonolite_app/data/models/playback/playback_queue_source.dart';
+import 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
+import 'package:phonolite_app/data/models/playback/stream_mode.dart';
 
 const Object _unset = Object();
-
-enum ShuffleMode { off, all, artist, album, custom, liked, currentPlaylist }
-
-enum ActionScope { local, server }
-
-enum PlaybackRepeatMode { off, one }
-
-/// Original preserves source-file bytes over QUIC; the other qualities use Opus.
-enum StreamMode { auto, high, medium, low, original }
-
-enum PlaybackQueueSource { none, liked, playlist, offline }
-
-enum LocalPlaybackSource { none, library, liked, playlist }
 
 class PlaybackState {
   final Track? track;

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
 import 'package:phonolite_app/data/models/preferences/desktop_settings.dart';
 import 'package:phonolite_app/data/storage/preferences/desktop_settings_storage.dart';
@@ -22,7 +23,11 @@ void main() {
     storage = DesktopSettingsStorage(files: SettingsFiles(directoryProvider: () async => temporary));
     events = [];
     platform = _Platform(events);
-    controller = DesktopSettingsController(storage: storage, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: storage),
+      platform: platform,
+      isSupported: () => true,
+    );
   });
 
   tearDown(() async {
@@ -60,7 +65,7 @@ void main() {
 
     final restoredEvents = <String>[];
     final restored = DesktopSettingsController(
-      storage: storage,
+      preferences: PreferencesCoordinator(desktop: storage),
       platform: _Platform(restoredEvents),
       isSupported: () => true,
     );
@@ -138,7 +143,11 @@ void main() {
 
   test('persistence failure rolls back the OS setting and reports the failure', () async {
     controller.dispose();
-    controller = DesktopSettingsController(storage: _FailedWriteStorage(), platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: _FailedWriteStorage()),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
     await controller.setLaunchAtStartup(false);
     expect(controller.settings.launchAtStartup, isTrue);
@@ -150,7 +159,7 @@ void main() {
   test('mobile and web hosts never read preferences or call desktop plugins', () async {
     controller.dispose();
     controller = DesktopSettingsController(
-      storage: _UnsupportedStorage(),
+      preferences: PreferencesCoordinator(desktop: _UnsupportedStorage()),
       platform: platform,
       isSupported: () => false,
     );
@@ -165,7 +174,11 @@ void main() {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
     controller.dispose();
-    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
 
     final first = controller.setLaunchAtStartup(false);
@@ -202,7 +215,11 @@ void main() {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
     controller.dispose();
-    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
 
     final first = controller.setLaunchAtStartup(false);
@@ -228,7 +245,11 @@ void main() {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
     controller.dispose();
-    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
 
     final first = controller.setLaunchAtStartup(false);
@@ -252,7 +273,11 @@ void main() {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
     controller.dispose();
-    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
 
     final save = controller.setLaunchAtStartup(false);
@@ -274,7 +299,11 @@ void main() {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
     controller.dispose();
-    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
 
     final save = controller.setRunInBackground(false);
@@ -296,7 +325,11 @@ void main() {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
     controller.dispose();
-    controller = DesktopSettingsController(storage: delayed, platform: platform, isSupported: () => true);
+    controller = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: platform,
+      isSupported: () => true,
+    );
     await initialize();
 
     final save = controller.setRunInBackground(false);
@@ -315,7 +348,11 @@ void main() {
   test('disposing during a save suppresses late notifications and new mutations', () async {
     final delayed = _QueuedStorage();
     addTearDown(delayed.releaseAll);
-    final disposed = DesktopSettingsController(storage: delayed, platform: _Platform([]), isSupported: () => true);
+    final disposed = DesktopSettingsController(
+      preferences: PreferencesCoordinator(desktop: delayed),
+      platform: _Platform([]),
+      isSupported: () => true,
+    );
     await disposed.initialize(beforeQuit: () async {});
     var notifications = 0;
     disposed.addListener(() => notifications++);

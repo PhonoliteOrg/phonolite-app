@@ -1,30 +1,25 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/library/artist.dart';
-import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_module_shell.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/listening_duration_label.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_empty_text.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
 
 class StatsTopArtistsSection extends StatelessWidget {
   final List<StatsItem> artists;
   final String? Function(StatsItem)? coverUrl;
-  final Map<String, String> headers;
   final ValueChanged<StatsItem>? onArtistTap;
 
-  const StatsTopArtistsSection({
-    super.key,
-    required this.artists,
-    required this.coverUrl,
-    required this.headers,
-    required this.onArtistTap,
-  });
+  const StatsTopArtistsSection({super.key, required this.artists, required this.coverUrl, required this.onArtistTap});
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     final topArtists = artists.take(5).toList();
 
@@ -43,7 +38,6 @@ class StatsTopArtistsSection extends StatelessWidget {
                     : () => onArtistTap!(topArtists[i]),
                 artist: Artist(id: topArtists[i].id, name: topArtists[i].name, albumCount: 0),
                 coverUrl: coverUrl?.call(topArtists[i]),
-                headers: headers,
                 subtitle: '${listeningDurationLabel(topArtists[i].listeningMs)} listened',
                 trailing: SizedBox(
                   width: s(30),

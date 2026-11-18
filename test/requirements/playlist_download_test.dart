@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:phonolite_app/data/models/server/server_artwork.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/infrastructure/server/api/artwork_urls.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_response_decoder.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';

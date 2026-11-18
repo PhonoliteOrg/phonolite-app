@@ -55,7 +55,7 @@ class _DownloadScheduler {
       return;
     }
 
-    if (_host.connection.token == null || _host.connection.token!.isEmpty) {
+    if (!_host.connection.hasCredential) {
       return;
     }
 

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:phonolite_app/application/controllers/settings/persisted_settings_controller.dart';
+import 'package:phonolite_app/data/repositories/device_preference.dart';
 
 void main() {
   test('changes before loading are ignored and loading runs once', () async {
@@ -81,7 +81,6 @@ void main() {
     expect(controller.error, contains('Could not load counts'));
 
     controller.failRead = false;
-    controller.retry();
     await controller.initialize();
 
     expect(controller.ready, isTrue);
@@ -110,7 +109,7 @@ void main() {
   });
 }
 
-class _CountController extends PersistedSettingsController<int> {
+class _CountController {
   final int stored;
   final writes = <int>[];
   final previousValues = <int>[];
@@ -119,20 +118,27 @@ class _CountController extends PersistedSettingsController<int> {
   bool failRead = false;
   int reads = 0;
 
-  _CountController({required this.stored}) : super(0);
+  _CountController({required this.stored});
 
-  @override
-  String get settingsLabel => 'counts';
+  late final preference = DevicePreference(0, label: 'counts', read: _read, write: _write);
+  int get settings => preference.value;
+  bool get ready => preference.ready;
+  bool get saving => preference.saving;
+  String? get error => preference.error;
+  void dispose() => preference.dispose();
+  Future<void> flush() => preference.flush();
 
-  Future<void> initialize() => initializeOnce(() => loadSettings(_read));
+  Future<void> initialize() => preference.load();
 
-  void retry() => resetInitialization();
+  Future<void> set(int value) => preference.change(
+    value,
+    apply: (next, previous) async {
+      previousValues.add(previous);
+      return null;
+    },
+  );
 
-  Future<void> set(int value) => change(value);
-
-  @override
-  Future<void> persist(int next, int previous) async {
-    previousValues.add(previous);
+  Future<void> _write(int next) async {
     await pendingWrite;
     pendingWrite = null;
 

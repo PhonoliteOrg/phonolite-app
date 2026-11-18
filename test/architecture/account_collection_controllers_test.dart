@@ -35,17 +35,15 @@ void main() {
 
   test('decoded artwork caches separate accounts requesting the same private cover URL', () {
     const url = 'https://music.test/api/library/playlists/old-list/cover';
-    final headers = {'Authorization': 'Bearer first'};
-    const loader = ArtworkTestLoader();
-    final first = AuthenticatedNetworkImage(url, loader: loader, headers: headers);
-    final firstAgain = AuthenticatedNetworkImage(url, loader: loader, headers: {'Authorization': 'Bearer first'});
-    final second = AuthenticatedNetworkImage(url, loader: loader, headers: {'Authorization': 'Bearer second'});
-    final signedOut = AuthenticatedNetworkImage(url, loader: loader);
+    const loader = ArtworkTestLoader(cacheScope: 'first');
+    final first = AuthenticatedNetworkImage(url, loader: loader);
+    final firstAgain = AuthenticatedNetworkImage(url, loader: loader);
+    final second = AuthenticatedNetworkImage(url, loader: const ArtworkTestLoader(cacheScope: 'second'));
+    final signedOut = AuthenticatedNetworkImage(url, loader: const ArtworkTestLoader());
     expect(first, firstAgain);
     expect(first.hashCode, firstAgain.hashCode);
     expect(first, isNot(second));
     expect(first, isNot(signedOut));
-    headers['Authorization'] = 'Bearer second';
     expect(first, firstAgain);
     expect(first, isNot(second));
   });

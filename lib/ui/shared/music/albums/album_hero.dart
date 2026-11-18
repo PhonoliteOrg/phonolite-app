@@ -11,14 +11,15 @@ import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/genre_text.dart';
 import 'package:phonolite_app/ui/shared/music/media_hero_details.dart';
 import 'package:phonolite_app/ui/shared/music/media_hero_frame.dart';
+import 'package:phonolite_app/ui/shared/music/media_hero_summary.dart';
+import 'package:phonolite_app/ui/shared/music/media_hero_title.dart';
 
 class AlbumHero extends StatelessWidget {
   final Album album;
   final String coverUrl;
-  final Map<String, String> headers;
   final Widget? actions;
 
-  const AlbumHero({super.key, required this.album, required this.coverUrl, required this.headers, this.actions});
+  const AlbumHero({super.key, required this.album, required this.coverUrl, this.actions});
 
   @override
   Widget build(BuildContext context) {
@@ -62,12 +63,7 @@ class AlbumHero extends StatelessWidget {
                 width: isCompact ? 72 : s(170),
                 child: Align(
                   alignment: Alignment.topCenter,
-                  child: AlbumArt(
-                    title: album.title,
-                    size: isCompact ? 72 : s(150),
-                    imageUrl: coverUrl,
-                    headers: headers,
-                  ),
+                  child: AlbumArt(title: album.title, size: isCompact ? 72 : s(150), imageUrl: coverUrl),
                 ),
               ),
               SizedBox(width: isCompact ? 12 : s(24)),

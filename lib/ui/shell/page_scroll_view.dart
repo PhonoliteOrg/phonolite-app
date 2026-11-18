@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
+import 'package:phonolite_app/ui/shell/sliver_page_top_inset.dart';
+import 'package:phonolite_app/ui/shell/sliver_playback_inset.dart';
 
 /// Standard scrolling page assembly. Pages supply only their content slivers.
 class PageScrollView extends StatelessWidget {
@@ -36,52 +37,4 @@ class PageScrollView extends StatelessWidget {
       if (includeBottomInset) const SliverPlaybackInset(),
     ],
   );
-}
-
-/// Shared page gutter; vertical spacing belongs to the assembled content role.
-class PageSliverPadding extends StatelessWidget {
-  static const double horizontalInset = 20;
-
-  final Widget sliver;
-  final double top;
-  final double bottom;
-
-  const PageSliverPadding({super.key, required this.sliver, this.top = 0, this.bottom = 0});
-
-  @override
-  Widget build(BuildContext context) =>
-      SliverPadding(padding: EdgeInsets.fromLTRB(horizontalInset, top, horizontalInset, bottom), sliver: sliver);
-}
-
-/// Adapts a box component to the same page gutter and spacing contract.
-class PageSliverBox extends StatelessWidget {
-  final Widget child;
-  final double top;
-  final double bottom;
-  final bool pinned;
-
-  const PageSliverBox({super.key, required this.child, this.top = 0, this.bottom = 0, this.pinned = false});
-
-  @override
-  Widget build(BuildContext context) {
-    if (pinned) {
-      return PinnedHeaderSliver(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            PageSliverPadding.horizontalInset,
-            top,
-            PageSliverPadding.horizontalInset,
-            bottom,
-          ),
-          child: child,
-        ),
-      );
-    }
-
-    return PageSliverPadding(
-      top: top,
-      bottom: bottom,
-      sliver: SliverToBoxAdapter(child: child),
-    );
-  }
 }

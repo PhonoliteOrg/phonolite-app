@@ -10,7 +10,6 @@ class ArtistAvatar extends StatelessWidget {
   final String name;
   final double size;
   final String? imageUrl;
-  final Map<String, String>? headers;
   final BoxFit fit;
   final double paddingFraction;
   final bool thumbnail;
@@ -20,7 +19,6 @@ class ArtistAvatar extends StatelessWidget {
     required this.name,
     required this.size,
     this.imageUrl,
-    this.headers,
     this.fit = BoxFit.contain,
     this.paddingFraction = artistLogoContainPadding,
     this.thumbnail = false,
@@ -44,7 +42,6 @@ class ArtistAvatar extends StatelessWidget {
         padding: EdgeInsets.all(size * paddingFraction),
         child: ArtworkImage(
           imageUrl: imagePath,
-          headers: headers,
           width: size,
           height: size,
           fit: fit,

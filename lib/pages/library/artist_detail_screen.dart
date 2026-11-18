@@ -12,8 +12,10 @@ import 'package:phonolite_app/pages/library/album_detail_screen.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/remove_download_modal.dart';
-import 'package:phonolite_app/ui/features/library/widgets/artist_release_sections.dart';
+import 'package:phonolite_app/ui/features/library/widgets/artist_contribution_sliver.dart';
+import 'package:phonolite_app/ui/features/library/widgets/artist_release_heading.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/loading_widgets.dart';
@@ -21,10 +23,10 @@ import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoi
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_collection_sliver.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_hero.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/collection_view_toggle_button.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_padding.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
@@ -117,7 +119,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
     required List<Album> headlineAlbums,
     required ArtistReleases releases,
     required bool showCollectionList,
-    required Map<String, String> authHeadersMap,
     required String? coverUrl,
     required String? bannerUrl,
     required bool compactHeaderActions,
@@ -170,12 +171,7 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
           PageSliverBox(
             top: 0,
             bottom: 24,
-            child: ArtistHero(
-              artist: _feature.artist,
-              coverUrl: coverUrl,
-              bannerUrl: bannerUrl,
-              headers: authHeadersMap,
-            ),
+            child: ArtistHero(artist: _feature.artist, coverUrl: coverUrl, bannerUrl: bannerUrl),
           ),
           if (!isLoading && albums.isNotEmpty) ArtistReleaseHeading(title: 'Albums', count: albums.length),
           if (isLoading && albums.isEmpty)
@@ -191,7 +187,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
                 isListView: showCollectionList,
                 albumFor: (album) => album,
                 coverFor: (album) => _feature.albumCoverUrl(controller, album),
-                headers: authHeadersMap,
                 onOpen: _openAlbumDetail,
                 selectionMode: _feature.albumSelectionMode,
                 isDeleting: (album) => _feature.isRemovingAlbum(album, removingAlbumIds),
@@ -207,7 +202,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
               entries: releases.collabAlbums,
               isListView: showCollectionList,
               coverFor: (album) => _feature.albumCoverUrl(controller, album),
-              headers: authHeadersMap,
               onOpen: _openAlbumDetail,
               selectionMode: _feature.albumSelectionMode,
               selected: (entry) => _feature.selectedAlbumIds.contains(_feature.albumSelectionKey(entry.album)),
@@ -222,7 +216,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
               entries: releases.appearsOn,
               isListView: showCollectionList,
               coverFor: (album) => _feature.albumCoverUrl(controller, album),
-              headers: authHeadersMap,
               onOpen: _openAlbumDetail,
             ),
           if (!isLoading && releases.otherCredits.isNotEmpty)
@@ -231,7 +224,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
               entries: releases.otherCredits,
               isListView: showCollectionList,
               coverFor: (album) => _feature.albumCoverUrl(controller, album),
-              headers: authHeadersMap,
               onOpen: _openAlbumDetail,
             ),
           if (isLoading && albums.isNotEmpty)
@@ -249,7 +241,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
   @override
   Widget pageContent(BuildContext context, PageAssembler assemble) {
     final controller = AppScope.of(context);
-    final authHeadersMap = authHeaders(controller);
     final coverUrl = _feature.artist.logoRef == null || _feature.artist.logoRef!.isEmpty
         ? null
         : controller.catalog.buildArtistCoverUrl(_feature.artist.id, kind: 'logo', ref: _feature.artist.logoRef);
@@ -290,7 +281,6 @@ class ArtistDetailScreenState extends BasePageState<ArtistDetailScreen> {
                     headlineAlbums: headlineAlbums,
                     releases: releases,
                     showCollectionList: showCollectionList,
-                    authHeadersMap: authHeadersMap,
                     coverUrl: coverUrl,
                     bannerUrl: bannerUrl,
                     compactHeaderActions: compactHeaderActions,

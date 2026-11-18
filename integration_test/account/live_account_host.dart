@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
@@ -22,7 +23,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_viewport.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_error_handler.dart';
 
 /// Actual server mutations, with private client databases and a read-only vault.
 /// The caller must verify a user-confirmed disposable username before creating.
@@ -37,32 +38,25 @@ class LiveAccountHost {
   static Future<LiveAccountHost> create(AuthCredentials saved) async {
     installServerTrustOverrides();
     installArtworkErrorHandler();
-    final root = await Directory.systemTemp.createTemp(
-      'phonolite-live-account-test-',
+    final root = await Directory.systemTemp.createTemp('phonolite-live-account-test-');
+    final files = SettingsFiles(directoryProvider: () async => Directory('${root.path}/settings'));
+    await AppLogger.instance.initialize(files: LogFiles(directoryProvider: () async => Directory('${root.path}/logs')));
+    final preferences = PreferencesCoordinator(
+      offline: OfflineStorageSettingsStorage(files: files),
+      playback: PlaybackPreferencesStorage(files: files),
+      shuffle: CustomShuffleSettingsStorage(files: files),
     );
-    final files = SettingsFiles(
-      directoryProvider: () async => Directory('${root.path}/settings'),
-    );
-    await AppLogger.instance.initialize(
-      files: LogFiles(
-        directoryProvider: () async => Directory('${root.path}/logs'),
-      ),
-    );
-    final storage = OfflineLibraryStorage(
-      baseDirectory: Directory('${root.path}/offline'),
-      settingsStorage: OfflineStorageSettingsStorage(files: files),
-    );
+    final storage = OfflineLibraryStorage(baseDirectory: Directory('${root.path}/offline'), preferences: preferences);
     final history = ListeningStatsService(files: files);
     // No synthetic listening history is recorded/uploaded by this account test.
-    await history.setEnabled(false);
+    await preferences.setListeningConsent(history, false);
     final controller = AppController(
       connection: ServerConnection(baseUrl: saved.baseUrl)
         ..setTrust(saved.trust)
         ..setToken(saved.token),
       authStorage: _MemoryAuth(saved),
       offlineStorage: storage,
-      customShuffleStorage: CustomShuffleSettingsStorage(files: files),
-      playbackPreferencesStorage: PlaybackPreferencesStorage(files: files),
+      preferences: preferences,
       listeningStatsService: history,
     );
     PhonoliteIcons.registerLicense();
@@ -73,10 +67,8 @@ class LiveAccountHost {
         child: MaterialApp(
           theme: ObsidianTheme.build(),
           themeAnimationStyle: AnimationStyle.noAnimation,
-          builder: (context, child) => TooltipVisibility(
-            visible: false,
-            child: ObsidianViewport(child: child ?? const SizedBox.shrink()),
-          ),
+          builder: (context, child) =>
+              TooltipVisibility(visible: false, child: ObsidianViewport(child: child ?? const SizedBox.shrink())),
           home: const HomePage(),
         ),
       ),

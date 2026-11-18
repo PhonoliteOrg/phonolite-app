@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/pages/logs/logs_page.dart';
 import 'package:phonolite_app/ui/app_scope.dart';

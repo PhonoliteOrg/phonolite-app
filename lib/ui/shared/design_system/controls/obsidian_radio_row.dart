@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_list_row.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// A single choice in a [RadioGroup], using the shared responsive list frame.
 class ObsidianRadioRow<T> extends StatelessWidget {

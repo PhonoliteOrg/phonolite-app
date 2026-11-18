@@ -12,7 +12,6 @@ class AlbumCollectionSliver<T> extends StatelessWidget {
   final Album Function(T) albumFor;
   final String Function(T) coverFor;
   final ValueChanged<T> onOpen;
-  final Map<String, String> headers;
   final bool selectionMode;
   final bool Function(T)? selected;
   final bool Function(T)? selectable;
@@ -26,7 +25,6 @@ class AlbumCollectionSliver<T> extends StatelessWidget {
     required this.albumFor,
     required this.coverFor,
     required this.onOpen,
-    this.headers = const {},
     this.selectionMode = false,
     this.selected,
     this.selectable,
@@ -50,7 +48,6 @@ class AlbumCollectionSliver<T> extends StatelessWidget {
         return AlbumRowTile(
           album: album,
           coverUrl: coverUrl,
-          headers: headers,
           onTap: () => onOpen(item),
           selectionMode: selectionMode,
           selectable: canSelect,
@@ -63,7 +60,6 @@ class AlbumCollectionSliver<T> extends StatelessWidget {
       return AlbumCard(
         album: album,
         coverUrl: coverUrl,
-        headers: headers,
         onTap: () => onOpen(item),
         selectionMode: selectionMode,
         selectable: canSelect,

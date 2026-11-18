@@ -4,16 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:phonolite_app/application/controllers/playlists/playlist_editor_controller.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/ui/controller_binding.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_editor_dialog.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
 import 'package:phonolite_app/ui/shared/music/local_server_toggle.dart';
 
@@ -26,7 +25,6 @@ class PlaylistEditorModal extends StatefulWidget {
   final String initialDescription;
   final PlaylistEditorSubmit onSubmit;
   final String? initialImageUrl;
-  final Map<String, String> imageHeaders;
   final bool showTargetSelector;
   final PlaylistEditorTarget initialTarget;
 
@@ -40,7 +38,6 @@ class PlaylistEditorModal extends StatefulWidget {
     required this.onSubmit,
     this.initialDescription = '',
     this.initialImageUrl,
-    this.imageHeaders = const <String, String>{},
     this.showTargetSelector = false,
     this.initialTarget = PlaylistEditorTarget.local,
     this.messageFor,
@@ -101,29 +98,22 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
     }
   }
 
-  Widget _buildEditor(BuildContext context) {
+  Widget _buildContent(BuildContext context, double contentWidth) {
     final theme = Theme.of(context);
     // Composing text can briefly exceed the limit until the IME commits, so the counter is clamped.
     final currentLength = _nameController.text.characters.length.clamp(0, _maxNameLength);
     final descriptionLength = _descriptionController.text.characters.length.clamp(0, _maxDescriptionLength);
-    final canSave = _nameController.text.trim().isNotEmpty && !_feature.saving;
-
-    final dialogWidth = (MediaQuery.sizeOf(context).width - ObsidianModalScope.insetsOf(context).horizontal)
-        .clamp(0.0, 760.0)
-        .toDouble();
     final extraTextHeight = (MediaQuery.textScalerOf(context).scale(16) - 16).clamp(0.0, double.infinity);
     final touchLayout = ObsidianModalScope.usesTouchTargets(context);
     final formHeight = (touchLayout ? 320 : 280) + extraTextHeight * (touchLayout ? 8 : 6);
     final nameFieldHeight = (touchLayout ? 56 : 48) + extraTextHeight;
-    final compact =
-        dialogWidth - ObsidianModalStyle.contentPadding.horizontal < formHeight + 24 + 280 + extraTextHeight * 2;
+    final compact = contentWidth < formHeight + 24 + 280 + extraTextHeight * 2;
 
     final imagePicker = Align(
       alignment: compact ? Alignment.center : Alignment.centerLeft,
       child: _PlaylistImagePicker(
         title: _nameController.text.trim().isEmpty ? 'Playlist' : _nameController.text.trim(),
         imageUrl: widget.initialImageUrl,
-        headers: widget.imageHeaders,
         bytes: _feature.selectedImageBytes,
         size: compact ? 180 : formHeight,
         onTap: () => unawaited(_feature.pickImage()),
@@ -149,15 +139,11 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
           ],
           _PlaylistFieldHeading(label: 'Name', counter: '$currentLength/$_maxNameLength'),
           const SizedBox(height: 6),
-          ObsidianTextField(
+          ObsidianTextField.editor(
             controller: _nameController,
             hintText: 'Playlist name',
             height: nameFieldHeight,
-            startPadding: 24,
-            isDense: true,
-            maxLines: 1,
             inputFormatters: _nameFormatters,
-            textInputAction: TextInputAction.done,
             onSubmitted: (_) => FocusScope.of(context).unfocus(),
           ),
           const SizedBox(height: 16),
@@ -165,15 +151,13 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
           const SizedBox(height: 6),
           Expanded(
             child: LayoutBuilder(
-              builder: (context, constraints) => ObsidianTextField(
+              builder: (context, constraints) => ObsidianTextField.editor(
                 controller: _descriptionController,
                 hintText: 'Playlist description',
                 height: constraints.maxHeight,
-                startPadding: 24,
                 minLines: 1,
                 maxLines: null,
                 inputFormatters: _descriptionFormatters,
-                textInputAction: TextInputAction.done,
                 keyboardType: TextInputType.multiline,
                 onSubmitted: (_) => FocusScope.of(context).unfocus(),
               ),
@@ -205,7 +189,7 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
 
     final message = widget.messageFor?.call(_feature.target);
 
-    final content = Column(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -217,32 +201,25 @@ class _PlaylistEditorModalState extends State<PlaylistEditorModal> with Controll
         if (imageError != null) ...[const SizedBox(height: 10), imageError],
       ],
     );
-
-    return PopScope(
-      canPop: !_feature.saving,
-      child: ObsidianEditorDialog(
-        title: Text(widget.title),
-        width: dialogWidth,
-        content: content,
-        actions: [
-          ModalActionButton(label: 'Close', onPressed: _feature.saving ? null : () => Navigator.of(context).pop()),
-          ModalActionButton(
-            label: _feature.saving ? 'Saving' : 'Save',
-            onPressed: canSave ? () => unawaited(_submit()) : null,
-          ),
-        ],
-      ),
-    );
   }
 
   @override
-  Widget build(BuildContext context) => ObsidianModalScope(builder: _buildEditor);
+  Widget build(BuildContext context) => ObsidianEditorDialog(
+    title: widget.title,
+    saving: _feature.saving,
+    contentBuilder: _buildContent,
+    actions: [
+      ModalActionButton.save(
+        saving: _feature.saving,
+        onPressed: _nameController.text.trim().isNotEmpty ? _submit : null,
+      ),
+    ],
+  );
 }
 
 class _PlaylistImagePicker extends StatelessWidget {
   final String title;
   final String? imageUrl;
-  final Map<String, String> headers;
   final Uint8List? bytes;
   final double size;
   final VoidCallback onTap;
@@ -250,7 +227,6 @@ class _PlaylistImagePicker extends StatelessWidget {
   const _PlaylistImagePicker({
     required this.title,
     required this.imageUrl,
-    required this.headers,
     required this.bytes,
     required this.size,
     required this.onTap,
@@ -265,7 +241,7 @@ class _PlaylistImagePicker extends StatelessWidget {
     final Widget art;
 
     if (imageBytes == null && hasImage) {
-      art = AlbumArt(title: title, size: size, imageUrl: imagePath, headers: headers, placeholder: quietPlaceholder);
+      art = AlbumArt(title: title, size: size, imageUrl: imagePath, placeholder: quietPlaceholder);
     } else if (imageBytes == null) {
       art = quietPlaceholder;
     } else {

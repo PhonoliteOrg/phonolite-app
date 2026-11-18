@@ -1,14 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-typedef ObsidianHoverWidgetBuilder = Widget Function(BuildContext context, bool hovered);
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_supports_hover.dart';
 
-bool obsidianSupportsHover() {
-  return kIsWeb ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.linux;
-}
+typedef ObsidianHoverWidgetBuilder = Widget Function(BuildContext context, bool hovered);
 
 class ObsidianHoverBuilder extends StatefulWidget {
   final ObsidianHoverWidgetBuilder builder;

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
-
-enum TechButtonVariant { standard, danger }
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 enum TechButtonDensity { standard, compact }
 

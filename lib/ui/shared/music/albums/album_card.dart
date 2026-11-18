@@ -13,7 +13,6 @@ import 'package:phonolite_app/ui/shared/music/selectable_media_card.dart';
 class AlbumCard extends StatelessWidget {
   final Album album;
   final String coverUrl;
-  final Map<String, String> headers;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool selectionMode;
@@ -26,7 +25,6 @@ class AlbumCard extends StatelessWidget {
     super.key,
     required this.album,
     required this.coverUrl,
-    required this.headers,
     required this.onTap,
     this.selectionMode = false,
     this.selected = false,
@@ -68,7 +66,7 @@ class AlbumCard extends StatelessWidget {
           artwork: CardImageFrame(
             hovered: hovered,
             borderRadius: BorderRadius.zero,
-            child: AlbumArt(title: album.title, size: imageSize, imageUrl: coverUrl, headers: headers),
+            child: AlbumArt(title: album.title, size: imageSize, imageUrl: coverUrl),
           ),
         );
       },

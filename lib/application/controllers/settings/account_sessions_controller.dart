@@ -1,5 +1,5 @@
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class AccountSessionsController extends FeatureController {

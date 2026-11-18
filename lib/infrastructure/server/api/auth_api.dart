@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:phonolite_quic/phonolite_quic.dart';
 
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/password_change_exception.dart';
 import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart';
 

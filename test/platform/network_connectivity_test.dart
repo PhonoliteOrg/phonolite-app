@@ -2,7 +2,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/models/network/network_connectivity.dart';
-import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_signal_source.dart';
+import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_plus_signal_source.dart';
 
 void main() {
   test('Wi-Fi to cellular remains visible when both networks are available', () async {

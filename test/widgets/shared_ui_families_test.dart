@@ -7,7 +7,7 @@ import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_play_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_card.dart';
@@ -47,7 +47,6 @@ void main() {
           'album row' => AlbumRowTile(
             album: album,
             coverUrl: '',
-            headers: const {},
             onTap: open,
             selectionMode: selectionMode,
             selectable: selectable,
@@ -57,7 +56,6 @@ void main() {
           'artist row' => ArtistRowTile(
             artist: artist,
             coverUrl: null,
-            headers: const {},
             onTap: open,
             selectionMode: selectionMode,
             selectable: selectable,
@@ -67,7 +65,6 @@ void main() {
           'album card' => AlbumCard(
             album: album,
             coverUrl: '',
-            headers: const {},
             onTap: open,
             selectionMode: selectionMode,
             selectable: selectable,
@@ -77,7 +74,6 @@ void main() {
           _ => ArtistCard(
             artist: artist,
             coverUrl: null,
-            headers: const {},
             onTap: open,
             selectionMode: selectionMode,
             selectable: selectable,

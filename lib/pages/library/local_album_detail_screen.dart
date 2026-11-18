@@ -4,7 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/local_album_detail_controller.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/remove_download_modal.dart';
@@ -16,7 +16,8 @@ import 'package:phonolite_app/ui/shared/music/albums/album_hero.dart';
 import 'package:phonolite_app/ui/shared/music/banner_playback_button.dart';
 import 'package:phonolite_app/ui/shared/music/tracks/track_sliver_list.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_padding.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
@@ -119,7 +120,6 @@ class _LocalAlbumDetailScreenState extends BasePageState<LocalAlbumDetailScreen>
             child: AlbumHero(
               album: localAlbum,
               coverUrl: album.coverPath ?? '',
-              headers: const {},
               actions: BannerPlaybackButton(
                 message: 'Play album',
                 visible: !_feature.selectionMode,

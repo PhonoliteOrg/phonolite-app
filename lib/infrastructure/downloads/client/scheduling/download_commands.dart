@@ -156,7 +156,7 @@ class _DownloadCommands {
   Future<void> resumePausedForCurrentServer() async {
     await _host._ensureLoaded();
 
-    if (_host.connection.token == null || _host.connection.token!.isEmpty) {
+    if (!_host.connection.hasCredential) {
       return;
     }
 

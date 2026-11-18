@@ -12,7 +12,6 @@ class PlaylistSection extends BaseSliverSection {
   final String? title;
   final List<Playlist> playlists;
   final bool showListView;
-  final Map<String, String> headers;
   final String? Function(Playlist playlist) coverUrlFor;
   final ValueChanged<Playlist> onOpen;
   final ValueChanged<Playlist> onPlayFromTop;
@@ -27,7 +26,6 @@ class PlaylistSection extends BaseSliverSection {
     required this.title,
     required this.playlists,
     required this.showListView,
-    required this.headers,
     required this.coverUrlFor,
     required this.onOpen,
     required this.onPlayFromTop,
@@ -64,7 +62,6 @@ class PlaylistSection extends BaseSliverSection {
                   ? AlbumRowTile(
                       album: album,
                       coverUrl: coverUrl,
-                      headers: headers,
                       onTap: open,
                       onLongPress: play,
                       selectionMode: selectionMode,
@@ -75,7 +72,6 @@ class PlaylistSection extends BaseSliverSection {
                   : AlbumCard(
                       album: album,
                       coverUrl: coverUrl,
-                      headers: headers,
                       onTap: open,
                       onLongPress: play,
                       selectionMode: selectionMode,

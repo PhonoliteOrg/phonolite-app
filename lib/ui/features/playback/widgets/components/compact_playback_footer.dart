@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_time_label.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_scrubber.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_volume_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_slider_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class PlaybackCompactFooterRow extends PlaybackScrubber {
   final double volume;
@@ -43,7 +43,7 @@ class PlaybackCompactFooterRowState extends PlaybackScrubberState<PlaybackCompac
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final progressTheme = widget.sliderTheme.copyWith(
       trackHeight: s(5),

@@ -46,7 +46,7 @@ String readProjectModule(String relativePath) {
     // Extensible presentation structures supply part of the owning module's
     // rendering contract; follow only these explicit shared template imports.
     final structures = RegExp(
-      r"import '(package:phonolite_app/ui/(?:structures/[^']+|shell/(?:base_(?:form_)?page\.dart|page_scroll_view\.dart|toolbars/[^']+|navigation/[^']+)))';",
+      r"import '(package:phonolite_app/ui/(?:structures/[^']+|shell/(?:base_(?:form_)?page\.dart|page_(?:layout|scroll_view|sliver_box|sliver_padding)\.dart|toolbars/[^']+|navigation/[^']+)))';",
     );
     for (final match in structures.allMatches(source)) {
       read('lib/${match[1]!.substring('package:phonolite_app/'.length)}');
@@ -60,6 +60,7 @@ String readProjectModule(String relativePath) {
       'application/workflows/debounced_action.dart',
       'data/storage/preferences/json_settings_file.dart',
       'data/structures/serialization/json_values.dart',
+      'data/rules/library/track_selection_key.dart',
       'data/rules/library/track_identity.dart',
       'ui/shared/music/albums/album_collection_sliver.dart',
       'ui/shared/music/artists/artist_collection_sliver.dart',
@@ -68,6 +69,8 @@ String readProjectModule(String relativePath) {
       'ui/shared/music/selectable_media_row.dart',
       'ui/shared/music/selectable_media_card.dart',
       'ui/shared/music/media_hero_frame.dart',
+      'ui/shared/music/media_hero_title.dart',
+      'ui/shared/music/media_hero_summary.dart',
       'ui/shared/music/media_hero_details.dart',
       'ui/shared/music/artwork/artwork_image.dart',
       'ui/shared/music/artwork/artwork_placeholder.dart',
@@ -103,9 +106,13 @@ String readProjectModule(String relativePath) {
       read('lib/data/configuration/downloads/offline_storage_config.dart');
       read('lib/data/models/downloads/offline_actor_protocol.dart');
       read('lib/data/models/downloads/download_worker_protocol.dart');
+      read('lib/data/models/downloads/download_artwork_paths.dart');
       read('lib/data/models/downloads/download_outcomes.dart');
       read('lib/data/files/download_integrity.dart');
+      read('lib/data/files/delete_download_worker_file.dart');
       read('lib/data/rules/downloads/offline_snapshot_comparison.dart');
+      read('lib/data/rules/downloads/offline_playlist_snapshot_comparison.dart');
+      read('lib/data/rules/downloads/local_playlist_entry_comparison.dart');
       read('lib/infrastructure/downloads/http/download_range.dart');
     case 'lib/infrastructure/server/server_connection.dart':
       directory('lib/infrastructure/server/api');
@@ -127,7 +134,8 @@ String readProjectModule(String relativePath) {
     case 'lib/pages/favorites/liked_page.dart':
       read('lib/ui/features/favorites/widgets/liked_section.dart');
     case 'lib/pages/library/library_page.dart':
-      read('lib/ui/features/library/widgets/library_section_slivers.dart');
+      read('lib/ui/features/library/widgets/library_section_heading.dart');
+      read('lib/ui/features/library/widgets/library_status_sliver.dart');
     case 'lib/pages/playlists/playlists_page.dart':
       read('lib/ui/features/playlists/widgets/playlist_section.dart');
     case 'lib/pages/playlists/playlist_detail_view.dart':

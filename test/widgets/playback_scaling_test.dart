@@ -11,7 +11,8 @@ import 'package:phonolite_app/ui/features/playback/widgets/components/compact_pl
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_output_controls.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_progress_bar.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_track_details.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_transport_controls.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_command_zone.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_compact_controls.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
@@ -180,6 +181,8 @@ void main() {
             tester.widget<NowPlayingMiniBar>(find.byType(NowPlayingMiniBar)).onExpand();
             await tester.pumpAndSettle();
             expect(find.byType(NowPlayingExpandedSheet), findsOneWidget);
+            final sheetRoute = ModalRoute.of(tester.element(find.byType(NowPlayingExpandedSheet)));
+            expect(sheetRoute!.barrierColor, Colors.black.withValues(alpha: 0.45));
             expect(tester.takeException(), isNull, reason: '$platform landscape phone player');
             Navigator.of(tester.element(find.byType(NowPlayingExpandedSheet))).pop();
             await tester.pumpAndSettle();

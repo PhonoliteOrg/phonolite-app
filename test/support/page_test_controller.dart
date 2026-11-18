@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
@@ -27,7 +28,9 @@ typedef RecordedRemoval = ({List<String> trackIds, String? label, OfflineDeletio
 
 /// A display settings controller that keeps its settings in memory.
 Future<DisplaySettingsController> memoryDisplaySettings() async {
-  final display = DisplaySettingsController(storage: _MemoryDisplaySettingsStorage());
+  final display = DisplaySettingsController(
+    preferences: PreferencesCoordinator(display: _MemoryDisplaySettingsStorage()),
+  );
   await display.initialize();
 
   return display;

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
 import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_module_shell.dart';
-import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_presentation.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/listening_duration_label.dart';
+import 'package:phonolite_app/ui/features/listening_stats/widgets/stats_empty_text.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/genre_text.dart';
 
 class StatsTopGenresSection extends StatelessWidget {
@@ -61,7 +63,7 @@ class _GenreBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => statsScaled(context, value);
+    final s = context.s;
 
     final percent = totalListeningMs <= 0 ? 0.0 : listeningMs / totalListeningMs;
     final barPercent = percent.clamp(0.0, 1.0);

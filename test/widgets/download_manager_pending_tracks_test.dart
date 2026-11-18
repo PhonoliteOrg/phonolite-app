@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_download_snapshot.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
@@ -159,9 +160,6 @@ class _SnapshotController extends Fake implements AppController {
 
   @override
   CatalogController get catalog => _Catalog();
-
-  @override
-  Map<String, String> get artworkHeaders => const {};
 
   void publish(OfflineDownloadSnapshot snapshot) {
     _snapshot = snapshot;

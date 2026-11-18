@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/configuration/app/desktop_window_configuration.dart';
-import 'package:phonolite_app/infrastructure/platform/app/desktop_lifecycle_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/native_desktop_lifecycle_platform.dart';
 import 'package:phonolite_app/infrastructure/platform/app/desktop_tray.dart';
 
 void main() {

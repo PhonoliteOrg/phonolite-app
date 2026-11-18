@@ -20,7 +20,8 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_manager_panel.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/download_selection_toolbar.dart';
 import 'package:phonolite_app/ui/features/downloads/widgets/remove_download_modal.dart';
-import 'package:phonolite_app/ui/features/library/widgets/library_section_slivers.dart';
+import 'package:phonolite_app/ui/features/library/widgets/library_section_heading.dart';
+import 'package:phonolite_app/ui/features/library/widgets/library_status_sliver.dart';
 import 'package:phonolite_app/ui/features/search/widgets/search_results_sliver.dart';
 import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_widgets.dart';
@@ -31,12 +32,13 @@ import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/loading_widgets.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_collection_sliver.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/collection_view_toggle_button.dart';
 import 'package:phonolite_app/ui/shared/music/source_section_slivers.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_padding.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
+import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_action_layout.dart';
 import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
 
 class LibraryPage extends BasePage {
@@ -99,8 +101,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   }
 
   Widget _buildServerLibrary(AppController controller, PageAssembler assemble) {
-    final authHeadersMap = authHeaders(controller);
-
     return ColoredBox(
       color: Colors.transparent,
       child: StreamBuilder<List<SearchResult>>(
@@ -148,7 +148,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
                               artists: artists,
                               query: query,
                               showCollectionList: showCollectionList,
-                              authHeadersMap: authHeadersMap,
                             ),
                           );
                         },
@@ -212,17 +211,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
       ),
     );
   }
-
-  Widget _collectionViewButton({
-    required bool isListView,
-    required VoidCallback? onPressed,
-    double iconSize = PageToolbarActionLayout.regularIconSize,
-  }) => CollectionViewToggleButton(
-    isListView: isListView,
-    onPressed: onPressed,
-    semanticLabel: 'Library collection view',
-    iconSize: iconSize,
-  );
 
   Widget _artistSelectionToolbar({
     required AppController controller,
@@ -294,7 +282,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
   List<Widget> _serverArtistSlivers(
     AppController controller, {
     required List<Artist> artists,
-    required Map<String, String> authHeadersMap,
     required bool showCollectionList,
     required bool isLoading,
   }) {
@@ -346,7 +333,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
             isListView: showCollectionList,
             artistFor: artistAt,
             coverFor: (index) => _feature.artistCoverUrl(controller, artistAt(index)),
-            headers: authHeadersMap,
             onOpen: openArtist,
             onVisibilityChanged: visibilityChanged,
             visibilityScope: controller.connection.sessionRevision,
@@ -389,7 +375,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
           sliver: SearchResultsSliver(
             results: results,
             catalog: controller.catalog,
-            headers: authHeaders(controller),
             onSelect: (result) => _handleSearchSelect(controller, result),
           ),
         ),
@@ -585,9 +570,10 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
         _refreshLibraryButton(controller, iconSize: layout.iconSize),
         _downloadManagerButton(iconSize: layout.iconSize),
         _editLibraryButton(groups.isNotEmpty ? _feature.startArtistSelection : null, iconSize: layout.iconSize),
-        _collectionViewButton(
+        CollectionViewToggleButton(
           isListView: showCollectionList,
           onPressed: controller.toggleCollectionListMode,
+          semanticLabel: 'Library collection view',
           iconSize: layout.iconSize,
         ),
       ],
@@ -621,7 +607,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
     required List<Artist> artists,
     required String query,
     required bool showCollectionList,
-    required Map<String, String> authHeadersMap,
   }) {
     final offlineSnapshot = librarySnapshot.data ?? controller.offlineLibrarySnapshot;
     final offlineTracks = offlineSnapshot.tracks;
@@ -647,7 +632,6 @@ class _LibraryPageState extends BasePageState<LibraryPage> {
           ? _serverArtistSlivers(
               controller,
               artists: artists,
-              authHeadersMap: authHeadersMap,
               showCollectionList: showCollectionList,
               isLoading: isLoading,
             )

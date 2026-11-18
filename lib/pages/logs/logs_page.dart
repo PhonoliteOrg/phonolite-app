@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/controllers/logs/logs_controller.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/logs/widgets/message_log.dart';

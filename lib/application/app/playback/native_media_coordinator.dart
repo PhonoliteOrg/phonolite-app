@@ -248,11 +248,15 @@ class _NativeMediaCoordinator {
         ? _host.connection.buildAlbumCoverUrl(albumId)
         : null;
     final localArtworkPath = _host._playbackState.isLocalPlayback ? track.albumArtPath?.trim() : null;
-    final token = _host.connection.token ?? '';
+    final sessionRevision = _host.connection.sessionRevision;
     final nativeArtwork = _host._nowPlayingPlatform.loadsArtworkNatively;
 
     if (!nativeArtwork) {
-      _maybeLoadNowPlayingArtwork(artworkUrl: artworkUrl, localPath: localArtworkPath, token: token);
+      _maybeLoadNowPlayingArtwork(
+        artworkUrl: artworkUrl,
+        localPath: localArtworkPath,
+        sessionRevision: sessionRevision,
+      );
     }
 
     // iOS loads artwork natively; other platforms receive the cached PNG.
@@ -268,8 +272,7 @@ class _NativeMediaCoordinator {
       liked: track.liked,
       artworkKey: NowPlayingArtwork.sourceKey(url: artworkUrl, localPath: localArtworkPath) ?? '',
       artworkUrl: artworkUrl,
-      token: token,
-      serverPin: _host.connection.trust?.spki,
+      sessionRevision: sessionRevision,
       artworkPath: localArtworkPath,
       artworkBytes: nativeArtwork ? null : _host._artwork.bytes,
     );
@@ -287,7 +290,11 @@ class _NativeMediaCoordinator {
     }
   }
 
-  void _maybeLoadNowPlayingArtwork({required String? artworkUrl, required String? localPath, required String token}) {
+  void _maybeLoadNowPlayingArtwork({
+    required String? artworkUrl,
+    required String? localPath,
+    required int sessionRevision,
+  }) {
     if (!_host._nowPlayingPlatform.isSupported || _host._disposed) {
       return;
     }
@@ -298,7 +305,11 @@ class _NativeMediaCoordinator {
       }
     }
 
-    unawaited(_host._artwork.load(url: artworkUrl, localPath: localPath, token: token).then(publishChangedArtwork));
+    unawaited(
+      _host._artwork
+          .load(url: artworkUrl, localPath: localPath, sessionRevision: sessionRevision)
+          .then(publishChangedArtwork),
+    );
   }
 
   void _bumpNowPlayingEpoch() {

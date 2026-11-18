@@ -8,7 +8,6 @@ class SearchResultsSliver extends StatelessWidget {
   final List<SearchResult> results;
   final ValueChanged<SearchResult> onSelect;
   final CatalogController? catalog;
-  final Map<String, String> headers;
   final bool useLocalArtwork;
 
   const SearchResultsSliver({
@@ -16,7 +15,6 @@ class SearchResultsSliver extends StatelessWidget {
     required this.results,
     required this.onSelect,
     this.catalog,
-    this.headers = const {},
     this.useLocalArtwork = false,
   });
 
@@ -35,7 +33,6 @@ class SearchResultsSliver extends StatelessWidget {
         return SearchResultTile(
           result: result,
           catalog: catalog,
-          headers: headers,
           useLocalArtwork: useLocalArtwork,
           onTap: () => onSelect(result),
         );

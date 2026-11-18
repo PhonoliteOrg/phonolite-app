@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_shuffle_labels.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_stream_labels.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_quality_badge.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_volume_button.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality_modal.dart';
@@ -37,7 +38,7 @@ class PlaybackExpandedExtras extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final actionSize = usesTouchTargets ? 24.0 : s(32);

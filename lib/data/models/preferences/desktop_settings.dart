@@ -14,5 +14,12 @@ class DesktopSettings {
     runInBackground: runInBackground ?? this.runInBackground,
   );
 
+  @override
+  bool operator ==(Object other) =>
+      other is DesktopSettings && launchAtStartup == other.launchAtStartup && runInBackground == other.runInBackground;
+
+  @override
+  int get hashCode => Object.hash(launchAtStartup, runInBackground);
+
   Map<String, dynamic> toJson() => {'launchAtStartup': launchAtStartup, 'runInBackground': runInBackground};
 }

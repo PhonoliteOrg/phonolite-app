@@ -7,7 +7,7 @@ import 'package:phonolite_app/data/models/playback/account_playback_snapshot.dar
 import 'package:phonolite_app/data/models/playback/device_playback_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/playback_resume_checkpoint.dart';
 import 'package:phonolite_app/data/models/playback/playback_source_context.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
 import 'package:phonolite_app/data/storage/playback/playback_resume_storage.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
 

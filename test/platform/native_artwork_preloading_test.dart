@@ -1,3 +1,6 @@
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
+import 'package:phonolite_app/infrastructure/server/server_connection.dart';
+import 'package:phonolite_app/data/models/auth/server_trust.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -5,6 +8,19 @@ import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/infrastructure/platform/media/now_playing_platform_service.dart';
 
 void main() {
+  late ServerConnection connection;
+  late NativeArtworkAccess access;
+  setUp(() {
+    connection = ServerConnection(baseUrl: 'https://server.test/api');
+    connection.setTrust(ServerTrust(spki: 'ab' * 32, opaqueKey: 'test-key'));
+    connection.setToken('session-token');
+    access = NativeArtworkAccess(connection);
+  });
+  tearDown(() {
+    connection.forgetTrust(connection.baseUrl);
+    connection.close();
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('phonolite/now_playing');
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -18,15 +34,14 @@ void main() {
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
   test('native artwork preload sends authenticated sources and an empty replacement window', () async {
-    final service = _Service(nativeArtwork: true);
+    final service = _Service(nativeArtwork: true)..artworkAccess = access;
     addTearDown(service.dispose);
 
-    await service.preloadArtwork(const [
+    await service.preloadArtwork([
       NativeArtworkSource(
         key: 'url:https://server.test/cover',
         url: 'https://server.test/cover',
-        token: 'session-token',
-        serverPin: 'server-pin',
+        sessionRevision: connection.sessionRevision,
       ),
       NativeArtworkSource(key: 'file:/local/cover.png', path: '/local/cover.png'),
     ]);
@@ -38,11 +53,19 @@ void main() {
         'artworkKey': 'url:https://server.test/cover',
         'artworkUrl': 'https://server.test/cover',
         'token': 'session-token',
-        'serverPin': 'server-pin',
+        'serverPin': 'ab' * 32,
       },
       {'artworkKey': 'file:/local/cover.png', 'artworkPath': '/local/cover.png'},
     ]);
     expect(calls.last.arguments, isEmpty);
+  });
+
+  test('native credentials stay with the current session and origin', () {
+    final revision = connection.sessionRevision;
+    expect(access.fields('https://another.test/cover', revision), isEmpty);
+    connection.setToken('replacement');
+    expect(access.fields('https://server.test/cover', revision), isEmpty);
+    expect(access.fields('file:///cover', connection.sessionRevision), isEmpty);
   });
 
   test('platforms using Flutter artwork do not receive native preload commands', () async {

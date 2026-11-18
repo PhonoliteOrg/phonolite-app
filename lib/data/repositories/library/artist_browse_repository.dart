@@ -3,7 +3,7 @@ import 'dart:collection';
 
 import 'package:phonolite_app/data/models/library/artist_browse_snapshot.dart';
 import 'package:phonolite_app/data/models/library/artist_summary.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/structures/library/byte_lru_cache.dart';
 
 typedef ArtistSummaryPageFetcher = Future<ArtistSummaryPage> Function({

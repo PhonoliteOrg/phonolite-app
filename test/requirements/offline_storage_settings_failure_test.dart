@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
@@ -55,7 +56,7 @@ void main() {
     test('a failed settings read keeps the configured downloads folder when moving metadata', () async {
       final library = OfflineLibraryStorage(
         defaultDirectoryProvider: () async => Directory(offlineTestJoin(temp.path, 'default_root')),
-        settingsStorage: settings,
+        preferences: PreferencesCoordinator(offline: settings),
       );
       final downloads = offlineTestJoin(temp.path, 'custom_downloads');
 

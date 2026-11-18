@@ -10,7 +10,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/reload_icon.dart';
@@ -19,9 +19,8 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_t
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';
 
 const double _trackActionButtonExtent = 38;
@@ -50,7 +49,6 @@ class TrackRowTile extends StatefulWidget {
   final Widget? trailing;
   final bool showDuration;
   final String? albumArtUrl;
-  final Map<String, String>? albumArtHeaders;
   final Widget? albumArtOverlay;
   final Widget? leading;
   final bool showIndex;
@@ -70,7 +68,6 @@ class TrackRowTile extends StatefulWidget {
     this.trailing,
     this.showDuration = true,
     this.albumArtUrl,
-    this.albumArtHeaders,
     this.albumArtOverlay,
     this.leading,
     this.showIndex = true,
@@ -239,18 +236,6 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
     return '$artist / $album';
   }
 
-  Map<String, String> _fallbackAlbumArtHeaders(
-    AppController? controller, {
-    required bool hasLocalCover,
-    required bool canLoadRemoteArt,
-  }) {
-    if (!widget.showAlbumArt || hasLocalCover || controller == null || !canLoadRemoteArt) {
-      return const <String, String>{};
-    }
-
-    return authHeaders(controller);
-  }
-
   AppController? _maybeAppController(BuildContext context) => AppScope.maybeOf(context);
 
   String? _downloadTitleStatus(OfflineDownloadStatus? status) => switch (status) {
@@ -320,10 +305,6 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
           ? controller?.catalog.buildAlbumCoverUrl(albumId)
           : null;
     }
-
-    final headers =
-        widget.albumArtHeaders ??
-        _fallbackAlbumArtHeaders(controller, hasLocalCover: hasLocalCover, canLoadRemoteArt: canLoadRemoteArt);
 
     final selectionMode = widget.selectionMode;
     final showLeading = selectionMode || widget.isPlaying || widget.leading != null || widget.showIndex;
@@ -419,7 +400,7 @@ class _TrackRowTileState extends State<TrackRowTile> with SingleTickerProviderSt
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    AlbumArt(title: widget.track.album, size: artSize, imageUrl: coverUrl, headers: headers),
+                    AlbumArt(title: widget.track.album, size: artSize, imageUrl: coverUrl),
                     if (widget.albumArtOverlay != null)
                       Positioned.fill(child: IgnorePointer(child: widget.albumArtOverlay!)),
                   ],

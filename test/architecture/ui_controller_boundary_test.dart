@@ -60,8 +60,11 @@ void main() {
     for (final file in [
       ..._dartFiles('lib/ui/structures'),
       ..._pageStructures.map(File.new),
+      File('lib/ui/shell/page_layout.dart'),
       File('lib/ui/shell/page_body.dart'),
       File('lib/ui/shell/page_scroll_view.dart'),
+      File('lib/ui/shell/page_sliver_padding.dart'),
+      File('lib/ui/shell/page_sliver_box.dart'),
       ..._dartFiles('lib/ui/shell/toolbars'),
       ..._dartFiles('lib/ui/shell/navigation'),
     ]) {
@@ -113,8 +116,11 @@ void main() {
     }
     for (final path in [
       ..._pageStructures,
+      'lib/ui/shell/page_layout.dart',
       'lib/ui/shell/page_body.dart',
       'lib/ui/shell/page_scroll_view.dart',
+      'lib/ui/shell/page_sliver_padding.dart',
+      'lib/ui/shell/page_sliver_box.dart',
     ]) {
       expect(
         _dependencies(

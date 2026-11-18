@@ -183,7 +183,7 @@ class DelayedReadStorage extends OfflineLibraryStorage {
 
 class ManagedTestStorage extends OfflineLibraryStorage {
   const ManagedTestStorage({
-    required super.settingsStorage,
+    required super.preferences,
     super.defaultDirectoryProvider,
   });
 }

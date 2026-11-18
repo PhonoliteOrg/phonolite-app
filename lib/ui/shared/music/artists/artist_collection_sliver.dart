@@ -13,7 +13,6 @@ class ArtistCollectionSliver<T> extends StatelessWidget {
   final Artist Function(T) artistFor;
   final String? Function(T) coverFor;
   final ValueChanged<T> onOpen;
-  final Map<String, String> headers;
   final bool selectionMode;
   final bool Function(T)? selected;
   final bool Function(T)? selectable;
@@ -29,7 +28,6 @@ class ArtistCollectionSliver<T> extends StatelessWidget {
     required this.artistFor,
     required this.coverFor,
     required this.onOpen,
-    this.headers = const {},
     this.selectionMode = false,
     this.selected,
     this.selectable,
@@ -68,7 +66,6 @@ class ArtistCollectionSliver<T> extends StatelessWidget {
       return ArtistRowTile(
         artist: artist,
         coverUrl: coverUrl,
-        headers: headers,
         onTap: () => onOpen(item),
         selectionMode: selectionMode,
         selectable: canSelect,
@@ -81,7 +78,6 @@ class ArtistCollectionSliver<T> extends StatelessWidget {
     return ArtistCard(
       artist: artist,
       coverUrl: coverUrl,
-      headers: headers,
       onTap: () => onOpen(item),
       selectionMode: selectionMode,
       selectable: canSelect,

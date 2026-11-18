@@ -219,7 +219,7 @@ class _Connection extends Fake implements ServerConnection {
   String get baseUrl => origin;
 
   @override
-  String? get token => 'token';
+  bool get hasCredential => true;
 
   @override
   int get sessionRevision => revision;

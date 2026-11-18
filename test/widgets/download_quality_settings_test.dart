@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
@@ -22,7 +23,7 @@ import '../support/widget_test_helpers.dart';
 void main() {
   testWidgets('retry restores download quality choices after a storage read error', (tester) async {
     final storage = _MemoryStorage()..failRead = true;
-    final controller = DownloadSettingsController(storage: storage);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: storage));
     await _pump(tester, DownloadQualityPage(controller: controller), controller);
 
     expect(find.textContaining('Could not load download settings'), findsOneWidget);
@@ -40,7 +41,7 @@ void main() {
   for (final width in [320.0, 390.0, 1280.0]) {
     testWidgets('quality choices remain usable at width $width', (tester) async {
       final storage = _MemoryStorage();
-      final controller = DownloadSettingsController(storage: storage);
+      final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: storage));
       await controller.initialize();
       await _pump(tester, DownloadQualityPage(controller: controller), controller, width: width);
 
@@ -67,7 +68,7 @@ void main() {
 
   testWidgets('keyboard arrows choose the next quality in the radio group', (tester) async {
     final storage = _MemoryStorage();
-    final controller = DownloadSettingsController(storage: storage);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: storage));
     await controller.initialize();
     await _pump(tester, DownloadQualityPage(controller: controller), controller);
 
@@ -83,7 +84,7 @@ void main() {
   });
 
   testWidgets('Local Storage tile opens the page and reflects its saved selection on return', (tester) async {
-    final controller = DownloadSettingsController(storage: _MemoryStorage());
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: _MemoryStorage()));
     final app = _StorageApp();
     addTearDown(app.connection.close);
     await controller.initialize();
@@ -122,7 +123,7 @@ void main() {
 
   testWidgets('a failed save restores the selected row and reports the problem', (tester) async {
     final storage = _MemoryStorage();
-    final controller = DownloadSettingsController(storage: storage);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: storage));
     await controller.initialize();
     storage.failWrite = true;
     await _pump(tester, DownloadQualityPage(controller: controller), controller);

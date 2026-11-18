@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/downloads/offline_download_manager.dar
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class StatsController extends FeatureController {

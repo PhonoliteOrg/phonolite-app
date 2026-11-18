@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 /// Best-effort, ephemeral server playback presence, independent of listening
 /// history consent. At most one request and one replacement are retained.

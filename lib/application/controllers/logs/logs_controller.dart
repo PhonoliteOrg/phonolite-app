@@ -1,4 +1,5 @@
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 
 class LogsController extends FeatureController {

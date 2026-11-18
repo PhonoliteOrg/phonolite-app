@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
-import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_radio_row.dart';
 
 /// Presentation of the five supported profiles; persistence stays in the controller.

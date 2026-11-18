@@ -7,9 +7,9 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/auth/password_change_controller.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_field.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_actions.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shell/base_form_page.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 

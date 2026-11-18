@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 
 import 'package:http/http.dart' as http;
 
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/auth/account_state.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_event.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_snapshot.dart';
@@ -29,7 +33,7 @@ import 'package:phonolite_app/data/models/server/download_job_v2.dart';
 import 'package:phonolite_app/data/models/server/playback_settings_response.dart';
 import 'package:phonolite_app/data/models/server/server_artwork.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/server_reachability_probe.dart';
 import 'package:phonolite_app/data/models/server/server_ports_response.dart';
 import 'package:phonolite_app/data/models/server/shuffle_session_page.dart';
 import 'package:phonolite_app/data/models/server/track_download_stream.dart';
@@ -51,7 +55,11 @@ import 'package:phonolite_app/infrastructure/server/transport/api_transport.dart
 
 export 'package:phonolite_app/data/models/server/playback_settings_response.dart';
 export 'package:phonolite_app/data/models/server/server_artwork.dart';
-export 'package:phonolite_app/data/models/server/server_errors.dart';
+export 'package:phonolite_app/data/models/server/api_exception.dart';
+export 'package:phonolite_app/data/models/server/password_change_exception.dart';
+export 'package:phonolite_app/data/models/server/request_timeout_exception.dart';
+export 'package:phonolite_app/data/models/server/server_connection_check_exception.dart';
+export 'package:phonolite_app/data/models/server/server_reachability_probe.dart';
 export 'package:phonolite_app/data/models/server/server_ports_response.dart';
 export 'package:phonolite_app/data/models/server/track_download_stream.dart';
 
@@ -91,6 +99,11 @@ class ServerConnection {
 
   String? get token => _transport.token;
 
+  bool get hasCredential => token?.trim().isNotEmpty == true;
+
+  /// Preserves the existing artwork disk namespace until the account is known.
+  String get credentialCacheScope => sha256.convert(utf8.encode(jsonEncode([token ?? 'anonymous']))).toString();
+
   ServerTrust? get trust => _transport.trust;
 
   bool get hasTrustedTransport => _transport.hasTrustedTransport;
@@ -98,9 +111,6 @@ class ServerConnection {
   int get sessionRevision => _transport.sessionRevision;
 
   bool get canChangeOwnPassword => _transport.canChangeOwnPassword;
-
-  /// A fresh header map; callers cannot mutate connection authentication state.
-  Map<String, String> get authorizationHeaders => _transport.authorizationHeaders;
 
   ServerCollectionMembership get _currentMembership {
     if (_projectionSession != sessionRevision) {
@@ -111,17 +121,22 @@ class ServerConnection {
     return _collectionMembership;
   }
 
-  /// Streams artwork over the current trusted transport without following redirects.
-  /// Supplied validators cannot replace the current session's authentication.
-  Future<http.StreamedResponse> openArtwork(String url, {Map<String, String> headers = const {}}) {
-    final uri = Uri.parse(url);
-    final origin = Uri.parse(baseUrl);
+  bool isArtworkOrigin(Uri uri) {
+    final origin = Uri.tryParse(baseUrl);
+    return origin != null &&
+        origin.scheme == 'https' &&
+        uri.scheme == 'https' &&
+        uri.host.isNotEmpty &&
+        uri.host == origin.host &&
+        uri.port == origin.port &&
+        uri.userInfo.isEmpty &&
+        !uri.hasFragment;
+  }
 
-    if (uri.scheme != 'https' ||
-        uri.host != origin.host ||
-        uri.port != origin.port ||
-        uri.userInfo.isNotEmpty ||
-        uri.hasFragment) {
+  /// Streams artwork over the current trusted transport without following redirects.
+  Future<http.StreamedResponse> openArtwork(String url, {String? etag}) {
+    final uri = Uri.parse(url);
+    if (!isArtworkOrigin(uri)) {
       return Future.error(StateError('Artwork must use the authenticated server origin'));
     }
 
@@ -131,7 +146,7 @@ class ServerConnection {
       timeout: ApiTransport.defaultRequestTimeout,
       configure: (request) => request
         ..followRedirects = false
-        ..headers.addAll({...headers, ..._transport.authorizationHeaders}),
+        ..headers.addAll({if (etag != null) 'If-None-Match': etag, ..._transport.authorizationHeaders}),
     );
   }
 

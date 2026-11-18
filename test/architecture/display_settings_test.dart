@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/preferences/display_settings.dart';
 import 'package:phonolite_app/data/storage/preferences/display_settings_storage.dart';
@@ -18,7 +19,7 @@ void main() {
   setUp(() async {
     temporary = await Directory.systemTemp.createTemp('phonolite-display-settings-');
     storage = DisplaySettingsStorage(files: SettingsFiles(directoryProvider: () async => temporary));
-    controller = DisplaySettingsController(storage: storage);
+    controller = DisplaySettingsController(preferences: PreferencesCoordinator(display: storage));
   });
 
   tearDown(() async {
@@ -63,7 +64,7 @@ void main() {
     await controller.setPlaylistsLocalFirst(true);
     await controller.flush();
 
-    final restored = DisplaySettingsController(storage: storage);
+    final restored = DisplaySettingsController(preferences: PreferencesCoordinator(display: storage));
     addTearDown(restored.dispose);
     await restored.initialize();
 
@@ -82,7 +83,7 @@ void main() {
       delayRead: true,
     );
     controller.dispose();
-    controller = DisplaySettingsController(storage: delayed);
+    controller = DisplaySettingsController(preferences: PreferencesCoordinator(display: delayed));
 
     final first = controller.initialize();
     final second = controller.initialize();
@@ -102,7 +103,7 @@ void main() {
   test('a failed save preserves the current setting and a later edit can recover', () async {
     final controlled = _ControlledStorage()..failWrite = true;
     controller.dispose();
-    controller = DisplaySettingsController(storage: controlled);
+    controller = DisplaySettingsController(preferences: PreferencesCoordinator(display: controlled));
     await controller.initialize();
     await controller.setLibraryLocalFirst(false);
 
@@ -123,7 +124,7 @@ void main() {
     final controlled = _QueuedStorage();
     addTearDown(controlled.releaseAll);
     controller.dispose();
-    controller = DisplaySettingsController(storage: controlled);
+    controller = DisplaySettingsController(preferences: PreferencesCoordinator(display: controlled));
     await controller.initialize();
 
     final first = controller.setLibraryLocalFirst(false);
@@ -176,7 +177,7 @@ void main() {
     final controlled = _QueuedStorage();
     addTearDown(controlled.releaseAll);
     controller.dispose();
-    controller = DisplaySettingsController(storage: controlled);
+    controller = DisplaySettingsController(preferences: PreferencesCoordinator(display: controlled));
     await controller.initialize();
 
     final first = controller.setLibraryLocalFirst(false);
@@ -201,7 +202,7 @@ void main() {
     final controlled = _QueuedStorage();
     addTearDown(controlled.releaseAll);
     controller.dispose();
-    controller = DisplaySettingsController(storage: controlled);
+    controller = DisplaySettingsController(preferences: PreferencesCoordinator(display: controlled));
     await controller.initialize();
 
     final first = controller.setLibraryLocalFirst(false);
@@ -222,7 +223,7 @@ void main() {
 
   test('disposing during initialization prevents late notifications', () async {
     final controlled = _ControlledStorage(delayRead: true);
-    final disposed = DisplaySettingsController(storage: controlled);
+    final disposed = DisplaySettingsController(preferences: PreferencesCoordinator(display: controlled));
     var notifications = 0;
     disposed.addListener(() => notifications++);
 

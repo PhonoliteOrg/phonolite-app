@@ -7,13 +7,15 @@ import 'package:phonolite_app/application/controllers/playback/playback_controls
 import 'package:phonolite_app/ui/features/playback/widgets/components/compact_playback_footer.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/desktop_playback_frame.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/desktop_playback_layout.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_stream_labels.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/shuffle_mode_changed.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_output_controls.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_progress_bar.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_source_tags.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tech_tag.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_track_details.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_transport_controls.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_command_zone.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_compact_controls.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/output_device_modal.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/shuffle_picker_modal.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/stream_quality_modal.dart';
@@ -21,9 +23,10 @@ import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_moda
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
-export 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart' show ShuffleModeChanged;
+export 'package:phonolite_app/ui/features/playback/widgets/components/shuffle_mode_changed.dart'
+    show ShuffleModeChanged;
 export 'package:phonolite_app/ui/features/playback/widgets/now_playing_expanded_sheet.dart'
     show NowPlayingExpandedSheet, showNowPlayingExpandedSheet;
 export 'package:phonolite_app/ui/features/playback/widgets/now_playing_mini_bar.dart' show NowPlayingMiniBar;
@@ -103,7 +106,7 @@ class NowPlayingBar extends StatelessWidget {
     required double bufferedPositionSeconds,
     DesktopPlaybackLayout? desktopLayout,
   }) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final sideWidth = desktopLayout?.sideWidth ?? s(_wideSideWidth);
     final rowGap = desktopLayout == null ? s(_wideRowGap) : DesktopPlaybackLayout.rowGap;
@@ -189,7 +192,7 @@ class NowPlayingBar extends StatelessWidget {
   }
 
   Widget _buildBar(BuildContext context, {DesktopPlaybackLayout? desktopLayout}) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final track = state.track;
 

@@ -4,6 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/library/offline_library_snapshot.dart';
 import 'package:phonolite_app/data/models/library/track.dart';

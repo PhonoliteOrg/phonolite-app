@@ -45,7 +45,7 @@ class _PlaybackResumeCoordinator {
     final selection = _selection;
     try {
       _activeScope = await _host._playbackResumeStorage.readActiveScope();
-      final snapshot = await _host._playbackResumeStorage.readLocal();
+      final snapshot = await _host._preferences.loadDevicePlayback(_host._playbackResumeStorage);
       if (snapshot != null && selection == _selection && canRestore) {
         _restorer._restoreModes(snapshot);
       }
@@ -256,25 +256,10 @@ class _PlaybackResumeCoordinator {
     }
   }
 
-  Future<void> restoreSavedAccount(AuthCredentials credentials) async {
-    final userId = credentials.userId;
-    if (!_host._resumeDeviceStorageEnabled || userId == null || userId.isEmpty) {
-      return;
-    }
-
+  Future<void> restoreSavedAccount(String scope, {required bool Function() sessionIsCurrent}) async {
+    if (!_host._resumeDeviceStorageEnabled) return;
     final selection = _selection;
-    final origin = ServerTrust.origin(Uri.parse(credentials.baseUrl));
-    final identity = '${credentials.trust.spki}/${credentials.trust.opaqueKey}';
-    final scope = '$origin/$identity/$userId';
-    bool isCurrent() =>
-        !_closed &&
-        selection == _selection &&
-        canRestore &&
-        _host._authState.status == SessionStatus.serverUnavailable &&
-        _host.connection.token == credentials.token &&
-        ServerTrust.origin(Uri.parse(_host.connection.baseUrl)) == origin &&
-        _host.connection.trust?.spki == credentials.trust.spki &&
-        _host.connection.trust?.opaqueKey == credentials.trust.opaqueKey;
+    bool isCurrent() => !_closed && selection == _selection && canRestore && sessionIsCurrent();
 
     try {
       if (!isCurrent()) {
@@ -299,7 +284,7 @@ class _PlaybackResumeCoordinator {
     _selection++;
     _retainedLocalCheckpoint = null;
     if (_host._resumeDeviceStorageEnabled) {
-      await _host._playbackResumeStorage.clearLocal();
+      await _host._preferences.resetDevicePlayback(_host._playbackResumeStorage);
     }
   }
 
@@ -420,16 +405,13 @@ class _PlaybackResumeCoordinator {
         return;
       }
 
-      final previous = activate && checkpoint != null ? null : await _host._playbackResumeStorage.readLocal();
-      final snapshot = DevicePlaybackSnapshot(
-        checkpoint: activate ? checkpoint ?? previous?.checkpoint : previous?.checkpoint,
-        queueTrackIds: activate && state.track != null ? ids : previous?.queueTrackIds ?? const [],
-        localShuffleMode: state.localShuffleMode,
-        serverShuffleMode: state.serverShuffleMode,
-        shuffleScope: state.shuffleScope,
-        positionMs: activate && state.track != null ? state.position.inMilliseconds : previous?.positionMs ?? 0,
+      await _host._preferences.saveDevicePlayback(
+        _host._playbackResumeStorage,
+        state: state,
+        checkpoint: checkpoint,
+        queueTrackIds: ids,
+        activate: activate,
       );
-      await _host._playbackResumeStorage.writeLocal(snapshot, activate: activate);
       if (activate) {
         _activeScope = 'local';
       }
@@ -451,12 +433,11 @@ class _PlaybackResumeCoordinator {
         return;
       }
 
-      _host._sessionCoordinator._rememberAccountIdentity(state.userId);
-
-      final origin = ServerTrust.origin(Uri.parse(_host.connection.baseUrl));
-      final trust = _host.connection.trust;
-      final identity = trust == null ? origin : '${trust.spki}/${trust.opaqueKey}';
-      final scope = '$origin/$identity/${state.userId}';
+      await _host._sessionCoordinator._acceptAccount(session, state.userId);
+      if (!_isAccountCurrent(session, null)) return;
+      final account = _host.authState.account;
+      if (account == null || account.userId != state.userId) return;
+      final scope = account.storageScope;
       _scope = scope;
       final snapshot = await _host.connection.fetchAccountPlayback();
       if (!_isAccountCurrent(session, scope)) {

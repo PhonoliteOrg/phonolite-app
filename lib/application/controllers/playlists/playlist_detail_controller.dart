@@ -6,11 +6,12 @@ import 'package:phonolite_app/application/controllers/shared/controller_selectio
 import 'package:phonolite_app/application/downloads/downloaded_track_selection.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/rules/library/track_identity.dart' as identity;
+import 'package:phonolite_app/data/rules/library/track_selection_key.dart' as identity;
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class PlaylistDetailController extends FeatureController {

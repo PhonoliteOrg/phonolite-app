@@ -6,9 +6,9 @@ import 'package:phonolite_app/application/controllers/settings/download_settings
 import 'package:phonolite_app/ui/features/settings/widgets/download_quality_selection.dart';
 import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
-import 'package:phonolite_app/ui/shell/page_scroll_view.dart';
+import 'package:phonolite_app/ui/shell/page_sliver_box.dart';
 import 'package:phonolite_app/ui/shell/toolbars/detail_action_header.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 

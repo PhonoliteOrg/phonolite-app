@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/controllers/settings/app_settings_controllers.dart';
 import 'package:phonolite_app/application/controllers/settings/app_updates_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/desktop_settings_controller.dart';
@@ -53,10 +54,11 @@ class AppDriver {
     final storage = Directory.systemTemp.createTempSync('phonolite_feature_');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(_pathProvider, (_) async => storage.path);
 
+    final preferences = PreferencesCoordinator();
     final settings = AppSettingsControllers(
-      display: DisplaySettingsController(),
-      download: DownloadSettingsController(),
-      desktop: DesktopSettingsController(),
+      display: DisplaySettingsController(preferences: preferences),
+      download: DownloadSettingsController(preferences: preferences),
+      desktop: DesktopSettingsController(preferences: preferences),
       updates: AppUpdatesController(),
     );
     final controller = (await tester.runAsync(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
@@ -446,10 +447,13 @@ void main() {
     await waitUntil(() => harness.controller.stats!.totalListeningMs == 0);
     expect(harness.audio.contextChanges.last, isNull);
     expect(discovery.isCompleted, isFalse);
+    expect(harness.controller.authState.account, isNull);
 
     harness.audio.onListeningSegment!(harness.interval('identity-not-known'));
     expect((await harness.history.stats(year: 2026)).totalListeningMs, 60000);
     discovery.complete(harness.connection.identity());
+    await waitUntil(() => harness.controller.authState.account?.userId == 'different-user');
+    expect(harness.controller.authState.account?.serverId, 'server');
     await waitUntil(() => harness.history.accountScope.contains('different-user'));
     await harness.controller.loadStats(year: 2026);
     expect(harness.controller.stats!.totalListeningMs, 0);
@@ -482,10 +486,11 @@ void main() {
     await harness.controller.restoreSession();
     expect(harness.connection.token, isNull);
     expect(harness.controller.authState.hasSession, isFalse);
+    expect(harness.controller.authState.account, isNull);
     expect(harness.controller.authState.error, 'Saved login expired. Sign in again.');
     expect(harness.auth.clears, 1);
     expect(harness.auth.saved, isNull);
-    expect(await harness.controller.loadSavedCredentials(), isNull);
+    expect(await harness.controller.loadSavedUsername(), isNull);
     expect(harness.history.accountScope, 'local');
     expect(harness.audio.contextChanges.last, isNull);
     expect(harness.controller.stats!.totalListeningMs, 0);
@@ -539,8 +544,7 @@ class _Harness {
       offlineDownloadManager: _Downloads(),
       offlineStorage: _Storage(),
       authStorage: auth,
-      customShuffleStorage: _Shuffle(),
-      playbackPreferencesStorage: _Preferences(),
+      preferences: PreferencesCoordinator(playback: _Preferences(), shuffle: _Shuffle()),
       connectivitySignalSource: _Connectivity(),
       nowPlayingPlatformService: _NowPlaying(),
       vehicleSurfaceService: _Vehicle(),

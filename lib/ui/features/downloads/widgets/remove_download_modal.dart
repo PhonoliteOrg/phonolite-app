@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 
 Future<bool> confirmRemoveDownloadedTracks(BuildContext context, Iterable<Track> tracks, {String? label}) {

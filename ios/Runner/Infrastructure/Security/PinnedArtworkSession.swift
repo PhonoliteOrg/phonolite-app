@@ -14,6 +14,15 @@ final class PinnedArtworkSession: NSObject {
     self.pin = pin
   }
 
+  static func request(url: URL, token: String?) -> URLRequest {
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 15
+    if let token, !token.isEmpty {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    return request
+  }
+
   static func make(url: URL, pin: String) -> URLSession? {
     guard url.scheme == "https", let host = url.host, url.user == nil, url.password == nil,
           pin.count == 64, pin.allSatisfy({ "0123456789abcdef".contains($0) }) else {

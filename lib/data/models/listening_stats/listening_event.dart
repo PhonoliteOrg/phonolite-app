@@ -1,19 +1,11 @@
-import 'dart:math';
-
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_artist.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_id.dart';
 import 'package:phonolite_app/data/rules/listening_stats/listening_primary_artist.dart';
 
 export 'package:phonolite_app/data/models/listening_stats/listening_artist.dart';
-
-/// An opaque ID carries no hardware, filesystem, or network identity.
-String newListeningId() {
-  final random = Random.secure();
-
-  return List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-}
 
 /// A small immutable interval of audio actually consumed by the output device.
 /// Metadata is normalized to one snapshot per session in the local database.

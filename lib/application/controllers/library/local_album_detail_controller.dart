@@ -4,8 +4,9 @@ import 'package:phonolite_app/application/controllers/shared/controller_selectio
 import 'package:phonolite_app/data/models/downloads/offline_deletion.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
-import 'package:phonolite_app/data/rules/library/track_identity.dart' as identity;
+import 'package:phonolite_app/data/rules/library/track_selection_key.dart' as identity;
 
 class LocalAlbumDetailController extends FeatureController {
   final AppController app;

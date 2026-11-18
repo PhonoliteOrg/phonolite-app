@@ -1,18 +1,13 @@
-import 'package:phonolite_app/data/storage/preferences/log_storage_settings_storage.dart';
-import 'package:phonolite_app/data/storage/preferences/offline_storage_settings_storage.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/infrastructure/platform/files/macos_directory_access.dart';
 
 /// Reacquire grants before logs, databases or downloads open their saved paths.
 class RestoreStorageAccess {
   final MacosDirectoryAccess access;
-  final LogStorageSettingsStorage logs;
-  final OfflineStorageSettingsStorage offline;
+  final PreferencesCoordinator preferences;
 
-  const RestoreStorageAccess({
-    this.access = const MacosDirectoryAccess(),
-    this.logs = const LogStorageSettingsStorage(),
-    this.offline = const OfflineStorageSettingsStorage(),
-  });
+  RestoreStorageAccess({this.access = const MacosDirectoryAccess(), PreferencesCoordinator? preferences})
+    : preferences = preferences ?? PreferencesCoordinator.shared;
 
   Future<List<String>> restore() async {
     if (!access.isSupported) {
@@ -20,19 +15,21 @@ class RestoreStorageAccess {
     }
 
     final restored = await access.restore();
-    final settings = await offline.read();
+    final settings = await preferences.loadOfflineDirectories();
     final metadata = restored.resolve(settings.metadataDirectory);
     final downloads = restored.resolve(settings.downloadsDirectory);
 
     if (metadata != settings.metadataDirectory || downloads != settings.downloadsDirectory) {
-      await offline.write(settings.copyWith(metadataDirectory: metadata, downloadsDirectory: downloads));
+      await preferences.saveOfflineDirectories(
+        settings.copyWith(metadataDirectory: metadata, downloadsDirectory: downloads),
+      );
     }
 
-    final logDirectory = await logs.read();
+    final logDirectory = await preferences.loadLogDirectory();
     final restoredLogs = restored.unavailable.contains(logDirectory) ? null : restored.resolve(logDirectory);
 
     if (restoredLogs != logDirectory) {
-      await logs.write(restoredLogs);
+      await preferences.saveLogDirectory(restoredLogs);
     }
 
     return [

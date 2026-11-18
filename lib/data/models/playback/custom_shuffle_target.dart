@@ -1,0 +1,1 @@
+enum CustomShuffleTarget { server, local }

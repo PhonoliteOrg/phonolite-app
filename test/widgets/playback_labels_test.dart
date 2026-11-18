@@ -2,8 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/models/audio/audio_stream_quality.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
+import 'package:phonolite_app/data/models/playback/local_playback_source.dart';
+import 'package:phonolite_app/data/models/playback/playback_queue_source.dart';
+import 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
 import 'package:phonolite_app/data/models/playback/playback_state.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_labels.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
+import 'package:phonolite_app/data/models/playback/stream_mode.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_stream_labels.dart';
 
 void main() {
   test('Auto shows the actual quality independently of measured download speed', () {

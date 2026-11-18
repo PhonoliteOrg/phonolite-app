@@ -17,7 +17,7 @@ import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playlists/widgets/add_to_playlist_modal.dart';
 import 'package:phonolite_app/ui/features/search/widgets/search_result_tile.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
 import 'package:phonolite_app/ui/shell/playback_content_inset.dart';
 import 'package:phonolite_app/ui/shell/toolbars/library_header.dart';
 

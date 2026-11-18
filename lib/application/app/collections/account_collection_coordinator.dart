@@ -58,15 +58,9 @@ class _AccountCollectionCoordinator {
         return;
       }
 
-      final token = _host.connection.token;
-
-      if (token == null || token.isEmpty) {
-        return;
-      }
-
       _enabled = true;
       _negotiationAttempts = 0;
-      _sync.start(baseUrl: _host.connection.baseUrl, token: token);
+      _sync.start(revision);
     } on Object catch (error) {
       if (_canStart(request, revision)) {
         _sessionRevision = null;
@@ -145,13 +139,8 @@ class _AccountCollectionCoordinator {
   bool _canStart(int request, int revision) =>
       _starts.isCurrent(request) && _host._sessionCoordinator._isServerSessionCurrent(revision);
 
-  bool _isSessionCurrent(String baseUrl, String token) =>
-      !_host._disposed &&
-      _enabled &&
-      _host._authState.isAuthorized &&
-      _host.connection.sessionRevision == _sessionRevision &&
-      _host.connection.baseUrl == baseUrl &&
-      _host.connection.token == token;
+  bool _isSessionCurrent(int revision) =>
+      _enabled && _sessionRevision == revision && _host._sessionCoordinator._isServerSessionCurrent(revision);
 
   void _requireSignIn() {
     if (!_host._disposed && _host._authState.isAuthorized) {

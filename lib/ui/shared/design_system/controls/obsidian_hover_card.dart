@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/focus_highlight.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_focus_ring.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/hoverable.dart';
+import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_supports_hover.dart';
 
 class ObsidianHoverCard extends StatelessWidget {
   final Widget Function(BuildContext context, bool hovered) childBuilder;

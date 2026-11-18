@@ -7,7 +7,7 @@ import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.
 /// Owns the current artwork request and suppresses stale completions.
 class NowPlayingArtwork {
   final NowPlayingArtworkLoader _loader;
-  ({String key, String token})? _source;
+  ({String key, int revision})? _source;
   Uint8List? _bytes;
   final _requests = RequestGeneration();
   bool _loading = false;
@@ -39,7 +39,7 @@ class NowPlayingArtwork {
 
   /// Returns true only when this request installs the current artwork.
   /// Selecting no source clears the cache immediately. Failed loads can retry.
-  Future<bool> load({String? url, String? localPath, required String token}) async {
+  Future<bool> load({String? url, String? localPath, required int sessionRevision}) async {
     final path = localPath?.trim();
     final remote = url?.trim();
     final local = path != null && path.isNotEmpty;
@@ -51,7 +51,7 @@ class NowPlayingArtwork {
       return false;
     }
 
-    final source = (key: key, token: token);
+    final source = (key: key, revision: sessionRevision);
 
     if (_source == source && (_loading || _bytes != null)) {
       return false;
@@ -63,7 +63,9 @@ class NowPlayingArtwork {
     final generation = _requests.advance();
 
     try {
-      final loaded = local ? await _loader.loadFile(path) : await _loader.loadRemote(remote!, token: token);
+      final loaded = local
+          ? await _loader.loadFile(path)
+          : await _loader.loadRemote(remote!, sessionRevision: sessionRevision);
 
       if (!_requests.isCurrent(generation) || loaded == null) {
         return false;

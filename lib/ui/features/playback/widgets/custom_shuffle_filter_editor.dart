@@ -8,7 +8,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_toggle_o
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/server_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/structures/sections/selection_sliver_section.dart';
 
 enum _CustomShuffleView { artists, genres }
@@ -93,17 +93,17 @@ class _CustomShuffleFilterEditorState extends State<CustomShuffleFilterEditor> {
         const SizedBox(height: 6),
         Wrap(
           children: [
-            _buildToggleOption(
+            ObsidianToggleOption(
               label: 'Server',
               icon: const ServerIcon(),
               isActive: showingServer,
-              onTap: () => _feature.setTarget(CustomShuffleTarget.server),
+              onPressed: () => _feature.setTarget(CustomShuffleTarget.server),
             ),
-            _buildToggleOption(
+            ObsidianToggleOption(
               label: 'Local',
               icon: const Icon(PhonoliteIcons.download),
               isActive: !showingServer,
-              onTap: () => _feature.setTarget(CustomShuffleTarget.local),
+              onPressed: () => _feature.setTarget(CustomShuffleTarget.local),
             ),
           ],
         ),
@@ -121,17 +121,17 @@ class _CustomShuffleFilterEditorState extends State<CustomShuffleFilterEditor> {
         const SizedBox(height: 6),
         Wrap(
           children: [
-            _buildToggleOption(
+            ObsidianToggleOption(
               label: 'Artists',
               icon: const Icon(PhonoliteIcons.usersRound),
               isActive: showingArtists,
-              onTap: () => setState(() => _view = _CustomShuffleView.artists),
+              onPressed: () => setState(() => _view = _CustomShuffleView.artists),
             ),
-            _buildToggleOption(
+            ObsidianToggleOption(
               label: 'Genres',
               icon: const Icon(PhonoliteIcons.tag),
               isActive: !showingArtists,
-              onTap: _showGenres,
+              onPressed: _showGenres,
             ),
           ],
         ),
@@ -143,15 +143,6 @@ class _CustomShuffleFilterEditorState extends State<CustomShuffleFilterEditor> {
     setState(() => _view = _CustomShuffleView.genres);
 
     _feature.prepareGenreOptions();
-  }
-
-  Widget _buildToggleOption({
-    required String label,
-    required Widget icon,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return ObsidianToggleOption(label: label, icon: icon, isActive: isActive, onPressed: onTap);
   }
 
   Widget _buildArtistList({

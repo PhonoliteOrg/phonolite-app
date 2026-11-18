@@ -1,5 +1,6 @@
 import 'package:phonolite_app/data/models/downloads/download_batch.dart';
 import 'package:phonolite_app/data/models/downloads/download_job.dart';
+import 'package:phonolite_app/data/models/downloads/offline_download_job_item.dart';
 import 'package:phonolite_app/data/models/downloads/offline_track_download.dart';
 
 class OfflineDownloadSnapshot {

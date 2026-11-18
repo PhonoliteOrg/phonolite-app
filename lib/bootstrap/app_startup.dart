@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/data/storage/logs/log_files.dart';
 import 'package:phonolite_app/application/workflows/restore_storage_access.dart';
 import 'package:phonolite_app/bootstrap/app_error_reporting.dart';
 import 'package:phonolite_app/bootstrap/phonolite_app.dart';
@@ -12,7 +14,7 @@ import 'package:phonolite_app/infrastructure/diagnostics/accessibility_trace_bin
 import 'package:phonolite_app/infrastructure/security/server_trust.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/bundled_font_licenses.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_errors.dart';
+import 'package:phonolite_app/ui/shared/music/artwork/artwork_error_handler.dart';
 import 'package:phonolite_app/ui/shell/startup_failure_app.dart';
 
 Future<void> runPhonolite() async {
@@ -55,9 +57,9 @@ Future<void> _startApp() async {
 }
 
 Future<void> _prepareStorage() async {
-  final storageWarnings = await const RestoreStorageAccess().restore();
+  final storageWarnings = await RestoreStorageAccess().restore();
 
-  await AppLogger.instance.initialize();
+  await AppLogger.instance.initialize(files: LogFiles(preferences: PreferencesCoordinator.shared));
 
   for (final warning in storageWarnings) {
     AppLogger.warning(warning);

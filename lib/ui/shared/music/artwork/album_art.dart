@@ -13,7 +13,6 @@ class AlbumArt extends StatelessWidget {
   final String title;
   final double size;
   final String? imageUrl;
-  final Map<String, String>? headers;
   final Widget? placeholder;
   final BoxFit fit;
   final bool thumbnail;
@@ -23,7 +22,6 @@ class AlbumArt extends StatelessWidget {
     required this.title,
     required this.size,
     this.imageUrl,
-    this.headers,
     this.placeholder,
     this.fit = BoxFit.cover,
     this.thumbnail = true,
@@ -50,7 +48,6 @@ class AlbumArt extends StatelessWidget {
       dimension: size,
       child: ArtworkImage(
         imageUrl: imageUrl,
-        headers: headers,
         width: size,
         height: size,
         fit: fit,

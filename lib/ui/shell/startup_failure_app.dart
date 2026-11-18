@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 
 /// Shown instead of the app when startup cannot complete, so a failure is visible and

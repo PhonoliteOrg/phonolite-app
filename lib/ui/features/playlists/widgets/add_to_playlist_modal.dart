@@ -12,10 +12,9 @@ import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_list.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_list_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/local_server_toggle.dart';
 import 'package:phonolite_app/ui/structures/modals/base_alert_modal.dart';
 
@@ -88,7 +87,6 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
     AddToPlaylistController(playlists: widget.playlists, playlistChanges: widget.playlistChanges),
   );
   late final TextEditingController _controller;
-  late final ScrollController _listController;
 
   @override
   bool get modalScrollable => true;
@@ -98,7 +96,6 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
     super.initState();
 
     _controller = TextEditingController();
-    _listController = ScrollController();
   }
 
   @override
@@ -119,7 +116,6 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
   @override
   void dispose() {
     _scopeRequest++;
-    _listController.dispose();
     _controller.dispose();
 
     super.dispose();
@@ -261,25 +257,10 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
                       ),
                       const SizedBox(height: 12),
                       Expanded(
-                        // The explicit scrollbar keeps its thumb visible; disable the one the
-                        // desktop scroll behavior would add so only one is drawn.
-                        child: ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                          child: Scrollbar(
-                            controller: _listController,
-                            thumbVisibility: true,
-                            child: ListView.separated(
-                              controller: _listController,
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(0, 4, 16, 4),
-                              itemCount: filteredPlaylists.length,
-                              separatorBuilder: (context, index) =>
-                                  Divider(height: 1, color: ObsidianPalette.textMuted.withValues(alpha: 0.25)),
-                              itemBuilder: (context, index) {
-                                return _buildPlaylistRow(context, filteredPlaylists[index]);
-                              },
-                            ),
-                          ),
+                        child: ObsidianModalList(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: filteredPlaylists.length,
+                          itemBuilder: (context, index) => _buildPlaylistRow(context, filteredPlaylists[index]),
                         ),
                       ),
                     ],
@@ -293,9 +274,4 @@ class _AddToPlaylistModalState extends BaseAlertModalState<AddToPlaylistModal> {
       ),
     );
   }
-
-  @override
-  List<Widget> modalActions(BuildContext context) => [
-    ModalActionButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
-  ];
 }

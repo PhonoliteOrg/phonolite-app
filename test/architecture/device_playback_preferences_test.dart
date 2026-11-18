@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
+import 'package:phonolite_app/data/storage/preferences/display_settings_storage.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
 import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_storage.dart';
 import 'package:phonolite_app/data/storage/preferences/playback_preferences.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';
@@ -20,6 +24,38 @@ void main() {
   });
 
   tearDown(() => temporary.delete(recursive: true));
+
+  test('display consumers share edits immediately and one can close while a save finishes', () async {
+    final storage = DisplaySettingsStorage(files: files);
+    final preferences = PreferencesCoordinator(display: storage);
+    final first = DisplaySettingsController(preferences: preferences);
+    final second = DisplaySettingsController(preferences: preferences);
+    addTearDown(second.dispose);
+    await Future.wait([first.initialize(), second.initialize()]);
+    var notifications = 0;
+    second.addListener(() => notifications++);
+    final saving = first.setLibraryLocalFirst(false);
+    expect(second.settings.libraryLocalFirst, isFalse);
+    expect(second.saving, isTrue);
+    first.dispose();
+    await saving;
+    expect(notifications, greaterThan(0));
+    expect(second.saving, isFalse);
+    expect((await storage.read()).libraryLocalFirst, isFalse);
+  });
+
+  test('a late volume read cannot undo a user edit and shutdown saves the latest value', () async {
+    final storage = _DelayedVolume(files: files);
+    final preferences = PreferencesCoordinator(playback: storage);
+    final reading = preferences.loadVolume();
+    expect(preferences.setVolume(0.2), 0.2);
+    expect(preferences.setVolume(2), 1.0);
+    storage.stored.complete(0.5);
+    expect(await reading, isNull);
+    await preferences.closePlayback();
+    expect(storage.writes, [1.0]);
+    expect(await PlaybackPreferencesStorage(files: files).readVolume(), 1.0);
+  });
 
   test('repeat persists locally without losing concurrent volume or list preferences', () async {
     final first = PlaybackPreferencesStorage(files: files);
@@ -99,4 +135,20 @@ void main() {
     expect(await temporary.list().length, 1);
     await expectLater(storage.readForAccount('  '), throwsArgumentError);
   });
+}
+
+class _DelayedVolume extends PlaybackPreferencesStorage {
+  final stored = Completer<double?>();
+  final writes = <double>[];
+
+  _DelayedVolume({required super.files});
+
+  @override
+  Future<double?> readVolume() => stored.future;
+
+  @override
+  Future<void> writeVolume(double volume) async {
+    writes.add(volume);
+    await super.writeVolume(volume);
+  }
 }

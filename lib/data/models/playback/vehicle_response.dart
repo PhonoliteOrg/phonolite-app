@@ -1,5 +1,5 @@
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_item.dart';
 
 enum VehicleFailure {

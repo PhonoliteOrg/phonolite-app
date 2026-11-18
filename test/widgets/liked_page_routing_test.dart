@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
@@ -70,7 +71,7 @@ Future<void> _pumpLiked(WidgetTester tester, _Controller app) async {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final display = DisplaySettingsController(storage: _MemoryStorage());
+  final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: _MemoryStorage()));
   await display.initialize();
   addTearDown(display.dispose);
 

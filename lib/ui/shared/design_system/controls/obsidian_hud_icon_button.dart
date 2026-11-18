@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/pointer_interaction.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// An icon-only HUD control. [semanticLabel] is its accessible name; [toggled] reports an on/off
 /// state for toggle controls such as shuffle, repeat or like, and stays null for plain actions.
-class ObsidianHudIconButton extends StatelessWidget {
+class ObsidianHudIconButton extends StatefulWidget {
   final IconData? icon;
   final Widget? iconWidget;
   final bool isActive;
@@ -28,43 +28,10 @@ class ObsidianHudIconButton extends StatelessWidget {
   }) : assert((icon == null) != (iconWidget == null));
 
   @override
-  Widget build(BuildContext context) {
-    return _HoverHudIconButton(
-      icon: icon,
-      iconWidget: iconWidget,
-      size: size,
-      isActive: isActive,
-      onPressed: onPressed,
-      semanticLabel: semanticLabel,
-      toggled: toggled,
-    );
-  }
+  State<ObsidianHudIconButton> createState() => _ObsidianHudIconButtonState();
 }
 
-class _HoverHudIconButton extends StatefulWidget {
-  final IconData? icon;
-  final Widget? iconWidget;
-  final double size;
-  final bool isActive;
-  final VoidCallback? onPressed;
-  final String semanticLabel;
-  final bool? toggled;
-
-  const _HoverHudIconButton({
-    required this.icon,
-    required this.iconWidget,
-    required this.size,
-    required this.isActive,
-    required this.onPressed,
-    required this.semanticLabel,
-    required this.toggled,
-  });
-
-  @override
-  State<_HoverHudIconButton> createState() => _HoverHudIconButtonState();
-}
-
-class _HoverHudIconButtonState extends State<_HoverHudIconButton> with PointerInteraction<_HoverHudIconButton> {
+class _ObsidianHudIconButtonState extends State<ObsidianHudIconButton> with PointerInteraction<ObsidianHudIconButton> {
   static const Duration _transition = Duration(milliseconds: 200);
 
   @override

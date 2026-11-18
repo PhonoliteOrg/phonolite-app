@@ -63,7 +63,7 @@ class _DownloadPlanner {
       return queueTracks([track], label: track.title, profile: requestedProfile, registerDemand: !playlistOwned);
     }
 
-    if (_host.connection.token != null && _host.connection.token!.isNotEmpty) {
+    if (_host.connection.hasCredential) {
       Object? batchError;
       DownloadBatchManifest? batchManifest;
 

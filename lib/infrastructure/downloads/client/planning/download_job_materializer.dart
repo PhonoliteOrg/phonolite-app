@@ -19,14 +19,13 @@ class _DownloadJobMaterializer {
       return;
     }
 
-    if ((_host.connection.token == null || _host.connection.token!.isEmpty) &&
-        items.any((item) => item.offlineMetadata == null)) {
+    if ((!_host.connection.hasCredential) && items.any((item) => item.offlineMetadata == null)) {
       // Keep the unstaged request intact until the restored session can fetch
       // its metadata. Loading before sign-in must not consume or fail it.
       return;
     }
 
-    if (_host.connection.token != null && _host.connection.token!.isNotEmpty) {
+    if (_host.connection.hasCredential) {
       try {
         final manifest = await _host.connection.createDownloadBatch(ids, clientBatchId: job.jobId);
 

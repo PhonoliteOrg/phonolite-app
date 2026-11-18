@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// Keeps secondary header information available without crowding phone layouts.
 class CompactHeroDetails extends StatefulWidget {

@@ -10,6 +10,8 @@ import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
@@ -25,6 +27,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/expandable_summar
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_overflow_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/search_hud.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/tech_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/controls/tech_button_variant.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/playlist_add_icon.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/svg_asset_icon.dart';
@@ -33,7 +36,8 @@ import 'package:phonolite_app/ui/shared/design_system/layout/empty_state.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/confirmation_modal.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_adaptive_modal.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
 import 'package:phonolite_app/ui/shared/music/artists/artist_row_tile.dart';
@@ -150,7 +154,6 @@ void main() {
         "bool playbackUsesNativeMobileExpandedSheet(BuildContext context)",
         'platform == TargetPlatform.iOS || platform == TargetPlatform.android',
         'useSafeArea: useNativeMobileTreatment,',
-        'barrierColor: Colors.black.withValues(alpha: 0.45)',
         'useNativeMobileTreatment ? size.height : size.height * 0.92',
         'final sheetBody = ObsidianGlassSurface(',
       ]);
@@ -970,7 +973,6 @@ void main() {
                   trackCount: 10,
                 ),
                 coverUrl: '',
-                headers: const <String, String>{},
               ),
               ArtistRowTile(
                 artist: Artist(
@@ -979,7 +981,6 @@ void main() {
                   albumCount: 4,
                 ),
                 coverUrl: null,
-                headers: const <String, String>{},
               ),
               SearchResultTile(
                 result: SearchResult(

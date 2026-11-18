@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/interaction/hover_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// The responsive frame shared by catalog, search and settings rows.
 ///

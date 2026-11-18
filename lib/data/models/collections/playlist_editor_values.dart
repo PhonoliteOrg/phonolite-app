@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 
 typedef PlaylistEditorSubmit = FutureOr<void> Function(
   String name,

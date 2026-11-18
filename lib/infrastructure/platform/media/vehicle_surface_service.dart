@@ -2,12 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_request.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_response.dart';
 import 'package:phonolite_app/infrastructure/platform/media/vehicle_surface_codec.dart';
 
 class VehicleSurfaceService {
   final MethodChannel _channel;
+  NativeArtworkAccess? artworkAccess;
 
   VehicleSurfaceService({this._channel = const MethodChannel('phonolite/carplay')});
 
@@ -20,7 +22,7 @@ class VehicleSurfaceService {
       final request = VehicleSurfaceCodec.decodeRequest(method, arguments);
       final response = await handler(request);
 
-      return response == null ? null : VehicleSurfaceCodec.encodeResponse(response);
+      return response == null ? null : VehicleSurfaceCodec.encodeResponse(response, artworkAccess);
     }
 
     setMethodHandler(handleRequest);

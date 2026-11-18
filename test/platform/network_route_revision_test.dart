@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/data/models/network/network_connectivity.dart';
-import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_signal_source.dart';
+import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_plus_signal_source.dart';
 
 void main() {
   test('route revisions distinguish Wi-Fi paths without inventing a new transport', () async {

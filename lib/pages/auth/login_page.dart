@@ -10,9 +10,9 @@ import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_text_fie
 import 'package:phonolite_app/ui/shared/design_system/controls/uri_text_input_formatter.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_actions.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shell/base_form_page.dart';
 import 'package:phonolite_app/ui/shell/base_page.dart';
 
@@ -57,7 +57,7 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
     _passwordController = TextEditingController();
 
     // The controller treats an unreadable saved sign-in as a best-effort prefill and logs it.
-    unawaited(_loadSavedCredentials());
+    unawaited(_loadSavedUsername());
   }
 
   @override
@@ -287,8 +287,8 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
     }
   }
 
-  Future<void> _loadSavedCredentials() async {
-    final saved = await _feature.loadSavedCredentials();
+  Future<void> _loadSavedUsername() async {
+    final saved = await _feature.loadSavedUsername();
 
     if (!mounted) {
       return;
@@ -296,8 +296,8 @@ class _LoginPageState extends BaseFormPageState<LoginPage> {
 
     final hasUsername = _usernameController.text.trim().isNotEmpty;
 
-    if (!hasUsername && saved != null && saved.username.trim().isNotEmpty) {
-      _usernameController.text = saved.username;
+    if (!hasUsername && saved != null && saved.trim().isNotEmpty) {
+      _usernameController.text = saved;
     }
   }
 

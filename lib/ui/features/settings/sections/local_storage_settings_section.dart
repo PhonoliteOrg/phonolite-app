@@ -5,10 +5,13 @@ import 'package:phonolite_app/application/controllers/settings/download_settings
 import 'package:phonolite_app/application/controllers/settings/settings_controller.dart';
 import 'package:phonolite_app/data/models/preferences/log_storage_location.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
-import 'package:phonolite_app/ui/features/settings/dialogs/settings_dialogs.dart';
+import 'package:phonolite_app/ui/features/settings/dialogs/confirm_reset_offline_data.dart';
+import 'package:phonolite_app/ui/features/settings/dialogs/open_storage_directory.dart';
+import 'package:phonolite_app/ui/features/settings/dialogs/reset_logs_storage.dart';
+import 'package:phonolite_app/ui/features/settings/dialogs/storage_path_dialog.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/download_quality_setting.dart';
 import 'package:phonolite_app/ui/features/settings/widgets/offline_storage_section.dart';
-import 'package:phonolite_app/ui/features/settings/widgets/settings_row.dart';
+import 'package:phonolite_app/ui/features/settings/widgets/settings_divider.dart';
 import 'package:phonolite_app/ui/settings_scope.dart';
 import 'package:phonolite_app/ui/structures/sections/base_section.dart';
 

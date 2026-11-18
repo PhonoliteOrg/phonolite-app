@@ -1,15 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
-
-/// The focus ring painted over custom controls while they are keyboard-focused.
-BoxDecoration obsidianFocusRing({BorderRadius borderRadius = const BorderRadius.all(Radius.circular(4))}) {
-  return BoxDecoration(
-    borderRadius: borderRadius,
-    border: Border.all(color: ObsidianPalette.gold, width: 1.5),
-  );
-}
-
 /// Tracks the keyboard focus highlight of a descendant [InkWell].
 ///
 /// The theme keeps ink focus overlays transparent, so controls built on [InkWell] pass

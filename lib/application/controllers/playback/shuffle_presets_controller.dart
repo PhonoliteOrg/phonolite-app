@@ -4,10 +4,10 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/feature_controller.dart';
 import 'package:phonolite_app/application/controllers/shared/controller_selection.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
-import 'package:phonolite_app/data/models/playback/custom_shuffle_options.dart';
+import 'package:phonolite_app/data/models/playback/custom_shuffle_target.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset_deletion.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 class ShufflePresetsController extends FeatureController {

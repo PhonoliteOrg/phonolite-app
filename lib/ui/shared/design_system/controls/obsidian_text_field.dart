@@ -6,7 +6,7 @@ import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_su
 import 'package:phonolite_app/ui/shared/design_system/theme/blur.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ObsidianTextField extends StatefulWidget {
   final TextEditingController controller;
@@ -54,6 +54,35 @@ class ObsidianTextField extends StatefulWidget {
     this.onSubmitted,
     this.onChanged,
   });
+
+  const ObsidianTextField.editor({
+    Key? key,
+    required TextEditingController controller,
+    required String hintText,
+    required ValueChanged<String> onSubmitted,
+    String? label,
+    double height = searchHudHeight,
+    bool enabled = true,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLines = 1,
+    int? minLines,
+    TextInputType? keyboardType,
+  }) : this(
+         key: key,
+         controller: controller,
+         label: label,
+         hintText: hintText,
+         startPadding: 24,
+         isDense: maxLines == 1,
+         textInputAction: TextInputAction.done,
+         onSubmitted: onSubmitted,
+         height: height,
+         enabled: enabled,
+         inputFormatters: inputFormatters,
+         minLines: minLines,
+         maxLines: maxLines,
+         keyboardType: keyboardType,
+       );
 
   @override
   State<ObsidianTextField> createState() => _ObsidianTextFieldState();

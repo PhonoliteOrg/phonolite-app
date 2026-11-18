@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
@@ -27,7 +28,7 @@ void main() {
     for (final status in SessionStatus.values) {
       testWidgets('Display settings require a connected session at $width in $status', (tester) async {
         final app = _AppController(status);
-        final display = DisplaySettingsController(storage: _MemoryStorage());
+        final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: _MemoryStorage()));
         await display.initialize();
         await _pump(tester, app, display, width: width);
 
@@ -46,7 +47,7 @@ void main() {
 
   testWidgets('connection changes hide the empty category and preserve preferences through reconnect', (tester) async {
     final app = _AppController(SessionStatus.offline);
-    final display = DisplaySettingsController(storage: _MemoryStorage());
+    final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: _MemoryStorage()));
     await display.initialize();
     await _pump(tester, app, display);
 
@@ -82,7 +83,7 @@ void main() {
   testWidgets('display toggles update only their own page preference', (tester) async {
     final app = _AppController(SessionStatus.authenticated);
     final storage = _MemoryStorage();
-    final display = DisplaySettingsController(storage: storage);
+    final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: storage));
     await display.initialize();
     await _pump(tester, app, display);
 
@@ -121,7 +122,7 @@ void main() {
   testWidgets('pending display saves keep every switch enabled and update titles immediately', (tester) async {
     final app = _AppController(SessionStatus.authenticated);
     final storage = _DelayedStorage();
-    final display = DisplaySettingsController(storage: storage);
+    final display = DisplaySettingsController(preferences: PreferencesCoordinator(display: storage));
     addTearDown(storage.finishWrites);
     await display.initialize();
     await _pump(tester, app, display);

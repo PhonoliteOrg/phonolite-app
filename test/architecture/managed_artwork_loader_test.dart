@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
 import 'package:phonolite_app/data/storage/artwork/artwork_disk_cache.dart';
 import 'package:phonolite_app/infrastructure/artwork/managed_artwork_loader.dart';
@@ -180,7 +181,14 @@ void main() {
       );
       addTearDown(loader.close);
       final request = ArtworkRequest(source: 'https://music.test/api/library/albums/album/cover');
-      final key = sha256.convert(utf8.encode(jsonEncode([loader.cacheScope, request.source]))).toString();
+      String digest(List<String> parts) => sha256.convert(utf8.encode(jsonEncode(parts))).toString();
+      final oldDiskScope = digest([
+        connection.baseUrl,
+        '',
+        '',
+        digest(['anonymous']),
+      ]);
+      final key = digest([oldDiskScope, request.source]);
       await _writeLegacyCache(
         directory,
         key,
@@ -405,7 +413,6 @@ void main() {
 Future<void> _writeLegacyCache(Directory directory, String key, Uint8List bytes, {required DateTime expires}) async {
   final header = utf8.encode(jsonEncode({'expires': expires.millisecondsSinceEpoch, 'etag': '"unchanged-source"'}));
   final headerLength = ByteData(4)..setUint32(0, header.length);
-  await File(
-    '${directory.path}${Platform.pathSeparator}$key.art',
-  ).writeAsBytes([...headerLength.buffer.asUint8List(), ...header, ...bytes], flush: true);
+  await File('${directory.path}${Platform.pathSeparator}$key.art')
+      .writeAsBytes([...headerLength.buffer.asUint8List(), ...header, ...bytes], flush: true);
 }

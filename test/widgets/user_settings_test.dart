@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
-import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
@@ -367,7 +366,7 @@ class _Controller extends Fake implements AppController {
   @override
   Stream<LocalNetworkPermissionState> get localNetworkPermissionStream => const Stream.empty();
   @override
-  Future<AuthCredentials?> loadSavedCredentials() async => null;
+  Future<String?> loadSavedUsername() async => null;
   @override
   List<LogEntry> get messages => [];
   @override

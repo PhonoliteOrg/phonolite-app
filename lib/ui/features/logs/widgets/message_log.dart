@@ -5,7 +5,7 @@ import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_section_header.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class MessageLog extends StatefulWidget {
   final List<LogEntry> messages;

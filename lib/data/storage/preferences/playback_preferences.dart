@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/preferences/json_settings_file.dart';
 import 'package:phonolite_app/data/storage/preferences/settings_files.dart';

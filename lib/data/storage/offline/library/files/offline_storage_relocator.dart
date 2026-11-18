@@ -5,13 +5,13 @@ class _OfflineStorageRelocator {
 
   _OfflineStorageRelocator(this._host);
 
-  bool get _usesManagedStoragePaths => _host.baseDirectory == null && _host.settingsStorage.usesManagedStoragePaths;
+  bool get _usesManagedStoragePaths => _host.baseDirectory == null && _host.preferences.usesManagedOfflineDirectories;
 
   Future<OfflineStorageLocations> resolveStorageLocations() async {
     if (_usesManagedStoragePaths) {
       final defaultRoot = await _defaultOfflineRoot();
 
-      await _host.settingsStorage.read();
+      await _host.preferences.loadOfflineDirectories();
 
       return OfflineStorageLocations(
         metadataDirectory: defaultRoot.path,
@@ -22,7 +22,7 @@ class _OfflineStorageRelocator {
     }
 
     final settings = _host.baseDirectory == null && _host.metadataDirectory == null && _host.downloadsDirectory == null
-        ? await _host.settingsStorage.read()
+        ? await _host.preferences.loadOfflineDirectories()
         : const OfflineStorageSettings();
     final configuredMetadata = _host.metadataDirectory?.absolute.path ?? settings.metadataDirectory;
     final configuredDownloads = _host.downloadsDirectory?.absolute.path ?? settings.downloadsDirectory;
@@ -47,12 +47,12 @@ class _OfflineStorageRelocator {
     }
 
     if (_usesManagedStoragePaths) {
-      await _host.settingsStorage.write(const OfflineStorageSettings());
+      await _host.preferences.saveOfflineDirectories(const OfflineStorageSettings());
 
       return;
     }
 
-    final current = await _host.settingsStorage.read();
+    final current = await _host.preferences.loadOfflineDirectories();
 
     await _host.close();
 
@@ -85,7 +85,7 @@ class _OfflineStorageRelocator {
       await Directory(next.downloadsDirectory!).create(recursive: true);
     }
 
-    await _host.settingsStorage.write(next);
+    await _host.preferences.saveOfflineDirectories(next);
   }
 
   Future<void> migrateManagedStoragePathsIfNeeded() async {
@@ -93,7 +93,7 @@ class _OfflineStorageRelocator {
       return;
     }
 
-    final legacy = await _host.settingsStorage.readRaw();
+    final legacy = await _host.preferences.loadLegacyOfflineDirectories();
     final legacyMetadataPath = legacy.metadataDirectory;
     final legacyDownloadsPath = legacy.downloadsDirectory;
 
@@ -125,7 +125,7 @@ class _OfflineStorageRelocator {
     }
 
     try {
-      await _host.settingsStorage.write(const OfflineStorageSettings());
+      await _host.preferences.saveOfflineDirectories(const OfflineStorageSettings());
     } on Object catch (err) {
       // Stale legacy paths only make the next launch repeat this migration.
       AppLogger.warning('Failed to clear migrated offline storage settings: $err');

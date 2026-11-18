@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_hud_icon_button.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/modal_action_button.dart';
-import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_dialog.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
-import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_actions.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/modal_dismiss_button.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_alert_dialog.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
+import 'package:phonolite_app/ui/shell/toolbars/page_toolbar_action_layout.dart';
 
 class StatsHistoryStatus extends StatelessWidget {
   final bool collectionEnabled;
@@ -75,7 +76,7 @@ class StatsHistoryStatus extends StatelessWidget {
           ),
         ),
         actions: [
-          ModalActionButton(label: 'Close', onPressed: () => Navigator.of(dialogContext).pop(false)),
+          const ModalDismissButton(result: false),
           if (onImport != null)
             ModalActionButton(
               label: 'Add local history',

@@ -7,6 +7,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:phonolite_app/data/repositories/shuffle_preferences.dart';
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
 import 'package:phonolite_app/application/collections/account_collection_sync.dart';
 import 'package:phonolite_app/application/controllers/auth/server_failure_messages.dart';
 import 'package:phonolite_app/application/controllers/library/catalog_controller.dart';
@@ -21,19 +24,23 @@ import 'package:phonolite_app/application/playback/playback_presence_reporter.da
 import 'package:phonolite_app/application/playback/server_shuffle_deck.dart';
 import 'package:phonolite_app/application/workflows/debounced_action.dart';
 import 'package:phonolite_app/application/workflows/request_generation.dart';
-import 'package:phonolite_app/application/workflows/serial_action_queue.dart';
+import 'package:phonolite_app/data/structures/async/serial_action_queue.dart';
 import 'package:phonolite_app/application/workflows/revision_snapshot_sync.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_preloader.dart';
 import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
+import 'package:phonolite_app/data/models/auth/account_revisions.dart';
 import 'package:phonolite_app/data/models/auth/account_state.dart';
 import 'package:phonolite_app/data/models/auth/auth_credentials.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
+import 'package:phonolite_app/data/models/auth/session_account.dart';
 import 'package:phonolite_app/data/models/auth/local_network_permission_state.dart';
 import 'package:phonolite_app/data/models/auth/server_trust.dart';
 import 'package:phonolite_app/data/models/collections/account_collection_snapshot.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_listener.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/artist_browse_snapshot.dart';
@@ -46,6 +53,7 @@ import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/source_track_ref.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
+import 'package:phonolite_app/data/models/listening_stats/listening_id.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_stats_snapshot.dart';
 import 'package:phonolite_app/data/models/network/network_connectivity.dart';
@@ -58,8 +66,16 @@ import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 import 'package:phonolite_app/data/models/playback/output_device.dart';
 import 'package:phonolite_app/data/models/playback/playback_resume_checkpoint.dart';
 import 'package:phonolite_app/data/models/playback/playback_source_context.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
+import 'package:phonolite_app/data/models/playback/local_playback_source.dart';
+import 'package:phonolite_app/data/models/playback/playback_queue_source.dart';
+import 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
 import 'package:phonolite_app/data/models/playback/playback_state.dart';
-import 'package:phonolite_app/data/models/playback/playback_workflow_values.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
+import 'package:phonolite_app/data/models/playback/stream_mode.dart';
+import 'package:phonolite_app/data/models/playback/offline_queue_source.dart';
+import 'package:phonolite_app/data/models/playback/seek_direction.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_context.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_item.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_request.dart';
@@ -67,6 +83,7 @@ import 'package:phonolite_app/data/models/playback/vehicle_response.dart';
 import 'package:phonolite_app/data/models/preferences/offline_storage_locations.dart';
 import 'package:phonolite_app/data/models/server/revision_event.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/repositories/library/artist_browse_repository.dart';
 import 'package:phonolite_app/data/repositories/library/artist_metadata_repository.dart';
@@ -76,10 +93,9 @@ import 'package:phonolite_app/data/storage/auth/server_trust_store.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 import 'package:phonolite_app/data/storage/offline/library/offline_library.dart';
 import 'package:phonolite_app/data/storage/playback/playback_resume_storage.dart';
-import 'package:phonolite_app/data/storage/preferences/custom_shuffle_settings_storage.dart';
-import 'package:phonolite_app/data/storage/preferences/playback_preferences.dart';
 import 'package:phonolite_app/infrastructure/artwork/now_playing_artwork_loader.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_plus_signal_source.dart';
 import 'package:phonolite_app/infrastructure/platform/connectivity/connectivity_signal_source.dart';
 import 'package:phonolite_app/infrastructure/platform/media/now_playing_platform_service.dart'
     show NowPlayingPlatformService;
@@ -88,7 +104,13 @@ import 'package:phonolite_app/infrastructure/platform/permissions/local_network_
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 
 export 'package:phonolite_app/data/models/auth/local_network_permission_state.dart';
+export 'package:phonolite_app/data/models/app/action_scope.dart';
+export 'package:phonolite_app/data/models/playback/local_playback_source.dart';
+export 'package:phonolite_app/data/models/playback/playback_queue_source.dart';
+export 'package:phonolite_app/data/models/playback/playback_repeat_mode.dart';
 export 'package:phonolite_app/data/models/playback/playback_state.dart';
+export 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
+export 'package:phonolite_app/data/models/playback/stream_mode.dart';
 
 part 'collections/favorites_coordinator.dart';
 part 'collections/account_collection_coordinator.dart';
@@ -115,10 +137,11 @@ part 'playback/shuffle_context_resolution.dart';
 part 'playback/shuffle_coordinator.dart';
 part 'playback/shuffle_facade.dart';
 part 'playback/stream_recovery_coordinator.dart';
-part 'preferences/preferences_coordinator.dart';
+part 'preferences/playback_preference_binding.dart';
 part 'session/local_network_permission_coordinator.dart';
 part 'session/server_availability_coordinator.dart';
 part 'session/session_coordinator.dart';
+part 'session/session_identity.dart';
 part 'session/account_services_coordinator.dart';
 
 const Object _unset = Object();
@@ -213,7 +236,7 @@ class AppController
   @override
   late final _LocalNetworkPermissionCoordinator _permissionsCoordinator;
   @override
-  late final _PreferencesCoordinator _preferencesCoordinator;
+  late final _PlaybackPreferenceBinding _playbackPreferences;
   @override
   late final _SessionCoordinator _sessionCoordinator;
   @override
@@ -225,8 +248,8 @@ class AppController
   bool _startupBegun = false;
   final ServerConnection connection;
   final ConnectivitySignalSource _connectivitySignalSource;
-  final OfflineLibraryStorage _offlineStorage;
-  final OfflineDownloadManager _offlineDownloadManager;
+  late final OfflineLibraryStorage _offlineStorage;
+  late final OfflineDownloadManager _offlineDownloadManager;
   final AudioEngineFactory _audioEngineFactory;
   final NowPlayingPlatformService _nowPlayingPlatform;
   final NowPlayingArtwork _artwork;
@@ -234,8 +257,7 @@ class AppController
   final VehicleSurfaceService _vehicleSurface;
   final LocalNetworkPermissionService _localNetworkPermissions;
   final AuthStorage _authStorage;
-  final CustomShuffleSettingsStorage _customShuffleStorage;
-  final PlaybackPreferencesStorage _playbackPreferencesStorage;
+  final PreferencesCoordinator _preferences;
   final PlaybackResumeStorage _playbackResumeStorage;
   final bool _resumeDeviceStorageEnabled;
   final ListeningStatsService _listeningStats;
@@ -247,10 +269,9 @@ class AppController
     required this.connection,
     this._audioEngineFactory = AudioEngine.new,
     OfflineDownloadManager? offlineDownloadManager,
-    OfflineLibraryStorage offlineStorage = const OfflineLibraryStorage(),
+    OfflineLibraryStorage? offlineStorage,
     this._authStorage = const AuthStorage(),
-    this._customShuffleStorage = const CustomShuffleSettingsStorage(),
-    this._playbackPreferencesStorage = const PlaybackPreferencesStorage(),
+    PreferencesCoordinator? preferences,
     PlaybackResumeStorage? playbackResumeStorage,
     ConnectivitySignalSource? connectivitySignalSource,
     NowPlayingPlatformService? nowPlayingPlatformService,
@@ -264,25 +285,33 @@ class AppController
   }) : _playbackClock = playbackClock ?? DateTime.now,
        _listeningStats =
            listeningStatsService ?? ListeningStatsService(inMemory: Platform.environment.containsKey('FLUTTER_TEST')),
-       _offlineStorage = offlineStorage,
-       _offlineDownloadManager =
-           offlineDownloadManager ??
-           OfflineDownloadManager(
-             connection: connection,
-             storage: offlineStorage,
-             qualityProvider: () async {
-               final settings = downloadSettings ?? DownloadSettingsController.instance;
-               await settings.initialize();
-               return settings.settings.quality;
-             },
-           ),
+       _preferences = preferences ?? downloadSettings?.preferences ?? PreferencesCoordinator(),
        _playbackResumeStorage = playbackResumeStorage ?? PlaybackResumeStorage(),
        _resumeDeviceStorageEnabled = playbackResumeStorage != null || !Platform.environment.containsKey('FLUTTER_TEST'),
        _connectivitySignalSource = connectivitySignalSource ?? ConnectivityPlusSignalSource(),
        _nowPlayingPlatform = nowPlayingPlatformService ?? NowPlayingPlatformService(),
-       _artwork = NowPlayingArtwork(loader: nowPlayingArtworkLoader ?? NowPlayingArtworkLoader()),
+       _artwork = NowPlayingArtwork(loader: nowPlayingArtworkLoader ?? NowPlayingArtworkLoader(connection: connection)),
        _vehicleSurface = vehicleSurfaceService ?? VehicleSurfaceService(),
        _localNetworkPermissions = localNetworkPermissionService ?? LocalNetworkPermissionService() {
+    _offlineStorage = offlineStorage ?? OfflineLibraryStorage(preferences: _preferences);
+    _offlineDownloadManager =
+        offlineDownloadManager ??
+        OfflineDownloadManager(
+          connection: connection,
+          storage: _offlineStorage,
+          qualityProvider: () async {
+            if (downloadSettings != null) {
+              await downloadSettings.initialize();
+              return downloadSettings.settings.quality;
+            }
+            await _preferences.downloads.load();
+            return _preferences.downloads.value.quality;
+          },
+        );
+    final artworkAccess = NativeArtworkAccess(connection);
+    _vehicleSurface.artworkAccess = artworkAccess;
+    _nowPlayingPlatform.artworkAccess = artworkAccess;
+
     // Create state owners in the same zone as the parent and before UI subscriptions.
     _downloadsCoordinator = _DownloadCoordinator(this);
     _playlistSources = _PlaylistSourceCoordinator(this);
@@ -306,7 +335,7 @@ class AppController
     _seekCoordinator = _SeekCoordinator(this);
     _nativeCoordinator = _NativeMediaCoordinator(this);
     _permissionsCoordinator = _LocalNetworkPermissionCoordinator(this);
-    _preferencesCoordinator = _PreferencesCoordinator(this);
+    _playbackPreferences = _PlaybackPreferenceBinding(this);
     _sessionCoordinator = _SessionCoordinator(this);
     _statsCoordinator = _ListeningStatsCoordinator(this);
 
@@ -332,7 +361,6 @@ class AppController
       localPlaybackSource: LocalPlaybackSource.none,
       isLocalPlayback: false,
     );
-    _authState = AuthState(isAuthorized: false, baseUrl: connection.baseUrl);
 
     _stats = StatsResponse(
       year: DateTime.now().toUtc().year,
@@ -387,11 +415,8 @@ class AppController
 
   Future<void> signOutAllDevices() => _accountServices.revokeAll();
 
-  Map<String, String> get artworkHeaders => connection.authorizationHeaders;
-
   /// Stable authenticated account scope when the server supplies its identity.
-  String? get artworkAccountScope =>
-      _statsServerId == null || _statsUserId == null ? null : '$_statsServerId|$_statsUserId';
+  String? get artworkAccountScope => authState.account?.artworkScope;
 
   AudioEngine get _audioEngine => _audio ?? (throw StateError('Call initialize() before using playback'));
 
@@ -552,13 +577,13 @@ class AppController
       _configureCarPlay();
       _configureConnectivitySignals();
       _startHealthMonitor();
-      _customShuffleLoadFuture = _loadCustomShuffleSettings();
+      final shuffleLoaded = _ensureCustomShuffleSettingsLoaded(force: true);
 
       await Future.wait([
         _initializeListeningStats(),
         _loadOfflineLibraryAtStartup(),
         loadOfflineStorageLocations(),
-        _customShuffleLoadFuture!,
+        shuffleLoaded,
         _loadPlaybackPreferences(),
       ]);
 
@@ -687,9 +712,8 @@ class AppController
     _streamRecoveryTimer?.cancel();
     _streamRecoveryTimer = null;
 
-    _volumeSaveDebounce.cancel();
     _carPlayStateDebounce.cancel();
-    _flushVolumeSave();
+    final preferencesFlushed = _preferences.closePlayback();
 
     final cancellations = <Future<void>>[
       _availabilityCoordinator._stopConnectivitySignals(),
@@ -728,7 +752,6 @@ class AppController
       _authController,
       _localNetworkPermissionController,
       _offlineStorageLocationsController,
-      _customShuffleSettingsController,
       _collectionListModeController,
       _artistsLoadingController,
       _albumsLoadingController,
@@ -746,11 +769,11 @@ class AppController
         metadataEventsStopped,
         collectionEventsStopped,
         accountEventsStopped,
-        _preferencesCoordinator.close(),
+        _playbackPreferences.close(),
         ...cancellations,
         if (_audio != null) _audio!.dispose(),
         _offlineDownloadManager.dispose(),
-        _volumeSaves.drain(),
+        preferencesFlushed,
       ]);
     } finally {
       // Listening history is flushed even when another owner failed to shut down.

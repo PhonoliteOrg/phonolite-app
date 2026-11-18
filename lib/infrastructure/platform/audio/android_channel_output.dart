@@ -4,7 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
-import 'package:phonolite_app/infrastructure/audio/output/audio_pcm_output.dart';
+import 'package:phonolite_app/infrastructure/audio/output/audio_pcm32_output.dart';
+import 'package:phonolite_app/infrastructure/audio/output/bounded_audio_pcm_output.dart';
 import 'package:phonolite_app/infrastructure/audio/output/pcm_queue_writer.dart';
 import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_bindings.dart';
 

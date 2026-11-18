@@ -4,7 +4,7 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics
 import 'package:phonolite_app/ui/shared/design_system/interaction/hoverable.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ObsidianNavIcon extends StatelessWidget {
   final Widget icon;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/downloads/offline_download_manager.dart';
 import 'package:phonolite_app/data/models/server/download_batch_manifest.dart';
 import 'package:phonolite_app/data/models/server/server_capabilities.dart';
@@ -26,8 +27,10 @@ void main() {
     directory = await Directory.systemTemp.createTemp('phonolite-job-item-snapshot-');
     storage = _SnapshotStorage(
       baseDirectory: Directory('${directory.path}/offline'),
-      settingsStorage: OfflineStorageSettingsStorage(
-        files: SettingsFiles(directoryProvider: () async => Directory('${directory.path}/settings')),
+      preferences: PreferencesCoordinator(
+        offline: OfflineStorageSettingsStorage(
+          files: SettingsFiles(directoryProvider: () async => Directory('${directory.path}/settings')),
+        ),
       ),
     );
     connection = ServerConnection(baseUrl: baseUrl);
@@ -229,7 +232,7 @@ void main() {
 class _SnapshotStorage extends OfflineLibraryStorage {
   List<OfflineDownloadJobItem>? jobItemsOverride;
 
-  _SnapshotStorage({required super.baseDirectory, required super.settingsStorage});
+  _SnapshotStorage({required super.baseDirectory, required super.preferences});
 
   @override
   Future<List<OfflineDownloadJobItem>> readDownloadJobItemsLean(String jobId) async {

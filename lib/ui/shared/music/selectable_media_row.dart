@@ -4,7 +4,7 @@ import 'package:phonolite_app/ui/shared/design_system/controls/lucide_checkbox.d
 import 'package:phonolite_app/ui/shared/design_system/controls/obsidian_list_row.dart';
 import 'package:phonolite_app/ui/shared/design_system/icons/phonolite_icons.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/media_selection.dart';
 
 /// Shared catalog row assembly. Album and artist rows supply their artwork.

@@ -3,8 +3,7 @@ class NativeArtworkSource {
   final String key;
   final String? url;
   final String? path;
-  final String? token;
-  final String? serverPin;
+  final int? sessionRevision;
 
-  const NativeArtworkSource({required this.key, this.url, this.path, this.token, this.serverPin});
+  const NativeArtworkSource({required this.key, this.url, this.path, this.sessionRevision});
 }

@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/application/controllers/favorites/liked_controller.dart';
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
-import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/collections/playlist_editor_values.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 

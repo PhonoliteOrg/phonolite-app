@@ -82,11 +82,9 @@ void main() {
         .toSet();
     expect(documented.length, documented.toSet().length);
     expect(documented.toSet(), areas);
-    expect(
-      sources.where((path) => !path.substring('lib/'.length).contains('/')).toSet(),
-      {'lib/main.dart'},
-      reason: 'Only the thin entry point belongs at the source root.',
-    );
+    expect(sources.where((path) => !path.substring('lib/'.length).contains('/')).toSet(), {
+      'lib/main.dart',
+    }, reason: 'Only the thin entry point belongs at the source root.');
   });
 
   test('part-based components contain only their entry point and own parts', () {
@@ -122,6 +120,22 @@ void main() {
       }
       final actual = _dartFiles(entry.parent.path).map(_path).toSet();
       expect(actual, expected, reason: '${entry.path}: move independent libraries outside this component directory');
+    }
+  });
+
+  test('device preference backends are private dependencies of the preferences owner', () {
+    final concreteStore = RegExp(
+      r'''^(?:import|export)\s+['"][^'"]*/(?:playback_preferences|\w+_settings_storage)\.dart['"]''',
+      multiLine: true,
+    );
+    for (final file in _dartFiles('lib')) {
+      final path = file.path.replaceAll('\\', '/');
+      if (path.startsWith('lib/data/storage/preferences/') ||
+          path == 'lib/data/repositories/preferences_coordinator.dart' ||
+          path == 'lib/data/repositories/shuffle_preferences.dart') {
+        continue;
+      }
+      expect(concreteStore.allMatches(file.readAsStringSync()), isEmpty, reason: path);
     }
   });
 

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/application/controllers/settings/display_settings_controller.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/pages/favorites/liked_page.dart';
 import 'package:phonolite_app/pages/library/album_detail_screen.dart';

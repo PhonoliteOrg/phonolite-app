@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/controllers/settings/storage_path_controller.dart';
 import 'package:phonolite_app/application/workflows/restore_storage_access.dart';
 import 'package:phonolite_app/data/storage/preferences/log_storage_settings_storage.dart';
@@ -52,7 +53,7 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (_) async => fail('Unexpected Mac channel call'));
 
     expect((await access.restore()).paths, isEmpty);
-    expect(await const RestoreStorageAccess().restore(), isEmpty);
+    expect(await RestoreStorageAccess().restore(), isEmpty);
   });
 
   test('folder selection preserves cancellation and native errors', () async {
@@ -126,7 +127,12 @@ void main() {
       },
     );
 
-    expect(await RestoreStorageAccess(logs: logs, offline: offline).restore(), isEmpty);
+    expect(
+      await RestoreStorageAccess(
+        preferences: PreferencesCoordinator(logs: logs, offline: offline),
+      ).restore(),
+      isEmpty,
+    );
     expect(await logs.read(), folder('/new/logs'));
     final restored = await offline.read();
     expect(restored.metadataDirectory, folder('/new/db'));
@@ -149,7 +155,12 @@ void main() {
       },
     );
 
-    expect(await RestoreStorageAccess(logs: logs, offline: offline).restore(), hasLength(2));
+    expect(
+      await RestoreStorageAccess(
+        preferences: PreferencesCoordinator(logs: logs, offline: offline),
+      ).restore(),
+      hasLength(2),
+    );
     expect(await logs.read(), isNull);
     expect((await offline.read()).downloadsDirectory, folder('/volume/audio'));
   });

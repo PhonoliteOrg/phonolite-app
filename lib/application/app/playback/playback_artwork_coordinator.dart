@@ -70,6 +70,9 @@ class _PlaybackArtworkCoordinator {
       return null;
     }
 
-    return ArtworkRequest(source: _host.connection.buildAlbumCoverUrl(albumId), headers: _host.artworkHeaders);
+    return ArtworkRequest(
+      source: _host.connection.buildAlbumCoverUrl(albumId),
+      sessionRevision: _host.connection.sessionRevision,
+    );
   }
 }

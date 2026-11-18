@@ -4,7 +4,7 @@ import 'package:phonolite_app/application/app/app_controller.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 import 'package:phonolite_app/ui/app_scope.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_transport_controls.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_command_zone.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/now_playing_bar.dart';
 import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart';
 import 'package:phonolite_app/ui/shared/music/like_icon_button.dart';

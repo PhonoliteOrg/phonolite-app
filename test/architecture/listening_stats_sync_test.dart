@@ -367,7 +367,7 @@ void main() {
       connection: connection,
       isAuthorized: () => authorized,
       onChanged: () {},
-      onIdentity: (_, __) async {},
+      onIdentity: (_, __, ___) async {},
     );
   });
   tearDown(() async {
@@ -550,7 +550,7 @@ void main() {
       connection: connection,
       isAuthorized: () => true,
       onChanged: () {},
-      onIdentity: (_, __) async {},
+      onIdentity: (_, __, ___) async {},
     );
     addTearDown(() async {
       await otherSync.close();
@@ -776,7 +776,7 @@ void main() {
       connection: connection,
       isAuthorized: () => true,
       onChanged: () {},
-      onIdentity: (_, __) async {},
+      onIdentity: (_, __, ___) async {},
     );
     addTearDown(replicaSync.close);
     await replicaSync.sync(immediate: true);

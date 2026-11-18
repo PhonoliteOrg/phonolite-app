@@ -169,24 +169,6 @@ class _ServerAvailabilityCoordinator {
     return _refreshServerAvailability(reconnectAttempt: true);
   }
 
-  void _setServerReconnecting(bool value) {
-    if (_host._disposed) {
-      return;
-    }
-
-    if (_host._authState.status != SessionStatus.serverUnavailable || _host._authState.isReconnecting == value) {
-      return;
-    }
-
-    _host._authState = _host._authState.copyWith(
-      baseUrl: _host.connection.baseUrl,
-      error: _host._authState.error,
-      isReconnecting: value,
-    );
-    _host._authController.add(_host._authState);
-    _host._notifyCarPlayAuthState(_host._authState.isAuthorized);
-  }
-
   void _handleApiError(ApiException err, {required String context}) {
     if (err.statusCode == 401) {
       unawaited(_host._sessionCoordinator.requireSignIn(reason: 'Your session has ended. Sign in again.'));
@@ -222,29 +204,13 @@ class _ServerAvailabilityCoordinator {
     _serverReconnectAttempt = 0;
     _quicPort = null;
     _host._pauseServerDownloadsInBackground(_host.connection.baseUrl);
-    _host._setSessionStatus(SessionStatus.serverUnavailable, error: error);
+    _host._sessionCoordinator._serverUnavailable(error);
     _host._pushMessage(error, level: LogLevel.warning);
   }
 
   void _restoreServerAvailability({int? rttMs}) {
-    if (_host._disposed) {
-      return;
-    }
-
-    if (_host._authState.status != SessionStatus.serverUnavailable) {
-      return;
-    }
-
-    final token = _host.connection.token;
-
-    if (token == null || token.isEmpty) {
-      _host._setSessionStatus(SessionStatus.offline, error: null);
-
-      return;
-    }
-
+    if (!_host._sessionCoordinator._serverRecovered()) return;
     _serverHealthFailureCount = 0;
-    _host._setSessionStatus(SessionStatus.authenticated, error: null);
 
     if (!_host._audioEngine.hasActivePlayer) {
       _host._updatePlayback(streamConnected: true, streamRttMs: rttMs);
@@ -284,7 +250,7 @@ class _ServerAvailabilityCoordinator {
 
     if (active != null) {
       if (reconnectAttempt) {
-        _setServerReconnecting(true);
+        _host._sessionCoordinator._setServerReconnecting(true);
       }
 
       return active;
@@ -312,17 +278,11 @@ class _ServerAvailabilityCoordinator {
 
     _healthPingInFlight = true;
     final revision = _host.connection.sessionRevision;
-    final baseUrl = _host.connection.baseUrl;
-    final token = _host.connection.token;
 
-    bool isCurrent() =>
-        !_host._disposed &&
-        _host.connection.sessionRevision == revision &&
-        _host.connection.baseUrl == baseUrl &&
-        _host.connection.token == token;
+    bool isCurrent() => !_host._disposed && _host.connection.sessionRevision == revision;
 
     if (reconnectAttempt) {
-      _setServerReconnecting(true);
+      _host._sessionCoordinator._setServerReconnecting(true);
     }
 
     try {
@@ -332,7 +292,7 @@ class _ServerAvailabilityCoordinator {
         return;
       }
 
-      if (rttMs == null && token?.isNotEmpty == true) {
+      if (rttMs == null && _host._sessionCoordinator._canAttemptRemotePlayback) {
         final identityChanged = await _host.connection.hasServerIdentityChanged();
         if (!isCurrent()) {
           return;
@@ -403,7 +363,7 @@ class _ServerAvailabilityCoordinator {
       _healthPingInFlight = false;
 
       if (_host._authState.status == SessionStatus.serverUnavailable && _host._authState.isReconnecting) {
-        _setServerReconnecting(false);
+        _host._sessionCoordinator._setServerReconnecting(false);
       }
     }
   }
@@ -428,7 +388,7 @@ class _ServerAvailabilityCoordinator {
         _serverReconnectAttempt++;
       }
 
-      _host._setSessionStatus(SessionStatus.serverUnavailable, error: error, isReconnecting: false);
+      _host._sessionCoordinator._serverUnavailable(error, isReconnecting: false);
 
       return;
     }

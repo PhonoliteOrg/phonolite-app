@@ -1,4 +1,5 @@
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_item.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_request.dart';
 import 'package:phonolite_app/data/models/playback/vehicle_response.dart';
@@ -50,28 +51,30 @@ class VehicleSurfaceCodec {
     );
   }
 
-  static Map<String, dynamic> encodeResponse(VehicleResponse response) => switch (response) {
-    VehicleCommandResult(:final failure) =>
-      failure == null ? {'ok': true} : {'error': _failureCode(failure), 'items': const []},
-    VehicleItems(:final items) => {'items': items.map(_encodeItem).toList()},
-    VehicleSourceState(:final serverAvailable, :final localAvailable, :final playbackScope, :final hasAnySource) => {
-      'serverAvailable': serverAvailable,
-      'localAvailable': localAvailable,
-      'hasAnySource': hasAnySource,
-      if (playbackScope != null) 'playbackScope': playbackScope.name,
-    },
-    VehicleAuthorizationState(:final authorized, :final hasSession, :final status) => {
-      'authorized': authorized,
-      'hasSession': hasSession,
-      'status': status.name,
-    },
-    VehicleLibraryStatus(:final likedAvailable, :final failure) => {
-      'likedAvailable': likedAvailable,
-      if (failure != null) 'error': _failureCode(failure),
-    },
-  };
+  static Map<String, dynamic> encodeResponse(VehicleResponse response, [NativeArtworkAccess? access]) =>
+      switch (response) {
+        VehicleCommandResult(:final failure) =>
+          failure == null ? {'ok': true} : {'error': _failureCode(failure), 'items': const []},
+        VehicleItems(:final items) => {'items': items.map((item) => _encodeItem(item, access)).toList()},
+        VehicleSourceState(:final serverAvailable, :final localAvailable, :final playbackScope, :final hasAnySource) =>
+          {
+            'serverAvailable': serverAvailable,
+            'localAvailable': localAvailable,
+            'hasAnySource': hasAnySource,
+            if (playbackScope != null) 'playbackScope': playbackScope.name,
+          },
+        VehicleAuthorizationState(:final authorized, :final hasSession, :final status) => {
+          'authorized': authorized,
+          'hasSession': hasSession,
+          'status': status.name,
+        },
+        VehicleLibraryStatus(:final likedAvailable, :final failure) => {
+          'likedAvailable': likedAvailable,
+          if (failure != null) 'error': _failureCode(failure),
+        },
+      };
 
-  static Map<String, dynamic> _encodeItem(VehicleItem item) {
+  static Map<String, dynamic> _encodeItem(VehicleItem item, NativeArtworkAccess? access) {
     final path = item.artworkPath?.trim();
     final artworkUrl = item.artworkUrl ?? (path == null || path.isEmpty ? null : Uri.file(path).toString());
     final actionId = switch (item.action) {
@@ -87,7 +90,7 @@ class VehicleSurfaceCodec {
       'subtitle': item.subtitle,
       if (item.enabled != null) 'enabled': item.enabled,
       if (artworkUrl != null) 'artworkUrl': artworkUrl,
-      if (artworkUrl != null && item.token != null) ...{'token': item.token, 'serverPin': item.serverPin},
+      ...?access?.fields(item.artworkUrl, item.sessionRevision),
     };
   }
 

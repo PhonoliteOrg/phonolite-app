@@ -200,6 +200,8 @@ Related stores share persistence and transaction mechanisms. Recurring parsing, 
 
 A file boundary represents a responsibility someone can name. Independent models, parsers, buffers, adapters, controls and helpers are ordinary modules with normal imports. A component's first consumer does not own the modules it uses.
 
+When several pieces serve the same feature, identify who assembles them. If callers select or compose two pieces independently and each has a distinct responsibility, give each its own file in the feature directory. Keep a private implementation detail beside the component that owns it. Apply this rule when extracting or moving existing code as well as when adding new code.
+
 A private component tree exists when one cohesive module deliberately shares private scope across several files (for example Dart `part` files). Such a component has an exclusive directory holding its entry point and only its own private parts. Independent source stays outside that entire tree.
 
 ```text
@@ -218,11 +220,14 @@ Splitting a file into private parts only separates text. It does not create a re
 | Boundary | Ownership |
 | --- | --- |
 | Remote services | Endpoint clients share one transport that owns session, authentication, trust, retry and request policy; payload records live in data |
+| Device preferences | One application-wide preferences owner loads remembered choices, publishes their current values and changes, and coordinates saves through typed stores. Features request changes through that owner and apply them to their runtime. Preserve account scoping and storage transactions when a preference shares a record with other state. |
+| Application session | One owner publishes read-only session status and account identity and coordinates sign-in, restoration, sign-out, and credential writes. Features report discovered identity with its session revision. The owner verifies that revision before accepting it. |
 | Workers | The parent owns communication and recovery; the worker owns its active session; the session owns its handles and cancellation |
 | Persistence | Stores share their database connection and transaction boundary; splitting source never opens extra connections or splits an atomic operation |
 | Views | Pages and components own their visual controllers and the feature controllers they bind; application-wide state keeps its application owner |
 | Platform host | The process host owns process-wide services; an engine or runtime binding owns its channels; a scene or window owns its presentation; a request owns its cancellation and completion |
 
+- Give features an account scope for account-owned data and a session revision for checking asynchronous results. Keep remembered identity available during temporary loss of connectivity. Bind credentials to authenticated requests in the transport that sends them, including native transports.
 - Constructors establish local invariants synchronously and perform no externally visible I/O. Explicit initialization starts workers and I/O.
 - Create private state owners with their parent before subscriptions when scheduling order depends on construction.
 - The creator owns disposal unless ownership is explicitly transferred. Borrowed resources stay owned by their provider.

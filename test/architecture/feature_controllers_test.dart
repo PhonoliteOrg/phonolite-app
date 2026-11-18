@@ -15,6 +15,7 @@ import 'package:phonolite_app/application/controllers/playlists/playlist_editor_
 import 'package:phonolite_app/data/models/auth/auth_state.dart';
 import 'package:phonolite_app/data/models/collections/local_playlist_entry.dart';
 import 'package:phonolite_app/data/models/collections/playlist.dart';
+import 'package:phonolite_app/data/models/collections/playlist_image_edit.dart';
 import 'package:phonolite_app/data/models/downloads/download_status.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
@@ -28,6 +29,7 @@ import 'package:phonolite_app/application/controllers/playback/shuffle_presets_c
 import 'package:phonolite_app/application/controllers/playlists/playlists_controller.dart';
 import 'package:phonolite_app/data/models/library/artist_releases.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/infrastructure/server/server_connection.dart';
 

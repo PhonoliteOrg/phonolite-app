@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import 'package:phonolite_app/application/controllers/library/artwork_error_controller.dart';
-import 'package:phonolite_app/data/models/artwork/artwork_request.dart';
+import 'package:phonolite_app/data/models/artwork/artwork_load_exception.dart';
 
 class ArtworkErrors extends ArtworkErrorController {
   static final ArtworkErrors instance = ArtworkErrors();
@@ -35,16 +35,4 @@ class ArtworkErrors extends ArtworkErrorController {
 
     return true;
   }
-}
-
-void installArtworkErrorHandler() {
-  final previous = FlutterError.onError;
-
-  FlutterError.onError = (details) {
-    if (ArtworkErrors.instance.handleFlutterError(details)) {
-      return;
-    }
-
-    (previous ?? FlutterError.presentError)(details);
-  };
 }

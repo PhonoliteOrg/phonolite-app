@@ -1,4 +1,4 @@
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/app/action_scope.dart';
 
 enum VehicleOperation {
   getState,

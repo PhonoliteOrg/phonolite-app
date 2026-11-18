@@ -9,7 +9,6 @@ import 'package:phonolite_app/ui/shared/music/selectable_media_row.dart';
 class ArtistRowTile extends StatelessWidget {
   final Artist artist;
   final String? coverUrl;
-  final Map<String, String> headers;
   final VoidCallback? onTap;
   final String? subtitle;
   final Widget? trailing;
@@ -23,7 +22,6 @@ class ArtistRowTile extends StatelessWidget {
     super.key,
     required this.artist,
     required this.coverUrl,
-    required this.headers,
     this.subtitle,
     this.trailing,
     this.selectionMode = false,
@@ -54,7 +52,6 @@ class ArtistRowTile extends StatelessWidget {
         name: artist.name,
         size: isCompact ? 42 : 48,
         imageUrl: coverUrl,
-        headers: headers,
         fit: BoxFit.contain,
         paddingFraction: 0,
         thumbnail: true,

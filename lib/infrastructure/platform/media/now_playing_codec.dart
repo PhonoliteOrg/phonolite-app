@@ -1,11 +1,12 @@
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
 import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/data/models/playback/native_now_playing_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 
 class NowPlayingCodec {
-  static Map<String, dynamic> encodeArtworkSource(NativeArtworkSource source) => {
+  static Map<String, dynamic> encodeArtworkSource(NativeArtworkSource source, [NativeArtworkAccess? access]) => {
     'artworkKey': source.key,
-    if (source.url != null) ...{'artworkUrl': source.url, 'token': source.token, 'serverPin': source.serverPin},
+    if (source.url != null) ...{'artworkUrl': source.url, ...?access?.fields(source.url, source.sessionRevision)},
     if (source.path != null) 'artworkPath': source.path,
   };
 
@@ -39,7 +40,7 @@ class NowPlayingCodec {
     return NativeRemoteCommand(action: action, position: position);
   }
 
-  static Map<String, dynamic> encodeSnapshot(NativeNowPlayingSnapshot snapshot) => {
+  static Map<String, dynamic> encodeSnapshot(NativeNowPlayingSnapshot snapshot, [NativeArtworkAccess? access]) => {
     'epoch': snapshot.epoch,
     'trackId': snapshot.trackId,
     'title': snapshot.title,
@@ -52,8 +53,7 @@ class NowPlayingCodec {
     'artworkKey': snapshot.artworkKey,
     if (snapshot.artworkUrl != null) ...{
       'artworkUrl': snapshot.artworkUrl,
-      'token': snapshot.token,
-      'serverPin': snapshot.serverPin,
+      ...?access?.fields(snapshot.artworkUrl, snapshot.sessionRevision),
     },
     if (snapshot.artworkPath != null) 'artworkPath': snapshot.artworkPath,
     if (snapshot.artworkBytes != null) 'artworkBytes': snapshot.artworkBytes,

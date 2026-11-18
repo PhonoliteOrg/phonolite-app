@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 class ObsidianSectionHeader extends StatelessWidget {
   final String title;

@@ -5,7 +5,9 @@ import 'package:phonolite_app/data/models/library/library_destination.dart';
 import 'package:phonolite_app/data/models/library/local_library_selection.dart';
 import 'package:phonolite_app/data/models/library/search_result.dart';
 import 'package:phonolite_app/data/models/library/track.dart';
-import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
+import 'package:phonolite_app/data/projections/library/offline_album_group.dart';
 import 'package:phonolite_app/data/projections/library/offline_library_views.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 

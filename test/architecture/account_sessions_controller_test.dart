@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/controllers/settings/account_sessions_controller.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 
 void main() {
   test('revocation ignores stale accounts and concurrent submissions', () async {

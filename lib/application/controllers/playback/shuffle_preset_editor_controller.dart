@@ -1,7 +1,7 @@
 import 'package:phonolite_app/application/controllers/playback/custom_shuffle_controller.dart';
 import 'package:phonolite_app/data/models/playback/custom_shuffle_settings.dart';
 import 'package:phonolite_app/data/models/playback/shuffle_preset.dart';
-import 'package:phonolite_app/data/models/server/server_errors.dart';
+import 'package:phonolite_app/data/models/server/api_exception.dart';
 import 'package:phonolite_app/data/storage/logs/app_log.dart';
 
 /// An isolated editor draft. Remote changes require an explicit reload or copy.

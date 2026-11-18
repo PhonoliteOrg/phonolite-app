@@ -1,3 +1,6 @@
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_track.dart';
+
 class StatsResponse {
   final int year;
   final int? month;
@@ -43,64 +46,5 @@ class StatsResponse {
       topTracks: (json['top_tracks'] as List?)?.map(StatsTrack.parse).toList() ?? <StatsTrack>[],
       topGenres: (json['top_genres'] as List?)?.map(StatsItem.parse).toList() ?? <StatsItem>[],
     );
-  }
-}
-
-class StatsItem {
-  final String id;
-  final String name;
-  final int minutes;
-  final int listeningMs;
-
-  StatsItem({required this.id, required this.name, required this.minutes, int? listeningMs})
-    : listeningMs = listeningMs ?? minutes * 60000;
-
-  factory StatsItem.fromJson(Map<String, dynamic> json) {
-    return StatsItem(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
-      minutes: (json['minutes'] as num?)?.toInt() ?? 0,
-      listeningMs: (json['listening_ms'] as num?)?.toInt(),
-    );
-  }
-
-  static StatsItem parse(dynamic item) {
-    if (item is Map) {
-      return StatsItem.fromJson(Map<String, dynamic>.from(item));
-    }
-
-    final text = item?.toString() ?? '';
-
-    return StatsItem(id: text, name: text, minutes: 0);
-  }
-}
-
-class StatsTrack {
-  final String id;
-  final String title;
-  final String artist;
-  final int minutes;
-  final int plays;
-
-  StatsTrack({required this.id, required this.title, required this.artist, required this.minutes, required this.plays});
-
-  factory StatsTrack.fromJson(Map<String, dynamic> json) {
-    return StatsTrack(
-      id: json['id']?.toString() ?? '',
-      title: json['title']?.toString() ?? '',
-      artist: json['artist']?.toString() ?? '',
-      minutes: (json['minutes'] as num?)?.toInt() ?? 0,
-      plays: (json['plays'] as num?)?.toInt() ?? 0,
-    );
-  }
-
-  static StatsTrack parse(dynamic item) {
-    if (item is Map) {
-      return StatsTrack.fromJson(Map<String, dynamic>.from(item));
-    }
-
-    final text = item?.toString() ?? '';
-
-    return StatsTrack(id: '', title: text, artist: '', minutes: 0, plays: 0);
   }
 }

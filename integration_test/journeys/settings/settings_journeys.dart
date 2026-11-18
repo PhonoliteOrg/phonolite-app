@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
-import 'package:phonolite_app/data/models/diagnostics/log_entry.dart';
+import 'package:phonolite_app/data/models/diagnostics/log_category.dart';
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/pages/auth/login_page.dart';
 import 'package:phonolite_app/pages/auth/reset_user_password_page.dart';

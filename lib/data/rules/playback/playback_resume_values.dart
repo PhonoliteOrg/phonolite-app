@@ -1,4 +1,4 @@
-import 'package:phonolite_app/data/models/playback/playback_state.dart';
+import 'package:phonolite_app/data/models/playback/shuffle_mode.dart';
 
 /// Strict boundary rules shared by device and account playback checkpoints.
 abstract final class PlaybackResumeValues {

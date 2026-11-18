@@ -35,11 +35,7 @@ class _LibraryCoordinator {
   int _catalogueReadFailures = 0;
   late final MetadataEventListener _metadataEvents = MetadataEventListener(
     openStream: _host.connection.streamMetadataEvents,
-    isSessionCurrent: (baseUrl, token) =>
-        !_host._disposed &&
-        _host._authState.isAuthorized &&
-        _host.connection.baseUrl == baseUrl &&
-        _host.connection.token == token,
+    isSessionCurrent: _host._sessionCoordinator._isServerSessionCurrent,
     applyEvent: _applyMetadataEvent,
     onDiagnostic: AppLogger.debug,
     onSessionInvalidated: () => unawaited(_host._sessionCoordinator.requireSignIn()),
@@ -431,13 +427,13 @@ class _LibraryCoordinator {
   }
 
   void _startMetadataEventListener() {
-    final token = _host.connection.token;
+    final revision = _host.connection.sessionRevision;
 
-    if (token == null || token.isEmpty) {
+    if (!_host._sessionCoordinator._isServerSessionCurrent(revision)) {
       return;
     }
 
-    _metadataEvents.start(baseUrl: _host.connection.baseUrl, token: token);
+    _metadataEvents.start(revision);
   }
 
   Future<void> _stopMetadataEventListener() => _metadataEvents.stop();

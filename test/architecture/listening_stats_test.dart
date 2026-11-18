@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_event.dart';
 import 'package:phonolite_app/data/models/listening_stats/listening_stats_snapshot.dart';
 import 'package:phonolite_app/data/repositories/listening_stats_service.dart';
-import 'package:phonolite_app/data/models/listening_stats/listening_report.dart';
+import 'package:phonolite_app/data/models/listening_stats/stats_item.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'listening_counter_fixtures.dart';
 

@@ -9,7 +9,6 @@ import 'package:phonolite_app/ui/shared/music/selectable_media_row.dart';
 class AlbumRowTile extends StatelessWidget {
   final Album album;
   final String coverUrl;
-  final Map<String, String> headers;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final String? subtitle;
@@ -24,7 +23,6 @@ class AlbumRowTile extends StatelessWidget {
     super.key,
     required this.album,
     required this.coverUrl,
-    required this.headers,
     this.subtitle,
     this.trailing,
     this.selectionMode = false,
@@ -53,7 +51,7 @@ class AlbumRowTile extends StatelessWidget {
         isDeleting: isDeleting,
         onSelectionToggle: onSelectionToggle,
       ),
-      artwork: AlbumArt(title: album.title, size: isCompact ? 44 : 52, imageUrl: coverUrl, headers: headers),
+      artwork: AlbumArt(title: album.title, size: isCompact ? 44 : 52, imageUrl: coverUrl),
     );
   }
 }

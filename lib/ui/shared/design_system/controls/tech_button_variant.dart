@@ -1,0 +1,1 @@
+enum TechButtonVariant { standard, danger }

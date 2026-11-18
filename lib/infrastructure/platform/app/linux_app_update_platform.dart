@@ -10,6 +10,8 @@ import 'package:phonolite_app/data/models/updates/app_update_progress.dart';
 import 'package:phonolite_app/data/models/updates/app_update_release.dart';
 import 'package:phonolite_app/data/models/updates/linux_update_asset.dart';
 import 'package:phonolite_app/infrastructure/platform/app/app_update_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/app_update_preparation_platform.dart';
+import 'package:phonolite_app/infrastructure/platform/app/app_update_progress_source.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_feed.dart';
 import 'package:phonolite_app/infrastructure/updates/linux_update_process.dart';
 import 'package:phonolite_app/infrastructure/updates/app_update_transport.dart';

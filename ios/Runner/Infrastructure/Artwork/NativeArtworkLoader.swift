@@ -55,12 +55,7 @@ final class NativeArtworkLoader {
       return false
     }
 
-    var request = URLRequest(url: url)
-    request.timeoutInterval = 15
-
-    if let token = source.token {
-      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
+    let request = PinnedArtworkSession.request(url: url, token: source.token)
 
     let task = requestSession.dataTask(with: request) { data, response, error in
       guard error == nil, let response = response as? HTTPURLResponse,

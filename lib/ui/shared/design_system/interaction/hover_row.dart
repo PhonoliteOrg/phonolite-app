@@ -5,7 +5,7 @@ import 'package:phonolite_app/ui/shared/design_system/interaction/focus_highligh
 import 'package:phonolite_app/ui/shared/design_system/interaction/hoverable.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 
 /// A list row whose pointer hover and keyboard focus share one highlight: a leading accent border
 /// and a soft gradient.

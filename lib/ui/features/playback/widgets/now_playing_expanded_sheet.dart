@@ -9,9 +9,12 @@ import 'package:phonolite_app/application/controllers/playback/playback_controls
 import 'package:phonolite_app/ui/app_scope.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_expanded_extras.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_layout.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/shuffle_mode_changed.dart';
+import 'package:phonolite_app/ui/shared/design_system/layout/obsidian_scale.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_progress_bar.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_source_tags.dart';
-import 'package:phonolite_app/ui/features/playback/widgets/components/playback_transport_controls.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_inline_tags.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tech_tag_row.dart';
+import 'package:phonolite_app/ui/features/playback/widgets/components/playback_expanded_controls.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/components/playback_tray_transition.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/output_device_modal.dart';
 import 'package:phonolite_app/ui/features/playback/widgets/modals/shuffle_picker_modal.dart';
@@ -20,13 +23,14 @@ import 'package:phonolite_app/ui/shared/design_system/controls/marquee_text.dart
 import 'package:phonolite_app/ui/shared/design_system/interaction/button_haptics.dart';
 import 'package:phonolite_app/ui/shared/design_system/interaction/obsidian_tap_target.dart';
 import 'package:phonolite_app/ui/shared/design_system/layout/responsive_breakpoints.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_style.dart';
 import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_modal_scope.dart';
+import 'package:phonolite_app/ui/shared/design_system/modals/obsidian_sheet_handle.dart';
 import 'package:phonolite_app/ui/shared/design_system/surfaces/obsidian_glass_surface.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/color_opacity.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
-import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_theme.dart';
+import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_palette.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/album_art.dart';
-import 'package:phonolite_app/ui/shared/music/artwork/artwork_helpers.dart';
 
 bool playbackUsesNativeMobileExpandedSheet(BuildContext context) {
   if (kIsWeb) {
@@ -67,7 +71,7 @@ Future<void> showNowPlayingExpandedSheet(BuildContext context, {VoidCallback? on
       constraints: const BoxConstraints(maxWidth: double.infinity),
       useSafeArea: useNativeMobileTreatment,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.45),
+      barrierColor: ObsidianModalStyle.sheetBarrierColor,
       builder: (sheetContext) {
         return PlaybackNowPlayingTrayTransition(
           child: StreamBuilder<PlaybackState>(
@@ -156,7 +160,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
   });
 
   Widget _buildSheet(BuildContext context) {
-    double s(double value) => playbackScaled(context, value);
+    final s = context.s;
 
     final usesTouchTargets = ObsidianModalScope.usesTouchTargets(context);
     final track = state.track;
@@ -186,7 +190,6 @@ class NowPlayingExpandedSheet extends StatelessWidget {
           : AppScope.of(context).catalog.buildAlbumCoverUrl(albumId);
     }
 
-    final headers = hasLocalImage ? const <String, String>{} : authHeaders(AppScope.of(context));
     final artSize = usesTouchTargets ? math.min(size.width - 32, 480.0) : math.min(size.width * 0.78, 320.0);
 
     final sliderTheme = SliderTheme.of(context).copyWith(
@@ -210,8 +213,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (track != null)
-              AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, headers: headers, thumbnail: false),
+            if (track != null) AlbumArt(title: track.album, size: artSize, imageUrl: imageUrl, thumbnail: false),
             if (state.isLoading)
               ColoredBox(
                 color: Colors.black.withByteOpacity(0.34),
@@ -272,16 +274,7 @@ class NowPlayingExpandedSheet extends StatelessWidget {
       child: RepaintBoundary(
         child: Column(
           children: [
-            SizedBox(height: s(12)),
-            Container(
-              width: s(64),
-              height: s(6),
-              decoration: BoxDecoration(
-                color: Colors.white.withByteOpacity(0.35),
-                borderRadius: BorderRadius.circular(s(6)),
-              ),
-            ),
-            SizedBox(height: s(12)),
+            const ObsidianSheetHandle(wide: true),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {

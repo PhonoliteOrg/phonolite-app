@@ -4,9 +4,9 @@ import 'package:phonolite_app/data/models/library/artist_releases.dart';
 import 'package:phonolite_app/data/models/library/artist.dart';
 import 'package:phonolite_app/data/models/library/album.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_card.dart';
-import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
+import 'package:phonolite_app/ui/shared/music/formatting/artist_labels.dart';
 import 'package:phonolite_app/ui/shared/music/albums/album_row_tile.dart';
-import 'package:phonolite_app/ui/features/library/widgets/artist_release_sections.dart';
+import 'package:phonolite_app/ui/features/library/widgets/artist_contribution_sliver.dart';
 
 void main() {
   final sharedAlbum = Album(

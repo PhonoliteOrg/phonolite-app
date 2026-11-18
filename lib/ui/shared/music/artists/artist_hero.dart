@@ -8,24 +8,19 @@ import 'package:phonolite_app/ui/shared/design_system/theme/constants.dart';
 import 'package:phonolite_app/ui/shared/design_system/theme/obsidian_fonts.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artist_avatar.dart';
 import 'package:phonolite_app/ui/shared/music/artwork/artwork_image.dart';
-import 'package:phonolite_app/ui/shared/music/formatting/album_labels.dart';
+import 'package:phonolite_app/ui/shared/music/formatting/artist_labels.dart';
 import 'package:phonolite_app/ui/shared/music/formatting/genre_text.dart';
 import 'package:phonolite_app/ui/shared/music/media_hero_details.dart';
 import 'package:phonolite_app/ui/shared/music/media_hero_frame.dart';
+import 'package:phonolite_app/ui/shared/music/media_hero_summary.dart';
+import 'package:phonolite_app/ui/shared/music/media_hero_title.dart';
 
 class ArtistHero extends StatelessWidget {
   final Artist artist;
   final String? coverUrl;
   final String? bannerUrl;
-  final Map<String, String> headers;
 
-  const ArtistHero({
-    super.key,
-    required this.artist,
-    required this.coverUrl,
-    required this.bannerUrl,
-    required this.headers,
-  });
+  const ArtistHero({super.key, required this.artist, required this.coverUrl, required this.bannerUrl});
 
   Widget _compactHeader({required String genreLine, String? summary}) {
     final hasSummary = summary != null && summary.isNotEmpty;
@@ -37,14 +32,7 @@ class ArtistHero extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            ArtistAvatar(
-              name: artist.name,
-              size: 72,
-              imageUrl: coverUrl,
-              headers: headers,
-              fit: BoxFit.contain,
-              paddingFraction: 0,
-            ),
+            ArtistAvatar(name: artist.name, size: 72, imageUrl: coverUrl, fit: BoxFit.contain, paddingFraction: 0),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -115,12 +103,7 @@ class ArtistHero extends StatelessWidget {
                     ).createShader(rect);
                   },
                   blendMode: BlendMode.dstIn,
-                  child: ArtworkImage(
-                    imageUrl: bannerPath,
-                    headers: headers,
-                    fit: BoxFit.cover,
-                    placeholder: const SizedBox.shrink(),
-                  ),
+                  child: ArtworkImage(imageUrl: bannerPath, fit: BoxFit.cover, placeholder: const SizedBox.shrink()),
                 ),
         ),
         Positioned.fill(
@@ -148,7 +131,6 @@ class ArtistHero extends StatelessWidget {
                       name: artist.name,
                       size: s(150),
                       imageUrl: coverUrl,
-                      headers: headers,
                       fit: BoxFit.contain,
                       paddingFraction: 0,
                     ),

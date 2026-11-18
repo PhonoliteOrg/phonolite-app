@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import 'package:phonolite_app/infrastructure/platform/media/native_artwork_access.dart';
 import 'package:phonolite_app/data/models/playback/native_artwork_source.dart';
 import 'package:phonolite_app/data/models/playback/native_now_playing_snapshot.dart';
 import 'package:phonolite_app/data/models/playback/native_remote_command.dart';
@@ -11,6 +12,7 @@ export 'package:phonolite_app/data/models/playback/native_remote_command.dart';
 
 class NowPlayingPlatformService {
   final MethodChannel _channel;
+  NativeArtworkAccess? artworkAccess;
 
   NowPlayingPlatformService({this._channel = const MethodChannel('phonolite/now_playing')});
 
@@ -39,7 +41,8 @@ class NowPlayingPlatformService {
     await _channel.invokeMethod('setNowPlaying', payload);
   }
 
-  Future<void> publish(NativeNowPlayingSnapshot snapshot) => setNowPlaying(NowPlayingCodec.encodeSnapshot(snapshot));
+  Future<void> publish(NativeNowPlayingSnapshot snapshot) =>
+      setNowPlaying(NowPlayingCodec.encodeSnapshot(snapshot, loadsArtworkNatively ? artworkAccess : null));
 
   /// Explicit Play can retry activation if iOS never delivered interruption end.
   Future<bool> activateAudioSession() async {
@@ -55,7 +58,10 @@ class NowPlayingPlatformService {
       return;
     }
 
-    await _channel.invokeMethod('preloadArtwork', sources.map(NowPlayingCodec.encodeArtworkSource).toList());
+    await _channel.invokeMethod(
+      'preloadArtwork',
+      sources.map((source) => NowPlayingCodec.encodeArtworkSource(source, artworkAccess)).toList(),
+    );
   }
 
   Future<void> clearNowPlaying() async {

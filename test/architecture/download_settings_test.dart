@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:phonolite_app/data/repositories/preferences_coordinator.dart';
 import 'package:phonolite_app/application/controllers/settings/download_settings_controller.dart';
 import 'package:phonolite_app/data/models/downloads/download_quality.dart';
 import 'package:phonolite_app/data/models/preferences/download_settings.dart';
@@ -60,7 +61,7 @@ void main() {
   });
 
   test('initialization persists the default before other installation markers appear', () async {
-    final controller = DownloadSettingsController(storage: storage);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: storage));
     addTearDown(controller.dispose);
     await controller.initialize();
     await (await files.resolve('playback_prefs.json')).writeAsString('{}');
@@ -69,7 +70,7 @@ void main() {
 
   test('rapid choices save in order and flush waits for the latest preference', () async {
     final controlled = _ControlledStorage();
-    final controller = DownloadSettingsController(storage: controlled);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: controlled));
     addTearDown(controller.dispose);
     await controller.initialize();
     controlled.gate = Completer<void>();
@@ -91,7 +92,7 @@ void main() {
 
   test('save failure restores the last saved choice and a later choice can recover', () async {
     final controlled = _ControlledStorage();
-    final controller = DownloadSettingsController(storage: controlled);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: controlled));
     addTearDown(controller.dispose);
     await controller.initialize();
     controlled.failWrite = true;
@@ -109,7 +110,7 @@ void main() {
     final controlled = _ControlledStorage()
       ..saved = const DownloadSettings(quality: DownloadQuality.standard)
       ..failWrite = true;
-    final controller = DownloadSettingsController(storage: controlled);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: controlled));
     addTearDown(controller.dispose);
     await controller.initialize();
 
@@ -120,7 +121,7 @@ void main() {
 
   test('unreadable preferences block initialization and can be retried', () async {
     final controlled = _ControlledStorage()..failRead = true;
-    final controller = DownloadSettingsController(storage: controlled);
+    final controller = DownloadSettingsController(preferences: PreferencesCoordinator(downloads: controlled));
     addTearDown(controller.dispose);
     await expectLater(controller.initialize(), throwsA(isA<FileSystemException>()));
     expect(controller.ready, isFalse);
