@@ -58,7 +58,8 @@ Before reporting the work as finished:
 ## Commits and approval
 
 - Work and commit on the current branch, normally `main`. Do not create, switch, merge or delete branches, or use worktrees, unless the developer asks ([5.4](FLUTTER-STANDARDS.md#54-commits)).
-- After any change to files on `main`, offer to commit: propose the message and list the files, then wait for explicit approval. Never commit, amend, rebase, force-push or push without it.
+- After any change to files on `main`, offer to commit: propose the message and list the files, then wait for explicit approval. Never commit, amend or rebase without it.
+- Never push or force-push, and do not suggest pushing or give push commands. The developer decides when to push.
 - Follow [5.4](FLUTTER-STANDARDS.md#54-commits) for the message, with `Changelog:` and `Platforms:` values from the [profile](PROJECT-PROFILE.md#commit-vocabulary).
 - Commit only with the configured git identity. Do not pass `--author`, set `GIT_AUTHOR_*` or `GIT_COMMITTER_*`, or change `user.name` or `user.email`. If none is configured, ask the developer to set one.
 - Never mention an agent, LLM or tool in commits: no `Co-Authored-By` trailers, tool or model names, or "Generated with" lines in messages, trailers or branch names.
