@@ -2,23 +2,16 @@
 
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
+#import <os/log.h>
 #include <stdatomic.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include "../../../../../native/audio/audio_queue_progress.h"
+#include "../../../../../native/audio/audio_queue_buffer.h"
 
 #define PHONOLITE_EXPORT __attribute__((visibility("default"))) __attribute__((used))
-
-struct PhonoliteAudioBuffer {
-  AudioQueueBufferRef buffer;
-  int32_t sample_count;
-  uint64_t generation;
-  PhonoliteAudioProgressSpan progress;
-  struct PhonoliteAudioBuffer *next;
-};
 
 struct PhonoliteAudioPlayer {
   AudioQueueRef queue;
@@ -28,6 +21,7 @@ struct PhonoliteAudioPlayer {
   double scheduled_end_frame;
   bool has_schedule;
   bool clock_observed;
+  int32_t sample_rate;
   int32_t channels;
   int32_t bits_per_sample;
   bool paused;
@@ -38,7 +32,6 @@ struct PhonoliteAudioPlayer {
   struct PhonoliteAudioBuffer *buffers;
 };
 
-static const int kPhonoliteMaxInFlight = 5;
 static const int kPhonoliteQueueFull = -3;
 
 static bool phonolite_audio_current_frame(PhonoliteAudioPlayer *player, double *frame) {
@@ -183,6 +176,7 @@ PHONOLITE_EXPORT PhonoliteAudioPlayer *phonolite_audio_open_format(int32_t sampl
   }
   atomic_init(&player->in_flight, 0);
   pthread_mutex_init(&player->buffer_lock, NULL);
+  player->sample_rate = sampleRate;
   player->channels = channels;
   player->bits_per_sample = bitsPerSample;
 
@@ -257,7 +251,11 @@ static int32_t phonolite_audio_write_pcm(PhonoliteAudioPlayer *player, const voi
     return (int32_t)player->output_error;
   }
   if (phonolite_audio_poll_progress(player) != 0) return -2;
-  if (atomic_load(&player->in_flight) >= kPhonoliteMaxInFlight || phonolite_audio_pending_spans(player) >= kPhonoliteMaxInFlight) {
+  pthread_mutex_lock(&player->buffer_lock);
+  bool has_room = phonolite_audio_queue_has_room(player->buffers, player->generation, player->sample_rate,
+                                                player->channels, sampleCount);
+  pthread_mutex_unlock(&player->buffer_lock);
+  if (!has_room) {
     return kPhonoliteQueueFull;
   }
   struct PhonoliteAudioBuffer *entry = calloc(1, sizeof(*entry));
@@ -284,7 +282,15 @@ static int32_t phonolite_audio_write_pcm(PhonoliteAudioPlayer *player, const voi
   pthread_mutex_unlock(&player->buffer_lock);
   double start_frame = player->has_schedule ? player->scheduled_end_frame : 0;
   double now = 0;
-  if (phonolite_audio_current_frame(player, &now) && now > start_frame) start_frame = now;
+  if (phonolite_audio_current_frame(player, &now)) {
+    if (player->started && player->has_schedule) {
+      // The queue clock uses the stream sample rate. A negative reserve means
+      // it passed the end of the previous buffer before this write.
+      os_log_debug(OS_LOG_DEFAULT, "Phonolite AudioQueue reserve before refill: %{public}.1f ms",
+                   (player->scheduled_end_frame - now) * 1000.0 / player->sample_rate);
+    }
+    if (now > start_frame) start_frame = now;
+  }
   AudioTimeStamp actual_start = {0};
   status = AudioQueueEnqueueBufferWithParameters(player->queue, buffer, 0, NULL, 0, 0, 0, NULL,
                                                 NULL, &actual_start);

@@ -4,20 +4,12 @@
 #include <CoreAudio/CoreAudio.h>
 
 #include <pthread.h>
-#include "../../../../../native/audio/audio_queue_progress.h"
+#include "../../../../../native/audio/audio_queue_buffer.h"
 #include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
-struct PhonoliteAudioBuffer {
-  AudioQueueBufferRef buffer;
-  int32_t sample_count;
-  uint64_t generation;
-  PhonoliteAudioProgressSpan progress;
-  struct PhonoliteAudioBuffer *next;
-};
 
 struct PhonoliteAudioPlayer {
   AudioQueueRef queue;
@@ -38,7 +30,6 @@ struct PhonoliteAudioPlayer {
   struct PhonoliteAudioBuffer *buffers;
 };
 
-static const int max_in_flight = 5;
 static const int queue_full = -3;
 
 static bool audio_queue_player_current_frame(PhonoliteAudioPlayer *player, double *frame) {
@@ -238,7 +229,11 @@ static int32_t audio_queue_player_write_pcm(PhonoliteAudioPlayer *player, const 
   }
 
   if (audio_queue_player_poll_progress(player) != 0) return -2;
-  if (atomic_load(&player->in_flight) >= max_in_flight || audio_queue_player_pending_spans(player) >= max_in_flight) {
+  pthread_mutex_lock(&player->buffer_lock);
+  bool has_room = phonolite_audio_queue_has_room(player->buffers, player->generation, player->sample_rate,
+                                                player->channels, sample_count);
+  pthread_mutex_unlock(&player->buffer_lock);
+  if (!has_room) {
     return queue_full;
   }
 

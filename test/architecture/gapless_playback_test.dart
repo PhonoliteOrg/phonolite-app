@@ -8,12 +8,26 @@ import 'package:phonolite_app/data/models/audio/audio_file_format.dart';
 import 'package:phonolite_app/data/models/audio/audio_source_rejected.dart';
 import 'package:phonolite_app/infrastructure/audio/decoding/audio_file_decoder.dart';
 import 'package:phonolite_app/infrastructure/audio/engine/audio_engine.dart';
+import 'package:phonolite_app/infrastructure/platform/audio/apple/core_audio_output.dart';
 
 import '../support/streaming_test_helpers.dart';
 
 /// All audio, clocks and decoders are memory objects. These checks exercise the
 /// production worker without launching a device, isolate, socket or server.
 void main() {
+  test('Apple playback can submit a half-second reserve before the device clock advances', () async {
+    const frames = 24000;
+    final decoder = _Decoder(List.filled(frames, 1));
+    final output = _AppleOutput();
+    final harness = GaplessPlaybackHarness(
+      fileDecoderFactory: (_, __, ___) => decoder,
+      outputFactory: (_, __, ___, ____, _____) => output,
+    );
+    addTearDown(harness.close);
+    await harness.playLocal('track');
+    await _wait(() => output.queuedFrames == frames);
+  });
+
   test('Play cannot resume the shared device while its source is refilling', () async {
     final transport = MemoryQuic();
     transport.onRequest = (start, seekId) =>
@@ -1268,6 +1282,20 @@ class _Decoder extends AudioFileDecoder {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+// Exercise the production Apple adapter's refill contract without opening a device.
+class _AppleOutput extends CoreAudioPlayer {
+  int queuedFrames = 0;
+  _AppleOutput() : super(sampleRate: 48000, channels: 1, deviceId: -1, bitsPerSample: 32);
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> writePcm32(Int32List samples) async {
+    queuedFrames += samples.length;
+  }
 }
 
 class _Output implements AudioPcmOutput, AudioPcm32Output {

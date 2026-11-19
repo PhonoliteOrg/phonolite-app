@@ -7,7 +7,8 @@ release buffer storage; they do not establish that playback has finished.
 `audio_queue_progress_test.c` checks the portable sample accounting.
 `audio_queue_player_test.c` compiles the actual macOS backend against the small
 fake AudioQueue API in `test_support/`. It verifies early callbacks (including
-inside enqueue), delayed hardware time, partial drain, pause/resume, seek/reset
+inside enqueue), a 300 ms producer stall with a 500 ms reserve, delayed buffer
+returns, partial drain, pause/resume, seek/reset
 generations, and clock-discontinuity errors. The fake is synchronous and does
 not exercise Apple frameworks or concurrent callbacks.
 
@@ -27,3 +28,10 @@ with the MSVC and Windows SDK include/library paths configured.
 
 These tests open no audio device. An Apple SDK build and the Runner XCTest
 suite remain necessary to verify framework integration on an Apple host.
+
+To check lock-screen playback on an iPhone, play a downloaded track on the
+built-in speaker and lock the screen. In Console, enable debug messages for the
+device and filter for `Phonolite AudioQueue reserve before refill`. The value
+is the time left on the queue's sample clock just before the next write. A
+negative value means the clock passed the previous scheduled end. Compare its
+timestamp with any audible crackle.

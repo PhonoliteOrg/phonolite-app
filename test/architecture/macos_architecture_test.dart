@@ -159,7 +159,6 @@ void main() {
 
     expect(close.indexOf('AudioQueueDispose(player->queue, true)'), lessThan(close.indexOf('free(player)')));
     expectContainsAll(queue, const [
-      'max_in_flight = 5',
       'queue_full = -3',
       'entry->generation == player->generation',
       'phonolite_progress_collect(&entry->progress, player->generation, valid, frame)',
